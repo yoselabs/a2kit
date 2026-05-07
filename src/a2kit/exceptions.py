@@ -25,6 +25,24 @@ class InvalidConnectionKey(A2KitError, ValueError):  # noqa: N818
         )
 
 
+class KeyFieldMissing(A2KitError, KeyError):  # noqa: N818
+    """Raised when a `load(**kwargs)` call omits a required `KEY_FIELDS` name."""
+
+    def __init__(self, field: str, *, have: list[str]) -> None:
+        self.field = field
+        self.have = list(have)
+        super().__init__(f"Missing key field {field!r}; have: {sorted(self.have)}. Pass it as a keyword argument to load()/delete().")
+
+
+class KeyArityMismatch(A2KitError, ValueError):  # noqa: N818
+    """Raised when a tuple/positional key has the wrong number of parts."""
+
+    def __init__(self, *, expected: tuple[str, ...], got: tuple[str, ...]) -> None:
+        self.expected = expected
+        self.got = got
+        super().__init__(f"Key arity mismatch: KEY_FIELDS={list(expected)} (arity {len(expected)}) but got {list(got)} (arity {len(got)}).")
+
+
 class TokenResolutionError(A2KitError):
     """Base for resolver failures."""
 

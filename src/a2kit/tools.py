@@ -182,7 +182,7 @@ def _check_xml_contamination(bound: inspect.BoundArguments, fn_name: str) -> Non
 # --------------------------------------------------------------------------- #
 
 
-def tool(  # noqa: C901
+def tool(  # noqa: C901, PLR0915
     *,
     enricher: ErrorEnricher | EnricherRegistry | None = None,
     store: ConnectionStore[Any] | None = None,
@@ -195,13 +195,15 @@ def tool(  # noqa: C901
     otel: bool = True,
     tool_name: str | None = None,
     resolver_registry: ResolverRegistry | None = None,
+    server: Any = None,
 ) -> Callable[[F], F]:
     """Compose with FastMCP's `@server.tool()`. See module docstring for behaviour.
 
     All args optional. `@a2kit.tool()` with no args behaves identically to v0.1.
 
-    The decorator is intentionally a *factory* so `@a2kit.tool()` (parens) is the
-    only call shape — keeps the v0.1 contract.
+    v0.3: pass `server=` to auto-register the wrapped function with FastMCP's tool
+    manager. Stacking with an explicit `@server.tool()` on top still works
+    (idempotent — the second registration is a no-op).
     """
 
     def decorator(fn: F) -> F:  # noqa: C901
@@ -266,9 +268,59 @@ def tool(  # noqa: C901
         if return_anno is not None:
             wrapper.__annotations__ = {**wrapper.__annotations__, "return": return_anno}
             fn.__annotations__ = {**fn.__annotations__, "return": return_anno}
+
+        _inject_param_docs(wrapper, fn, sig)
+
+        if server is not None:
+            _register_with_server(server, wrapper, resolved_tool_name)
+
         return wrapper  # type: ignore[return-value]
 
     return decorator
+
+
+def _inject_param_docs(wrapper: Any, fn: Any, sig: inspect.Signature) -> None:
+    """If a registered param doc exists for any parameter name, append it to the
+    docstring (only when the existing docstring doesn't already mention the param).
+
+    Explicit docstring text wins; injection only fills the gaps.
+    """
+    from a2kit.docs import _registered_param_docs  # noqa: PLC0415
+
+    registry = _registered_param_docs()
+    if not registry:
+        return
+    existing = wrapper.__doc__ or ""
+    additions: list[str] = []
+    for param_name in sig.parameters:
+        if param_name not in registry:
+            continue
+        if param_name in existing:
+            continue
+        additions.append(f"{param_name}: {registry[param_name]}")
+    if not additions:
+        return
+    suffix = "\n\n" + "\n".join(additions)
+    new_doc = (existing.rstrip() + suffix) if existing else "\n".join(additions)
+    wrapper.__doc__ = new_doc
+    fn.__doc__ = new_doc
+
+
+def _register_with_server(server: Any, wrapper: Any, name: str) -> None:
+    """Register `wrapper` with a FastMCP server idempotently.
+
+    If a tool with the same name (and same callable) is already registered, skip.
+    Otherwise call `server.tool()(wrapper)`.
+    """
+    try:
+        existing = server._tool_manager.list_tools()  # noqa: SLF001
+    except AttributeError:
+        existing = []
+    for entry in existing:
+        if getattr(entry, "name", None) == name:
+            # Already registered — typically because `@server.tool()` stacked above.
+            return
+    server.tool()(wrapper)
 
 
 async def _consume_or_passthrough_async(async_iter: AsyncIterator[Any]) -> Any:

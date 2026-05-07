@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import a2kit
 
@@ -39,7 +39,7 @@ class _FakeServer:
 
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_PARTS: ClassVar[int | None] = 1
+    KEY_FIELDS = ("name",)
     url: str
 
 
@@ -65,7 +65,6 @@ def main() -> None:
         _FakeServer(),
         store=store,
         feature_registry=features,
-        connection_class=WidgetConn,
         name="a2widgets",
     )
 
@@ -77,7 +76,6 @@ def main() -> None:
         _FakeServer(),
         store=store,
         feature_registry=features,
-        connection_class=WidgetConn,
     ).run(argv=["--enable", "issues,sprints", "--http", ":7000", "--register", "eph", "url=https://eph.example"])
 
 

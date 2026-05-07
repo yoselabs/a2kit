@@ -12,7 +12,6 @@ import asyncio
 import os
 import tempfile
 from pathlib import Path
-from typing import ClassVar
 
 from mcp.server.fastmcp import FastMCP
 
@@ -20,7 +19,7 @@ import a2kit
 
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_PARTS: ClassVar[int | None] = 1
+    KEY_FIELDS = ("name",)
     base_url: str
     api_key: str
     read_only: bool = True

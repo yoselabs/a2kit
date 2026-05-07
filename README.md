@@ -1,6 +1,6 @@
 # a2kit
 
-**Status:** v0.2 — production-grade primitive set.
+**Status:** v0.3 — feature class, KEY_FIELDS, server-auto-register, lint subpackage.
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
@@ -67,7 +67,7 @@ Both are lazy-imported; the minimal install runs without either.
 from a2kit import ConnectionInfo, ConnectionStore, resolve_token
 
 class AtlassianInfo(ConnectionInfo):
-    KEY_PARTS = 1   # or None for any arity
+    KEY_FIELDS = ("name",)   # default; can be omitted
     url: str
     email: str
     token: str
@@ -75,13 +75,28 @@ class AtlassianInfo(ConnectionInfo):
 
 store = ConnectionStore(config_dir, AtlassianInfo)
 store.save(AtlassianInfo(key=("prod",), url="...", email="...", token="${ATL}"))
-info = store.load(("prod",))
+# v0.3 load shapes — pick the most readable for your call site:
+info = store.load("prod")              # bare-string sugar (single field)
+info = store.load(name="prod")         # kwargs
+info = store.load(("prod",))           # tuple (migration path)
 real_token = resolve_token(info.token)   # raises EnvVarNotFound on missing
 ```
 
-Tuple keys generalise both a2db (3-part) and a2atlassian (1-part). Atomic save
-(tempfile + chmod 0600 + rename), `A2KIT_CONFIG_HOME` env override, typed
-exceptions on resolver failure.
+Multi-part keys are declared as a named tuple:
+
+```python
+class WidgetConn(ConnectionInfo):
+    KEY_FIELDS = ("project", "env", "db")
+    base_url: str
+    api_key: str
+
+store.load(project="acme", env="prod", db="main")  # preferred
+store.load(("acme", "prod", "main"))               # tuple
+store.load("acme", "prod", "main")                 # positional
+```
+
+Atomic save (tempfile + chmod 0600 + rename), `A2KIT_CONFIG_HOME` env override,
+typed exceptions on resolver failure (`KeyFieldMissing`, `KeyArityMismatch`).
 
 ### `a2kit.tools.tool`
 
@@ -179,7 +194,11 @@ forces a rewrite.
 imports the rest of the package and zeroes out import-time coverage. Opt-in
 via `pytest_plugins` in your `conftest.py` is one line and avoids the trap.
 
-## How a new MCP starts here (v0.2)
+## How a new MCP starts here (v0.3)
+
+The v0.3 default is the **one-decorator path**: `@a2kit.tool(server=...)`
+auto-registers with FastMCP. No `@server.tool()` wrapper, no `KEY_PARTS`, no
+`MyConn` repetition.
 
 ```python
 # my_mcp/server.py
@@ -187,7 +206,7 @@ import a2kit
 from mcp.server.fastmcp import FastMCP
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_PARTS = 1
+    KEY_FIELDS = ("name",)   # optional — this is the default
     base_url: str
     api_key: str
     read_only: bool = True
@@ -198,59 +217,77 @@ enricher.register(a2kit.ConnectionNotFoundEnricher(store))
 
 server = FastMCP("widgets")
 
-@server.tool()
-@a2kit.tool(store=store, connection_param="connection", enricher=enricher)
+@a2kit.tool(server=server, store=store, connection_param="connection", enricher=enricher)
 async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
     f"""Fetch a widget. {a2kit.docs.connection_param_doc(cli="a2widgets")}"""
     return {"id": widget_id, "url": info.base_url}
 
-@server.tool()
-@a2kit.tool(store=store, connection_param="connection", write=True, enricher=enricher)
+@a2kit.tool(server=server, store=store, connection_param="connection", write=True, enricher=enricher)
 async def update_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
     return {"id": widget_id, "updated": True}
 
 if __name__ == "__main__":
-    a2kit.scaffold.MCPRunner(server, store=store, connection_class=WidgetConn).run()
+    a2kit.scaffold.MCPRunner(server, store=store).run()
 ```
 
-The CLI side gets the standard commands for free:
+If you need explicit FastMCP options (custom `name=`, `description=`), the
+two-decorator stack still works:
+
+```python
+@a2kit.tool(store=store, connection_param="connection")
+@server.tool(name="get-widget-v2", description="Custom MCP-side metadata.")
+async def get_widget(...): ...
+```
+
+The CLI side stays one line:
 
 ```python
 # my_mcp/cli.py
 import a2kit
-from .server import store, WidgetConn
+from .server import store
 
-cli = a2kit.scaffold.build_cli(store, connection_class=WidgetConn, name="a2widgets")
+cli = a2kit.scaffold.build_cli(store, name="a2widgets")
 if __name__ == "__main__":
     cli()
 ```
 
-### LOC saved per tool (v0.1 → v0.2)
-
-A direct port of the v0.1 walkthrough's `get_widget`:
+### LOC saved per tool (v0.2 → v0.3)
 
 ```python
-# v0.1 — 4 lines of boilerplate inside the body
-async def get_widget(connection: str, widget_id: str) -> dict:
-    info = store.load((connection,)) if connection not in ephemeral else ephemeral[(connection,)]
-    token = a2kit.resolve_token(info.api_key)
+# v0.2 — 2 decorators per tool, plus class repetition in MCPRunner/build_cli
+@server.tool()
+@a2kit.tool(store=store, connection_param="connection")
+async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
     return {"id": widget_id, "url": info.base_url}
 
-# v0.2 — 0 lines of boilerplate; decorator does it
-@a2kit.tool(store=store, connection_param="connection")
+# v0.3 — 1 decorator
+@a2kit.tool(server=server, store=store, connection_param="connection")
 async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
     return {"id": widget_id, "url": info.base_url}
 ```
 
-**Body LOC:** v0.1 = 3 (load + resolve + return); v0.2 = 1 (return). **Saved
-per tool: 2 lines.** A 30-tool MCP saves ~60 lines of repetitive
-boilerplate, plus the v0.1 `if connection not in ephemeral` ternary that
-neither MCP got right at first.
+**Per-tool savings (decorator):** v0.2 = 2 lines; v0.3 = 1 line. **Saved
+per tool: 1 decorator line.** A 30-tool MCP saves ~30 lines.
 
-`MCPRunner` replaces ~40 lines of argv parsing in `mcp_server.py::main()`
-(both reference MCPs hand-roll `_parse_register_args`,
-`_parse_scope_args`, `_parse_enable_args` — see `ANTIPATTERNS.md` #6 for
-why it's a helper not a `main()`).
+**Per-MCP savings (entrypoint):** dropping `connection_class=` from
+`MCPRunner(...)` and `build_cli(...)` removes 2 redundant references to the
+connection class. `KEY_FIELDS` defaults to `("name",)`, so single-key MCPs
+drop the line entirely.
+
+Cumulatively against v0.2: ~35 LOC saved on a 30-tool MCP, plus the
+removal of the parallel `KEY_PARTS` / `connection_class=` plumbing.
+
+## Lint and runtime checks (v0.3)
+
+```bash
+uvx a2kit lint src/ tests/ examples/
+uvx a2kit check --import my_mcp.server:server --snapshot-dir __snapshots__
+```
+
+Six static rules (`A2K001`..`A2K006`) and four runtime checks
+(`A2KR001`..`A2KR004`). Configure via `[tool.a2kit.lint]` /
+`[tool.a2kit.check]` in `pyproject.toml`. Per-line ignores via
+`# noqa: A2K001`. Full reference in [`LINT.md`](LINT.md).
 
 ## Quality gates
 

@@ -13,7 +13,7 @@ from a2kit import ConnectionInfo, ConnectionStore, resolve_token
 
 
 class DbInfo(ConnectionInfo):
-    KEY_PARTS = 3
+    KEY_FIELDS = ("project", "env", "db")
     dsn: str
 
 

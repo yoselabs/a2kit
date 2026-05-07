@@ -104,16 +104,19 @@ def test_empty_key_rejected() -> None:
 
 
 def test_arity_mismatch_rejected() -> None:
-    with pytest.raises(ValueError, match="3-part key"):
+    with pytest.raises(ValueError, match=r"arity mismatch|arity 3"):
         DbInfo(key=("only-one",), dsn="sqlite://")
 
 
-def test_unconstrained_arity_accepts_any() -> None:
+def test_default_key_fields_single_name() -> None:
+    """Subclass without KEY_FIELDS gets the default `("name",)` shape."""
+
     class Flexible(ConnectionInfo):
         value: str
 
     assert Flexible(key=("a",), value="x").filename == "a.toml"
-    assert Flexible(key=("a", "b", "c", "d"), value="x").filename == "a-b-c-d.toml"
+    with pytest.raises(ValueError, match="arity"):
+        Flexible(key=("a", "b"), value="x")
 
 
 def test_default_config_dir_uses_home(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -171,7 +174,7 @@ def test_listing_with_tuple_subclass_field(atlassian_store: ConnectionStore[Atla
     """Cover the tuple-field coercion path on save (extra tuple field on subclass)."""
 
     class WithTuple(ConnectionInfo):
-        KEY_PARTS = 1
+        KEY_FIELDS = ("name",)
         admins: tuple[str, ...] = ()
 
     store: ConnectionStore[WithTuple] = ConnectionStore(atlassian_store.config_dir, WithTuple)

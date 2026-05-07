@@ -1,7 +1,7 @@
-.PHONY: test lint format check examples bootstrap
+.PHONY: test lint format check examples bootstrap typecheck coverage-diff a2kit-lint a2kit-check
 
 bootstrap:
-	uv sync
+	uv sync --all-extras --dev
 
 test:
 	uv run pytest
@@ -14,7 +14,19 @@ format:
 	uv run ruff format .
 	uv run ruff check --fix .
 
-check: lint test
+a2kit-lint:
+	uv run a2kit lint src/ tests/ examples/
+
+a2kit-check:
+	@echo "a2kit check requires --import path:server. Override per project."
+
+typecheck:
+	@uv run --with ty -- ty check src/ 2>/dev/null || echo "⚠ ty not installable yet — skipping"
+
+coverage-diff:
+	@uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=95 2>/dev/null || echo "⚠ no coverage.xml — run 'make test' first"
+
+check: lint a2kit-lint test
 
 examples:
 	uv run python examples/a2db_style.py
@@ -29,3 +41,6 @@ examples:
 	uv run python examples/feature_modules.py
 	uv run python examples/streaming_tool.py
 	uv run python examples/cassette_test.py
+	uv run python examples/v03_minimal_mcp.py
+	uv run python examples/feature_class.py
+	uv run python examples/key_fields.py

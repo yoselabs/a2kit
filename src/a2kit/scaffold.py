@@ -24,7 +24,7 @@ either too much or too little into a2kit. Keep it composable.
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
 import click
 
@@ -33,6 +33,7 @@ from a2kit.exceptions import ConnectionNotFound
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from pathlib import Path
 
 C = TypeVar("C", bound=ConnectionInfo)
 
@@ -55,17 +56,25 @@ def _parse_key_arg(raw: str) -> tuple[str, ...]:
 def build_cli(  # noqa: C901
     store: ConnectionStore[C],
     *,
-    connection_class: type[C],
+    connection_class: type[C] | None = None,
     name: str = "a2kit",
 ) -> click.Group:
     """Build a Click group with standard connection-management commands.
 
-    The author can add their own commands (e.g. `serve`) via `cli.add_command(...)`.
-
-    `connection_class` is needed because `login` constructs an instance from CLI
-    kv-pairs. The login command uses `--field key=value` repeatable options and
-    delegates field validation to Pydantic.
+    v0.3: `connection_class` is derived from `store.connection_class`. Passing it
+    explicitly emits a `DeprecationWarning` for one cycle. Going forward the
+    walkthrough is just `build_cli(store, name="...")`.
     """
+    if connection_class is not None:
+        import warnings  # noqa: PLC0415
+
+        warnings.warn(
+            "build_cli(connection_class=...) is deprecated; the store knows its model. "
+            "Drop the kwarg — `build_cli(store, name=...)` is enough.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    connection_class = connection_class or store.connection_class
 
     @click.group(name=name, invoke_without_command=True)
     @click.pass_context
@@ -136,20 +145,30 @@ def build_cli(  # noqa: C901
 
 def register_ephemeral_connections(
     args: list[str],
-    connection_class: type[C],
+    connection_class: type[C] | None = None,
+    *,
+    store: ConnectionStore[C] | None = None,
 ) -> dict[tuple[str, ...], C]:
     """Parse `--register` blocks from a flat argv list.
 
-    Recognised shape:
-
-        --register KEY field1=v1 field2=v2 [field3=v3 ...] [--register ...]
-
-    Stops collecting fields at the next `--register` or end of args. Returns a
-    dict keyed by `info.key`.
-
-    The MCP author wires this into their program entry; ephemeral connections
-    are the consumer's concern (the store is the persistence layer only).
+    v0.3: prefer `register_ephemeral_connections(args, store=store)` — the store
+    knows its model. Passing `connection_class` positionally still works for one
+    cycle but emits a `DeprecationWarning`.
     """
+    if connection_class is None and store is None:
+        msg = "register_ephemeral_connections requires either store= or connection_class"
+        raise TypeError(msg)
+    if connection_class is not None and store is None:
+        import warnings  # noqa: PLC0415
+
+        warnings.warn(
+            "Pass `store=` instead of `connection_class=`; the store knows its model.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if store is not None:
+        connection_class = store.connection_class
+    assert connection_class is not None  # for type narrowing  # noqa: S101
     out: dict[tuple[str, ...], C] = {}
     i = 0
     while i < len(args):
@@ -216,6 +235,7 @@ def scope_filter(store: ConnectionStore[C], scope: str | None) -> Any:
 
 
 __all__ = [
+    "Feature",
     "FeatureRegistry",
     "MCPRunner",
     "build_cli",
@@ -236,14 +256,49 @@ __all__ = [
 # --------------------------------------------------------------------------- #
 
 
+class Feature:
+    """Base class for v0.3 feature modules.
+
+    Bundles enricher + snapshot_dir + cassette_dir + register hooks. Subclass and
+    register an instance with a `FeatureRegistry`. The legacy v0.2 decorator
+    path (`@registry.feature("name", default=True)`) still works and is now a
+    thin wrapper around an anonymous `Feature` subclass.
+    """
+
+    name: ClassVar[str] = ""
+    default: ClassVar[bool] = False
+    enricher: ClassVar[Any] = None
+    snapshot_dir: ClassVar[Path | str | None] = None
+    cassette_dir: ClassVar[Path | str | None] = None
+    requires_writes: ClassVar[bool] = False
+
+    def register_read(self, server: Any, store: Any) -> None:
+        """Register read-only tools. Override in subclasses."""
+
+    def register_write(self, server: Any, store: Any) -> None:
+        """Register write-marked tools. Override in subclasses."""
+
+
 class FeatureRegistry:
-    """Decorator-style registry of feature modules for `--enable` filtering."""
+    """Registry of feature modules — both v0.2 decorator-style and v0.3 `Feature` instances.
+
+    v0.3: prefer `registry.add(IssuesFeature())`. The `@registry.feature(...)`
+    decorator stays for backward compat with v0.2 examples.
+    """
 
     def __init__(self) -> None:
         self._features: list[tuple[str, bool, Any]] = []
 
+    def add(self, feature: Feature) -> Feature:
+        """Register a `Feature` instance. Returns the instance for chaining."""
+        if not feature.name:
+            msg = f"{type(feature).__name__}.name must be a non-empty string"
+            raise ValueError(msg)
+        self._features.append((feature.name, feature.default, feature))
+        return feature
+
     def feature(self, name: str, *, default: bool = False) -> Any:
-        """Register a feature class (decorator). `default=True` => on without `--enable`."""
+        """Register a feature class (decorator). v0.2-style; still supported."""
 
         def decorator(cls: Any) -> Any:
             self._features.append((name, default, cls))
@@ -252,7 +307,7 @@ class FeatureRegistry:
         return decorator
 
     def feature_names(self) -> list[str]:
-        """Return ordered feature names — useful for `--enable` parsing/help."""
+        """Return ordered feature names."""
         return [name for name, _default, _cls in self._features]
 
     def defaults(self) -> set[str]:
@@ -267,11 +322,7 @@ class FeatureRegistry:
         enabled: Iterable[str] | None = None,
         include_writes: bool = False,
     ) -> list[str]:
-        """Register read tools (always) and write tools (if `include_writes`).
-
-        `enabled=None` → use defaults. Pass an explicit iterable to override.
-        Returns the list of applied feature names.
-        """
+        """Register read tools (always) and write tools (if `include_writes`)."""
         wanted = set(enabled) if enabled is not None else self.defaults()
         unknown = wanted - {name for name, _default, _cls in self._features}
         if unknown:
@@ -325,13 +376,24 @@ class MCPRunner:
         connection_class: type[ConnectionInfo] | None = None,
         name: str = "a2kit",
     ) -> None:
+        if connection_class is not None:
+            import warnings  # noqa: PLC0415
+
+            warnings.warn(
+                "MCPRunner(connection_class=...) is deprecated; pass `store=` instead. The store knows its model.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.server = server
         self.store = store
         self.feature_registry = feature_registry
+        # Derive from store when present.
+        if connection_class is None and store is not None:
+            connection_class = store.connection_class
         self.connection_class = connection_class
         self.name = name
 
-    def _parse(self, argv: list[str]) -> dict[str, Any]:  # noqa: PLR0912 — flat flag table
+    def _parse(self, argv: list[str]) -> dict[str, Any]:
         i = 0
         result: dict[str, Any] = {
             "scope": None,

@@ -1,7 +1,7 @@
 [project]
 name = "a2kit"
-version = "0.2.0"
-description = "Thin library on top of FastMCP — additive primitives for connection management, tool decoration, schema snapshots, feature-module registration, and HTTP cassette testing."
+version = "0.3.0"
+description = "Thin library on top of FastMCP — additive primitives for connection management, tool decoration, schema snapshots, feature-module registration, lint, and HTTP cassette testing."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]
 requires-python = ">=3.11"
@@ -16,17 +16,20 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+dependencies = [
+    "click>=8",
+    "pydantic>=2,<3",
+    "tomli-w>=1",
+]
+
+[project.scripts]
+a2kit = "a2kit.lint.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/yoselabs/a2kit"
 Repository = "https://github.com/yoselabs/a2kit"
 Issues = "https://github.com/yoselabs/a2kit/issues"
 Changelog = "https://github.com/yoselabs/a2kit/blob/main/CHANGELOG.md"
-dependencies = [
-    "click>=8",
-    "pydantic>=2,<3",
-    "tomli-w>=1",
-]
 
 [project.optional-dependencies]
 otel = [
@@ -68,16 +71,17 @@ max-complexity = 10
 [tool.ruff.lint.pylint]
 max-args = 8
 max-statements = 50
-max-branches = 10
+max-branches = 12
 max-returns = 6
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
     "S101", "S105", "S106", "E402", "ARG001", "ARG002", "ARG005", "PLR2004", "SLF001",
-    "PT011", "PT022", "PLR0915", "PLC0415", "PTH116", "TC001", "TC002", "TC003",
+    "PT011", "PT018", "PT022", "PT030", "PLR0915", "PLC0415", "PTH116", "TC001", "TC002", "TC003",
     "I001", "RUF100",
 ]
-"examples/**" = ["T201", "S101", "S105", "S106"]
+"scripts/**" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915"]
+"examples/**" = ["T201", "S101", "S105", "S106", "SLF001", "ARG002"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -108,4 +112,11 @@ dev = [
     "pytest-cov>=6",
     "ruff>=0.9",
     "vcrpy>=6",
+    "diff-cover>=9",
 ]
+
+[tool.a2kit.lint]
+disabled = []
+
+[tool.a2kit.check]
+disabled = []

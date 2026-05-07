@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.3.0 — 2026-05-07
+
+Feature class, KEY_FIELDS, server-auto-register, lint subpackage. Internal-only
+release one day after v0.2 — applies a clean cut where it makes sense.
+
+**Breaking changes**
+
+- `KEY_PARTS: ClassVar[int | None]` → `KEY_FIELDS: ClassVar[tuple[str, ...]]`.
+  No alias — pre-1.0 clean cut. Migration: replace `KEY_PARTS = N` with the
+  field-named tuple, e.g. `KEY_FIELDS = ("project", "env", "db")`. Default
+  `("name",)` covers the single-key case, so subclasses with `KEY_PARTS = 1`
+  can simply drop the line.
+- `build_cli(connection_class=...)` and `MCPRunner(connection_class=...)` are
+  deprecated. The store knows its model — use `build_cli(store, name="...")`
+  and `MCPRunner(server, store=store)`. Passing `connection_class=` still
+  works for one cycle, with a `DeprecationWarning`.
+- `register_ephemeral_connections(args, connection_class)` → prefer
+  `register_ephemeral_connections(args, store=store)`. Old shape works with a
+  warning.
+
+**New**
+
+- `@a2kit.tool(server=server, ...)` auto-registers the wrapped function with
+  FastMCP's tool manager. Idempotent when stacked under an explicit
+  `@server.tool()` (innermost) — the decorator detects an existing entry by
+  name and skips. The single-decorator path is the new default; stacked form
+  remains for callers who need explicit FastMCP options.
+- `ConnectionInfo.KEY_FIELDS` — named-tuple key shape. Default `("name",)`.
+  `ConnectionStore.load(...)` now accepts kwargs (`load(project=..., env=..., db=...)`),
+  tuples, lists, positional args, and bare-string sugar for the single-field
+  default.
+- New typed exceptions: `KeyFieldMissing`, `KeyArityMismatch`.
+- `ConnectionStore.connection_class` — exposes the bound model class.
+- `a2kit.scaffold.Feature` — base class bundling enricher + snapshot_dir +
+  cassette_dir + register hooks. The v0.2 `@registry.feature(name, ...)`
+  decorator path is unchanged. Register an instance via `registry.add(MyFeature())`.
+- `a2kit.docs.register_param_doc(name, text)` + `a2kit.docs.param_doc(name)`.
+  Registered text is auto-injected into a tool's docstring when the existing
+  docstring doesn't mention the parameter. Explicit text wins.
+- `a2kit.lint` subpackage:
+  - **Static rules:** `A2K001` (tool decorator missing param), `A2K002`
+    (`-> str` returns), `A2K003` (module-local Pydantic return), `A2K004`
+    (canonical connection-param helper), `A2K005` (`KEY_FIELDS` shape +
+    usage), `A2K006` (duplicate param description).
+  - **Runtime checks:** `A2KR001` (snapshot presence), `A2KR002` (per-tool
+    budget), `A2KR003` (total schema budget), `A2KR004` (similar tool names).
+  - CLI: `uvx a2kit lint paths...` and `uvx a2kit check --import path:server`.
+  - Configurable via `[tool.a2kit.lint]` / `[tool.a2kit.check]`. Per-line
+    `# noqa: A2KXXX`.
+  - See `LINT.md` for rationale and examples.
+
+**Examples added**
+
+- `examples/v03_minimal_mcp.py` — < 30 LOC for a 2-tool MCP using `@a2kit.tool(server=...)`.
+- `examples/feature_class.py` — `Feature` base class with enricher + snapshot dir.
+- `examples/key_fields.py` — all four `load()` call shapes against a 3-part key.
+
+Existing examples (`runner.py`, `scaffold_cli.py`, `feature_modules.py`) updated
+to drop the now-redundant `connection_class=` kwarg.
+
+**Deprecations (one-cycle warning, removal in v0.4)**
+
+- `build_cli(connection_class=...)`
+- `MCPRunner(connection_class=...)`
+- `register_ephemeral_connections(args, connection_class)` (positional)
+
 ## 0.2.0 — 2026-05-07
 
 Production-grade primitive set. Promotes a2kit from "ready for first external

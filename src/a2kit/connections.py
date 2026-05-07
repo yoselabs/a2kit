@@ -1,15 +1,22 @@
 """ConnectionStore — TOML-backed save/load/list/delete for named connections.
 
-Generalises both:
-- a2db's three-part key (project, env, db) → `{project}-{env}-{db}.toml`
-- a2atlassian's flat-name key ("prod") → `prod.toml`
+v0.3: keys are **named tuples** declared via `KEY_FIELDS: ClassVar[tuple[str, ...]]`.
+Defaults to `("name",)` so the common single-key case is zero-config. Multi-part
+keys are declared positionally on the subclass:
 
-The key is a tuple of one or more string parts. Storage filename is the parts joined
-by `-` plus `.toml`.
+    class WidgetConn(a2kit.ConnectionInfo):
+        KEY_FIELDS = ("project", "env", "db")
+        ...
 
-`ConnectionInfo` is a frozen Pydantic model — consumers subclass to add domain fields
-(DSN, URL, email, read_only, project/env/db, ...). The store is generic over the
-subclass via a type parameter.
+Filename derivation unchanged: `"-".join(values) + ".toml"`.
+
+Loading shapes (all equivalent):
+
+    store.load(name="prod")              # kwargs (preferred)
+    store.load("prod")                   # bare-string sugar (single-field default)
+    store.load(("project", "env", "db"))   # tuple (migration path)
+    store.load("p", "e", "d")              # positional
+    store.load(project=..., env=..., db=...)
 """
 
 from __future__ import annotations
@@ -20,12 +27,17 @@ import stat
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 import tomli_w
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from a2kit.exceptions import ConnectionNotFound, InvalidConnectionKey
+from a2kit.exceptions import (
+    ConnectionNotFound,
+    InvalidConnectionKey,
+    KeyArityMismatch,
+    KeyFieldMissing,
+)
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -52,9 +64,6 @@ def default_config_dir() -> Path:
 
     Honours `A2KIT_CONFIG_HOME` (overrides everything). Otherwise falls back to
     `~/.config/a2kit/connections/`.
-
-    Note: a2atlassian hardcodes `~/.config` and tracks XDG_CONFIG_HOME support as a
-    backlog item — fixed here at the primitive layer.
     """
     override = os.environ.get(ENV_CONFIG_HOME)
     if override:
@@ -63,27 +72,26 @@ def default_config_dir() -> Path:
 
 
 class ConnectionInfo(BaseModel):
-    """Base frozen connection record.
+    """Base frozen connection record. Subclass and add domain fields.
 
-    Subclass and add domain fields. The `key` tuple is what the store uses to derive
-    the on-disk filename. Order and arity matter — `("prod",)` and
-    `("acme", "prod", "main")` are both valid.
+    `KEY_FIELDS` declares the named-tuple shape of the key. The on-disk filename
+    is `"-".join(values) + ".toml"`.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     key: tuple[str, ...] = Field(min_length=1)
 
-    KEY_PARTS: ClassVar[int | None] = None
-    """Optional subclass-level arity check. None = any (1+) arity allowed."""
+    KEY_FIELDS: ClassVar[tuple[str, ...]] = ("name",)
+    """Subclass-level field names. Defaults to a single flat `name` key."""
 
     @field_validator("key")
     @classmethod
     def _validate_key(cls, v: tuple[str, ...]) -> tuple[str, ...]:
         v = _validate_key(v)
-        if cls.KEY_PARTS is not None and len(v) != cls.KEY_PARTS:
-            msg = f"{cls.__name__} requires a {cls.KEY_PARTS}-part key, got {len(v)}: {v}"
-            raise ValueError(msg)
+        expected = len(cls.KEY_FIELDS)
+        if len(v) != expected:
+            raise KeyArityMismatch(expected=cls.KEY_FIELDS, got=v)
         return v
 
     @property
@@ -95,16 +103,75 @@ class ConnectionInfo(BaseModel):
 C = TypeVar("C", bound=ConnectionInfo)
 
 
+def _coerce_key(  # noqa: C901
+    model: type[C],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[str, ...]:
+    """Resolve `load(...)` / `delete(...)` arguments into a validated key tuple."""
+    fields = model.KEY_FIELDS
+    expected = len(fields)
+
+    # All-kwargs path.
+    if not args and kwargs:
+        missing = [f for f in fields if f not in kwargs]
+        extras = [k for k in kwargs if k not in fields]
+        if missing:
+            raise KeyFieldMissing(missing[0], have=[f for f in fields if f in kwargs])
+        if extras:
+            msg = f"Unknown key field(s) {extras!r}; expected one of {list(fields)}"
+            raise InvalidConnectionKey(extras[0]) if False else ValueError(msg)
+        return tuple(str(kwargs[f]) for f in fields)
+
+    if not args and not kwargs:
+        msg = f"load() requires {expected} key field(s): {list(fields)}"
+        raise KeyFieldMissing(fields[0] if fields else "name", have=[])
+
+    # Tuple-shape path: load(("a", "b", "c")).
+    if len(args) == 1 and isinstance(args[0], tuple) and not kwargs:
+        got = args[0]
+        if len(got) != expected:
+            raise KeyArityMismatch(expected=fields, got=got)
+        return tuple(str(p) for p in got)
+
+    # List-shape path (mirror tuple).
+    if len(args) == 1 and isinstance(args[0], list) and not kwargs:
+        got = tuple(args[0])
+        if len(got) != expected:
+            raise KeyArityMismatch(expected=fields, got=got)
+        return tuple(str(p) for p in got)
+
+    # Single-string-sugar (only for the default single-field shape).
+    if len(args) == 1 and isinstance(args[0], str) and not kwargs:
+        if expected != 1:
+            raise KeyArityMismatch(expected=fields, got=(args[0],))
+        return (args[0],)
+
+    # Positional path: load("p", "e", "d").
+    if args and not kwargs:
+        if len(args) != expected:
+            raise KeyArityMismatch(expected=fields, got=tuple(str(a) for a in args))
+        return tuple(str(a) for a in args)
+
+    msg = "Cannot mix positional and keyword key arguments"
+    raise TypeError(msg)
+
+
 class ConnectionStore(Generic[C]):
     """Manages connection TOML files for a single `ConnectionInfo` subclass.
 
-    The store is parameterised by the model class so `load()` and `list_connections()`
-    return strongly-typed instances.
+    `store.connection_class` exposes the model type for code that wants to derive
+    it from the store rather than passing it twice.
     """
 
     def __init__(self, config_dir: Path, model: type[C]) -> None:
         self.config_dir = config_dir
         self.model = model
+
+    @property
+    def connection_class(self) -> type[C]:
+        """The `ConnectionInfo` subclass this store is bound to."""
+        return self.model
 
     # -- key/path ------------------------------------------------------------
 
@@ -122,8 +189,7 @@ class ConnectionStore(Generic[C]):
         self.config_dir.mkdir(parents=True, exist_ok=True)
         path = self._path(info.key)
         data = info.model_dump(mode="python")
-        data["key"] = list(data["key"])  # TOML has no tuple type
-        # Coerce any tuple fields on subclasses to lists for tomli_w.
+        data["key"] = list(data["key"])
         for k, v in list(data.items()):
             if isinstance(v, tuple):
                 data[k] = list(v)
@@ -137,7 +203,7 @@ class ConnectionStore(Generic[C]):
             tmp.write(payload)
             tmp.close()
             tmp_path = Path(tmp.name)
-            tmp_path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+            tmp_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
             tmp_path.replace(path)
         except Exception:
             tmp.close()
@@ -145,8 +211,9 @@ class ConnectionStore(Generic[C]):
             raise
         return path
 
-    def delete(self, key: tuple[str, ...]) -> None:
-        """Delete a connection. Raises `ConnectionNotFound` if missing."""
+    def delete(self, *args: Any, **kwargs: Any) -> None:
+        """Delete a connection. Accepts the same call shapes as `load`."""
+        key = _coerce_key(self.model, args, kwargs)
         path = self._path(key)
         if not path.exists():
             raise ConnectionNotFound(key)
@@ -154,13 +221,13 @@ class ConnectionStore(Generic[C]):
 
     # -- queries -------------------------------------------------------------
 
-    def load(self, key: tuple[str, ...]) -> C:
-        """Load by key. Raises `ConnectionNotFound` if missing."""
+    def load(self, *args: Any, **kwargs: Any) -> C:
+        """Load by key. See module docstring for accepted call shapes."""
+        key = _coerce_key(self.model, args, kwargs)
         path = self._path(key)
         if not path.exists():
             raise ConnectionNotFound(key)
         data = tomllib.loads(path.read_text())
-        # tuple fields lose their type through TOML; restore the key tuple.
         data["key"] = tuple(data["key"])
         return self.model.model_validate(data)
 

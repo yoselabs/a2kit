@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import pytest
 
@@ -35,7 +35,7 @@ class _FakeServer:
 
 
 class WConn(ConnectionInfo):
-    KEY_PARTS: ClassVar[int | None] = 1
+    KEY_FIELDS = ("name",)
     url: str
 
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import click
 
@@ -23,7 +23,7 @@ import a2kit
 
 
 class MyConn(a2kit.ConnectionInfo):
-    KEY_PARTS: ClassVar[int | None] = 1
+    KEY_FIELDS = ("name",)
     url: str
     email: str
     token: str
@@ -57,12 +57,12 @@ def main() -> None:
     config_dir = Path(tempfile.mkdtemp())
     store: a2kit.ConnectionStore[MyConn] = a2kit.ConnectionStore(config_dir, MyConn)
 
-    cli = a2kit.scaffold.build_cli(store, connection_class=MyConn, name="a2example")
+    cli = a2kit.scaffold.build_cli(store, name="a2example")
 
     @cli.command("serve")
     def serve() -> None:
         """Start an MCP server using MCPRunner."""
-        runner = a2kit.scaffold.MCPRunner(_FakeServer(), store=store, connection_class=MyConn)
+        runner = a2kit.scaffold.MCPRunner(_FakeServer(), store=store)
         # Strip the `serve` token before MCPRunner sees argv.
         argv = [a for a in sys.argv[1:] if a != "serve"]
         runner.run(argv=argv)

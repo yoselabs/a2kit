@@ -16,7 +16,7 @@ from a2kit import ConnectionInfo, ConnectionStore, resolve_token
 
 
 class AtlassianInfo(ConnectionInfo):
-    KEY_PARTS = 1
+    KEY_FIELDS = ("name",)
     url: str
     email: str
     token: str
