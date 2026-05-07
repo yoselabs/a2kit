@@ -21,6 +21,7 @@ from a2kit.lint._ast_helpers import (
     key_fields_value,
     local_pydantic_classes,
     namedtuple_field_count,
+    resolve_through_reexports,
 )
 from a2kit.lint._common import LintMessage, parse_noqa, suppressed
 
@@ -38,8 +39,9 @@ A2K009 = "A2K009"
 A2K010 = "A2K010"
 A2K011 = "A2K011"
 A2K012 = "A2K012"
+A2K013 = "A2K013"
 
-ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012)
+ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012, A2K013)
 
 _BUILTIN_CAPS = {"read", "write", "destructive", "expensive", "pii", "external"}
 _FIXTURE_PATH_TOKENS = ("tests/", "tests\\", "examples/", "examples\\")
@@ -354,6 +356,30 @@ def _collect_imported_names(tree: ast.AST) -> set[str]:
     return out
 
 
+def _collect_import_sources(tree: ast.AST) -> dict[str, tuple[str, str]]:
+    """Map local-name -> (module, original-attr) for each `from MODULE import NAME [as LOCAL]`.
+
+    Used by A2K012 v0.7 re-export resolution.
+    """
+    out: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            for alias in node.names:
+                local = alias.asname or alias.name
+                out[local] = (node.module, alias.name)
+    return out
+
+
+def _find_project_root(filename: str) -> Path | None:
+    """Walk up from `filename` to find the nearest pyproject.toml's parent."""
+    cur = Path(filename).resolve().parent
+    for parent in [cur, *cur.parents]:
+        if (parent / "pyproject.toml").is_file():
+            return parent
+        # Heuristic for ad-hoc test trees: stop at filesystem root.
+    return None
+
+
 def _collect_local_final_str_names(tree: ast.AST) -> set[str]:
     """Return module-level names annotated as `Final[str]`."""
     out: set[str] = set()
@@ -388,8 +414,23 @@ def rule_a2k012(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessa
     noqa = parse_noqa(source)
     # Names that the file imports — assume they may be Final[str] constants.
     imported = _collect_imported_names(tree)
+    import_sources = _collect_import_sources(tree)
     local_finals = _collect_local_final_str_names(tree)
-    safe_names = imported | local_finals
+    project_root = _find_project_root(filename)
+    safe_names = local_finals.copy()
+    # v0.7: walk re-export chains for imported names to confirm Final[str] terminus.
+    # Names whose chain dead-ends without a Final[str] are NOT considered safe.
+    for name in imported:
+        if name in safe_names:  # pragma: no cover — local_finals + ImportFrom rarely overlap
+            continue
+        module, attr = import_sources[name]
+        if project_root is not None and resolve_through_reexports(module, attr, project_root):
+            safe_names.add(name)
+        elif project_root is None:
+            # No project anchor (ad-hoc test fixture tree) → keep legacy permissive
+            # behaviour so existing imports stay opaque-safe.
+            safe_names.add(name)
+        # else: project_root is set but the chain doesn't end in Final[str] → unsafe.
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -415,6 +456,58 @@ def rule_a2k012(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessa
                     elt,
                     f"raw custom capability {value!r}; define as `Final[str]` constant for type safety",
                 )
+
+
+_A2K013_MARKERS = ("a2kit.docs.connection_param_doc(", "a2kit.docs.param_doc(")
+
+
+def rule_a2k013(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
+    """A2K013 — Manual param-doc f-string in a tool docstring.
+
+    Auto-injection (v0.7) prepends canonical text at decoration time. A docstring
+    that still calls `a2kit.docs.connection_param_doc(...)` / `a2kit.docs.param_doc(...)`
+    via f-string is redundant. The check walks the first body statement for an
+    f-string (`JoinedStr`) and scans both literal docstrings and f-string parts.
+    """
+    if _is_fixture_path(filename):
+        return
+    noqa = parse_noqa(source)
+    for node in ast.walk(tree):
+        if not is_tool_function(node):
+            continue
+        text = _first_doc_text(node)
+        if not any(m in text for m in _A2K013_MARKERS):
+            continue
+        if suppressed(noqa, A2K013, node.lineno):
+            continue
+        yield _msg(
+            A2K013,
+            filename,
+            node,
+            f"tool {node.name!r}: docstring calls a2kit.docs.connection_param_doc/param_doc; auto-injection (v0.7) covers it.",
+        )
+
+
+def _first_doc_text(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """Return raw text of the first body stmt if it's a string-or-f-string expression."""
+    if not fn.body:
+        return ""  # pragma: no cover — fn body always present in well-formed AST
+    first = fn.body[0]
+    if not isinstance(first, ast.Expr):
+        return ""
+    val = first.value
+    if isinstance(val, ast.Constant) and isinstance(val.value, str):
+        return val.value
+    if isinstance(val, ast.JoinedStr):
+        # Reconstruct a textual form by stitching literal parts + raw of FormattedValue source.
+        out: list[str] = []
+        for piece in val.values:
+            if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+                out.append(piece.value)
+            elif isinstance(piece, ast.FormattedValue):  # pragma: no branch — JoinedStr only contains these two
+                out.append(ast.unparse(piece.value))
+        return "".join(out)
+    return ""  # pragma: no cover — first stmt is non-string expression
 
 
 def rule_a2k011(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
@@ -684,6 +777,7 @@ _RULES_PER_FILE = (
     (A2K009, rule_a2k009),
     (A2K011, rule_a2k011),
     (A2K012, rule_a2k012),
+    (A2K013, rule_a2k013),
 )
 
 

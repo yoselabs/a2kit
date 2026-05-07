@@ -55,4 +55,5 @@ examples:
 	uv run python examples/toml_capabilities.py
 	uv run python examples/v05_minimal_mcp.py
 	uv run python examples/typed_key_literal.py
-	uv run python examples/v06_minimal_mcp.py
+	uv run python examples/v07_minimal_mcp.py
+	uv run python examples/higher_order_decorator.py

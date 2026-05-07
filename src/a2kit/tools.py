@@ -12,8 +12,9 @@ Behaviour order, before the wrapped function runs:
    bound args, looks it up in `store` (and `ephemeral` dict if provided), raises
    `ConnectionNotFound` enumerating available names if missing.
 2. Token resolution — recursively resolves `${ENV}` / `op://` / literals on every
-   string field of the loaded `ConnectionInfo`. The resolved info is injected as
-   a kwarg `info` (configurable via `info_kwarg=`).
+   string field of the loaded `ConnectionInfo`. The resolved info is exposed via
+   `Router.context.info()` (or a hand-built `_RouterContext`); the v0.6
+   `info=` kwarg-injection path was removed in v0.7.
 3. Read-only enforcement — if `write=True` and `info.read_only` is True, raises
    `WriteNotAllowed`.
 4. String-param XML guard — every `str` argument is checked for the
@@ -188,7 +189,6 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     enricher: ErrorEnricher | EnricherRegistry | None = None,
     store: ConnectionStore[Any] | None = None,
     connection_param: str | None = None,
-    info_kwarg: str = "info",
     ephemeral: dict[tuple[str, ...], Any] | None = None,
     write: bool = False,
     streaming: bool = False,
@@ -201,6 +201,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     cel_filter_param: str | None = None,
     fields_param: str | None = None,
     router_context: Any = None,
+    cli: str | None = None,
 ) -> Callable[[F], F]:
     """Compose with FastMCP's `@server.tool()`. See module docstring for behaviour.
 
@@ -219,11 +220,6 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         # Auto-tag seam: merge author-supplied caps + write/router context.
         tool_caps = _compute_tool_capabilities(set(capabilities), write=write, tool_name=resolved_tool_name)
 
-        # `info` kwarg is injected unless the function declares neither a named
-        # `info_kwarg` param NOR a `**kwargs` catch-all (v0.6: ContextVar
-        # accessor lets authors skip the kwarg cleanly).
-        _accepts_info_kwarg = info_kwarg in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
-
         def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
             """Run pre-call steps. Returns args/kwargs/key and a context-reset token."""
             bound = sig.bind_partial(*args, **kwargs)
@@ -241,8 +237,6 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 info = _resolve_info_strings(info, resolver_registry)
                 if write and getattr(info, "read_only", False):
                     raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
-                if _accepts_info_kwarg:
-                    kwargs = {**kwargs, info_kwarg: info}
                 if router_context is not None:
                     ctx_token = router_context._set(info)  # noqa: SLF001
             return args, kwargs, connection_key, ctx_token
@@ -320,7 +314,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             wrapper.__annotations__ = {**wrapper.__annotations__, "return": return_anno}
             fn.__annotations__ = {**fn.__annotations__, "return": return_anno}
 
-        _inject_param_docs(wrapper, fn, sig)
+        _inject_param_docs(wrapper, fn, sig, connection_param=connection_param, cli=cli)
 
         # Stamp computed capability tags so the runner / select can filter.
         # `setattr` (rather than `wrapper._a2kit_capabilities = ...`) keeps ty
@@ -371,31 +365,74 @@ def _compute_tool_capabilities(author: set[Capability], *, write: bool, tool_nam
     return caps
 
 
-def _inject_param_docs(wrapper: Any, fn: Any, sig: inspect.Signature) -> None:
-    """If a registered param doc exists for any parameter name, append it to the
-    docstring (only when the existing docstring doesn't already mention the param).
+def _inject_param_docs(
+    wrapper: Any,
+    fn: Any,
+    sig: inspect.Signature,
+    *,
+    connection_param: str | None = None,
+    cli: str | None = None,
+) -> None:
+    """Auto-inject canonical param-doc text into the function's docstring.
 
-    Explicit docstring text wins; injection only fills the gaps.
+    Two sources, in order:
+
+    1. If `connection_param` is set, prepend the canonical
+       `connection_param_doc(...)` text for it.
+    2. For any other registered param doc (`register_param_doc(name, text)`),
+       append `f"{name}: {text}"`.
+
+    Skips additions for params already mentioned in the existing docstring —
+    explicit author text always wins.
+
+    Configurable: `[tool.a2kit.docs] auto_inject = false` disables entirely
+    (read once per process, cached).
     """
-    from a2kit.docs import _registered_param_docs  # noqa: PLC0415
+    if not _auto_inject_enabled():
+        return
+    from a2kit.docs import _registered_param_docs, connection_param_doc  # noqa: PLC0415
 
     registry = _registered_param_docs()
-    if not registry:
-        return
     existing = wrapper.__doc__ or ""
     additions: list[str] = []
     for param_name in sig.parameters:
-        if param_name not in registry:
-            continue
         if param_name in existing:
             continue
-        additions.append(f"{param_name}: {registry[param_name]}")
+        if param_name == connection_param:
+            additions.append(connection_param_doc(param_name, cli=cli or "a2kit"))
+        elif param_name in registry:
+            additions.append(f"{param_name}: {registry[param_name]}")
     if not additions:
         return
     suffix = "\n\n" + "\n".join(additions)
     new_doc = (existing.rstrip() + suffix) if existing else "\n".join(additions)
     wrapper.__doc__ = new_doc
     fn.__doc__ = new_doc
+
+
+_AUTO_INJECT_CACHE: dict[str, bool] = {}
+
+
+def _auto_inject_enabled() -> bool:
+    """Read `[tool.a2kit.docs] auto_inject` from pyproject.toml. Default True."""
+    if "value" in _AUTO_INJECT_CACHE:
+        return _AUTO_INJECT_CACHE["value"]
+    value = True
+    try:
+        from a2kit.scaffold import _load_pyproject_a2kit  # noqa: PLC0415
+
+        table = _load_pyproject_a2kit().get("docs", {})
+        if isinstance(table, dict) and "auto_inject" in table:
+            value = bool(table["auto_inject"])
+    except Exception:  # noqa: BLE001 — defensive; never break the decorator
+        value = True
+    _AUTO_INJECT_CACHE["value"] = value
+    return value
+
+
+def _reset_auto_inject_cache() -> None:
+    """Test seam — drop the cached pyproject value."""
+    _AUTO_INJECT_CACHE.clear()
 
 
 def _register_with_server(server: Any, wrapper: Any, name: str) -> None:
@@ -424,6 +461,7 @@ async def _consume_or_passthrough_async(async_iter: AsyncIterator[Any]) -> Any:
 
 __all__ = [
     "_get_current_transport",
+    "_reset_auto_inject_cache",
     "_set_current_transport",
     "assert_clean_string",
     "preserve_return_annotation",

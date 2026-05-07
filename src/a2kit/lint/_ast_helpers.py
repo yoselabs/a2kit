@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from pathlib import Path  # noqa: TC003 — runtime-needed for `is_file()` calls in re-export resolution
 from typing import TYPE_CHECKING, TypeGuard
 
 if TYPE_CHECKING:
@@ -142,3 +143,104 @@ def local_pydantic_classes(tree: ast.AST) -> set[str]:
                 found.add(node.name)
                 break
     return found
+
+
+# --------------------------------------------------------------------------- #
+# A2K012 v0.7 — resolve `from <pkg> import NAME` through `__init__.py`
+# re-export chains, so `Final[str]` constants survive a single-level wrap.
+# --------------------------------------------------------------------------- #
+
+
+def _module_to_path(module_name: str, project_root: Path) -> Path | None:
+    """Map `pkg.sub` to either `pkg/sub.py` or `pkg/sub/__init__.py`. None if missing."""
+    parts = module_name.split(".")
+    pkg_init = project_root.joinpath(*parts) / "__init__.py"
+    if pkg_init.is_file():
+        return pkg_init
+    mod_py = project_root.joinpath(*parts).with_suffix(".py")
+    if mod_py.is_file():
+        return mod_py
+    return None
+
+
+def _has_final_str_assign(tree: ast.AST, name: str) -> bool:
+    """True if `name: Final[str] = ...` exists at module scope in `tree`."""
+    if not isinstance(tree, ast.Module):  # pragma: no cover — driver always passes Module
+        return False
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
+            continue
+        if stmt.target.id != name:  # pragma: no cover — early-skip during walk
+            continue
+        anno = stmt.annotation
+        if not isinstance(anno, ast.Subscript):  # pragma: no cover — defensive
+            continue
+        base = anno.value
+        base_name = base.id if isinstance(base, ast.Name) else (base.attr if isinstance(base, ast.Attribute) else None)
+        if base_name != "Final":  # pragma: no cover — defensive
+            continue
+        slice_node = anno.slice
+        if isinstance(slice_node, ast.Name) and slice_node.id == "str":
+            return True
+    return False
+
+
+def _find_reexport(tree: ast.AST, name: str) -> str | None:
+    """Find `from <module> import <name>` (or `as <name>`) at top-level. Returns module."""
+    if not isinstance(tree, ast.Module):  # pragma: no cover — driver always passes Module
+        return None
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.ImportFrom) or stmt.module is None:
+            continue
+        for alias in stmt.names:
+            local = alias.asname or alias.name
+            if local == name:
+                return stmt.module
+    return None
+
+
+_REEXPORT_CACHE: dict[tuple[str, str, str], bool] = {}
+
+
+def resolve_through_reexports(
+    module_name: str,
+    attr_name: str,
+    project_root: Path,
+    *,
+    max_depth: int = 3,
+) -> bool:
+    """Walk `__init__.py` re-export chains; return True if `attr_name` resolves to `Final[str]`.
+
+    Caps at `max_depth` to avoid pathological infinite loops. Caches per-scan
+    keyed by `(project_root, module_name, attr_name)`.
+    """
+    cache_key = (str(project_root), module_name, attr_name)
+    if cache_key in _REEXPORT_CACHE:
+        return _REEXPORT_CACHE[cache_key]
+    seen: set[str] = set()
+    current_module = module_name
+    for _ in range(max_depth):
+        if current_module in seen:
+            break
+        seen.add(current_module)
+        path = _module_to_path(current_module, project_root)
+        if path is None:
+            break
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError):
+            break
+        if _has_final_str_assign(tree, attr_name):
+            _REEXPORT_CACHE[cache_key] = True
+            return True
+        next_module = _find_reexport(tree, attr_name)
+        if next_module is None:
+            break
+        current_module = next_module
+    _REEXPORT_CACHE[cache_key] = False
+    return False
+
+
+def reset_reexport_cache() -> None:
+    """Test seam — drop cached reexport resolutions."""
+    _REEXPORT_CACHE.clear()

@@ -321,3 +321,30 @@ The string-tuple shape always under-types the data.
 
 Citation: `src/a2kit/connections.py` (v0.5); migration via
 `a2kit.exceptions.MigrationRequired`.
+
+---
+
+## 14. Don't accept `*, info: ConnT | None = None` (v0.7)
+
+The mistake: writing tools with `*, info: ConnT | None = None` and
+`assert info is not None` inside the body. v0.6 supported this kwarg-injection
+shape alongside the `Router.context.info()` ContextVar accessor; v0.7 cuts the
+kwarg path entirely — pre-1.0 cleanup, one canonical way to access connection
+info per Router.
+
+What to do: use `Router.context.info()` for typed access. The decorator sets
+the ContextVar before the wrapped function runs; reading it inside the body is
+the only supported path.
+
+```python
+# Before (v0.6 — removed in v0.7):
+async def get_widget(conn: str, *, info: WidgetConn | None = None) -> dict:
+    return {"url": info.base_url}
+
+# After (v0.7 — only path):
+async def get_widget(conn: str) -> dict:
+    info = WidgetsRouter.context.info()
+    return {"url": info.base_url}
+```
+
+Citation: `src/a2kit/_context.py`, `src/a2kit/tools.py` (v0.7).

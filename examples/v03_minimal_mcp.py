@@ -49,16 +49,31 @@ def main() -> None:
     store.save(WidgetConn(key=("prod",), base_url="https://api"))
     server = _FakeServer()
 
-    @a2kit.tool(server=server, store=store, connection_param="connection", capabilities={a2kit.Cap.EXTERNAL})
-    async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
+    class WidgetsRouter(a2kit.Router):
+        pass
+
+    @a2kit.tool(
+        server=server,
+        store=store,
+        connection_param="connection",
+        capabilities={a2kit.Cap.EXTERNAL},
+        router_context=WidgetsRouter.context,
+    )
+    async def get_widget(connection: str, widget_id: str) -> dict:
         """Fetch one widget."""
-        assert info is not None
+        info = WidgetsRouter.context.info()
         return {"id": widget_id, "url": info.base_url}
 
-    @a2kit.tool(server=server, store=store, connection_param="connection", write=True, capabilities={a2kit.Cap.DESTRUCTIVE})
-    async def update_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
+    @a2kit.tool(
+        server=server,
+        store=store,
+        connection_param="connection",
+        write=True,
+        capabilities={a2kit.Cap.DESTRUCTIVE},
+        router_context=WidgetsRouter.context,
+    )
+    async def update_widget(connection: str, widget_id: str) -> dict:
         """Update one widget."""
-        assert info is not None
         return {"id": widget_id, "updated": True}
 
     print(f"registered: {[t.name for t in server._tool_manager.list_tools()]}")

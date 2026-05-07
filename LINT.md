@@ -1,4 +1,4 @@
-# a2kit lint rules (v0.4.1)
+# a2kit lint rules (v0.7)
 
 Three layers — all three are mandatory in this repo's CI:
 
@@ -108,7 +108,7 @@ Skipped on `tests/` and `examples/` paths.
 Unknown atom in `--select` expression in source files / pyproject. Stub'd; not
 yet active.
 
-### A2K012 — Custom capability used as raw string (v0.6, advisory)
+### A2K012 — Custom capability used as raw string (v0.6, advisory; v0.7 hardening)
 
 A literal string in `capabilities={...}` that is **not** a built-in `Cap.*`
 constant **and not** a referenced `Final[str]` constant (imported or local)
@@ -128,9 +128,47 @@ from .caps import TICKETS_MANAGEMENT
 async def list_tickets(...): ...
 ```
 
+**v0.7 — re-export resolution.** A2K012 now follows `from pkg import NAME`
+through `pkg/__init__.py` re-export chains (cap depth 3) to confirm the
+constant terminates at a `Final[str]` annotation. Re-exports that don't
+terminate at `Final[str]` are flagged. Anchor: the rule walks up from the
+linted file to find the nearest `pyproject.toml` and treats that directory as
+the project root. Without a project root (ad-hoc fixture trees), the rule
+falls back to v0.6 permissive behaviour.
+
 Configurable via `[tool.a2kit.lint] disabled = ["A2K012"]`. Suppressible via
 `# noqa: A2K012` on the literal's line. Skipped on `tests/` and `examples/`
 paths.
+
+### A2K013 — Manual param-doc f-string in a tool docstring (v0.7, advisory)
+
+Auto-injection (v0.7) prepends canonical text at decoration time. A tool
+docstring that still calls `a2kit.docs.connection_param_doc(...)` /
+`a2kit.docs.param_doc(...)` via f-string is redundant.
+
+Before (v0.6 idiom):
+
+```python
+@WidgetsRouter.read(connection_param="conn")
+async def get_widget(conn: str) -> dict:
+    f"""Fetch a widget. {a2kit.docs.connection_param_doc(cli='a2widgets')}"""
+    return {...}
+```
+
+After (v0.7 — auto-injected):
+
+```python
+@WidgetsRouter.read(connection_param="conn")
+async def get_widget(conn: str) -> dict:
+    """Fetch a widget."""
+    return {...}
+```
+
+Suppressible via `# noqa: A2K013` on the function-def line. Skipped on
+`tests/` and `examples/` paths. Disable globally via
+`[tool.a2kit.lint] disabled = ["A2K013"]`.
+
+Disable auto-injection itself via `[tool.a2kit.docs] auto_inject = false`.
 
 ## Runtime-checked (`a2kit check`)
 

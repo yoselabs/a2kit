@@ -46,14 +46,16 @@ class IssuesRouter(Router):
     """Router subclass — tools registered here auto-carry `issues` + read/write tags."""
 
     def register_read(self, server, store):
-        @a2kit.tool(server=server, store=store, connection_param="connection")
-        async def list_issues(connection: str, *, info: WidgetConn | None = None) -> dict:
-            assert info is not None
+        ctx = IssuesRouter.context
+
+        @a2kit.tool(server=server, store=store, connection_param="connection", router_context=ctx)
+        async def list_issues(connection: str) -> dict:
+            info = ctx.info()
             return {"issues": [], "url": info.base_url}
 
     def register_write(self, server, store):
-        @a2kit.tool(server=server, store=store, connection_param="connection", write=True)
-        async def create_issue(connection: str, *, info: WidgetConn | None = None) -> dict:
+        @a2kit.tool(server=server, store=store, connection_param="connection", write=True, router_context=IssuesRouter.context)
+        async def create_issue(connection: str) -> dict:
             return {"created": True}
 
 

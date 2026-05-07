@@ -1,25 +1,24 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.6.0).
+"""a2kit — thin library for FastMCP-based MCPs (v0.7.0).
 
 Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
 to FastMCP at any boundary stays clean. See README for the full rundown.
 
-v0.6 highlights:
+v0.7 highlights (idiomatic Python pass):
 
-- **Auto-derived Router names**: subclass `Router`; `cls.__name__` slug is used
-  unless explicit `name="..."` overrides.
-- **`@MyRouter.read` / `.write` / `.tool` decorators**: lift store, enricher,
-  resolver_registry, ephemeral, and the per-Router ContextVar to the class.
-  `register_read` / `register_write` walk `cls._tools` by default; override
-  imperatively for dynamic registration.
-- **`MyRouter.context.info()` typed accessor**: ContextVar-based, no kwarg
-  threading. Old `*, info: ConnT` kwarg style still works.
-- **Multi-store MCPs**: each Router can carry its own `store=`. CLI uses
-  `--register router:key=...` namespaced parsing when >1 store is present.
-- **Capability unification**: built-ins are pre-registered at import via the
-  same `capabilities.register(...)` path as custom caps; lib code never
-  branches on cap names.
-- **A2K012 lint rule**: nudges raw-string custom capabilities toward
-  `Final[str]` constants for type safety.
+- **`Cap` is now `StrEnum`**. `Cap.WRITE == "write"` is True; `list(Cap)` works;
+  `Cap("write")` parses raw strings.
+- **`*, info: ConnT | None = None` kwarg pattern is removed.** Use
+  `MyRouter.context.info()` (the only API now).
+- **Auto-injected param docs.** A function with `connection_param="conn"` no
+  longer needs `f"... {connection_param_doc()}"` in its docstring; the decorator
+  prepends it at decoration time. New `A2K013` lint rule flags leftover f-string
+  helpers as advisory.
+- **`ToolKwargs` is public.** Use `Unpack[ToolKwargs]` for higher-order Router
+  classmethod factories.
+- **FQN-based `_RouterContext` naming.** Two same-named Router classes in
+  different modules no longer share state.
+- **`A2K012` re-export resolution.** A `Final[str]` constant re-exported via
+  `pkg/__init__.py` is now recognised (cap depth 3).
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ from a2kit._capabilities import (
 )
 from a2kit._configs import BudgetConfig, RunnerConfig, ToolConfig
 from a2kit._select import SelectAtom, SelectExpr, parse_select, sel
+from a2kit._tool_kwargs import ToolKwargs
 from a2kit.connections import (
     ENV_CONFIG_HOME,
     ConnectionInfo,
@@ -83,7 +83,7 @@ from a2kit.tools import tool
 
 A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "A2KIT_CONFIG_HOME",
@@ -118,6 +118,7 @@ __all__ = [
     "SelectExpr",
     "TokenResolutionError",
     "ToolConfig",
+    "ToolKwargs",
     "ToolXMLContamination",
     "UnknownCapability",
     "WriteNotAllowed",

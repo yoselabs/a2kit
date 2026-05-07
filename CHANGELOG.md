@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.7.0 — 2026-05-07
+
+**Idiomatic Python pass.** Pre-1.0 cleanups: idiomatic `StrEnum Cap`, removal of
+the `info` kwarg shape, auto-injected param docs, public `ToolKwargs`, FQN
+ContextVar naming, A2K012 hardening, A2K013 added.
+
+### New
+
+- **`Cap` is a `StrEnum`.** `list(Cap)` enumerates all members; `Cap("write")`
+  parses a raw string; `Cap.WRITE == "write"` is True; Pydantic v2 native
+  serialization. The capability registry pre-registers built-ins via the same
+  `capabilities.register(...)` path; lib code never branches on cap names.
+- **Auto-inject param docs.** When a tool function has `connection_param="conn"`,
+  the canonical `connection_param_doc(...)` text is prepended to the docstring
+  at decoration time. Same for any `register_param_doc(name, text)` entry whose
+  name matches a function parameter. Configurable via
+  `[tool.a2kit.docs] auto_inject = false`.
+- **A2K013** (advisory) — flags tool docstrings that still call
+  `a2kit.docs.connection_param_doc(...)` / `param_doc(...)` via f-string;
+  auto-injection covers it.
+- **Public `ToolKwargs` TypedDict.** Use `Unpack[ToolKwargs]` for higher-order
+  Router classmethod factories (e.g. a custom `expensive` decorator that
+  defaults `Cap.EXPENSIVE`). New example: `examples/higher_order_decorator.py`.
+- **A2K012 re-export resolution.** A2K012 now follows `from pkg import NAME`
+  through `pkg/__init__.py` re-exports (cap depth 3) to confirm the constant
+  terminates at a `Final[str]` annotation. Re-exports without a `Final[str]`
+  terminus are flagged.
+
+### Breaking
+
+- **`info_kwarg` removed from `@a2kit.tool(...)`.** The kwarg-injection path
+  (`*, info: ConnT | None = None`) is gone; the only supported access is
+  `Router.context.info()`. `ToolConfig.info_kwarg` field also removed.
+  Migration:
+
+  ```python
+  # Before:
+  async def get_widget(conn: str, *, info: WidgetConn | None = None) -> dict:
+      return {"url": info.base_url}
+
+  # After:
+  async def get_widget(conn: str) -> dict:
+      info = WidgetsRouter.context.info()
+      return {"url": info.base_url}
+  ```
+
+- **`Cap` is no longer a plain class with `Final[str]` constants.** Author
+  syntax `Cap.WRITE`, `Cap.READ`, etc. is unchanged (StrEnum subclasses `str`,
+  same equality semantics, same set/dict membership). The only observable
+  difference: `Cap.WRITE.value == "write"` exposes the underlying string, and
+  `repr(Cap.WRITE)` now shows `<Cap.WRITE: 'write'>`.
+
+### Bug fixes
+
+- **FQN-based `_RouterContext` ContextVar naming.** Two same-named Router
+  classes in different modules (e.g. `app/jira/IssuesRouter` and
+  `app/github/IssuesRouter`) used to share a ContextVar by `cls.__name__` and
+  collide. v0.7 names the ContextVar with `f"{cls.__module__}.{cls.__qualname__}"`,
+  giving each Router class independent state. Transparent rename — no author
+  change needed.
+
+### Examples
+
+- **NEW** `examples/v07_minimal_mcp.py` (replaces `v06_minimal_mcp.py`) —
+  StrEnum Cap demo + ContextVar-only flow.
+- **NEW** `examples/higher_order_decorator.py` — `Unpack[ToolKwargs]` factory.
+- **UPDATED** `examples/fat_tool.py`, `examples/router_class.py`,
+  `examples/v03_minimal_mcp.py` — drop `info` kwarg, use ContextVar.
+
 ## 0.6.0 — 2026-05-07
 
 **Router ergonomics + DI + type-verification + capability unification.** Additive

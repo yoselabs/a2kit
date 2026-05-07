@@ -24,6 +24,10 @@ class WidgetConn(a2kit.ConnectionInfo):
     read_only: bool = True
 
 
+class WidgetsRouter(a2kit.Router):
+    pass
+
+
 def main() -> None:
     config_dir = Path(tempfile.mkdtemp())
     store: a2kit.ConnectionStore[WidgetConn] = a2kit.ConnectionStore(config_dir, WidgetConn)
@@ -36,18 +40,17 @@ def main() -> None:
 
     # Read tool — zero boilerplate inside the body.
     @server.tool()
-    @a2kit.tool(store=store, connection_param="connection")
-    async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
+    @a2kit.tool(store=store, connection_param="connection", router_context=WidgetsRouter.context)
+    async def get_widget(connection: str, widget_id: str) -> dict:
         """Fetch a widget. The decorator handles connection lookup, token resolution, XML guard."""
-        assert info is not None
+        info = WidgetsRouter.context.info()
         return {"id": widget_id, "url": info.base_url, "key_resolved": info.api_key}
 
     # Write tool — read-only-by-default. `prod` is read-only; `rw` allows it.
     @server.tool()
-    @a2kit.tool(store=store, connection_param="connection", write=True)
-    async def update_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
+    @a2kit.tool(store=store, connection_param="connection", write=True, router_context=WidgetsRouter.context)
+    async def update_widget(connection: str, widget_id: str) -> dict:
         """Mutating tool. Marks `write=True` — fails on read-only conns."""
-        assert info is not None
         return {"id": widget_id, "updated": True}
 
     print("get_widget(prod):", asyncio.run(get_widget("prod", "alpha")))

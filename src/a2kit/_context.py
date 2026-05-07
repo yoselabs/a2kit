@@ -5,10 +5,10 @@
 # (see `Router.__init_subclass__`). Inside a tool decorated with
 # `@MyRouter.read/.write/.tool` and `connection_param=`, the fat decorator
 # sets the ContextVar to the resolved info; tools read it via
-# `MyRouter.context.info()` for typed access without an `info=` kwarg.
+# `MyRouter.context.info()` for typed access — the canonical (and only) API.
 
-The old `*, info: ConnT` kwarg style continues to work — both APIs run in
-parallel.
+v0.7: ContextVar name is built from the module-qualified class FQN so two
+same-named Router classes in different modules don't collide.
 """
 
 from __future__ import annotations
@@ -23,11 +23,19 @@ ConnT = TypeVar("ConnT", bound="ConnectionInfo")
 
 
 class _RouterContext(Generic[ConnT]):
-    """Typed ContextVar wrapper — one instance per Router subclass."""
+    """Typed ContextVar wrapper — one instance per Router subclass.
 
-    def __init__(self, router_name: str) -> None:
+    v0.7: ContextVar name uses the module-qualified class FQN so two same-named
+    Router classes in different modules don't share state.
+    """
+
+    def __init__(self, router_name: str, *, fqn: str | None = None) -> None:
         self._router_name = router_name
-        self._info_var: ContextVar[ConnectionInfo | None] = ContextVar(f"_a2kit_info_{router_name}", default=None)
+        # FQN fallback to bare name keeps backward compat for hand-built test cases.
+        self._info_var: ContextVar[ConnectionInfo | None] = ContextVar(
+            f"_a2kit_info::{fqn or router_name}",
+            default=None,
+        )
 
     def info(self) -> ConnT:
         """Return the resolved `ConnectionInfo` for the active tool call.

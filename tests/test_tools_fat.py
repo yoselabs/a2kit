@@ -18,11 +18,17 @@ from a2kit import (
     ToolXMLContamination,
     WriteNotAllowed,
 )
+from a2kit._context import _RouterContext
 from a2kit.tools import (
     _get_current_transport,
     _set_current_transport,
     assert_clean_string,
 )
+
+
+def _ctx(name: str = "test") -> _RouterContext[Any]:
+    """Build a fresh per-test router context for `info` access."""
+    return _RouterContext(router_name=name, fqn=f"tests.{name}")
 
 
 class WidgetConn(ConnectionInfo):
@@ -53,9 +59,11 @@ async def test_bare_decorator_behaves_like_v01() -> None:
 
 
 async def test_connection_lookup_injects_resolved_info(widget_store: ConnectionStore[WidgetConn]) -> None:
-    @a2kit.tool(store=widget_store, connection_param="connection")
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
-        assert info is not None
+    ctx = _ctx()
+
+    @a2kit.tool(store=widget_store, connection_param="connection", router_context=ctx)
+    async def get(connection: str) -> dict:
+        info = ctx.info()
         return {"url": info.url}
 
     assert await get("prod") == {"url": "https://api"}
@@ -63,7 +71,7 @@ async def test_connection_lookup_injects_resolved_info(widget_store: ConnectionS
 
 async def test_connection_lookup_missing_raises(widget_store: ConnectionStore[WidgetConn]) -> None:
     @a2kit.tool(store=widget_store, connection_param="connection")
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
+    async def get(connection: str) -> dict:
         return {}
 
     with pytest.raises(ConnectionNotFound):
@@ -72,10 +80,11 @@ async def test_connection_lookup_missing_raises(widget_store: ConnectionStore[Wi
 
 async def test_connection_ephemeral_priority(widget_store: ConnectionStore[WidgetConn]) -> None:
     eph = {("eph",): WidgetConn(key=("eph",), url="https://eph", api_key="x")}
+    ctx = _ctx()
 
-    @a2kit.tool(store=widget_store, connection_param="connection", ephemeral=eph)
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
-        assert info is not None
+    @a2kit.tool(store=widget_store, connection_param="connection", ephemeral=eph, router_context=ctx)
+    async def get(connection: str) -> dict:
+        info = ctx.info()
         return {"url": info.url}
 
     assert await get("eph") == {"url": "https://eph"}
@@ -83,10 +92,11 @@ async def test_connection_ephemeral_priority(widget_store: ConnectionStore[Widge
 
 async def test_connection_no_store_only_ephemeral() -> None:
     eph = {("eph",): WidgetConn(key=("eph",), url="https://eph", api_key="x")}
+    ctx = _ctx()
 
-    @a2kit.tool(connection_param="connection", ephemeral=eph)
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
-        assert info is not None
+    @a2kit.tool(connection_param="connection", ephemeral=eph, router_context=ctx)
+    async def get(connection: str) -> dict:
+        info = ctx.info()
         return {"url": info.url}
 
     assert await get("eph") == {"url": "https://eph"}
@@ -94,7 +104,7 @@ async def test_connection_no_store_only_ephemeral() -> None:
 
 async def test_connection_no_store_missing_raises() -> None:
     @a2kit.tool(connection_param="connection")
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
+    async def get(connection: str) -> dict:
         return {}
 
     with pytest.raises(ConnectionNotFound):
@@ -112,10 +122,11 @@ async def test_connection_tuple_key(tmp_path: Path) -> None:
 
     store: ConnectionStore[TripleConn] = ConnectionStore(tmp_path / "c", TripleConn)
     store.save(TripleConn(key=("a", "b", "c"), url="x"))
+    ctx: _RouterContext[TripleConn] = _RouterContext(router_name="triple", fqn="tests.triple-tuple")
 
-    @a2kit.tool(store=store, connection_param="conn")
-    async def get(conn: tuple[str, ...], *, info: TripleConn | None = None) -> dict:
-        assert info is not None
+    @a2kit.tool(store=store, connection_param="conn", router_context=ctx)
+    async def get(conn: tuple[str, ...]) -> dict:
+        info = ctx.info()
         return {"url": info.url}
 
     assert await get(("a", "b", "c")) == {"url": "x"}
@@ -132,10 +143,11 @@ async def test_connection_list_key_coerced(tmp_path: Path) -> None:
 
     store: ConnectionStore[TripleConn] = ConnectionStore(tmp_path / "c", TripleConn)
     store.save(TripleConn(key=("a", "b", "c"), url="x"))
+    ctx: _RouterContext[TripleConn] = _RouterContext(router_name="triple", fqn="tests.triple-list")
 
-    @a2kit.tool(store=store, connection_param="conn")
-    async def get(conn: list[str], *, info: TripleConn | None = None) -> dict:
-        assert info is not None
+    @a2kit.tool(store=store, connection_param="conn", router_context=ctx)
+    async def get(conn: list[str]) -> dict:
+        info = ctx.info()
         return {"url": info.url}
 
     assert await get(["a", "b", "c"]) == {"url": "x"}
@@ -143,7 +155,7 @@ async def test_connection_list_key_coerced(tmp_path: Path) -> None:
 
 async def test_connection_invalid_type_raises(widget_store: ConnectionStore[WidgetConn]) -> None:
     @a2kit.tool(store=widget_store, connection_param="connection")
-    async def get(connection: Any, *, info: WidgetConn | None = None) -> dict:
+    async def get(connection: Any) -> dict:
         return {}
 
     with pytest.raises(TypeError):
@@ -158,10 +170,11 @@ async def test_resolve_info_strings_no_op_path(tmp_path: Path) -> None:
 
     store: ConnectionStore[BareConn] = ConnectionStore(tmp_path / "c", BareConn)
     store.save(BareConn(key=("p",)))
+    ctx: _RouterContext[BareConn] = _RouterContext(router_name="bare", fqn="tests.bare")
 
-    @a2kit.tool(store=store, connection_param="connection")
-    async def get(connection: str, *, info: BareConn | None = None) -> dict:
-        assert info is not None
+    @a2kit.tool(store=store, connection_param="connection", router_context=ctx)
+    async def get(connection: str) -> dict:
+        info = ctx.info()
         return {"k": info.key}
 
     out = await get("p")
@@ -176,11 +189,12 @@ async def test_token_resolution_runs_on_strings(monkeypatch: pytest.MonkeyPatch,
     store: ConnectionStore[WidgetConn] = ConnectionStore(tmp_path / "c", WidgetConn)
     store.save(WidgetConn(key=("p",), url="https://api", api_key="${WIDGET_KEY}"))
 
+    ctx: _RouterContext[WidgetConn] = _RouterContext(router_name="w", fqn="tests.w-tok")
     captured: dict[str, str] = {}
 
-    @a2kit.tool(store=store, connection_param="connection")
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
-        assert info is not None
+    @a2kit.tool(store=store, connection_param="connection", router_context=ctx)
+    async def get(connection: str) -> dict:
+        info = ctx.info()
         captured["api_key"] = info.api_key
         return {}
 
@@ -194,11 +208,12 @@ async def test_token_resolution_custom_registry(tmp_path: Path) -> None:
     reg = ResolverRegistry()
     reg.register(lambda v: v == "raw", lambda _v: "swapped")
 
+    ctx: _RouterContext[WidgetConn] = _RouterContext(router_name="w", fqn="tests.w-reg")
     captured: dict[str, str] = {}
 
-    @a2kit.tool(store=store, connection_param="connection", resolver_registry=reg)
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
-        assert info is not None
+    @a2kit.tool(store=store, connection_param="connection", resolver_registry=reg, router_context=ctx)
+    async def get(connection: str) -> dict:
+        info = ctx.info()
         captured["api_key"] = info.api_key
         return {}
 
@@ -211,7 +226,7 @@ async def test_token_resolution_custom_registry(tmp_path: Path) -> None:
 
 async def test_write_blocked_on_read_only(widget_store: ConnectionStore[WidgetConn]) -> None:
     @a2kit.tool(store=widget_store, connection_param="connection", write=True)
-    async def update(connection: str, *, info: WidgetConn | None = None) -> dict:
+    async def update(connection: str) -> dict:
         return {}
 
     with pytest.raises(WriteNotAllowed):
@@ -223,7 +238,7 @@ async def test_write_allowed_when_read_write(tmp_path: Path) -> None:
     store.save(WidgetConn(key=("rw",), url="https://api", api_key="x", read_only=False))
 
     @a2kit.tool(store=store, connection_param="connection", write=True)
-    async def update(connection: str, *, info: WidgetConn | None = None) -> dict:
+    async def update(connection: str) -> dict:
         return {"ok": True}
 
     assert await update("rw") == {"ok": True}
@@ -400,7 +415,7 @@ async def test_otel_active_provider_with_connection(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(trace, "get_tracer", lambda _name: FakeTracer())  # noqa: PLW0108
 
     @a2kit.tool(store=widget_store, connection_param="connection")
-    async def get(connection: str, *, info: WidgetConn | None = None) -> dict:
+    async def get(connection: str) -> dict:
         return {"ok": True}
 
     await get("prod")
@@ -460,9 +475,11 @@ async def test_otel_import_missing_falls_back_to_null(monkeypatch: pytest.Monkey
 
 
 def test_sync_with_connection_lookup(widget_store: ConnectionStore[WidgetConn]) -> None:
-    @a2kit.tool(store=widget_store, connection_param="connection")
-    def get(connection: str, *, info: WidgetConn | None = None) -> dict:
-        assert info is not None
+    ctx: _RouterContext[WidgetConn] = _RouterContext(router_name="w", fqn="tests.w-sync")
+
+    @a2kit.tool(store=widget_store, connection_param="connection", router_context=ctx)
+    def get(connection: str) -> dict:
+        info = ctx.info()
         return {"url": info.url}
 
     assert get("prod") == {"url": "https://api"}

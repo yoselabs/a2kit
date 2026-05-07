@@ -1,8 +1,13 @@
 # a2kit
 
-**Status:** v0.5.0 — NamedTuple-based connection keys (replaces v0.4 `KEY_FIELDS`
-with field-level types via `class WidgetKey(NamedTuple)`). Breaking change:
-subclasses still using `KEY_FIELDS` raise `MigrationRequired` at class creation.
+**Status:** v0.7.0 — idiomatic Python pass. `Cap` is `StrEnum`; the
+`*, info: ConnT | None = None` kwarg shape is gone (use
+`Router.context.info()` — the only path); param docs auto-inject at
+decoration time; `ToolKwargs` is public for higher-order Router decorators;
+`_RouterContext` is FQN-scoped (no cross-module collisions); A2K012 follows
+`__init__.py` re-export chains; new advisory rule A2K013.
+
+See [CHANGELOG](CHANGELOG.md#070--2026-05-07) for the full migration recipe.
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
@@ -204,12 +209,11 @@ forces a rewrite.
 imports the rest of the package and zeroes out import-time coverage. Opt-in
 via `pytest_plugins` in your `conftest.py` is one line and avoids the trap.
 
-## How a new MCP starts here (v0.5)
+## How a new MCP starts here (v0.7)
 
-The v0.3 default is the **one-decorator path**: `@a2kit.tool(server=...)`
-auto-registers with FastMCP. v0.3.1 added capability tagging and the `--select`
-grammar. v0.5 swaps `KEY_FIELDS` for a NamedTuple `key=` argument (default key
-class is still a single-field `name`, so single-key MCPs need no extra type).
+v0.7 minimum: subclass `Router`, decorate tools with `@MyRouter.read/.write`,
+read the resolved connection via `MyRouter.context.info()`. Plain docstrings —
+the `connection:` line is auto-injected at decoration time.
 
 ```python
 # my_mcp/server.py
@@ -217,39 +221,82 @@ import a2kit
 from a2kit import Cap, Router
 from mcp.server.fastmcp import FastMCP
 
+
 class WidgetConn(a2kit.ConnectionInfo):
-    # No `key=` → defaults to single-field `_DefaultKey(name: str)`.
     base_url: str
     api_key: str
     read_only: bool = True
 
-store = a2kit.ConnectionStore(a2kit.default_config_dir(), WidgetConn)
-enricher = a2kit.EnricherRegistry()
-enricher.register(a2kit.ConnectionNotFoundEnricher(store))
-
-server = FastMCP("widgets")
 
 class WidgetsRouter(Router):
-    def register_read(self, server, store):
-        @a2kit.tool(server=server, store=store, connection_param="connection", enricher=enricher)
-        async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
-            f"""Fetch a widget. {a2kit.docs.connection_param_doc(cli="a2widgets")}"""
-            return {"id": widget_id, "url": info.base_url}
+    pass  # name auto-derives to "widgets"
 
-    def register_write(self, server, store):
-        @a2kit.tool(
-            server=server, store=store, connection_param="connection",
-            write=True, capabilities={Cap.DESTRUCTIVE}, enricher=enricher,
-        )
-        async def update_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
-            return {"id": widget_id, "updated": True}
 
+@WidgetsRouter.read(connection_param="connection")
+async def get_widget(connection: str, widget_id: str) -> dict:
+    """Fetch a widget."""  # connection_param_doc auto-prepended
+    info = WidgetsRouter.context.info()
+    return {"id": widget_id, "url": info.base_url}
+
+
+@WidgetsRouter.write(connection_param="connection", capabilities={Cap.DESTRUCTIVE})
+async def update_widget(connection: str, widget_id: str) -> dict:
+    """Update a widget."""
+    return {"id": widget_id, "updated": True}
+
+
+store = a2kit.ConnectionStore(a2kit.default_config_dir(), WidgetConn)
+server = FastMCP("widgets")
 routers = a2kit.RouterRegistry()
-routers.add(WidgetsRouter(name="widgets", default=True))
+routers.add(WidgetsRouter(store=store))
 
 if __name__ == "__main__":
-    a2kit.scaffold.MCPRunner(server, store=store, router_registry=routers).run()
+    a2kit.MCPRunner(server, store=store, router_registry=routers).run()
 ```
+
+### Filtering responses (the three tiers)
+
+Pick the highest tier that fits — the lower tiers are escape hatches.
+
+1. **Decorator kwargs** (primary path): pass `cel_filter_param=` /
+   `fields_param=` on `@WidgetsRouter.read(...)` / `@a2kit.tool(...)`. The
+   decorator threads the matching function args into `format_response` and
+   returns the formatted envelope.
+2. **`format_response(data, filter=..., fields=...)`** — call directly when
+   you want the formatting envelope but not the auto-threading.
+3. **`a2kit.projection.filter_records(records, expr=...)` /
+   `project_fields(records, fields=...)`** — low-level escape hatch. Use only
+   when you need raw record lists without the formatter envelope. See
+   `examples/projection.py`.
+
+The canonical example is `examples/cel_filter_tool.py` (decorator path);
+`examples/projection.py` is for advanced shaping.
+
+### Higher-order decorators (`Unpack[ToolKwargs]`)
+
+Build a custom Router classmethod factory whose kwargs stay type-checked:
+
+```python
+from typing import Unpack
+import a2kit
+from a2kit import Cap, ToolKwargs
+
+
+class MetricsRouter(a2kit.Router):
+    @classmethod
+    def expensive(cls, **kwargs: Unpack[ToolKwargs]):
+        existing = set(kwargs.get("capabilities", set()) or set())
+        kwargs["capabilities"] = existing | {Cap.EXPENSIVE}
+        return cls.tool(**kwargs)
+
+
+@MetricsRouter.expensive()
+async def heavy_query(scope: str) -> dict:
+    return {"scope": scope}
+```
+
+`ToolKwargs` is the public `TypedDict` mirror of `@a2kit.tool(...)`. See
+`examples/higher_order_decorator.py`.
 
 Run it with the default safe selection (read-only, non-destructive):
 

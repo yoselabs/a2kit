@@ -330,7 +330,9 @@ class Router(BaseModel, Generic[ConnT]):
         # Build the per-subclass typed ContextVar accessor. Slug derived from name
         # at instantiation; we use the class name here to keep the ContextVar
         # name stable & unique even if instances customise `name=`.
-        cls.context = _RouterContext(router_name=cls.__name__)
+        # FQN-based naming (v0.7) — collision-free across modules.
+        fqn = f"{cls.__module__}.{cls.__qualname__}"
+        cls.context = _RouterContext(router_name=cls.__name__, fqn=fqn)
 
     @model_validator(mode="before")
     @classmethod

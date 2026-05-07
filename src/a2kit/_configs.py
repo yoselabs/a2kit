@@ -27,7 +27,6 @@ class ToolConfig(BaseModel):
     server: Any = None
     store: Any = None
     connection_param: str | None = None
-    info_kwarg: str = "info"
     ephemeral: dict[tuple[str, ...], Any] | None = None
     write: bool = False
     streaming: bool = False
@@ -39,6 +38,7 @@ class ToolConfig(BaseModel):
     capabilities: frozenset[Capability] = Field(default_factory=frozenset)
     cel_filter_param: str | None = None
     fields_param: str | None = None
+    cli: str | None = None
 
 
 class RunnerConfig(BaseModel):

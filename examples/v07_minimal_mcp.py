@@ -1,9 +1,15 @@
-"""Example: minimum viable v0.6 MCP — Router with auto-derived name,
-`@Router.read`/`.write` decorators, `Router.context.info()` accessor, no boilerplate.
+"""Example: minimum viable v0.7 MCP — `StrEnum Cap`, no `info` kwarg, plain
+docstrings (auto-injected), `WidgetsRouter.context.info()` accessor.
 
-Compare with `v05_minimal_mcp.py` for the previous-style walkthrough.
+v0.7 changes vs v0.6:
 
-Run: `uv run python examples/v06_minimal_mcp.py`
+- `Cap` is `StrEnum`. `list(Cap)` works; `Cap("write")` parses raw strings.
+- The `*, info: ConnT | None = None` kwarg pattern is gone — only path is
+  `WidgetsRouter.context.info()`.
+- Param doc is auto-injected at decoration time. The plain triple-quoted
+  docstring below grows the canonical `connection: ...` line automatically.
+
+Run: `uv run python examples/v07_minimal_mcp.py`
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import a2kit
+from a2kit import Cap
 
 
 class _FakeServer:
@@ -34,7 +41,6 @@ class WidgetConn(a2kit.ConnectionInfo):
     url: str
 
 
-# Router-level DI: store + auto-derived name "widgets".
 class WidgetsRouter(a2kit.Router):
     pass
 
@@ -42,7 +48,7 @@ class WidgetsRouter(a2kit.Router):
 @WidgetsRouter.read(connection_param="conn")
 async def list_widgets(conn: str) -> list[dict]:
     """List widgets for the given connection."""
-    info = WidgetsRouter.context.info()  # typed access, no kwarg threading
+    info = WidgetsRouter.context.info()  # typed access — only API in v0.7
     return [{"conn": conn, "url": getattr(info, "url", "")}]
 
 
@@ -53,6 +59,10 @@ async def create_widget(conn: str, name: str) -> dict:
 
 
 def main() -> None:
+    print(f"Cap members: {list(Cap)}")
+    print(f"Cap.WRITE == 'write': {Cap.WRITE == 'write'}")
+    print(f"Cap('write') parses: {Cap('write')}")
+
     store: a2kit.ConnectionStore[WidgetConn] = a2kit.ConnectionStore(Path(tempfile.mkdtemp()), WidgetConn)
     store.save(WidgetConn(key=("prod",), url="https://api"))
 

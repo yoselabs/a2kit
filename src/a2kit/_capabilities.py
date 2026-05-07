@@ -19,6 +19,7 @@ a2kit.capabilities.register("tickets-management", description="...")
 from __future__ import annotations
 
 import re
+from enum import StrEnum
 from typing import Final, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,25 +30,26 @@ Capability: TypeAlias = str
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
-class Cap:
-    """Built-in capability constants. Import for IDE autocomplete + ty type-check."""
+class Cap(StrEnum):
+    """Built-in capability constants — `StrEnum` so values *are* strings.
 
-    READ: Final[Capability] = "read"
-    WRITE: Final[Capability] = "write"
-    DESTRUCTIVE: Final[Capability] = "destructive"
-    EXPENSIVE: Final[Capability] = "expensive"
-    PII: Final[Capability] = "pii"
-    EXTERNAL: Final[Capability] = "external"
+    Wins over `Final[str]` constants (v0.6 shape):
+
+    - Native autocomplete + iteration: `list(Cap)`.
+    - `Cap.WRITE == "write"` is True (StrEnum subclasses `str`).
+    - `Cap("write")` parses raw strings — useful for `--select` parsing.
+    - Pydantic v2 native serialization.
+    """
+
+    READ = "read"
+    WRITE = "write"
+    DESTRUCTIVE = "destructive"
+    EXPENSIVE = "expensive"
+    PII = "pii"
+    EXTERNAL = "external"
 
 
-_BUILT_IN: Final[tuple[str, ...]] = (
-    Cap.READ,
-    Cap.WRITE,
-    Cap.DESTRUCTIVE,
-    Cap.EXPENSIVE,
-    Cap.PII,
-    Cap.EXTERNAL,
-)
+_BUILT_IN: Final[tuple[str, ...]] = tuple(c.value for c in Cap)
 
 
 class CapabilityRecord(BaseModel):
@@ -76,8 +78,8 @@ class _CapabilitiesNamespace:
 
     def __init__(self) -> None:
         self._records: dict[str, CapabilityRecord] = {}
-        for name in _BUILT_IN:
-            self._records[name] = CapabilityRecord(name=name, is_built_in=True)
+        for cap in Cap:
+            self._records[cap.value] = CapabilityRecord(name=cap.value, is_built_in=True)
 
     def register(self, name: str, *, description: str = "", aliases: list[str] | None = None) -> CapabilityRecord:
         """Register a custom capability. Re-registration with same name is idempotent if metadata matches."""
