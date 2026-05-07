@@ -22,16 +22,19 @@ v0.4 also auto-loads `[tool.a2kit.runner] default_select` and
 
 from __future__ import annotations
 
+import re
 import sys
 import tomllib
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
 import click
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from a2kit._capabilities import Capability, UnknownCapability, capabilities
+from a2kit._capabilities import Cap, Capability, UnknownCapability, capabilities
+from a2kit._context import _RouterContext
+from a2kit._router_decorators import _make_decorator, _ToolBinding
 from a2kit._router_state import _set_active
 from a2kit._select import (
     SelectExpr,
@@ -174,6 +177,53 @@ def register_ephemeral_connections(
     return out
 
 
+def _parse_multistore_register(
+    args: list[str],
+    stores_by_router: dict[str, Any],
+) -> dict[tuple[str, ...], Any]:
+    """Parse `--register router:key=...` for multi-store MCPs.
+
+    Bare `--register key=...` (no `router:` prefix) raises a clear error
+    listing the available router prefixes.
+    """
+    out: dict[tuple[str, ...], Any] = {}
+    i = 0
+    while i < len(args):
+        if args[i] != "--register":
+            i += 1
+            continue
+        if i + 1 >= len(args):
+            msg = "--register requires a key argument"
+            raise ValueError(msg)
+        raw_key = args[i + 1]
+        if ":" not in raw_key:
+            msg = (
+                f"--register {raw_key!r}: ambiguous in a multi-store MCP. "
+                f"Use `router:key` form. Available routers: {sorted(stores_by_router)}."
+            )
+            raise ValueError(msg)
+        router_name, key_part = raw_key.split(":", 1)
+        if router_name not in stores_by_router:
+            msg = f"--register {raw_key!r}: unknown router prefix {router_name!r}. Available: {sorted(stores_by_router)}."
+            raise ValueError(msg)
+        store = stores_by_router[router_name]
+        connection_class = store.connection_class
+        key_tuple = _parse_key_arg(key_part)
+        kwargs: dict[str, Any] = {}
+        j = i + 2
+        while j < len(args) and args[j] != "--register":
+            if "=" in args[j]:
+                k, v = _parse_kv_pair(args[j])
+                kwargs[k] = v
+                j += 1
+            else:
+                break  # pragma: no cover — defensive against malformed input
+        info = connection_class(key=key_tuple, **kwargs)
+        out[info.key] = info
+        i = j
+    return out
+
+
 class _FilteredStore(Generic[C]):
     """Read-only view of a `ConnectionStore` restricted to a key-substring scope."""
 
@@ -209,31 +259,154 @@ def scope_filter(store: ConnectionStore[C], scope: str | None) -> Any:
 # --------------------------------------------------------------------------- #
 
 
+_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+_CAMEL_BOUNDARY = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def _slugify(class_name: str) -> str:
+    """Convert a CamelCase class name (minus `Router` suffix) into a slug.
+
+    `JiraConfluenceRouter` → `jira-confluence`
+    `WidgetsRouter`        → `widgets`
+    `Router`               → `""` (caller must validate / supply explicit name).
+    """
+    base = class_name.removesuffix("Router")
+    if not base:
+        return ""
+    parts = _CAMEL_BOUNDARY.split(base)
+    return "-".join(p.lower() for p in parts if p)
+
+
 class Router(BaseModel, Generic[ConnT]):
-    """Pydantic-modeled router: enricher + snapshot_dir + cassette_dir + register hooks.
+    """Pydantic-modeled router with v0.6 ergonomics.
 
-    Subclass and instantiate via kwargs, e.g. `IssuesRouter(name='issues', enricher=...)`.
-    `register_read` / `register_write` are methods you override to register tools.
+    Subclass it; the slug `name` is auto-derived from the class name (strip
+    `Router` suffix, hyphenate CamelCase, lowercase). Override with explicit
+    `name="..."` if needed.
 
-    `name` becomes a capability atom (auto-tagged onto every tool registered
-    via this router, unless `auto_tag=False`).
+    Use `@MyRouter.read/.write/.tool` classmethod decorators to bind tools.
+    `register_read` / `register_write` walk `cls._tools` by default; override
+    them for imperative dynamic-tool registration (escape hatch).
+
+    Per-Router DI lifts to the class — `store`, `enricher`, `resolver_registry`,
+    `ephemeral`. Per-tool overrides remain available on the decorator kwargs.
+
+    `name` is auto-tagged onto every registered tool (unless `auto_tag=False`).
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=False, extra="forbid")
 
-    name: str = Field(pattern=r"^[a-z][a-z0-9_-]*$", description="Router slug.")
+    # Identity:
+    name: str = ""
+
+    # Caps configuration:
     capabilities: set[Capability] = Field(default_factory=set, description="Extra caps applied to all tools.")
+    read_capabilities: ClassVar[set[Capability]] = {Cap.READ}
+    write_capabilities: ClassVar[set[Capability]] = {Cap.WRITE}
+
+    # DI (router-level — inherited by every tool the router registers):
+    store: Any = None
     enricher: Any = None
+    resolver_registry: Any = None
+    ephemeral: Any = None
+
+    # Existing fields:
     snapshot_dir: Path | None = None
     cassette_dir: Path | None = None
     default: bool = True
     auto_tag: bool = True
 
+    # Per-subclass tool registry — populated by `@cls.read/.write/.tool` decorators.
+    # Each subclass gets a fresh empty list via `__init_subclass__`.
+    _tools: ClassVar[list[_ToolBinding]] = []
+
+    # Per-subclass typed ContextVar accessor — `cls.context.info()` returns ConnT.
+    context: ClassVar[Any] = None  # set by __init_subclass__
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Fresh per-subclass tool registry (avoid mutable-default-shared-with-parent).
+        cls._tools = []
+        # Build the per-subclass typed ContextVar accessor. Slug derived from name
+        # at instantiation; we use the class name here to keep the ContextVar
+        # name stable & unique even if instances customise `name=`.
+        cls.context = _RouterContext(router_name=cls.__name__)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_name(cls, values: Any) -> Any:
+        """Auto-derive `name` from the class name when not explicitly provided."""
+        if isinstance(values, dict) and not values.get("name"):
+            slug = _slugify(cls.__name__)
+            if slug and _SLUG_RE.match(slug):
+                values["name"] = slug
+        return values
+
+    @model_validator(mode="after")
+    def _validate_slug(self) -> Router[ConnT]:
+        if not _SLUG_RE.match(self.name):
+            msg = f"Router.name {self.name!r} must match pattern {_SLUG_RE.pattern}"
+            raise ValueError(msg)
+        return self
+
+    # --- Decorator factories — record bindings at class-body-eval time. -----
+
+    @classmethod
+    def tool(cls, **kwargs: Any) -> Any:
+        """Underlying primitive — register a tool on this router with explicit caps."""
+        return _make_decorator(cls, mode="tool", decorator_kwargs=dict(kwargs))
+
+    @classmethod
+    def read(cls, **kwargs: Any) -> Any:
+        """Register a read-mode tool. Effective caps include `cls.read_capabilities`."""
+        return _make_decorator(cls, mode="read", decorator_kwargs=dict(kwargs))
+
+    @classmethod
+    def write(cls, **kwargs: Any) -> Any:
+        """Register a write-mode tool. Effective caps include `cls.write_capabilities`."""
+        return _make_decorator(cls, mode="write", decorator_kwargs=dict(kwargs))
+
+    # --- Default register_* impls — walk _tools, build effective tool kwargs. -
+
     def register_read(self, server: Any, store: Any) -> None:
-        """Register read-only tools. Override in subclasses."""
+        """Walk `cls._tools` (mode in {'read','tool'}) and register on `server`.
+
+        Override for imperative / dynamic registration.
+        """
+        self._apply_bindings(server, store, mode_filter={"read", "tool"})
 
     def register_write(self, server: Any, store: Any) -> None:
-        """Register write-marked tools. Override in subclasses."""
+        """Walk `cls._tools` (mode='write') and register on `server`."""
+        self._apply_bindings(server, store, mode_filter={"write"})
+
+    def _apply_bindings(self, server: Any, store: Any, *, mode_filter: set[str]) -> None:
+        """Iterate `cls._tools`, call `@a2kit.tool(...)` with merged kwargs."""
+        from a2kit.tools import tool as _tool_decorator  # noqa: PLC0415
+
+        effective_store = self.store if self.store is not None else store
+        for binding in self._tools:
+            if binding.mode not in mode_filter:
+                continue
+            merged: dict[str, Any] = {
+                "server": server,
+                "store": effective_store,
+                "enricher": self.enricher,
+                "resolver_registry": self.resolver_registry,
+                "ephemeral": self.ephemeral,
+                "router_context": self.__class__.context,
+            }
+            # Per-tool decorator kwargs win over router DI.
+            merged.update(binding.decorator_kwargs)
+            # Compute write/capabilities sugar.
+            extra_caps: set[Capability] = set(binding.capabilities)
+            if binding.mode == "read":
+                extra_caps |= self.__class__.read_capabilities
+            elif binding.mode == "write":
+                extra_caps |= self.__class__.write_capabilities
+                merged.setdefault("write", True)
+            existing_caps = set(merged.get("capabilities", set()) or set())
+            merged["capabilities"] = existing_caps | extra_caps
+            _tool_decorator(**merged)(binding.fn)
 
 
 class RouterRegistry:
@@ -259,6 +432,20 @@ class RouterRegistry:
     def names(self) -> list[str]:
         """Return ordered router names."""
         return [name for name, _default, _r in self._routers]
+
+    def routers_with_stores(self, fallback_store: Any = None) -> list[tuple[str, Any]]:
+        """Return [(router_name, store)] for routers that have a store (own or inherited).
+
+        v0.6: each `Router` instance may have its own `store=`. If not, the
+        runner-level `fallback_store` is used.
+        """
+        out: list[tuple[str, Any]] = []
+        for name, _default, item in self._routers:
+            router_store = getattr(item, "store", None)
+            chosen = router_store if router_store is not None else fallback_store
+            if chosen is not None:
+                out.append((name, chosen))
+        return out
 
     def defaults(self) -> set[str]:
         """Return the set of names enabled-by-default."""
@@ -287,15 +474,17 @@ class RouterRegistry:
             if name not in wanted:
                 continue
             router_obj = item if isinstance(item, Router) else None
+            # v0.6: per-router store wins over the runner-level fallback.
+            effective_store = getattr(item, "store", None) or store
             try:
                 if router_obj is not None:
                     _set_active(router_obj, "read")
                 if hasattr(item, "register_read"):
-                    item.register_read(server, store)
+                    item.register_read(server, effective_store)
                 if include_writes and hasattr(item, "register_write"):
                     if router_obj is not None:
                         _set_active(router_obj, "write")
-                    item.register_write(server, store)
+                    item.register_write(server, effective_store)
             finally:
                 _set_active(None, None)
             applied.append(name)
@@ -491,7 +680,16 @@ class MCPRunner:
         return wanted
 
     def _ephemeral(self, parsed: dict[str, Any]) -> dict[tuple[str, ...], Any]:
-        if self.store is None or not parsed["register_args"]:
+        if not parsed["register_args"]:
+            return {}
+        # v0.6: when multiple routers carry their own stores, the bare
+        # `--register key=...` form is ambiguous. Require `router:key` namespacing.
+        if self.router_registry is not None:
+            stores_by_router = dict(self.router_registry.routers_with_stores(fallback_store=self.store))
+            distinct_stores = {id(s) for s in stores_by_router.values()}
+            if len(distinct_stores) > 1:
+                return _parse_multistore_register(parsed["register_args"], stores_by_router)
+        if self.store is None:
             return {}
         return register_ephemeral_connections(parsed["register_args"], store=self.store)
 

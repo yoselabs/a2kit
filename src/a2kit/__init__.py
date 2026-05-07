@@ -1,18 +1,25 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.5.0).
+"""a2kit — thin library for FastMCP-based MCPs (v0.6.0).
 
 Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
 to FastMCP at any boundary stays clean. See README for the full rundown.
 
-v0.5 highlights:
+v0.6 highlights:
 
-- **Breaking:** `KEY_FIELDS: ClassVar[tuple[str, ...]]` is gone. Connection keys
-  are now NamedTuple-based: `class WidgetConn(a2kit.ConnectionInfo, key=WidgetKey)`.
-  Subclasses still using `KEY_FIELDS` raise `MigrationRequired` at class creation.
-- `cls.Key` is the canonical NamedTuple per subclass; default is `_DefaultKey(name: str)`.
-- `Literal[...]` per-field typing now possible (e.g. `env: Literal["dev","staging","prod"]`).
-- `store.load(WidgetKey(...))` joins the existing tuple/positional/kwargs/bare-string shapes.
-- A2K005 simplified: detects leftover `KEY_FIELDS` (lint-time migration aid) and
-  cross-checks tool `connection_param` arity against `cls.Key._fields`.
+- **Auto-derived Router names**: subclass `Router`; `cls.__name__` slug is used
+  unless explicit `name="..."` overrides.
+- **`@MyRouter.read` / `.write` / `.tool` decorators**: lift store, enricher,
+  resolver_registry, ephemeral, and the per-Router ContextVar to the class.
+  `register_read` / `register_write` walk `cls._tools` by default; override
+  imperatively for dynamic registration.
+- **`MyRouter.context.info()` typed accessor**: ContextVar-based, no kwarg
+  threading. Old `*, info: ConnT` kwarg style still works.
+- **Multi-store MCPs**: each Router can carry its own `store=`. CLI uses
+  `--register router:key=...` namespaced parsing when >1 store is present.
+- **Capability unification**: built-ins are pre-registered at import via the
+  same `capabilities.register(...)` path as custom caps; lib code never
+  branches on cap names.
+- **A2K012 lint rule**: nudges raw-string custom capabilities toward
+  `Final[str]` constants for type safety.
 """
 
 from __future__ import annotations
@@ -76,7 +83,7 @@ from a2kit.tools import tool
 
 A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "A2KIT_CONFIG_HOME",

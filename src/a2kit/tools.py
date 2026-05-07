@@ -200,6 +200,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     capabilities: Iterable[Capability] = (),
     cel_filter_param: str | None = None,
     fields_param: str | None = None,
+    router_context: Any = None,
 ) -> Callable[[F], F]:
     """Compose with FastMCP's `@server.tool()`. See module docstring for behaviour.
 
@@ -218,8 +219,13 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         # Auto-tag seam: merge author-supplied caps + write/router context.
         tool_caps = _compute_tool_capabilities(set(capabilities), write=write, tool_name=resolved_tool_name)
 
-        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None]:
-            """Run pre-call steps. Returns the (possibly-mutated) args/kwargs and key."""
+        # `info` kwarg is injected unless the function declares neither a named
+        # `info_kwarg` param NOR a `**kwargs` catch-all (v0.6: ContextVar
+        # accessor lets authors skip the kwarg cleanly).
+        _accepts_info_kwarg = info_kwarg in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+
+        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
+            """Run pre-call steps. Returns args/kwargs/key and a context-reset token."""
             bound = sig.bind_partial(*args, **kwargs)
             bound.apply_defaults()
 
@@ -227,6 +233,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 _check_xml_contamination(bound, resolved_tool_name)
 
             connection_key: tuple[str, ...] | None = None
+            ctx_token: Any = None
             if connection_param is not None and connection_param in bound.arguments:
                 raw = bound.arguments[connection_param]
                 connection_key = _resolve_connection_key(raw)
@@ -234,8 +241,11 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 info = _resolve_info_strings(info, resolver_registry)
                 if write and getattr(info, "read_only", False):
                     raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
-                kwargs = {**kwargs, info_kwarg: info}
-            return args, kwargs, connection_key
+                if _accepts_info_kwarg:
+                    kwargs = {**kwargs, info_kwarg: info}
+                if router_context is not None:
+                    ctx_token = router_context._set(info)  # noqa: SLF001
+            return args, kwargs, connection_key, ctx_token
 
         def _extract_projection(bound: inspect.BoundArguments) -> tuple[str, list[str] | None]:
             """Extract filter+fields values from bound args (for cel_filter_param / fields_param)."""
@@ -267,8 +277,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                ctx_token: Any = None
                 try:
-                    args, kwargs, conn_key = _prelude(args, kwargs)
+                    args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
                     with span_cm:
                         result = await fn(*args, **kwargs)
@@ -279,14 +290,18 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     if enricher is None:
                         raise
                     raise enricher.enrich(exc, tool_name=resolved_tool_name) from exc
+                finally:
+                    if ctx_token is not None and router_context is not None:
+                        router_context._reset(ctx_token)  # noqa: SLF001
 
             wrapper: Callable[..., Any] = async_wrapper
         else:
 
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                ctx_token: Any = None
                 try:
-                    args, kwargs, conn_key = _prelude(args, kwargs)
+                    args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
                     with span_cm:
                         result = fn(*args, **kwargs)
@@ -295,6 +310,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     if enricher is None:
                         raise
                     raise enricher.enrich(exc, tool_name=resolved_tool_name) from exc
+                finally:
+                    if ctx_token is not None and router_context is not None:
+                        router_context._reset(ctx_token)  # noqa: SLF001
 
             wrapper = sync_wrapper
 

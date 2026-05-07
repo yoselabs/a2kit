@@ -37,8 +37,9 @@ A2K008 = "A2K008"
 A2K009 = "A2K009"
 A2K010 = "A2K010"
 A2K011 = "A2K011"
+A2K012 = "A2K012"
 
-ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011)
+ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012)
 
 _BUILTIN_CAPS = {"read", "write", "destructive", "expensive", "pii", "external"}
 _FIXTURE_PATH_TOKENS = ("tests/", "tests\\", "examples/", "examples\\")
@@ -343,6 +344,79 @@ def rule_a2k009(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessa
                     )
 
 
+def _collect_imported_names(tree: ast.AST) -> set[str]:
+    """Return the set of names brought into the module via `from x import a, b`."""
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                out.add(alias.asname or alias.name)
+    return out
+
+
+def _collect_local_final_str_names(tree: ast.AST) -> set[str]:
+    """Return module-level names annotated as `Final[str]`."""
+    out: set[str] = set()
+    if not isinstance(tree, ast.Module):  # pragma: no cover — driver always passes Module
+        return out
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
+            continue
+        anno = stmt.annotation
+        is_final_str = False
+        if isinstance(anno, ast.Subscript):
+            base = anno.value
+            base_name = base.id if isinstance(base, ast.Name) else (base.attr if isinstance(base, ast.Attribute) else None)
+            if base_name == "Final":
+                slice_node = anno.slice
+                if isinstance(slice_node, ast.Name) and slice_node.id == "str":
+                    is_final_str = True
+        if is_final_str:
+            out.add(stmt.target.id)
+    return out
+
+
+def rule_a2k012(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
+    """A2K012 — Custom capability used as raw string.
+
+    Advisory: a literal string in `capabilities={...}` that is NOT a built-in
+    Cap.* constant AND NOT a referenced `Final[str]` constant should be lifted
+    into a constants module for type safety.
+    """
+    if _is_fixture_path(filename):
+        return
+    noqa = parse_noqa(source)
+    # Names that the file imports — assume they may be Final[str] constants.
+    imported = _collect_imported_names(tree)
+    local_finals = _collect_local_final_str_names(tree)
+    safe_names = imported | local_finals
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        for kw in node.keywords:
+            if kw.arg != "capabilities":
+                continue
+            container = kw.value
+            if not isinstance(container, (ast.Set, ast.List, ast.Tuple)):
+                continue
+            for elt in container.elts:
+                if isinstance(elt, ast.Name) and elt.id in safe_names:
+                    continue
+                if not isinstance(elt, ast.Constant) or not isinstance(elt.value, str):
+                    continue
+                value = elt.value
+                if value in _BUILTIN_CAPS:
+                    continue  # A2K009 covers built-ins.
+                if suppressed(noqa, A2K012, elt.lineno):
+                    continue
+                yield _msg(
+                    A2K012,
+                    filename,
+                    elt,
+                    f"raw custom capability {value!r}; define as `Final[str]` constant for type safety",
+                )
+
+
 def rule_a2k011(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
     """A2K011 — advisory: tool returns raw `dict`/`Mapping` instead of a Pydantic model.
 
@@ -609,6 +683,7 @@ _RULES_PER_FILE = (
     (A2K005, rule_a2k005),
     (A2K009, rule_a2k009),
     (A2K011, rule_a2k011),
+    (A2K012, rule_a2k012),
 )
 
 

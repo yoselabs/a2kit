@@ -108,6 +108,30 @@ Skipped on `tests/` and `examples/` paths.
 Unknown atom in `--select` expression in source files / pyproject. Stub'd; not
 yet active.
 
+### A2K012 — Custom capability used as raw string (v0.6, advisory)
+
+A literal string in `capabilities={...}` that is **not** a built-in `Cap.*`
+constant **and not** a referenced `Final[str]` constant (imported or local)
+should be lifted to a constants module for type safety. Type-checkers like ty
+catch typos on imported `Final[str]` references; raw strings escape that
+guarantee.
+
+```python
+# myapp/caps.py
+from typing import Final
+TICKETS_MANAGEMENT: Final[str] = "tickets-management"
+
+# myapp/tools.py
+from .caps import TICKETS_MANAGEMENT
+
+@WidgetsRouter.read(capabilities={TICKETS_MANAGEMENT})  # ty-checked
+async def list_tickets(...): ...
+```
+
+Configurable via `[tool.a2kit.lint] disabled = ["A2K012"]`. Suppressible via
+`# noqa: A2K012` on the literal's line. Skipped on `tests/` and `examples/`
+paths.
+
 ## Runtime-checked (`a2kit check`)
 
 ### A2KR001 — Snapshot file presence

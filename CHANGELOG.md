@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.6.0 — 2026-05-07
+
+**Router ergonomics + DI + type-verification + capability unification.** Additive
+on top of v0.5.0; no destructive changes to v0.5 callers.
+
+### New
+
+- **Auto-derived Router names.** `class WidgetsRouter(a2kit.Router)` now slugs
+  to `name="widgets"` automatically. `JiraConfluenceRouter` → `jira-confluence`.
+  Explicit `name="..."` still wins.
+- **`@MyRouter.read` / `.write` / `.tool` classmethod decorators.** Bind tools
+  declaratively at module scope; `register_read` / `register_write` walk
+  `cls._tools` by default. Each subclass gets its own fresh `_tools` list via
+  `__init_subclass__` to avoid the mutable-default trap. Imperative override
+  is still supported as the documented escape hatch (D).
+- **Router-level DI.** Lift `store`, `enricher`, `resolver_registry`,
+  `ephemeral` to the Router instance; every tool inherits. Per-tool decorator
+  kwargs override.
+- **`MyRouter.context.info()` typed accessor.** Each Router subclass gets a
+  per-Router `_RouterContext` ClassVar backed by a `ContextVar`. The fat
+  `@a2kit.tool` decorator sets it before the wrapped fn runs and resets after.
+  The `*, info: ConnT` kwarg style still works in parallel and is opt-in
+  (only injected if the function declares the kwarg or `**kwargs`).
+- **Multi-store MCPs.** `Router(store=...)` per-router; `MCPRunner` aggregates
+  via `RouterRegistry.routers_with_stores()`. CLI uses `--register router:key=...`
+  namespaced parsing when >1 distinct store is registered; bare form raises
+  with router-prefix suggestions.
+- **A2K012 lint rule.** Advisory: raw-string custom capability that isn't a
+  built-in `Cap.*` constant and isn't an imported / local `Final[str]` constant.
+  Skipped on `tests/` and `examples/`.
+- **Capability unification reframe.** Built-ins are pre-registered via the same
+  `capabilities.register(...)` path as custom caps; `Cap` is a typed
+  convenience reference (no special-casing in lib code). A2K009 stays as
+  advisory for the built-in case.
+
+### Breaking
+
+- None for the v0.5 API surface. The `register_read` / `register_write`
+  methods still exist; they now have a default implementation that walks
+  `cls._tools`. Authors who override imperatively continue to work unchanged.
+
+### Migration recipes
+
+```python
+# v0.5 — register_read with manual @a2kit.tool:
+class WidgetsRouter(a2kit.Router):
+    def register_read(self, server, store):
+        @a2kit.tool(server=server, store=store, connection_param="conn")
+        async def list_widgets(conn: str, *, info) -> list[dict]:
+            return [{"url": info.url}]
+
+# v0.6 — declarative + typed context:
+class WidgetsRouter(a2kit.Router):
+    pass
+
+@WidgetsRouter.read(connection_param="conn")
+async def list_widgets(conn: str) -> list[dict]:
+    info = WidgetsRouter.context.info()  # typed
+    return [{"url": info.url}]
+
+routers.add(WidgetsRouter(store=store))
+```
+
 ## 0.5.0 — 2026-05-07
 
 **Breaking change.** `KEY_FIELDS: ClassVar[tuple[str, ...]]` is removed in favour
