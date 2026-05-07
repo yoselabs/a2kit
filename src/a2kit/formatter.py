@@ -1,6 +1,7 @@
 """Output-format primitives — TOON / JSON heuristic + recursive truncation.
 
-Promoted to a primitive at n=2 (a2db ships TSV+JSON, a2atlassian ships TOON+JSON).
+Promoted to a primitive at n=2 (a SQL-wrapping MCP ships TSV+JSON, a
+Jira/Confluence-wrapping MCP ships TOON+JSON).
 Both also recursively truncate string fields beyond a fixed cap. The two MCPs
 disagree on the wire format (TSV vs TOON) but the *shape of the decision tree*
 is identical: list-of-uniform-rows -> tabular, single entity / nested -> JSON.
@@ -63,8 +64,8 @@ def _toon_encode(rows: list[dict[str, Any]]) -> str:
     The encoder is deliberately minimal: assumes uniform keys (caller's
     responsibility, enforced via `_is_uniform_row_list`), stringifies values via
     `str()`, and uses tab as the column separator and newline as the row
-    separator. This matches both a2db `formatter._format_tsv` and a2atlassian
-    `formatter._toon_encode`.
+    separator. This matches the TSV / TOON encoders shipped by the two
+    upstream reference MCPs.
     """
     # Caller responsible for non-empty (`_is_uniform_row_list` excludes empty).
     keys = list(rows[0].keys())

@@ -40,7 +40,7 @@ import functools
 import inspect
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from a2kit._capabilities import Cap, Capability
 from a2kit._otel import otel_span as _otel_span
@@ -111,7 +111,7 @@ def preserve_return_annotation(fn: Callable[..., Any]) -> Callable[..., Any]:
     of `@tool(...)`. The trick: FastMCP walks `__wrapped__` chains via
     `inspect.signature(follow_wrapped=True, eval_str=True)`; setting the
     annotation on BOTH the wrapper and the wrapped survives that walk
-    (a2atlassian `decorators.py:84-85`).
+    (pattern lifted from an HTTP-wrapping MCP's tool decorator).
     """
     return_anno = fn.__annotations__.get("return")
     if return_anno is None:
@@ -127,7 +127,7 @@ def _check_return_annotation(fn: Callable[..., Any]) -> Any:
         return None
     ret = annos["return"]
     if ret is str or ret == "str":
-        raise InvalidToolReturnTypeError(fn.__name__)
+        raise InvalidToolReturnTypeError(getattr(fn, "__name__", "<tool>"))
     return ret
 
 
@@ -248,7 +248,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             if fields_param is not None and fields_param in bound.arguments:
                 raw_f = bound.arguments[fields_param]
                 if isinstance(raw_f, list):
-                    fields_value = list(raw_f)
+                    fields_value = [str(f) for f in raw_f]
             return filter_expr, fields_value
 
         def _maybe_post_process(result: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
@@ -304,16 +304,19 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
 
         _inject_param_docs(wrapper, fn, sig)
 
-        # Stamp computed capability tags so the runner / select can filter:
-        wrapper._a2kit_capabilities = tool_caps  # type: ignore[attr-defined]  # noqa: SLF001
-        wrapper._a2kit_tool_name = resolved_tool_name  # type: ignore[attr-defined]  # noqa: SLF001
-        fn._a2kit_capabilities = tool_caps  # type: ignore[attr-defined]  # noqa: SLF001
-        fn._a2kit_tool_name = resolved_tool_name  # type: ignore[attr-defined]  # noqa: SLF001
+        # Stamp computed capability tags so the runner / select can filter.
+        # `setattr` (rather than `wrapper._a2kit_capabilities = ...`) keeps ty
+        # happy: `functools.wraps` returns a `_Wrapped[...]` whose attribute set
+        # ty considers closed.
+        setattr(wrapper, "_a2kit_capabilities", tool_caps)  # noqa: B010
+        setattr(wrapper, "_a2kit_tool_name", resolved_tool_name)  # noqa: B010
+        setattr(fn, "_a2kit_capabilities", tool_caps)  # noqa: B010
+        setattr(fn, "_a2kit_tool_name", resolved_tool_name)  # noqa: B010
 
         if server is not None:
             _register_with_server(server, wrapper, resolved_tool_name)
 
-        return wrapper  # type: ignore[return-value]
+        return cast("F", wrapper)
 
     return decorator
 

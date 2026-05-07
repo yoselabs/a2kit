@@ -2,10 +2,10 @@
 
 Generalises the pattern observed in both reference MCPs:
 
-- a2db's column-not-found enrichment (`executor.py:47-74`) — turns a "column X not
+- A SQL-wrapping MCP's column-not-found enrichment — turns a "column X not
   found" backend error into a suggestion ("did you mean Y?") plus the available
   columns list.
-- a2atlassian's `ErrorEnricher` cascade (`errors.py:28-120`) — handles JQL field
+- A Jira/Confluence-wrapping MCP's enricher cascade — handles JQL field
   suggestions, account-ID hints, read-only re-login hint, etc.
 
 The shared shape: catch an exception, optionally rewrite it into a more
@@ -100,5 +100,5 @@ class ConnectionNotFoundEnricher:
         new = ConnectionNotFound(exc.key)
         # Pydantic-frozen-friendly: ConnectionNotFound stores .key, message in args.
         new.args = ("\n".join(parts),)
-        new.available_connections = available  # type: ignore[attr-defined]
+        new.available_connections = available
         return new

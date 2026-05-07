@@ -1,6 +1,9 @@
-"""Example: a2db-style usage — three-part key, no op://, simple DSN.
+"""Example: multi-field-key style — three-part key, no op://, simple DSN.
 
-Run: `uv run python examples/a2db_style.py`
+Mirrors the shape used by a SQL-wrapping MCP: connections identified by a
+(project, env, db) triple rather than a single bare name.
+
+Run: `uv run python examples/multi_field_key_style.py`
 """
 
 from __future__ import annotations

@@ -21,19 +21,19 @@ a2kit-check:
 	@echo "a2kit check requires --import path:server. Override per project."
 
 typecheck:
-	@uv run --with ty -- ty check src/ 2>/dev/null || echo "⚠ ty not installable yet — skipping"
+	uv run ty check src/
 
 typecheck-strict:
-	@uv run --with ty -- ty check --strict src/ 2>/dev/null || echo "⚠ ty not installable yet — skipping strict typecheck"
+	uv run ty check --strict src/
 
 coverage-diff:
 	@uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=95 2>/dev/null || echo "⚠ no coverage.xml — run 'make test' first"
 
-check: lint a2kit-lint test
+check: lint a2kit-lint typecheck test
 
 examples:
-	uv run python examples/a2db_style.py
-	uv run python examples/a2atlassian_style.py
+	uv run python examples/multi_field_key_style.py
+	uv run python examples/flat_key_style.py
 	uv run python examples/tool_decorator.py
 	uv run python examples/error_enricher.py
 	uv run python examples/scaffold_cli.py --help

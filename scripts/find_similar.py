@@ -1,6 +1,6 @@
 """Detect similar tool NAMES registered with FastMCP.
 
-Adapted from a2atlassian's similar-function-name detector. We flag tool names
+Adapted from a Jira/Confluence-wrapping MCP's similar-function-name detector. We flag tool names
 with edit-distance < 2 (e.g., `get_issue` vs `get_issues`) as agent-confusing.
 
 Wired into `a2kit check A2KR004` for runtime checks; this script is the

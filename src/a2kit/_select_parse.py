@@ -11,7 +11,7 @@ plus the typed builder `sel(...)` from `_select_eval` for back-compat.
 from __future__ import annotations
 
 import re
-from typing import Literal, Self
+from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -108,7 +108,7 @@ def _parse_atom(tokens: list[str], pos: int) -> tuple[SelectExpr, int]:
         if prefix not in _NAMESPACES:
             msg = f"Unknown atom namespace {prefix!r}; allowed: tool, router, cap"
             raise ValueError(msg)
-        ns = prefix  # type: ignore[assignment]
+        ns = cast("Literal['tool', 'router', 'cap']", prefix)
         name = rest
     return SelectExpr(op="atom", atom=SelectAtom(name=name, namespace=ns)), pos
 

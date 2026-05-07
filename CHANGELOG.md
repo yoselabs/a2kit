@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.4.1 — 2026-05-07
+
+Patch on top of v0.4.0. Three changes: `ty` becomes a hard gate, internal
+client-name references are scrubbed from the working tree (and from prior
+commits via history rewrite), and two example files are renamed to describe
+their shape rather than their inspiring upstream MCP.
+
+**Strict typing**
+
+- `ty` is now a mandatory typecheck step. `make typecheck` no longer skips
+  when ty isn't installed — `ty>=0.0.34` is a dev dependency. CI runs
+  `uv run ty check src/` between ruff and pytest as a hard gate.
+- Pre-commit hook for `ty` runs at `pre-push` (not `pre-commit`) since
+  type-checking is comparatively slow.
+- Migration: `uv sync --all-extras` if you were previously skipping ty.
+
+**Privacy / generality**
+
+- Connection-name examples no longer reference internal client names.
+- Two example files renamed:
+  - `examples/a2atlassian_style.py` → `examples/flat_key_style.py`
+  - `examples/a2db_style.py` → `examples/multi_field_key_style.py`
+- Prose references to `a2atlassian` / `a2db` in source comments, docstrings,
+  README, ANTIPATTERNS, and CHANGELOG replaced with descriptive phrases
+  ("a Jira/Confluence-wrapping MCP", "a SQL-wrapping MCP"). Real package
+  imports (`atlassian-python-api`, `mcp.server.fastmcp`) are unchanged.
+
+**History rewrite**
+
+- v0.4.1 also rewrites the prior 4 commits via `git filter-repo` to scrub
+  internal client connection-name references from commit history. Anyone with
+  a clone before this point should
+  `git fetch --all && git reset --hard origin/main` to sync. (Realistically:
+  nobody has a clone — the repo was just published.)
+
 ## 0.4.0 — 2026-05-07
 
 Pre-1.0 clean cut. Removes all v0.3 deprecation aliases (no external consumers
@@ -320,5 +355,6 @@ library ready for first external consumer.
 
 ## 0.0.1 — 2026-05-07
 
-Initial spike. `ConnectionStore` extracted from a2db + a2atlassian; pluggable
-`ResolverRegistry`; typed exceptions on resolver failure.
+Initial spike. `ConnectionStore` extracted from two upstream MCPs (a SQL
+wrapper and a Jira/Confluence wrapper); pluggable `ResolverRegistry`; typed
+exceptions on resolver failure.

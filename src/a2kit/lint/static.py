@@ -329,13 +329,16 @@ def rule_a2k009(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessa
             if kw.arg != "capabilities":
                 continue
             for raw in _iter_string_literals(kw.value):
-                if raw.value in _BUILTIN_CAPS and not suppressed(noqa, A2K009, raw.lineno):
-                    suggestion = f"Cap.{raw.value.upper()}"
+                value = raw.value
+                if not isinstance(value, str):  # pragma: no cover — _iter_string_literals filters
+                    continue
+                if value in _BUILTIN_CAPS and not suppressed(noqa, A2K009, raw.lineno):
+                    suggestion = f"Cap.{value.upper()}"
                     yield _msg(
                         A2K009,
                         filename,
                         raw,
-                        f"raw built-in capability string {raw.value!r}; prefer {suggestion}",
+                        f"raw built-in capability string {value!r}; prefer {suggestion}",
                     )
 
 
@@ -483,7 +486,9 @@ def _select_atoms(expr_str: str) -> list[tuple[str | None, str]] | None:
     def walk(node: object) -> None:
         op = getattr(node, "op", None)
         if op == "atom":
-            atom = node.atom  # type: ignore[attr-defined]
+            atom = getattr(node, "atom", None)
+            if atom is None:  # pragma: no cover — well-formed atoms always carry .atom
+                return
             out.append((atom.namespace, atom.name))
             return
         for c in getattr(node, "children", []):

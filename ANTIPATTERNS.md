@@ -1,8 +1,9 @@
 # a2kit anti-patterns
 
-Concrete failures observed while building `a2db`, `a2atlassian`, and a2kit
-itself. Each entry: *the mistake* (one paragraph), *what to do instead* (one
-paragraph), *citation* (file:line).
+Concrete failures observed while building two upstream MCPs (a SQL-wrapping
+MCP and a Jira/Confluence-wrapping MCP) and a2kit itself. Each entry:
+*the mistake* (one paragraph), *what to do instead* (one paragraph),
+*citation* (file:line).
 
 ## 1. Don't return `-> str` from a FastMCP tool
 
@@ -17,7 +18,8 @@ wrap it: `return {"format": "toon", "data": "<rows>"}`. The fat decorator
 in `a2kit.tools.tool` enforces this at decoration time —
 `InvalidToolReturnTypeError` fires the moment the file imports.
 
-Citation: a2db commit `4d07632`; `a2kit/tools.py::_check_return_annotation`
+Citation: surfaced during a SQL-wrapping MCP's early build; reproducible
+on any FastMCP server with `-> str` returns. `a2kit/tools.py::_check_return_annotation`
 (`src/a2kit/tools.py`).
 
 ## 2. Pydantic models used as MCP tool return types must be at module scope

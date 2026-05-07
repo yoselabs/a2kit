@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from types import TracebackType
 
 
 def _import_vcr() -> Any:
@@ -68,8 +69,13 @@ class _Cassette:
         self._cm = self._open()
         return self._cm.__enter__()
 
-    async def __aexit__(self, *exc: object) -> None:
-        self._cm.__exit__(*exc)
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self._cm.__exit__(exc_type, exc_val, exc_tb)
 
     # --- sync context-manager protocol ---------------------------------------
 
@@ -77,8 +83,13 @@ class _Cassette:
         self._cm = self._open()
         return self._cm.__enter__()
 
-    def __exit__(self, *exc: object) -> None:
-        self._cm.__exit__(*exc)
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self._cm.__exit__(exc_type, exc_val, exc_tb)
 
     # --- decorator -----------------------------------------------------------
 

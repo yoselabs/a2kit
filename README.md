@@ -50,8 +50,8 @@ Requires Python 3.11+ and `uv`.
 
 | Primitive | Module | Example |
 |---|---|---|
-| `ConnectionInfo` / `ConnectionStore` | `a2kit.connections` | [`examples/a2db_style.py`](examples/a2db_style.py), [`examples/a2atlassian_style.py`](examples/a2atlassian_style.py) |
-| `resolve_token` / `ResolverRegistry` | `a2kit.tokens` | [`examples/a2db_style.py`](examples/a2db_style.py) |
+| `ConnectionInfo` / `ConnectionStore` | `a2kit.connections` | [`examples/multi_field_key_style.py`](examples/multi_field_key_style.py), [`examples/flat_key_style.py`](examples/flat_key_style.py) |
+| `resolve_token` / `ResolverRegistry` | `a2kit.tokens` | [`examples/multi_field_key_style.py`](examples/multi_field_key_style.py) |
 | **Fat** `@a2kit.tool(...)` (connection lookup + token + write + xml + OTel + streaming) | `a2kit.tools` | [`examples/fat_tool.py`](examples/fat_tool.py) |
 | `tools.tool` (legacy, == v0.1), `preserve_return_annotation`, `assert_clean_string` | `a2kit.tools` | [`examples/tool_decorator.py`](examples/tool_decorator.py) |
 | `ErrorEnricher`, `EnricherRegistry`, `ConnectionNotFoundEnricher` | `a2kit.errors` | [`examples/error_enricher.py`](examples/error_enricher.py) |
@@ -119,11 +119,10 @@ async def get_widget(widget_id: str) -> dict:
 ```
 
 - Refuses `-> str` returns at decoration time (`InvalidToolReturnTypeError`),
-  catching the a2db `4d07632` bug class.
+  catching the FastMCP double-serialisation bug class.
 - Mirrors the return annotation onto the wrapper so FastMCP's
-  `follow_wrapped=True` introspection sees the right shape (the a2atlassian
-  `decorators.py:84-85` trick, exposed as `preserve_return_annotation` for use
-  without our decorator).
+  `follow_wrapped=True` introspection sees the right shape (exposed as
+  `preserve_return_annotation` for use without our decorator).
 - Routes exceptions through the optional `enricher`. Without one, exceptions
   pass through unchanged.
 
@@ -359,10 +358,10 @@ Six static rules (`A2K001`..`A2K006`) and four runtime checks
 
 ```bash
 make check       # ruff check + ruff format --check + pytest (100% line+branch coverage)
-make examples    # all examples run end-to-end (a2db_style, a2atlassian_style,
-                 # tool_decorator, error_enricher, scaffold_cli --help,
-                 # schema_snapshot, fat_tool, runner, formatter, feature_modules,
-                 # streaming_tool, cassette_test)
+make examples    # all examples run end-to-end (multi_field_key_style,
+                 # flat_key_style, tool_decorator, error_enricher,
+                 # scaffold_cli --help, schema_snapshot, fat_tool, runner,
+                 # formatter, feature_modules, streaming_tool, cassette_test)
 ```
 
 See [`ANTIPATTERNS.md`](ANTIPATTERNS.md) for the consolidated anti-pattern
@@ -382,15 +381,15 @@ list (FastMCP frictions, primitive-design traps, OTel/streaming gotchas).
    an underscore-prefixed attribute. Pinned at `mcp >= 1.0`. If FastMCP moves
    the path, `a2kit.testing._list_tools` is the single seam to update.
 
-## Migration sketch (a2db, a2atlassian)
+## Migration sketch (existing MCPs)
 
 Same as the 0.0.1 spike, plus:
 
 - Replace each MCP's bespoke `mcp_tool` decorator with
   `@a2kit.tools.tool(enricher=...)`.
-- Subclass `a2kit.errors.ErrorEnricher` for domain enrichers
-  (column-not-found in a2db, JQL-field-suggestions in a2atlassian); register
-  with a single `EnricherRegistry`.
+- Subclass `a2kit.errors.ErrorEnricher` for domain enrichers (e.g.
+  column-not-found from a SQL-wrapping MCP, JQL-field-suggestions from a
+  Jira/Confluence wrapper); register with a single `EnricherRegistry`.
 - Replace `_parse_register_args` / `_parse_scope_args` with
   `a2kit.scaffold.register_ephemeral_connections` and
   `a2kit.scaffold.scope_filter`.

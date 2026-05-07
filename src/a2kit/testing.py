@@ -1,7 +1,7 @@
 """Schema snapshot harness — the keystone primitive.
 
-The shared gap surfaced by both reference MCPs (`learnings/a2db.md`,
-`learnings/a2atlassian.md`, `modules/dev-quality.md`): there's no first-class
+The shared gap surfaced by both upstream reference MCPs (a SQL wrapper and a
+Jira/Confluence wrapper): there's no first-class
 artefact that ties tool-schema drift detection to the token-budget contract. This
 module ships it.
 

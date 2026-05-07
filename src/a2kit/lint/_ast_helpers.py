@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -34,8 +34,12 @@ def is_server_tool_decorator(dec: ast.expr) -> bool:
     return isinstance(target, ast.Attribute) and target.attr == "tool"
 
 
-def is_tool_function(node: ast.AST) -> bool:
-    """True if `node` is a function decorated with a tool decorator."""
+def is_tool_function(node: ast.AST) -> TypeGuard[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """True if `node` is a function decorated with a tool decorator.
+
+    Returns a `TypeGuard` so type-checkers narrow callers from `ast.AST` to
+    `FunctionDef | AsyncFunctionDef`, exposing `.returns`, `.lineno`, `.name`.
+    """
     if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return False
     return any(is_a2kit_tool_decorator(d) or is_server_tool_decorator(d) for d in node.decorator_list)

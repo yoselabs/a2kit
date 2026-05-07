@@ -1,6 +1,6 @@
 """Example: custom ErrorEnricher subclass + EnricherRegistry chain.
 
-Mirrors the pattern in a2db's column-not-found enrichment (`executor.py:47-74`).
+Mirrors the column-not-found enrichment pattern from a SQL-wrapping MCP.
 A custom enricher detects "column not found" errors, fetches the table's actual
 columns, and rewrites the exception with a `difflib` suggestion.
 

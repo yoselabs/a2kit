@@ -30,7 +30,7 @@ def test_db_roundtrip(db_store: ConnectionStore[DbInfo]) -> None:
 def test_atlassian_roundtrip(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
     info = AtlassianInfo(
         key=("prod",),
-        url="https://prod.atlassian.net",
+        url="https://example.atlassian.net",
         email="dt@example.com",
         token="${ATLASSIAN_TOKEN}",
         read_only=False,
@@ -211,7 +211,7 @@ def test_resolve_token_via_model_subclass(atlassian_store: ConnectionStore[Atlas
     monkeypatch.setenv("MY_ATLASSIAN_TOKEN", "real-token-value")
     info = AtlassianInfo(
         key=("prod",),
-        url="https://prod.atlassian.net",
+        url="https://example.atlassian.net",
         email="dt@example.com",
         token="${MY_ATLASSIAN_TOKEN}",
     )

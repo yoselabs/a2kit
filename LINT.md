@@ -1,9 +1,11 @@
-# a2kit lint rules (v0.4.0)
+# a2kit lint rules (v0.4.1)
 
-Three layers — pick the strictest your CI tolerates:
+Three layers — all three are mandatory in this repo's CI:
 
-- **Type-checked** — caught by `ty --strict` (or any PEP 695-aware checker)
-  before runtime. Zero AST cost.
+- **Type-checked layer — mandatory.** Caught by `ty` (or any PEP 695-aware
+  checker) before runtime. Zero AST cost. `ty>=0.0.34` is a dev-dependency;
+  CI hard-fails on any diagnostic from `uv run ty check src/`. The previous
+  "graceful skip" mode was removed in v0.4.1.
 - **AST-checked** — `uvx a2kit lint paths...` walks source. No imports executed.
 - **Runtime-checked** — `uvx a2kit check --import path:server` — needs an
   importable FastMCP server.
@@ -11,10 +13,11 @@ Three layers — pick the strictest your CI tolerates:
 Configurable via `[tool.a2kit.lint]` and `[tool.a2kit.check]` in `pyproject.toml`.
 Per-line ignores via `# noqa: A2KXXX`.
 
-## Type-checked
+## Type-checked (mandatory)
 
 These are the rules ty (or pyright) catches at compile time. AST fallback is
-listed below for users without a strict type checker.
+listed below for cross-checker portability, but in this repo ty is a hard
+gate, not a graceful skip.
 
 | Type-system signal | Caught at | AST fallback |
 |---|---|---|

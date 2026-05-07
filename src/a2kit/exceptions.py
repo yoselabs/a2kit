@@ -10,8 +10,11 @@ class A2KitError(Exception):
 class ConnectionNotFound(A2KitError, FileNotFoundError):  # noqa: N818
     """Raised when a connection key has no TOML on disk."""
 
+    available_connections: list[str]
+
     def __init__(self, key: tuple[str, ...]) -> None:
         self.key = key
+        self.available_connections = []
         super().__init__(f"Connection not found: {'/'.join(key)}")
 
 
@@ -71,7 +74,7 @@ class OpResolutionError(TokenResolutionError):
 class InvalidToolReturnTypeError(A2KitError, TypeError):
     """Raised at decoration time when an a2kit-decorated tool declares `-> str`.
 
-    Catches the a2db `4d07632` bug class: FastMCP double-serialises string returns,
+    Catches the FastMCP double-serialisation bug class: FastMCP double-serialises string returns,
     so tools must return dicts or Pydantic models. This is enforced at decoration
     time so the failure fires the moment the file is imported, not at first call.
     """
@@ -80,7 +83,7 @@ class InvalidToolReturnTypeError(A2KitError, TypeError):
         self.fn_name = fn_name
         super().__init__(
             f"Tool {fn_name!r} declares `-> str`. FastMCP double-serialises strings; "
-            "return a dict or Pydantic model instead. (See a2db commit 4d07632.) "
+            "return a dict or Pydantic model instead. "
             "If you genuinely need a string return, use a formatter that wraps it in a dict."
         )
 
@@ -98,7 +101,8 @@ class WriteNotAllowed(A2KitError, PermissionError):  # noqa: N818
 
     The fat `@a2kit.tool(write=True)` decorator enforces this once the resolved
     `ConnectionInfo.read_only` is `True`. Domain MCPs typically catch this and
-    surface a re-login hint (matches a2atlassian's `decorators.check_writable`).
+    surface a re-login hint (mirrors the `check_writable` pattern used by an
+    HTTP-wrapping MCP).
     """
 
     def __init__(self, connection_key: tuple[str, ...], tool_name: str | None = None) -> None:

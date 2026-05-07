@@ -30,14 +30,14 @@ def config_dir(tmp_path: Path) -> Path:
 
 
 class DbInfo(ConnectionInfo):
-    """a2db-style record: 3-part key + DSN."""
+    """Multi-field-key style record: 3-part key + DSN."""
 
     KEY_FIELDS = ("project", "env", "db")
     dsn: str
 
 
 class AtlassianInfo(ConnectionInfo):
-    """a2atlassian-style record: flat 1-part key + URL/email/token + read_only."""
+    """Flat-key style record: flat 1-part key + URL/email/token + read_only."""
 
     KEY_FIELDS = ("name",)
     url: str

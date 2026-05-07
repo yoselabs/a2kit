@@ -1,9 +1,12 @@
-"""Example: a2atlassian-style usage — flat key, ${ENV_VAR} token, read_only field.
+"""Example: flat-key style — flat 1-part key, ${ENV_VAR} token, read_only field.
+
+Mirrors the shape used by a Jira/Confluence-style MCP: a single connection name
+plus URL/email/token credentials.
 
 Note: `op://` resolution requires the 1Password CLI; this example uses ${ENV_VAR}
 to keep the script self-contained. Replace with `op://vault/item/field` in real use.
 
-Run: `uv run python examples/a2atlassian_style.py`
+Run: `uv run python examples/flat_key_style.py`
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ def main() -> None:
         store.save(
             AtlassianInfo(
                 key=("prod",),
-                url="https://prod.atlassian.net",
+                url="https://example.atlassian.net",
                 email="dt@example.com",
                 token="${EXAMPLE_ATLASSIAN_TOKEN}",
                 read_only=False,
