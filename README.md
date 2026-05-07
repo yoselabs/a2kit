@@ -1,13 +1,15 @@
 # a2kit
 
-**Status:** v0.7.0 — idiomatic Python pass. `Cap` is `StrEnum`; the
-`*, info: ConnT | None = None` kwarg shape is gone (use
-`Router.context.info()` — the only path); param docs auto-inject at
-decoration time; `ToolKwargs` is public for higher-order Router decorators;
-`_RouterContext` is FQN-scoped (no cross-module collisions); A2K012 follows
-`__init__.py` re-export chains; new advisory rule A2K013.
+**Status:** v0.8.0 — polish bundle. `xml_guard` → `tool_call_guard` (the real
+concern was tool-call envelope contamination, not XML); `format_response`
+returns a typed `Response` model (`format` / `data` / `truncated` /
+`next_cursor`); ephemeral connections lifted out of the tool decorator into
+the Router level (cleaner mental model); `Router.tool/.read/.write` now use
+`Unpack[ToolKwargs]` for end-to-end kwarg type-checking; new
+`@a2kit.tool(projection=True)` flag auto-injects `filter` and `fields` kwargs
+into the wrapper signature so authors stop writing projection plumbing.
 
-See [CHANGELOG](CHANGELOG.md#070--2026-05-07) for the full migration recipe.
+See [CHANGELOG](CHANGELOG.md#080--2026-05-07) for the full migration recipe.
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
@@ -51,21 +53,34 @@ make bootstrap
 
 Requires Python 3.11+ and `uv`.
 
-## API surface (v0.2)
+## Examples — what a real MCP looks like
 
-| Primitive | Module | Example |
+The `examples/` folder is curated to five sequential files that mirror the shape
+of the real MCPs this lib serves (`a2db`, `a2atlassian`, `a2web`):
+
+| # | File | Demonstrates |
 |---|---|---|
-| `ConnectionInfo` / `ConnectionStore` | `a2kit.connections` | [`examples/multi_field_key_style.py`](examples/multi_field_key_style.py), [`examples/flat_key_style.py`](examples/flat_key_style.py) |
-| `resolve_token` / `ResolverRegistry` | `a2kit.tokens` | [`examples/multi_field_key_style.py`](examples/multi_field_key_style.py) |
-| **Fat** `@a2kit.tool(...)` (connection lookup + token + write + tool-call guard + OTel + streaming) | `a2kit.tools` | [`examples/fat_tool.py`](examples/fat_tool.py) |
-| `tools.tool` (legacy, == v0.1), `preserve_return_annotation`, `assert_clean_string` | `a2kit.tools` | [`examples/tool_decorator.py`](examples/tool_decorator.py) |
-| `ErrorEnricher`, `EnricherRegistry`, `ConnectionNotFoundEnricher` | `a2kit.errors` | [`examples/error_enricher.py`](examples/error_enricher.py) |
-| `MCPRunner`, `RouterRegistry`, `Router`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` | [`examples/runner.py`](examples/runner.py), [`examples/feature_modules.py`](examples/feature_modules.py), [`examples/scaffold_cli.py`](examples/scaffold_cli.py) |
-| `truncate`, `toon_or_json`, `format_response(filter=, fields=)` | `a2kit.formatter` | [`examples/formatter.py`](examples/formatter.py), [`examples/projection.py`](examples/projection.py) |
-| `filter_records`, `project_fields` (CEL projection) | `a2kit.projection` | [`examples/projection.py`](examples/projection.py), [`examples/cel_filter_tool.py`](examples/cel_filter_tool.py) |
-| `connection_param_doc` | `a2kit.docs` | [`examples/fat_tool.py`](examples/fat_tool.py) |
-| `snapshot_schemas`, `assert_schemas_match`, `cassette` + pytest fixtures | `a2kit.testing`, `a2kit.pytest_plugin` | [`examples/schema_snapshot.py`](examples/schema_snapshot.py), [`examples/cassette_test.py`](examples/cassette_test.py) |
-| `WriteNotAllowed`, `ToolCallContamination` (new exceptions) | `a2kit.exceptions` | — |
+| 01 | [`01_minimal_mcp.py`](examples/01_minimal_mcp.py) | Smallest viable MCP — single `Router`, one read tool, one write tool, `build_cli` for `login`/`logout`/`serve`. The canonical shape. |
+| 02 | [`02_multi_router_mcp.py`](examples/02_multi_router_mcp.py) | Multiple `Router`s + the `--select` grammar — pick which subset of tools the agent sees at runtime. |
+| 03 | [`03_projection_tool.py`](examples/03_projection_tool.py) | `@a2kit.tool(projection=True)` — server-side CEL filter + field projection without writing any plumbing. Returns a typed `Response`. |
+| 04 | [`04_error_enricher.py`](examples/04_error_enricher.py) | Custom `ErrorEnricher` + the built-in `ConnectionNotFoundEnricher`. |
+| 05 | [`05_testing_patterns.py`](examples/05_testing_patterns.py) | Schema snapshots (drift gate + token-budget proxy) + vcrpy cassettes. |
+
+## API surface
+
+| Primitive | Module |
+|---|---|
+| `ConnectionInfo` / `ConnectionStore` (atomic save, `${ENV}`/`op://` resolution, NamedTuple keys) | `a2kit.connections` |
+| `resolve_token` / `ResolverRegistry` (pluggable token resolvers, lazy at access time) | `a2kit.tokens` |
+| **Fat** `@a2kit.tool(...)` (connection lookup + token + write + tool-call guard + OTel + streaming + `projection=True`) | `a2kit.tools` |
+| `Router`, `RouterRegistry`, `MCPRunner`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` |
+| `Cap`, `capabilities` (StrEnum capability registry + `--select` grammar via `sel()`) | `a2kit._capabilities`, `a2kit._select` |
+| `ErrorEnricher`, `EnricherRegistry`, `ConnectionNotFoundEnricher` | `a2kit.errors` |
+| `Response`, `truncate`, `toon_or_json`, `format_response(filter=, fields=)` | `a2kit.formatter` |
+| `filter_records`, `project_fields` (CEL projection, low-level) | `a2kit.projection` |
+| `snapshot_schemas`, `assert_schemas_match`, `cassette` + pytest fixtures | `a2kit.testing`, `a2kit.pytest_plugin` |
+| `ToolKwargs` TypedDict (for `Unpack[ToolKwargs]` higher-order decorators) | `a2kit._tool_kwargs` (re-exported as `a2kit.ToolKwargs`) |
+| Exceptions: `WriteNotAllowed`, `ToolCallContamination`, `ConnectionNotFound`, `EnvVarNotFound`, … | `a2kit.exceptions` |
 
 Optional extras: `a2kit[otel]` (opentelemetry-api), `a2kit[testing]` (vcrpy),
 `a2kit[projection]` (cel-python).
@@ -209,11 +224,12 @@ forces a rewrite.
 imports the rest of the package and zeroes out import-time coverage. Opt-in
 via `pytest_plugins` in your `conftest.py` is one line and avoids the trap.
 
-## How a new MCP starts here (v0.7)
+## How a new MCP starts here
 
-v0.7 minimum: subclass `Router`, decorate tools with `@MyRouter.read/.write`,
+v0.8 shape: subclass `Router`, decorate tools with `@MyRouter.read/.write`,
 read the resolved connection via `MyRouter.context.info()`. Plain docstrings —
-the `connection:` line is auto-injected at decoration time.
+the `connection:` line is auto-injected at decoration time. List-returning
+tools opt into `projection=True` for free CEL filter + field projection.
 
 ```python
 # my_mcp/server.py
@@ -258,19 +274,18 @@ if __name__ == "__main__":
 
 Pick the highest tier that fits — the lower tiers are escape hatches.
 
-1. **Decorator kwargs** (primary path): pass `cel_filter_param=` /
-   `fields_param=` on `@WidgetsRouter.read(...)` / `@a2kit.tool(...)`. The
-   decorator threads the matching function args into `format_response` and
-   returns the formatted envelope.
-2. **`format_response(data, filter=..., fields=...)`** — call directly when
-   you want the formatting envelope but not the auto-threading.
-3. **`a2kit.projection.filter_records(records, expr=...)` /
-   `project_fields(records, fields=...)`** — low-level escape hatch. Use only
-   when you need raw record lists without the formatter envelope. See
-   `examples/projection.py`.
-
-The canonical example is `examples/cel_filter_tool.py` (decorator path);
-`examples/projection.py` is for advanced shaping.
+1. **`projection=True`** (primary path, v0.8): pass `projection=True` on
+   `@a2kit.tool(...)` / `@WidgetsRouter.read(...)`. The decorator auto-injects
+   `filter: str` and `fields: list[str] | None` keyword-only params into the
+   wrapper signature; the agent calls with them; the decorator threads the
+   result through `format_response` and returns a typed `Response`. Zero
+   plumbing on the author side. See `examples/03_projection_tool.py`.
+2. **`cel_filter_param=`/`fields_param=`** — the explicit-naming path. Use
+   when you need a non-standard param name or different defaults.
+3. **`format_response(data, filter=..., fields=...)`** — call directly when
+   you want the typed `Response` envelope but not the auto-threading.
+4. **`a2kit.projection.filter_records` / `project_fields`** — low-level
+   escape hatch. Raw record lists, no envelope.
 
 ### Higher-order decorators (`Unpack[ToolKwargs]`)
 
@@ -295,8 +310,9 @@ async def heavy_query(scope: str) -> dict:
     return {"scope": scope}
 ```
 
-`ToolKwargs` is the public `TypedDict` mirror of `@a2kit.tool(...)`. See
-`examples/higher_order_decorator.py`.
+`ToolKwargs` is the public `TypedDict` mirror of `@a2kit.tool(...)`. As of
+v0.8, `Router.tool/.read/.write` use `Unpack[ToolKwargs]` themselves — your
+classmethod factory inherits the same type-checked kwarg contract.
 
 Run it with the default safe selection (read-only, non-destructive):
 
@@ -326,32 +342,6 @@ cli = a2kit.scaffold.build_cli(store, name="a2widgets")
 if __name__ == "__main__":
     cli()
 ```
-
-### LOC saved per tool (v0.2 → v0.3)
-
-```python
-# v0.2 — 2 decorators per tool, plus class repetition in MCPRunner/build_cli
-@server.tool()
-@a2kit.tool(store=store, connection_param="connection")
-async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
-    return {"id": widget_id, "url": info.base_url}
-
-# v0.3 — 1 decorator
-@a2kit.tool(server=server, store=store, connection_param="connection")
-async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
-    return {"id": widget_id, "url": info.base_url}
-```
-
-**Per-tool savings (decorator):** v0.2 = 2 lines; v0.3 = 1 line. **Saved
-per tool: 1 decorator line.** A 30-tool MCP saves ~30 lines.
-
-**Per-MCP savings (entrypoint):** dropping `connection_class=` from
-`MCPRunner(...)` and `build_cli(...)` removes 2 redundant references to the
-connection class. The default `cls.Key` is `_DefaultKey(name: str)`, so
-single-key MCPs need no `key=` argument either.
-
-Cumulatively against v0.2: ~35 LOC saved on a 30-tool MCP, plus the
-removal of the parallel `KEY_PARTS` / `connection_class=` plumbing.
 
 ## Capabilities (v0.3.1)
 
@@ -413,10 +403,7 @@ Six static rules (`A2K001`..`A2K006`) and four runtime checks
 
 ```bash
 make check       # ruff check + ruff format --check + pytest (100% line+branch coverage)
-make examples    # all examples run end-to-end (multi_field_key_style,
-                 # flat_key_style, tool_decorator, error_enricher,
-                 # scaffold_cli --help, schema_snapshot, fat_tool, runner,
-                 # formatter, feature_modules, streaming_tool, cassette_test)
+make examples    # all 5 curated examples run end-to-end
 ```
 
 See [`ANTIPATTERNS.md`](ANTIPATTERNS.md) for the consolidated anti-pattern
@@ -436,20 +423,14 @@ list (FastMCP frictions, primitive-design traps, OTel/streaming gotchas).
    an underscore-prefixed attribute. Pinned at `mcp >= 1.0`. If FastMCP moves
    the path, `a2kit.testing._list_tools` is the single seam to update.
 
-## Migration sketch (existing MCPs)
+## Migration to v0.8 from earlier versions
 
-Same as the 0.0.1 spike, plus:
-
-- Replace each MCP's bespoke `mcp_tool` decorator with
-  `@a2kit.tools.tool(enricher=...)`.
-- Subclass `a2kit.errors.ErrorEnricher` for domain enrichers (e.g.
-  column-not-found from a SQL-wrapping MCP, JQL-field-suggestions from a
-  Jira/Confluence wrapper); register with a single `EnricherRegistry`.
-- Replace `_parse_register_args` / `_parse_scope_args` with
-  `a2kit.scaffold.register_ephemeral_connections` and
-  `a2kit.scaffold.scope_filter`.
-- Add a schema-snapshot test per MCP — closes the dev-quality / token-budget
-  gap.
-
-These changes are additive on the migration path; nothing here forces a re-do
-of existing connection-store work.
+- `xml_guard=` → `tool_call_guard=`. Same behaviour.
+- `ToolXMLContamination` → `ToolCallContamination`. Same shape, same message.
+- `format_response(...)["format"]` → `format_response(...).format`. Returns
+  a typed `Response` model now.
+- `@a2kit.tool(ephemeral=...)` → ephemeral lives at the Router level only:
+  `Router(..., ephemeral={...})`. The decorator no longer accepts the kwarg.
+- `@a2kit.tool(cel_filter_param="filter", fields_param="fields")` →
+  `@a2kit.tool(projection=True)`. The decorator auto-injects the params; you
+  drop them from the function signature too.

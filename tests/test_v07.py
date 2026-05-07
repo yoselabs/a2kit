@@ -526,15 +526,15 @@ def test_a2k013_skipped_under_fixture_paths(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------- #
-# Examples sanity — v07 minimal mcp + higher-order decorator
+# Examples sanity — v0.8 curated set (smoke-run; full E2E in `make examples`)
 # ---------------------------------------------------------------------------- #
 
 
-def test_v07_minimal_mcp_runs() -> None:
+def _exec_example(filename: str) -> None:
     import importlib.util
 
-    mod_path = Path(__file__).parent.parent / "examples" / "v07_minimal_mcp.py"
-    spec = importlib.util.spec_from_file_location("ex_v07", mod_path)
+    mod_path = Path(__file__).parent.parent / "examples" / filename
+    spec = importlib.util.spec_from_file_location(f"ex_{filename}", mod_path)
     assert spec is not None
     assert spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -542,21 +542,16 @@ def test_v07_minimal_mcp_runs() -> None:
     mod.main()
 
 
-def test_higher_order_decorator_example_runs() -> None:
-    import importlib.util
-
-    mod_path = Path(__file__).parent.parent / "examples" / "higher_order_decorator.py"
-    spec = importlib.util.spec_from_file_location("ex_ho", mod_path)
-    assert spec is not None
-    assert spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    mod.main()
+def test_example_03_projection_runs() -> None:
+    _exec_example("03_projection_tool.py")
 
 
-def test_v07_minimal_mcp_module_imports() -> None:
-    """Smoke import — confirms file is syntactically clean."""
-    _ = tempfile  # silence unused-imports if file reorganised
+def test_example_04_error_enricher_runs() -> None:
+    _exec_example("04_error_enricher.py")
+
+
+def test_example_05_testing_patterns_runs() -> None:
+    _exec_example("05_testing_patterns.py")
 
 
 # ---------------------------------------------------------------------------- #
