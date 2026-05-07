@@ -28,11 +28,32 @@ plain function — no class to subclass.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from difflib import get_close_matches
-from typing import Any
+from typing import Protocol, runtime_checkable
 
 from a2kit.exceptions import ConnectionNotFound
+
+
+@runtime_checkable
+class ConnectionInfoLike(Protocol):
+    """Anything with a `.key: tuple[str, ...]` attribute — what
+    `connection_enricher` reads off each listed connection."""
+
+    key: tuple[str, ...]
+
+
+@runtime_checkable
+class ConnectionStoreLike(Protocol):
+    """Minimal store contract `connection_enricher` actually needs.
+
+    Both `ConnectionStore` and the internal `_EphemeralAwareStore` proxy
+    satisfy this — duck-typed via `Protocol` so the enricher doesn't pull
+    in the full `ConnectionStore[ConnectionInfo]` generic.
+    """
+
+    def list_connections(self) -> Iterable[ConnectionInfoLike]: ...
+
 
 EnricherFn = Callable[[Exception, "str | None"], Exception]
 """Type alias: an enricher is `(exc, tool_name) -> exc`. Returning the same
@@ -55,7 +76,7 @@ def chain(*enrichers: EnricherFn) -> EnricherFn:
     return chained
 
 
-def connection_enricher(store: Any) -> EnricherFn:
+def connection_enricher(store: ConnectionStoreLike) -> EnricherFn:
     """Enrich `ConnectionNotFound` with available-keys list + difflib suggestion.
 
     Other exceptions pass through. Replaces the v0.8

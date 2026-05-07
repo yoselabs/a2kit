@@ -41,6 +41,8 @@ from a2kit.connections import (
     default_config_dir,
 )
 from a2kit.errors import (
+    ConnectionInfoLike,
+    ConnectionStoreLike,
     EnricherFn,
     chain,
     connection_enricher,
@@ -101,8 +103,10 @@ __all__ = [
     "Capability",
     "CapabilityRecord",
     "ConnectionInfo",
+    "ConnectionInfoLike",
     "ConnectionNotFound",
     "ConnectionStore",
+    "ConnectionStoreLike",
     "EnricherFn",
     "EnvVarNotFound",
     "InvalidConnectionKey",

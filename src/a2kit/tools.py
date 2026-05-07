@@ -713,17 +713,22 @@ def _compute_tool_capabilities(author: set[Capability], *, write: bool, tool_nam
     return caps
 
 
-def _safe_list_connection_keys(store: Any) -> list[str] | None:
+def _safe_list_connection_keys(store: object) -> list[str] | None:
     """Best-effort list of saved connection keys for schema enrichment.
 
     Returns ``None`` if the store can't list (no method, missing dir, etc.) so
-    the docstring builder uses the generic phrasing instead.
+    the docstring builder uses the generic phrasing instead. Note: keys are
+    captured at decoration time — `login` calls made after server build do
+    not refresh the docstring.
     """
-    if store is None or not hasattr(store, "list_connections"):
+    from a2kit.errors import ConnectionStoreLike  # noqa: PLC0415
+
+    if not isinstance(store, ConnectionStoreLike):
         return None
     try:
         return ["-".join(info.key) for info in store.list_connections()]
-    except Exception:  # noqa: BLE001 — never fail decoration on store I/O issues
+    except (OSError, AttributeError, ValueError):
+        # Decoration-time I/O / malformed entries — degrade gracefully.
         return None
 
 
