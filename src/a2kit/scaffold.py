@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, Unpack
 
 import click
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from a2kit._capabilities import Cap, Capability, UnknownCapability, capabilities
 from a2kit._context import _RouterContext
@@ -321,8 +321,8 @@ class Router(BaseModel, Generic[ConnT]):
     # Identity:
     name: str = ""
 
-    # Caps configuration:
-    capabilities: set[Capability] = Field(default_factory=set, description="Extra caps applied to all tools.")
+    # Caps configuration — class-level (a router's caps describe its TYPE):
+    capabilities: ClassVar[set[Capability]] = set()
     read_capabilities: ClassVar[set[Capability]] = {Cap.READ}
     write_capabilities: ClassVar[set[Capability]] = {Cap.WRITE}
 
@@ -421,6 +421,10 @@ class Router(BaseModel, Generic[ConnT]):
                 "resolver_registry": self.resolver_registry,
                 "router_context": self.__class__.context,
             }
+            # `@Router.tool()` is the no-connection escape hatch — opt out of
+            # connection auto-inject. `.read()`/`.write()` keep the default.
+            if binding.mode == "tool":
+                merged["connection"] = False
             # Per-tool decorator kwargs win over router DI.
             merged.update(binding.decorator_kwargs)
             # Compute write/capabilities sugar.

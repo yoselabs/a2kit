@@ -1,15 +1,16 @@
 # a2kit
 
-**Status:** v0.8.0 — polish bundle. `xml_guard` → `tool_call_guard` (the real
-concern was tool-call envelope contamination, not XML); `format_response`
-returns a typed `Response` model (`format` / `data` / `truncated` /
-`next_cursor`); ephemeral connections lifted out of the tool decorator into
-the Router level (cleaner mental model); `Router.tool/.read/.write` now use
-`Unpack[ToolKwargs]` for end-to-end kwarg type-checking; new
-`@a2kit.tool(projection=True)` flag auto-injects `filter` and `fields` kwargs
-into the wrapper signature so authors stop writing projection plumbing.
+**Status:** v0.9.0 — ergonomic overhaul. `@Router.read()` / `@Router.write()`
+auto-inject `connection: str` into the agent-facing schema; the resolved
+`ConnectionInfo` is bound to a typed parameter via DI (`info: WidgetConn`);
+list-view tools use three orthogonal flags (`filter`/`fields`/`pagination`)
+each routable to `Local` (kit handles) or `Passthrough` (tool handles); errors
+simplify to plain callables (`EnricherFn`) plus a `chain(*fns)` helper;
+`Router.capabilities` moves to `ClassVar`; output formats split honestly into
+TSV (flat rows) and TOON (nested cells encoded as JSON). `connection_param=`
+is soft-deprecated for one version.
 
-See [CHANGELOG](CHANGELOG.md#080--2026-05-07) for the full migration recipe.
+See [CHANGELOG](CHANGELOG.md#090--2026-05-07) for the full migration recipe.
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
@@ -62,8 +63,8 @@ of the real MCPs this lib serves (`a2db`, `a2atlassian`, `a2web`):
 |---|---|---|
 | 01 | [`01_minimal_mcp.py`](examples/01_minimal_mcp.py) | Smallest viable MCP — single `Router`, one read tool, one write tool, `build_cli` for `login`/`logout`/`serve`. The canonical shape. |
 | 02 | [`02_multi_router_mcp.py`](examples/02_multi_router_mcp.py) | Multiple `Router`s + the `--select` grammar — pick which subset of tools the agent sees at runtime. |
-| 03 | [`03_projection_tool.py`](examples/03_projection_tool.py) | `@a2kit.tool(projection=True)` — server-side CEL filter + field projection without writing any plumbing. Returns a typed `Response`. |
-| 04 | [`04_error_enricher.py`](examples/04_error_enricher.py) | Custom `ErrorEnricher` + the built-in `ConnectionNotFoundEnricher`. |
+| 03 | [`03_list_view.py`](examples/03_list_view.py) | List-view triad: `filter`/`fields`/`pagination` × `Local`/`Passthrough`. Demonstrates kit-handled CEL + projection alongside upstream-pushdown queries. |
+| 04 | [`04_error_enricher.py`](examples/04_error_enricher.py) | Callable enrichers + `chain(*fns)` + `connection_enricher(store)` factory. |
 | 05 | [`05_testing_patterns.py`](examples/05_testing_patterns.py) | Schema snapshots (drift gate + token-budget proxy) + vcrpy cassettes. |
 
 ## API surface
@@ -72,11 +73,11 @@ of the real MCPs this lib serves (`a2db`, `a2atlassian`, `a2web`):
 |---|---|
 | `ConnectionInfo` / `ConnectionStore` (atomic save, `${ENV}`/`op://` resolution, NamedTuple keys) | `a2kit.connections` |
 | `resolve_token` / `ResolverRegistry` (pluggable token resolvers, lazy at access time) | `a2kit.tokens` |
-| **Fat** `@a2kit.tool(...)` (connection lookup + token + write + tool-call guard + OTel + streaming + `projection=True`) | `a2kit.tools` |
+| **Fat** `@a2kit.tool(...)` (typed-info DI, connection auto-inject, list-view triad, tool-call guard, OTel, streaming) | `a2kit.tools` |
 | `Router`, `RouterRegistry`, `MCPRunner`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` |
 | `Cap`, `capabilities` (StrEnum capability registry + `--select` grammar via `sel()`) | `a2kit._capabilities`, `a2kit._select` |
-| `ErrorEnricher`, `EnricherRegistry`, `ConnectionNotFoundEnricher` | `a2kit.errors` |
-| `Response`, `truncate`, `toon_or_json`, `format_response(filter=, fields=)` | `a2kit.formatter` |
+| `EnricherFn`, `chain(*fns)`, `connection_enricher(store)` (callable enricher contract) | `a2kit.errors` |
+| `Response`, `Page[T]`, `Local`, `Passthrough`, `ListViewMode`, `format_response`, `toon_or_json`, `truncate` | `a2kit.formatter` |
 | `filter_records`, `project_fields` (CEL projection, low-level) | `a2kit.projection` |
 | `snapshot_schemas`, `assert_schemas_match`, `cassette` + pytest fixtures | `a2kit.testing`, `a2kit.pytest_plugin` |
 | `ToolKwargs` TypedDict (for `Unpack[ToolKwargs]` higher-order decorators) | `a2kit._tool_kwargs` (re-exported as `a2kit.ToolKwargs`) |
@@ -158,20 +159,22 @@ async def get_widget(widget_id: str) -> dict:
 ```python
 import a2kit
 
-class _MyEnricher:
-    def enrich(self, exc, *, tool_name=None):
-        if isinstance(exc, KeyError):
-            return RuntimeError(f"Not found: {exc.args[0]} (tool: {tool_name})")
-        return exc
+def my_enricher(exc, tool_name=None):
+    if isinstance(exc, KeyError):
+        return RuntimeError(f"Not found: {exc.args[0]} (tool: {tool_name})")
+    return exc
 
-registry = a2kit.EnricherRegistry()
-registry.register(a2kit.ConnectionNotFoundEnricher(store))
-registry.register(_MyEnricher())
+# Compose with chain(...). connection_enricher(store) is the built-in factory.
+combined = a2kit.chain(my_enricher, a2kit.connection_enricher(store))
+
+@a2kit.tool(enricher=combined)
+async def query(...): ...
 ```
 
-`ErrorEnricher` is a Protocol — any class with
-`enrich(exc, *, tool_name) -> Exception` satisfies it. The registry runs
-enrichers in registration order; first divergent return wins.
+An enricher is just a callable: `(exc, tool_name) -> exc`. Returning the
+same object means no enrichment was applied. `chain(*fns)` runs each in
+order; the first that transforms wins. No Protocol, no Registry, no class
+hierarchy.
 
 ### `a2kit.scaffold`
 
@@ -226,10 +229,44 @@ via `pytest_plugins` in your `conftest.py` is one line and avoids the trap.
 
 ## How a new MCP starts here
 
-v0.8 shape: subclass `Router`, decorate tools with `@MyRouter.read/.write`,
-read the resolved connection via `MyRouter.context.info()`. Plain docstrings —
-the `connection:` line is auto-injected at decoration time. List-returning
-tools opt into `projection=True` for free CEL filter + field projection.
+v0.9 shape: subclass `Router`, decorate tools with `@MyRouter.read/.write`,
+declare a typed `info: <ConnectionInfo>` parameter, return data. Zero
+connection plumbing.
+
+```python
+import a2kit
+from typing import ClassVar
+from a2kit import Cap, Capability
+
+class WidgetConn(a2kit.ConnectionInfo):
+    base_url: str
+    api_key: str
+    read_only: bool = True
+
+class WidgetsRouter(a2kit.Router):
+    capabilities: ClassVar[set[Capability]] = {Cap.EXTERNAL}
+
+@WidgetsRouter.read()                                # zero kwargs
+async def get_widget(info: WidgetConn, widget_id: str) -> dict:
+    """Fetch a widget."""
+    return {"id": widget_id, "url": info.base_url}
+
+@WidgetsRouter.write()
+async def update_widget(info: WidgetConn, widget_id: str) -> dict:
+    """Update a widget."""
+    return {"id": widget_id, "updated": True}
+```
+
+The kit:
+- Injects `connection: str` into the agent-facing schema (the agent picks
+  `connection="prod"`).
+- Looks up the saved key in the store, resolves `${ENV}` tokens.
+- Enforces `read_only=True` on `.write()` tools (raises `WriteNotAllowed`).
+- Hides the typed `info` param from the agent's schema; binds the resolved
+  `ConnectionInfo` instance into the fn at call time.
+
+`Router.context.info()` survives as the helper-function escape hatch (call
+sites that aren't the tool itself).
 
 ```python
 # my_mcp/server.py
@@ -270,22 +307,43 @@ if __name__ == "__main__":
     a2kit.MCPRunner(server, store=store, router_registry=routers).run()
 ```
 
-### Filtering responses (the three tiers)
+### List-view tools (filter / fields / pagination)
 
-Pick the highest tier that fits — the lower tiers are escape hatches.
+Three orthogonal concerns, two execution modes each. Pick `Local` (kit
+handles) or `Passthrough` (tool handles).
 
-1. **`projection=True`** (primary path, v0.8): pass `projection=True` on
-   `@a2kit.tool(...)` / `@WidgetsRouter.read(...)`. The decorator auto-injects
-   `filter: str` and `fields: list[str] | None` keyword-only params into the
-   wrapper signature; the agent calls with them; the decorator threads the
-   result through `format_response` and returns a typed `Response`. Zero
-   plumbing on the author side. See `examples/03_projection_tool.py`.
-2. **`cel_filter_param=`/`fields_param=`** — the explicit-naming path. Use
-   when you need a non-standard param name or different defaults.
-3. **`format_response(data, filter=..., fields=...)`** — call directly when
-   you want the typed `Response` envelope but not the auto-threading.
-4. **`a2kit.projection.filter_records` / `project_fields`** — low-level
-   escape hatch. Raw record lists, no envelope.
+```python
+from a2kit import Local, Page, Passthrough
+
+# Kit handles all three — works for in-memory data, Reddit JSON, etc.
+@a2kit.tool(filter=Local, fields=Local, pagination=Local)
+def list_widgets() -> list[dict]:
+    return _ALL_WIDGETS
+
+# Tool handles all three — for upstreams with their own query language.
+@a2kit.tool(filter=Passthrough, fields=Passthrough, pagination=Passthrough)
+async def list_issues(
+    info: JiraConn,
+    filter: str = "",        # noqa: A002 — agent-facing
+    fields: list[str] | None = None,
+    limit: int = 50,
+    cursor: str | None = None,
+) -> Page[dict]:
+    # Tool body compiles filter→JQL, cursor→startAt, fields→&fields=
+    return Page(items=[...], next_cursor="upstream-cursor-token")
+
+# Mix: upstream paginates, kit filters within the page.
+@a2kit.tool(filter=Local, pagination=Passthrough)
+async def list_threads(info: RedditConn, limit: int = 50, cursor: str | None = None) -> Page[dict]:
+    return Page(items=await reddit.fetch(after=cursor), next_cursor=...)
+```
+
+Result is wrapped in `Response(format='tsv'|'toon'|'json', data, truncated, next_cursor)`
+whenever any list-view mode is set. See `examples/03_list_view.py`.
+
+For ad-hoc / non-tool use:
+- **`format_response(data, filter=..., fields=...)`** — call directly.
+- **`a2kit.projection.filter_records` / `project_fields`** — raw, no envelope.
 
 ### Higher-order decorators (`Unpack[ToolKwargs]`)
 
@@ -423,14 +481,29 @@ list (FastMCP frictions, primitive-design traps, OTel/streaming gotchas).
    an underscore-prefixed attribute. Pinned at `mcp >= 1.0`. If FastMCP moves
    the path, `a2kit.testing._list_tools` is the single seam to update.
 
-## Migration to v0.8 from earlier versions
+## Migration to v0.9 from earlier versions
 
-- `xml_guard=` → `tool_call_guard=`. Same behaviour.
-- `ToolXMLContamination` → `ToolCallContamination`. Same shape, same message.
-- `format_response(...)["format"]` → `format_response(...).format`. Returns
-  a typed `Response` model now.
-- `@a2kit.tool(ephemeral=...)` → ephemeral lives at the Router level only:
-  `Router(..., ephemeral={...})`. The decorator no longer accepts the kwarg.
+**v0.8 → v0.9:**
+
+- `@MyRouter.read(connection_param="conn") + def fn(conn: str)` → `@MyRouter.read() + def fn(info: WidgetConn)`.
+  Drop the `connection_param=` kwarg, replace the `conn: str` arg with a typed
+  `info: <ConnectionInfo subclass>` arg. Kit injects `connection: str` for
+  the agent and binds the resolved info into your typed param.
+- `@a2kit.tool(projection=True)` → `@a2kit.tool(filter=Local, fields=Local)`
+  (Local mode = same v0.8 behaviour). For upstream-pushdown, use `Passthrough`.
 - `@a2kit.tool(cel_filter_param="filter", fields_param="fields")` →
-  `@a2kit.tool(projection=True)`. The decorator auto-injects the params; you
-  drop them from the function signature too.
+  `@a2kit.tool(filter=Local, fields=Local)`. The `_param=` kwargs are gone.
+- `IssuesRouter(capabilities={Cap.EXTERNAL})` → `class IssuesRouter(Router): capabilities: ClassVar[set[Capability]] = {Cap.EXTERNAL}`.
+- `EnricherRegistry()` + `.register(...)` + `ErrorEnricher` Protocol →
+  callable functions composed with `chain(*fns)`.
+- `ConnectionNotFoundEnricher(store)` → `connection_enricher(store)` (factory
+  returning a closure).
+- `Response.format == "toon"` on flat data is now `"tsv"`. Nested-cell rows
+  remain `"toon"`.
+
+**v0.7 → v0.8 (still applies):**
+
+- `xml_guard=` → `tool_call_guard=`. `ToolXMLContamination` →
+  `ToolCallContamination`. `format_response(...)["format"]` →
+  `format_response(...).format`. `@a2kit.tool(ephemeral=...)` →
+  `Router(..., ephemeral={...})`.

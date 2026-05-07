@@ -1,27 +1,36 @@
-"""ErrorEnricher protocol + registry.
+"""Error enrichment — turn cryptic exceptions into agent-actionable ones.
 
-Generalises the pattern observed in both reference MCPs:
+An *enricher* is a function: it takes an exception and an optional tool name,
+returns either the same exception (no change) or a new one with more context.
+That's the entire contract — there is no Protocol, no Registry, no class
+hierarchy. The decorator's `enricher=` kwarg accepts any callable that matches
+the shape.
 
-- A SQL-wrapping MCP's column-not-found enrichment — turns a "column X not
-  found" backend error into a suggestion ("did you mean Y?") plus the available
-  columns list.
-- A Jira/Confluence-wrapping MCP's enricher cascade — handles JQL field
-  suggestions, account-ID hints, read-only re-login hint, etc.
+```python
+def enrich_columns(exc: Exception, tool_name: str | None = None) -> Exception:
+    if not isinstance(exc, ColumnNotFoundError):
+        return exc
+    return RuntimeError(f"Column not found: {exc.column}; available: …")
+```
 
-The shared shape: catch an exception, optionally rewrite it into a more
-agent-helpful one (more context, suggestions, available alternatives), then return
-either the same exception (no enrichment) or a new one of the appropriate subclass.
+Compose multiple enrichers with `chain(*fns)` — runs each in order, returns
+the first transformation. Authors with one enricher don't need it.
 
-a2kit ships ONE built-in enricher (`ConnectionNotFoundEnricher`) because it follows
-naturally from the existing `ConnectionStore` primitive. Domain-specific enrichers
-(SQL columns, JQL fields, HTTP 4xx codes) belong in the consuming MCP, written as
-subclasses of the `ErrorEnricher` protocol and added to a registry.
+```python
+@a2kit.tool(enricher=chain(enrich_columns, connection_enricher(store)))
+async def query(...): ...
+```
+
+Built-in: `connection_enricher(store)` factory enriches `ConnectionNotFound`
+with the saved-keys list and a difflib suggestion. Wraps the store; returns a
+plain function — no class to subclass.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from difflib import get_close_matches
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from a2kit.exceptions import ConnectionNotFound
 
@@ -29,63 +38,39 @@ if TYPE_CHECKING:
     from a2kit.connections import ConnectionInfo, ConnectionStore
 
 
-@runtime_checkable
-class ErrorEnricher(Protocol):
-    """Transform an exception into a more agent-helpful one.
+EnricherFn = Callable[[Exception, "str | None"], Exception]
+"""Type alias: an enricher is `(exc, tool_name) -> exc`. Returning the same
+object (`is exc`) means no enrichment was applied."""
 
-    Implementations return either the original exception (no enrichment applied)
-    or a new exception (typically of the same class, with extra attributes or a
-    richer message).
 
-    The `tool_name` keyword is provided as context — useful for hints like
-    "Run: a2X login -c <name>" — but enrichers may ignore it.
+def chain(*enrichers: EnricherFn) -> EnricherFn:
+    """Compose enrichers — first one to transform wins, subsequent skip.
+
+    Empty chain is the identity enricher.
     """
 
-    def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception: ...
-
-
-class EnricherRegistry:
-    """Run a chain of `ErrorEnricher`s in registration order.
-
-    The first enricher that returns an exception **distinct** (by `is`) from the
-    input wins; subsequent enrichers do not see the modified exception. This
-    matches the natural intuition: each enricher is responsible for one error
-    class, and once it fires, the chain is done.
-    """
-
-    def __init__(self) -> None:
-        self._enrichers: list[ErrorEnricher] = []
-
-    def register(self, enricher: ErrorEnricher) -> None:
-        """Append an enricher to the chain."""
-        self._enrichers.append(enricher)
-
-    def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-        """Run the chain. Returns the first enriched exception, or `exc` unchanged."""
-        for enricher in self._enrichers:
-            new = enricher.enrich(exc, tool_name=tool_name)
+    def chained(exc: Exception, tool_name: str | None = None) -> Exception:
+        for fn in enrichers:
+            new = fn(exc, tool_name)
             if new is not exc:
                 return new
         return exc
 
+    return chained
 
-class ConnectionNotFoundEnricher:
-    """Built-in enricher — adds `available_connections` to `ConnectionNotFound` errors.
 
-    Wraps a `ConnectionStore`. On `ConnectionNotFound`, fetches the list of saved
-    connection keys, attaches them as an `available_connections` attribute, and
-    rewrites the message to include them plus a `difflib`-based suggestion.
+def connection_enricher(store: ConnectionStore[ConnectionInfo]) -> EnricherFn:
+    """Enrich `ConnectionNotFound` with available-keys list + difflib suggestion.
 
-    Other exception classes pass through unchanged.
+    Other exceptions pass through. Replaces the v0.8
+    `ConnectionNotFoundEnricher` class — closes over the store, no method
+    dispatch.
     """
 
-    def __init__(self, store: ConnectionStore[ConnectionInfo]) -> None:
-        self._store = store
-
-    def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
+    def enrich(exc: Exception, tool_name: str | None = None) -> Exception:
         if not isinstance(exc, ConnectionNotFound):
             return exc
-        available = ["-".join(info.key) for info in self._store.list_connections()]
+        available = ["-".join(info.key) for info in store.list_connections()]
         wanted = "-".join(exc.key)
         parts = [f"Connection not found: {wanted}"]
         if available:
@@ -98,7 +83,11 @@ class ConnectionNotFoundEnricher:
         if tool_name is not None:
             parts.append(f"(while running tool {tool_name!r})")
         new = ConnectionNotFound(exc.key)
-        # Pydantic-frozen-friendly: ConnectionNotFound stores .key, message in args.
         new.args = ("\n".join(parts),)
         new.available_connections = available
         return new
+
+    return enrich
+
+
+__all__ = ["EnricherFn", "chain", "connection_enricher"]

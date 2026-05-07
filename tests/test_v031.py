@@ -20,7 +20,6 @@ from a2kit import (
     RouterRegistry,
     RunnerConfig,
     SelectExpr,
-    ToolConfig,
     UnknownCapability,
     capabilities,
     parse_select,
@@ -276,9 +275,16 @@ class _ToolServer:
 
 
 def test_router_pydantic_init() -> None:
-    r = Router(name="issues", capabilities={"pii"})
+    from typing import ClassVar
+
+    from a2kit import Capability
+
+    class _R(Router):
+        capabilities: ClassVar[set[Capability]] = {"pii"}
+
+    r = _R(name="issues")
     assert r.name == "issues"
-    assert "pii" in r.capabilities
+    assert "pii" in _R.capabilities
 
 
 def test_router_invalid_name() -> None:
@@ -454,17 +460,6 @@ def test_runner_select_includes_writes_when_mentioned() -> None:
 # ---- Configs ----------------------------------------------------------------
 
 
-def test_tool_config_extra_forbid() -> None:
-    with pytest.raises(ValidationError):
-        ToolConfig(unknown_kwarg=1)  # type: ignore[call-arg]
-
-
-def test_tool_config_defaults() -> None:
-    cfg = ToolConfig()
-    assert cfg.write is False
-    assert cfg.tool_call_guard is True
-
-
 def test_runner_config_extra_forbid() -> None:
     with pytest.raises(ValidationError):
         RunnerConfig(bogus=1)  # type: ignore[call-arg]
@@ -546,7 +541,14 @@ def test_tool_capabilities_merges_authors() -> None:
 
 
 def test_tool_capabilities_with_active_router() -> None:
-    r = Router(name="issues", capabilities={"pii"})
+    from typing import ClassVar
+
+    from a2kit import Capability
+
+    class _R(Router):
+        capabilities: ClassVar[set[Capability]] = {"pii"}
+
+    r = _R(name="issues")
     _set_active(r, "read")
     try:
 

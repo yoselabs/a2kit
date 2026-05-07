@@ -504,11 +504,10 @@ def test_sync_tool_call_guard_raises() -> None:
 
 
 def test_sync_with_enricher_routes() -> None:
-    class _E:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return RuntimeError(f"enriched:{exc}")
+    def enrich(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError(f"enriched:{exc}")
 
-    @a2kit.tool(enricher=_E())
+    @a2kit.tool(enricher=enrich)
     def f(text: str) -> dict:
         raise ValueError("boom")
 

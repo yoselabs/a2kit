@@ -26,7 +26,8 @@ Public API:
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from enum import Enum
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -63,52 +64,113 @@ def _is_uniform_row_list(data: Any) -> bool:
     return all(set(item.keys()) == first_keys for item in data[1:])
 
 
-def _toon_encode(rows: list[dict[str, Any]]) -> str:
-    """Header row + tab-separated values. Vendored — ≤ 20 LOC.
+def _has_nested_values(rows: list[dict[str, Any]]) -> bool:
+    """True if any cell in `rows` is a dict / list / tuple (i.e. not flat)."""
+    return any(isinstance(v, (dict, list, tuple)) for r in rows for v in r.values())
 
-    The encoder is deliberately minimal: assumes uniform keys (caller's
-    responsibility, enforced via `_is_uniform_row_list`), stringifies values via
-    `str()`, and uses tab as the column separator and newline as the row
-    separator. This matches the TSV / TOON encoders shipped by the two
-    upstream reference MCPs.
+
+def _encode_row_cell(value: Any) -> str:
+    """Encode one cell. Nested values become compact JSON; scalars use `str()`."""
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, separators=(",", ":"), default=str, ensure_ascii=False)
+    return str(value)
+
+
+def _tabular_encode(rows: list[dict[str, Any]]) -> str:
+    """Header row + tab-separated rows. Cells with nested data get compact JSON.
+
+    Used by both TSV (flat-row case) and TOON (nested-row case). The wire
+    format is identical; the *label* on `Response.format` differs so the
+    consuming agent knows whether to expect plain scalars or to JSON-parse
+    individual cells before reasoning about them.
     """
-    # Caller responsible for non-empty (`_is_uniform_row_list` excludes empty).
     keys = list(rows[0].keys())
     header = "\t".join(keys)
-    body = "\n".join("\t".join("" if r.get(k) is None else str(r.get(k)) for k in keys) for r in rows)
+    body = "\n".join("\t".join(_encode_row_cell(r.get(k)) for k in keys) for r in rows)
     return f"{header}\n{body}"
 
 
-def toon_or_json(data: Any) -> tuple[Literal["toon", "json"], str]:
+def toon_or_json(data: Any) -> tuple[Literal["tsv", "toon", "json"], str]:
     """Pick the wire format. Returns `(format_name, payload)`.
 
-    - List-of-dicts with uniform keys → `("toon", "<encoded-string>")`.
-    - Single dict / scalar / heterogeneous list → `("json", "<compact-json-string>")`.
+    Decision tree:
+      - List-of-dicts with uniform keys, **all values flat** → ``"tsv"``.
+        Pure tab-separated values; agent reads each cell as a scalar.
+      - List-of-dicts with uniform keys, **at least one nested value** →
+        ``"toon"``. Same TSV shape, but cells holding dicts/lists are
+        compact-JSON-encoded inline. Agent JSON-parses those cells when needed.
+      - Single dict / scalar / heterogeneous list → ``"json"`` (compact).
 
-    Heuristic kept tight: anything that doesn't fit the uniform-row shape goes
-    JSON. This is the same call both reference MCPs make, just collapsed.
+    Heuristic stays tight — anything that doesn't fit the uniform-row shape
+    goes JSON.
     """
     if _is_uniform_row_list(data):
-        return "toon", _toon_encode(data)
+        if _has_nested_values(data):
+            return "toon", _tabular_encode(data)
+        return "tsv", _tabular_encode(data)
     return "json", json.dumps(data, separators=(",", ":"), default=str, ensure_ascii=False)
 
 
 class Response(BaseModel):
-    """Typed envelope returned by `format_response` (v0.8).
+    """Typed envelope returned by `format_response`.
 
     Attributes:
       format: ``"toon"`` or ``"json"`` — the wire format of `data`.
       data: the encoded payload as a string.
       truncated: True iff at least one string field was clipped past `truncate_at`.
-      next_cursor: reserved for v0.9 pagination; always None today.
+      next_cursor: opaque cursor for the next page (v0.9). None when pagination
+        is not in use or the result is the last page.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format: Literal["toon", "json"]
+    format: Literal["tsv", "toon", "json"]
     data: str
     truncated: bool
     next_cursor: str | None = None
+
+
+T = TypeVar("T")
+
+
+class Page(BaseModel, Generic[T]):
+    """Typed paginated result — the contract a tool returns when it owns
+    pagination (`pagination=Passthrough` on the decorator).
+
+    The kit reads `next_cursor` and threads it back to the agent via the
+    enclosing `Response`. `items` is the page payload; downstream Local
+    filter/fields apply within the page.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: list[T]
+    next_cursor: str | None = None
+
+
+class ListViewMode(Enum):
+    """Execution mode for a list-view concern (filter / fields / pagination).
+
+    - ``Local``: the kit handles the concern post-call. The tool's function
+      doesn't see the param; the kit applies CEL / projection / slicing on
+      the returned data.
+    - ``Passthrough``: the kit declares the param to FastMCP / the agent and
+      threads it to the tool body unchanged. The tool compiles the param to
+      whatever upstream protocol it speaks (JQL, SQL `WHERE`, REST query,
+      cursor-token, …).
+
+    Aliases ``Local`` and ``Passthrough`` are exported at module top-level for
+    convenience.
+    """
+
+    LOCAL = "local"
+    PASSTHROUGH = "passthrough"
+
+
+Local = ListViewMode.LOCAL
+Passthrough = ListViewMode.PASSTHROUGH
 
 
 def format_response(
@@ -152,4 +214,15 @@ def _apply_filter_and_fields(data: Any, *, filter_expr: str, fields: list[str] |
     return rows
 
 
-__all__ = ["DEFAULT_MARKER", "DEFAULT_MAX_CHARS", "Response", "format_response", "toon_or_json", "truncate"]
+__all__ = [
+    "DEFAULT_MARKER",
+    "DEFAULT_MAX_CHARS",
+    "ListViewMode",
+    "Local",
+    "Page",
+    "Passthrough",
+    "Response",
+    "format_response",
+    "toon_or_json",
+    "truncate",
+]

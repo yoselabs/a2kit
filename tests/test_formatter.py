@@ -33,13 +33,13 @@ def test_truncate_passthrough_for_non_string() -> None:
 
 def test_toon_uniform_rows() -> None:
     fmt, payload = formatter.toon_or_json([{"a": 1, "b": 2}, {"a": 3, "b": 4}])
-    assert fmt == "toon"
+    assert fmt == "tsv"
     assert payload == "a\tb\n1\t2\n3\t4"
 
 
 def test_toon_handles_none_values() -> None:
     fmt, payload = formatter.toon_or_json([{"a": None, "b": 2}])
-    assert fmt == "toon"
+    assert fmt == "tsv"
     assert payload == "a\tb\n\t2"
 
 
@@ -67,10 +67,24 @@ def test_json_for_list_of_non_dicts() -> None:
     assert json.loads(payload) == [1, 2, 3]
 
 
+def test_toon_for_nested_values() -> None:
+    """List of dicts with at least one nested value → toon (JSON-encoded cells)."""
+    fmt, payload = formatter.toon_or_json([{"a": 1, "tags": ["x", "y"]}, {"a": 2, "tags": []}])
+    assert fmt == "toon"
+    assert '["x","y"]' in payload  # nested list as compact JSON
+    assert "[]" in payload
+
+
+def test_toon_nested_dict_value_json_encoded() -> None:
+    fmt, payload = formatter.toon_or_json([{"a": 1, "meta": {"k": "v"}}])
+    assert fmt == "toon"
+    assert '{"k":"v"}' in payload
+
+
 def test_format_response_envelope_toon() -> None:
     out = formatter.format_response([{"a": 1}, {"a": 2}])
     assert isinstance(out, formatter.Response)
-    assert out.format == "toon"
+    assert out.format == "tsv"
     assert out.data == "a\n1\n2"
     assert out.truncated is False
     assert out.next_cursor is None

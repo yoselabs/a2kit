@@ -1,4 +1,4 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.8.0).
+"""a2kit — thin library for FastMCP-based MCPs (v0.9.0).
 
 Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
 to FastMCP at any boundary stays clean. See README for the full rundown.
@@ -31,7 +31,7 @@ from a2kit._capabilities import (
     UnknownCapability,
     capabilities,
 )
-from a2kit._configs import BudgetConfig, RunnerConfig, ToolConfig
+from a2kit._configs import BudgetConfig, RunnerConfig
 from a2kit._select import SelectAtom, SelectExpr, parse_select, sel
 from a2kit._tool_kwargs import ToolKwargs
 from a2kit.connections import (
@@ -41,9 +41,9 @@ from a2kit.connections import (
     default_config_dir,
 )
 from a2kit.errors import (
-    ConnectionNotFoundEnricher,
-    EnricherRegistry,
-    ErrorEnricher,
+    EnricherFn,
+    chain,
+    connection_enricher,
 )
 from a2kit.exceptions import (
     A2KitError,
@@ -62,7 +62,14 @@ from a2kit.exceptions import (
     ToolCallContamination,
     WriteNotAllowed,
 )
-from a2kit.formatter import Response, format_response
+from a2kit.formatter import (
+    ListViewMode,
+    Local,
+    Page,
+    Passthrough,
+    Response,
+    format_response,
+)
 from a2kit.scaffold import (
     MCPRunner,
     Router,
@@ -83,7 +90,7 @@ from a2kit.tools import tool
 
 A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "A2KIT_CONFIG_HOME",
@@ -95,19 +102,21 @@ __all__ = [
     "CapabilityRecord",
     "ConnectionInfo",
     "ConnectionNotFound",
-    "ConnectionNotFoundEnricher",
     "ConnectionStore",
-    "EnricherRegistry",
+    "EnricherFn",
     "EnvVarNotFound",
-    "ErrorEnricher",
     "InvalidConnectionKey",
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
     "KeyArityMismatch",
     "KeyFieldMissing",
+    "ListViewMode",
+    "Local",
     "MCPRunner",
     "MigrationRequired",
     "OpResolutionError",
+    "Page",
+    "Passthrough",
     "ProjectionUnavailable",
     "ResolverRegistry",
     "Response",
@@ -119,13 +128,14 @@ __all__ = [
     "SelectExpr",
     "TokenResolutionError",
     "ToolCallContamination",
-    "ToolConfig",
     "ToolKwargs",
     "UnknownCapability",
     "WriteNotAllowed",
     "__version__",
     "build_cli",
     "capabilities",
+    "chain",
+    "connection_enricher",
     "default_config_dir",
     "default_registry",
     "docs",

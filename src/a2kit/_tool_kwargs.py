@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Any, TypedDict
 if TYPE_CHECKING:
     from a2kit._capabilities import Capability
     from a2kit.connections import ConnectionStore
-    from a2kit.errors import EnricherRegistry, ErrorEnricher
+    from a2kit.errors import EnricherFn
+    from a2kit.formatter import ListViewMode
     from a2kit.tokens import ResolverRegistry
 
 
@@ -37,16 +38,17 @@ class ToolKwargs(TypedDict, total=False):
 
     server: Any
     store: ConnectionStore[Any] | None
-    connection_param: str | None
+    connection: bool
     capabilities: set[Capability]
     write: bool
     streaming: bool
     tool_call_guard: bool
     otel: bool
     tool_name: str | None
-    cel_filter_param: str | None
-    fields_param: str | None
-    enricher: ErrorEnricher | EnricherRegistry | None
+    filter: ListViewMode | None
+    fields: ListViewMode | None
+    pagination: ListViewMode | None
+    enricher: EnricherFn | None
     resolver_registry: ResolverRegistry | None
     cli: str | None
 

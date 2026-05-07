@@ -77,9 +77,9 @@ def test_tool_decorator_no_info_kwarg_param() -> None:
     assert "info_kwarg" not in sig.parameters
 
 
-def test_tool_config_no_info_kwarg_field() -> None:
-    fields = a2kit.ToolConfig.model_fields
-    assert "info_kwarg" not in fields
+def test_tool_kwargs_typeddict_has_no_info_kwarg() -> None:
+    """`info_kwarg` is gone from the v0.9 surface (was removed in v0.7)."""
+    assert "info_kwarg" not in a2kit.ToolKwargs.__annotations__
 
 
 # ---------------------------------------------------------------------------- #
@@ -542,8 +542,8 @@ def _exec_example(filename: str) -> None:
     mod.main()
 
 
-def test_example_03_projection_runs() -> None:
-    _exec_example("03_projection_tool.py")
+def test_example_03_list_view_runs() -> None:
+    _exec_example("03_list_view.py")
 
 
 def test_example_04_error_enricher_runs() -> None:

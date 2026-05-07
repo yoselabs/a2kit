@@ -1,5 +1,102 @@
 # Changelog
 
+## 0.9.0 — 2026-05-07
+
+**Ergonomic overhaul.** Pre-1.0, no users — clean breaks across error
+handling, capability declarations, list-view tools, and the connection-key
+contract. Most tool signatures get shorter; the agent-facing schema gets
+sharper; the kit's mental model collapses by one layer.
+
+### New
+
+- **`@Router.read()` / `@Router.write()` auto-inject `connection: str`** into
+  the agent-facing schema whenever the Router has a store. Authors stop
+  writing `connection_param="conn"` and stop adding `conn: str` to their fn
+  signature.
+
+- **Type-driven info DI** — declare a `ConnectionInfo`-subclass typed
+  parameter on your fn (`info: WidgetConn`); the kit binds the resolved info
+  there at call time. Hidden from the agent-facing schema. `Router.context.info()`
+  survives as the helper-function escape hatch:
+
+  ```python
+  @WidgetsRouter.read()                                  # zero kwargs
+  async def list_widgets(info: WidgetConn) -> list[dict]:
+      return [{"url": info.url}]
+  # Agent calls list_widgets(connection="prod"); kit resolves + injects info.
+  ```
+
+- **List-view triad** — three orthogonal flags, two execution modes each:
+
+  | Concern    | Local (kit handles)               | Passthrough (tool handles)              |
+  |------------|-----------------------------------|------------------------------------------|
+  | `filter`   | CEL post-process on rows          | thread `filter:str` to fn (compile to JQL/SQL/…) |
+  | `fields`   | dict-key projection on rows       | thread `fields:list[str]` to fn          |
+  | `pagination` | slice + opaque cursor encoding | thread `limit:int, cursor:str|None` to fn; tool returns `Page[T]` |
+
+  Replaces v0.8's `projection=True` / `cel_filter_param=` / `fields_param=`
+  with a coherent execution-mode story so MCPs that pushdown filtering or
+  pagination upstream (a2db SQL, a2atlassian JQL) get first-class support
+  alongside in-memory data sources (Reddit JSON, local lists).
+
+- **`Page[T]`** — typed Pydantic generic for tools that own pagination
+  upstream. `items: list[T]`, `next_cursor: str | None`. Kit unwraps and
+  threads `next_cursor` into the outer `Response`.
+
+- **Output formats split honestly: `tsv` vs `toon`** — flat rows render as
+  TSV (header + tab-separated scalar cells); rows with at least one nested
+  value render as TOON (same shape, but nested cells are compact-JSON-encoded
+  inline). `Response.format` is now `Literal['tsv', 'toon', 'json']`. The
+  v0.8 'toon' label was lying about the encoding.
+
+- **`Router.capabilities` is `ClassVar`** — caps describe the router's *type*,
+  not its runtime instance. Mirrors the existing `read_capabilities` /
+  `write_capabilities` `ClassVar` pattern.
+
+  ```python
+  class IssuesRouter(a2kit.Router):
+      capabilities: ClassVar[set[Capability]] = {Cap.EXTERNAL}
+  ```
+
+- **Errors simplified — `EnricherFn = Callable[[Exception, str | None], Exception]`**
+  replaces `ErrorEnricher` Protocol + `EnricherRegistry`. Composition via a
+  6-line `chain(*fns)` helper. `connection_enricher(store)` factory replaces
+  the `ConnectionNotFoundEnricher` class — closes over the store, returns a
+  plain function.
+
+  ```python
+  @a2kit.tool(enricher=chain(my_enricher, connection_enricher(store)))
+  async def query(...): ...
+  ```
+
+### Breaking
+
+- `xml_guard` already renamed to `tool_call_guard` in v0.8 — this remains.
+- **`projection=True`, `cel_filter_param=`, `fields_param=` removed.** Use
+  `filter=Local|Passthrough`, `fields=Local|Passthrough`,
+  `pagination=Local|Passthrough` instead.
+- **`ErrorEnricher` Protocol, `EnricherRegistry`, `ConnectionNotFoundEnricher`
+  class removed.** Use `EnricherFn` callables, `chain(*fns)`,
+  `connection_enricher(store)` factory.
+- **`ToolConfig` Pydantic model removed.** It was never wired to the live
+  decorator — the authoritative kwarg contract is the `ToolKwargs` TypedDict.
+- **`Router.capabilities` as a Pydantic instance field is gone.** Move to
+  `ClassVar[set[Capability]]` on the subclass.
+- **`Response.format` widened to `Literal['tsv', 'toon', 'json']`.** Existing
+  `format == "toon"` assertions on flat data will return `"tsv"` instead.
+
+### Soft-deprecated (drops in v0.10)
+
+- **`connection_param=<name>` kwarg** still works as a back-compat alias for
+  the v0.8 string-named connection lookup. New code should use the typed-info
+  DI pattern (`info: <ConnectionInfo subclass>`).
+
+### Internal
+
+- 561 tests, 100% line+branch coverage, lint + ty clean.
+- Examples still 5 files; example 03 renamed `03_projection_tool.py` → `03_list_view.py`
+  and rewritten to demonstrate Local + Passthrough side-by-side.
+
 ## 0.8.0 — 2026-05-07
 
 **Polish bundle.** Pre-1.0 cleanups surfaced after v0.7: rename

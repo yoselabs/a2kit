@@ -1,15 +1,18 @@
 """Multi-domain MCP — multiple Routers + the `--select` grammar.
 
 This is the shape an Atlassian-flavored MCP takes: one Router per top-level
-domain (issues, sprints, comments, …), each with its own `read`/`write` tools.
+domain (issues, sprints, comments, …), each with its own read/write tools.
 The MCP user picks which subset to expose at runtime via `--select`:
 
-  --select "default and not router:sprints"   # everything except sprints
-  --select "router:issues and write"          # only Issues writes
-  --select "tool:list_issues"                 # one tool by name
+  --select "default and not router:sprints"
+  --select "router:issues and write"
+  --select "tool:list_issues"
 
-Tags are auto-applied by the decorators. Author writes domain code; capability
-tagging is mechanical.
+v0.9 ergonomics:
+- `capabilities` is a `ClassVar` on the Router subclass — the caps describe
+  the router's TYPE, not its runtime config.
+- `connection: str` is auto-injected for every `@Router.read/.write` tool.
+- The resolved info is bound to the typed `info: JiraConn` param via DI.
 
 Run: `uv run python examples/02_multi_router_mcp.py --select 'default'`
 """
@@ -19,11 +22,12 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
+from typing import ClassVar
 
 from mcp.server.fastmcp import FastMCP
 
 import a2kit
-from a2kit import Cap
+from a2kit import Cap, Capability
 
 
 class JiraConn(a2kit.ConnectionInfo):
@@ -34,28 +38,31 @@ class JiraConn(a2kit.ConnectionInfo):
 
 
 class IssuesRouter(a2kit.Router):
-    """Slug auto-derived: `issues`. Capability tag `Cap.EXTERNAL` flows to every tool."""
+    """Slug auto-derived: `issues`."""
+
+    capabilities: ClassVar[set[Capability]] = {Cap.EXTERNAL}
 
 
 class SprintsRouter(a2kit.Router):
-    """Slug auto-derived: `sprints`. Optional — opted-out by default."""
+    """Slug auto-derived: `sprints`. Optional — opted-out at the instance level."""
+
+    capabilities: ClassVar[set[Capability]] = {Cap.EXTERNAL}
 
 
-@IssuesRouter.read(connection_param="conn")
-async def list_issues(conn: str, jql: str = "project = WIDGETS") -> list[dict]:
+@IssuesRouter.read()
+async def list_issues(info: JiraConn, jql: str = "project = WIDGETS") -> list[dict]:
     """Search issues with JQL."""
-    info = IssuesRouter.context.info()
     return [{"key": "W-1", "url": info.base_url}]
 
 
-@IssuesRouter.write(connection_param="conn")
-async def create_issue(conn: str, summary: str) -> dict:
+@IssuesRouter.write()
+async def create_issue(info: JiraConn, summary: str) -> dict:
     """Create a new issue."""
     return {"key": "W-99", "summary": summary}
 
 
-@SprintsRouter.read(connection_param="conn")
-async def list_sprints(conn: str) -> list[dict]:
+@SprintsRouter.read()
+async def list_sprints(info: JiraConn) -> list[dict]:
     """List sprints on a board."""
     return [{"id": 1, "name": "Sprint 1"}]
 
@@ -74,8 +81,8 @@ def main(argv: list[str] | None = None) -> None:
 
     server = FastMCP("a2jira")
     registry = a2kit.RouterRegistry()
-    registry.add(IssuesRouter(capabilities={Cap.EXTERNAL}))
-    registry.add(SprintsRouter(capabilities={Cap.EXTERNAL}, default=False))
+    registry.add(IssuesRouter())
+    registry.add(SprintsRouter(default=False))
 
     args = sys.argv[1:] if argv is None else argv
     a2kit.MCPRunner(server, store=store, router_registry=registry).run(argv=args)

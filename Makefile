@@ -34,6 +34,6 @@ check: lint a2kit-lint typecheck test
 examples:
 	uv run python examples/01_minimal_mcp.py
 	uv run python examples/02_multi_router_mcp.py --select default
-	uv run python examples/03_projection_tool.py
+	uv run python examples/03_list_view.py
 	uv run python examples/04_error_enricher.py
 	uv run python examples/05_testing_patterns.py

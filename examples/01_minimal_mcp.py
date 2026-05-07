@@ -1,17 +1,17 @@
 """Smallest viable MCP — single Router, one read tool, one write tool.
 
 This is the canonical shape. Real MCPs (a2db, a2atlassian, a2web) start here
-and grow:
+and grow.
 
-- A `ConnectionInfo` subclass for the domain (URL + token, or whatever).
-- A `ConnectionStore` parameterised by that subclass — handles login/save/load
-  and `${ENV_VAR}` resolution.
-- A `Router` subclass that owns related tools.
-- `@MyRouter.read(...)` / `@MyRouter.write(...)` decorators bind tools to the
-  Router; they auto-tag with `Cap.READ`/`Cap.WRITE` and the router's slug.
-- `RouterRegistry` + `MCPRunner` glue it to a `FastMCP` server.
-- `build_cli` adds `login`/`logout`/`connections list` subcommands so the user
-  can save credentials before starting the server.
+v0.9 ergonomics:
+- `connection: str` is auto-injected into the agent-facing schema for any
+  `@Router.read/.write` tool. The agent picks `connection="prod"` etc.
+- The resolved `ConnectionInfo` subclass is auto-injected into the function
+  via the typed parameter (`info: WidgetConn`). Type-driven DI; no plumbing.
+- `@Router.tool()` is the no-connection escape hatch.
+
+The tool body declares zero connection-management code. The kit handles
+lookup, ${ENV} resolution, read-only enforcement, and the agent-facing key.
 
 Run as MCP: `uv run python examples/01_minimal_mcp.py serve`
 Run CLI: `uv run python examples/01_minimal_mcp.py login prod --field url=https://api --field token='${WIDGET_TOKEN}'`
@@ -40,18 +40,17 @@ class WidgetsRouter(a2kit.Router):
     """Routes every Widgets-related tool. Slug auto-derived: `widgets`."""
 
 
-@WidgetsRouter.read(connection_param="connection")
-async def list_widgets(connection: str) -> list[dict]:
-    """List widgets for the given connection."""
-    info = WidgetsRouter.context.info()
-    # Real impl: HTTP GET against `info.url` with `info.token`.
+@WidgetsRouter.read()
+async def list_widgets(info: WidgetConn) -> list[dict]:
+    """List widgets."""
+    # `info` is the resolved + token-resolved WidgetConn. Agent calls with
+    # `connection="prod"`; the kit binds the resolved info here.
     return [{"id": 1, "url": info.url}, {"id": 2, "url": info.url}]
 
 
-@WidgetsRouter.write(connection_param="connection")
-async def create_widget(connection: str, name: str) -> dict:
-    """Create a widget. Refused if the connection is `read_only=True`."""
-    info = WidgetsRouter.context.info()
+@WidgetsRouter.write()
+async def create_widget(info: WidgetConn, name: str) -> dict:
+    """Create a widget. Refused if `info.read_only` is True."""
     return {"id": 99, "name": name, "url": info.url}
 
 
@@ -71,7 +70,6 @@ def main(argv: list[str] | None = None) -> None:
     args = sys.argv[1:] if argv is None else argv
     server, store, registry = build_app()
 
-    # CLI surface (login/logout/connections) — `build_cli` returns a Click group.
     cli = a2kit.build_cli(store, name="a2widgets")
 
     @cli.command("serve")
@@ -83,7 +81,6 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    # Ergonomic demo — point at a temp config so the example is hermetic.
     tmp = Path(tempfile.mkdtemp())
     a2kit.ConnectionStore(tmp, WidgetConn).save(WidgetConn(key=("prod",), url="https://api.example", token="${WIDGET_TOKEN}"))
     print(f"Demo connection saved at {tmp}.")

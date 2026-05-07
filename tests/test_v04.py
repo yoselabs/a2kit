@@ -100,7 +100,7 @@ def test_projection_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_format_response_filter_only() -> None:
     rows = [{"x": 1}, {"x": 5}]
     env = a2kit.format_response(rows, filter="x > 3")
-    assert env.format == "toon"
+    assert env.format == "tsv"
     assert "5" in env.data
     assert "1" not in env.data.split("\n")[1]
 
@@ -108,14 +108,14 @@ def test_format_response_filter_only() -> None:
 def test_format_response_fields_only() -> None:
     rows = [{"a": 1, "b": 2}]
     env = a2kit.format_response(rows, fields=["a"])
-    assert env.format == "toon"
+    assert env.format == "tsv"
     assert "b" not in env.data
 
 
 def test_format_response_filter_and_fields() -> None:
     rows = [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
     env = a2kit.format_response(rows, filter="a > 2", fields=["a"])
-    assert env.format == "toon"
+    assert env.format == "tsv"
     assert "3" in env.data
 
 
@@ -137,75 +137,9 @@ def test_format_response_filter_skipped_for_mixed_list() -> None:
     assert env.format == "json"
 
 
-# ---- @a2kit.tool with cel_filter_param / fields_param ----------------------
-
-
-def test_tool_cel_filter_param_threads_through() -> None:
-    rows = [{"id": 1, "v": 10}, {"id": 2, "v": 1}]
-
-    @a2kit.tool(cel_filter_param="filter", fields_param="fields")
-    def list_widgets(filter: str = "", fields: list[str] | None = None) -> list[dict]:  # noqa: A002
-        return rows
-
-    env = list_widgets(filter="v > 5")
-    assert env.format == "toon"
-    assert "10" in env.data
-
-
-def test_tool_cel_filter_param_no_args_unchanged() -> None:
-    rows = [{"id": 1}]
-
-    @a2kit.tool(cel_filter_param="filter", fields_param="fields")
-    def list_widgets(filter: str = "", fields: list[str] | None = None) -> list[dict]:  # noqa: A002
-        return rows
-
-    out = list_widgets()
-    assert out == rows  # no envelope when filter+fields both empty
-
-
-def test_tool_cel_filter_param_fields_only() -> None:
-    rows = [{"a": 1, "b": 2}]
-
-    @a2kit.tool(fields_param="fields")
-    def list_widgets(fields: list[str] | None = None) -> list[dict]:
-        return rows
-
-    env = list_widgets(fields=["a"])
-    assert "b" not in env.data
-
-
-async def test_tool_cel_filter_param_async() -> None:
-    rows = [{"v": 10}, {"v": 1}]
-
-    @a2kit.tool(cel_filter_param="filter")
-    async def list_widgets(filter: str = "") -> list[dict]:  # noqa: A002
-        return rows
-
-    env = await list_widgets(filter="v > 5")
-    assert env.format == "toon"
-
-
-def test_tool_cel_filter_param_non_string_value_ignored() -> None:
-    """Non-str filter arg is treated as no-op (defensive)."""
-    rows = [{"a": 1}]
-
-    @a2kit.tool(cel_filter_param="filter")
-    def list_widgets(filter: object = None) -> list[dict]:  # noqa: A002
-        return rows
-
-    out = list_widgets(filter=123)
-    assert out == rows
-
-
-def test_tool_cel_filter_param_non_list_fields_ignored() -> None:
-    rows = [{"a": 1}]
-
-    @a2kit.tool(fields_param="fields")
-    def list_widgets(fields: object = None) -> list[dict]:
-        return rows
-
-    out = list_widgets(fields="not-a-list")
-    assert out == rows
+# Note: v0.9 removed `cel_filter_param=`/`fields_param=`. The replacement is
+# `@a2kit.tool(filter=Local|Passthrough, fields=Local|Passthrough)` — see
+# tests/test_v08.py for the current contract.
 
 
 # ---- Lint A2K011 ------------------------------------------------------------

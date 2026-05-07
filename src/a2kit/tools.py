@@ -52,6 +52,7 @@ from a2kit.exceptions import (
     ToolCallContamination,
     WriteNotAllowed,
 )
+from a2kit.formatter import ListViewMode, Page
 
 
 class _NullSpan:
@@ -66,7 +67,7 @@ class _NullSpan:
 
 if TYPE_CHECKING:
     from a2kit.connections import ConnectionInfo, ConnectionStore
-    from a2kit.errors import EnricherRegistry, ErrorEnricher
+    from a2kit.errors import EnricherFn
     from a2kit.tokens import ResolverRegistry
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -145,6 +146,41 @@ def _resolve_connection_key(value: Any) -> tuple[str, ...]:
     raise TypeError(msg)
 
 
+def _detect_info_param(fn: Any, sig: inspect.Signature) -> tuple[str, type] | None:
+    """Type-driven info DI — find a `ConnectionInfo`-typed param on `fn`.
+
+    Returns ``(param_name, info_class)`` if exactly one such param exists;
+    ``None`` if zero. Raises if more than one — multi-info tools aren't a
+    pattern we support (use `Router.context.info()` from a helper if you
+    really need cross-context access).
+    """
+    from a2kit.connections import ConnectionInfo  # noqa: PLC0415
+
+    try:
+        hints = inspect.get_annotations(fn, eval_str=True)
+    except (NameError, AttributeError):  # pragma: no cover — forward-ref fallback
+        # Forward refs that don't resolve — fall back to raw annotations.
+        hints = getattr(fn, "__annotations__", {})
+
+    matches: list[tuple[str, type]] = []
+    for name in sig.parameters:
+        anno = hints.get(name)
+        if isinstance(anno, type) and issubclass(anno, ConnectionInfo):
+            matches.append((name, anno))
+    if not matches:
+        return None
+    if len(matches) > 1:
+        names = [m[0] for m in matches]
+        msg = (
+            f"Tool {fn.__name__!r} declares multiple ConnectionInfo-typed "
+            f"parameters {names}. Only one info-injection target is supported "
+            "per tool; use `Router.context.info()` from a helper for "
+            "cross-context access."
+        )
+        raise ValueError(msg)
+    return matches[0]
+
+
 def _lookup_connection(
     key: tuple[str, ...],
     store: ConnectionStore[Any] | None,
@@ -171,38 +207,201 @@ def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | Non
     return info.model_copy(update=update)
 
 
-def _inject_projection_signature(wrapper: Any, fn: Any, sig: inspect.Signature) -> None:
-    """Synthesise wrapper signature with `filter` + `fields` kwonly params.
+def _listview_local_params(
+    *,
+    filter_mode: ListViewMode | None,
+    fields_mode: ListViewMode | None,
+    pagination_mode: ListViewMode | None,
+) -> list[inspect.Parameter]:
+    """Build kwonly params the kit injects for **Local** concerns.
 
-    Used by `@a2kit.tool(projection=True)` so authors don't have to declare the
-    projection knobs on their function. FastMCP introspects the wrapper via
-    `inspect.signature(follow_wrapped=True)`; setting `wrapper.__signature__`
-    short-circuits the `__wrapped__` chain so the synthetic sig wins.
-
-    Refuses to inject if the function already declares `filter` or `fields`
-    (collision = author intent we shouldn't shadow).
+    Passthrough concerns are owned by the function — the author declares
+    them in the signature directly. Local concerns are kit-owned: the
+    function never sees them, so we splice them into the wrapper sig.
     """
-    if "filter" in sig.parameters or "fields" in sig.parameters:
+    extra: list[inspect.Parameter] = []
+    kwonly = inspect.Parameter.KEYWORD_ONLY
+    if filter_mode is ListViewMode.LOCAL:
+        extra.append(inspect.Parameter("filter", kwonly, default="", annotation=str))
+    if fields_mode is ListViewMode.LOCAL:
+        extra.append(inspect.Parameter("fields", kwonly, default=None, annotation="list[str] | None"))
+    if pagination_mode is ListViewMode.LOCAL:
+        extra.append(inspect.Parameter("limit", kwonly, default=50, annotation=int))
+        extra.append(inspect.Parameter("cursor", kwonly, default=None, annotation="str | None"))
+    return extra
+
+
+def _verify_passthrough_params(
+    fn: Any,
+    sig: inspect.Signature,
+    *,
+    filter_mode: ListViewMode | None,
+    fields_mode: ListViewMode | None,
+    pagination_mode: ListViewMode | None,
+) -> None:
+    """Each Passthrough concern requires its param on the fn signature.
+
+    Mode mismatch is an author bug — fail loudly at decoration so the agent
+    never sees a tool that promises filter/fields/pagination passthrough
+    but silently drops the kwarg.
+    """
+    expected: list[str] = []
+    if filter_mode is ListViewMode.PASSTHROUGH:
+        expected.append("filter")
+    if fields_mode is ListViewMode.PASSTHROUGH:
+        expected.append("fields")
+    if pagination_mode is ListViewMode.PASSTHROUGH:
+        expected.extend(("limit", "cursor"))
+    missing = [name for name in expected if name not in sig.parameters]
+    if missing:
         msg = (
-            "projection=True cannot be used on a function that already declares "
-            "`filter` or `fields` parameters; rename them or drop projection=True."
+            f"Passthrough mode declared on {fn.__name__!r} but the function does "
+            f"not accept {missing}. Either declare them in your function "
+            "signature (Passthrough = your tool body handles them) or switch "
+            "the matching decorator kwarg to Local."
         )
         raise ValueError(msg)
-    extra = [
-        inspect.Parameter("filter", inspect.Parameter.KEYWORD_ONLY, default="", annotation=str),
-        inspect.Parameter("fields", inspect.Parameter.KEYWORD_ONLY, default=None, annotation="list[str] | None"),
-    ]
-    # Insert before any VAR_KEYWORD to satisfy Signature ordering rules.
-    params = list(sig.parameters.values())
+
+
+def _splice_wrapper_signature(
+    wrapper: Any,
+    fn: Any,
+    sig: inspect.Signature,
+    extra: list[inspect.Parameter],
+    *,
+    hide_names: set[str] | None = None,
+) -> None:
+    """Build the agent-facing wrapper signature.
+
+    - Splices `extra` (kit-injected kwonly params: `connection`, list-view
+      knobs) before any VAR_KEYWORD on the fn.
+    - Removes any params named in `hide_names` (used to hide DI-injected
+      params like the typed `info: WidgetConn`).
+
+    FastMCP reads `inspect.signature(wrapper, follow_wrapped=True)`;
+    setting `wrapper.__signature__` short-circuits the `__wrapped__` walk so
+    the synthetic sig wins.
+    """
+    hide = hide_names or set()
+    if not extra and not hide:
+        return
+    collisions = [p.name for p in extra if p.name in sig.parameters]
+    if collisions:
+        msg = (
+            f"Kit-injected params {collisions} collide with parameters "
+            f"declared on {fn.__name__!r}. Either rename your function param, "
+            "drop the matching decorator kwarg, or switch list-view modes to "
+            "Passthrough."
+        )
+        raise ValueError(msg)
+    params = [p for name, p in sig.parameters.items() if name not in hide]
     insert_at = next(
         (i for i, p in enumerate(params) if p.kind == inspect.Parameter.VAR_KEYWORD),
         len(params),
     )
     new_params = params[:insert_at] + extra + params[insert_at:]
     wrapper.__signature__ = sig.replace(parameters=new_params)
-    extras_anno = {"filter": str, "fields": "list[str] | None"}
-    wrapper.__annotations__ = {**wrapper.__annotations__, **extras_anno}
+    extras_anno = {p.name: p.annotation for p in extra}
+    wrapper.__annotations__ = {k: v for k, v in {**wrapper.__annotations__, **extras_anno}.items() if k not in hide}
     fn.__annotations__ = {**fn.__annotations__, **extras_anno}
+
+
+# --- Cursor encoding (Local pagination) -------------------------------------- #
+
+
+def _encode_cursor(offset: int) -> str:
+    """Opaque base64 string from an integer offset."""
+    import base64  # noqa: PLC0415
+
+    return base64.urlsafe_b64encode(str(offset).encode()).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str | None) -> int:
+    """Reverse `_encode_cursor`. Invalid input → 0 (start of list)."""
+    if not cursor:
+        return 0
+    import base64  # noqa: PLC0415
+
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        return max(0, int(base64.urlsafe_b64decode(padded.encode()).decode()))
+    except (ValueError, UnicodeDecodeError):
+        return 0
+
+
+# --- Listview pop + post-process pipeline ----------------------------------- #
+
+
+def _listview_extract_local(
+    kwargs: dict[str, Any],
+    *,
+    filter_mode: ListViewMode | None,
+    fields_mode: ListViewMode | None,
+    pagination_mode: ListViewMode | None,
+) -> dict[str, Any]:
+    """Pop Local concern kwargs out of `kwargs` so the fn never sees them.
+
+    Passthrough kwargs stay in `kwargs` for the fn body to handle.
+    Returns a state dict with whatever the kit needs for post-processing.
+    """
+    state: dict[str, Any] = {}
+    if filter_mode is ListViewMode.LOCAL:
+        raw = kwargs.pop("filter", "")
+        state["filter"] = raw if isinstance(raw, str) else ""
+    if fields_mode is ListViewMode.LOCAL:
+        raw_f = kwargs.pop("fields", None)
+        state["fields"] = [str(f) for f in raw_f] if isinstance(raw_f, list) else None
+    if pagination_mode is ListViewMode.LOCAL:
+        raw_limit = kwargs.pop("limit", 50)
+        state["limit"] = raw_limit if isinstance(raw_limit, int) and raw_limit > 0 else 50
+        state["cursor"] = kwargs.pop("cursor", None)
+    return state
+
+
+def _listview_apply(
+    result: Any,
+    state: dict[str, Any],
+    *,
+    filter_mode: ListViewMode | None,
+    fields_mode: ListViewMode | None,
+    pagination_mode: ListViewMode | None,
+) -> Any:
+    """Pipeline: unwrap Page → local filter → local fields → local paginate → Response.
+
+    If `result` isn't a list or Page (e.g. a scalar / single dict), bypass
+    list-view processing and return as-is.
+    """
+    next_cursor: str | None = None
+    items: list[dict[str, Any]]
+    if isinstance(result, Page):
+        items = list(result.items)
+        next_cursor = result.next_cursor
+    elif isinstance(result, list):
+        items = [r for r in result if isinstance(r, dict)]
+    else:
+        return result  # not a list-view-shaped result, leave alone
+
+    if filter_mode is ListViewMode.LOCAL and state.get("filter"):
+        from a2kit import projection  # noqa: PLC0415
+
+        items = list(projection.filter_records(items, expr=state["filter"]))
+
+    if fields_mode is ListViewMode.LOCAL and state.get("fields"):
+        from a2kit import projection  # noqa: PLC0415
+
+        items = list(projection.project_fields(items, fields=state["fields"]))
+
+    if pagination_mode is ListViewMode.LOCAL:
+        limit = state.get("limit", 50)
+        offset = _decode_cursor(state.get("cursor"))
+        sliced = items[offset : offset + limit]
+        next_cursor = _encode_cursor(offset + limit) if offset + limit < len(items) else None
+        items = sliced
+
+    from a2kit.formatter import Response, format_response  # noqa: PLC0415
+
+    base = format_response(items)
+    return Response(format=base.format, data=base.data, truncated=base.truncated, next_cursor=next_cursor)
 
 
 def _check_tool_call_contamination(bound: inspect.BoundArguments, fn_name: str) -> None:
@@ -218,9 +417,10 @@ def _check_tool_call_contamination(bound: inspect.BoundArguments, fn_name: str) 
 
 def tool(  # noqa: C901, PLR0915 — fat decorator by design
     *,
-    enricher: ErrorEnricher | EnricherRegistry | None = None,
+    enricher: EnricherFn | None = None,
     store: ConnectionStore[Any] | None = None,
-    connection_param: str | None = None,
+    connection: bool = True,
+    connection_param: str | None = None,  # v0.9: deprecated, kept as soft alias; drops in v0.10
     write: bool = False,
     streaming: bool = False,
     tool_call_guard: bool = True,
@@ -229,9 +429,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     resolver_registry: ResolverRegistry | None = None,
     server: Any = None,
     capabilities: Iterable[Capability] = (),
-    cel_filter_param: str | None = None,
-    fields_param: str | None = None,
-    projection: bool = False,
+    filter: ListViewMode | None = None,  # noqa: A002
+    fields: ListViewMode | None = None,
+    pagination: ListViewMode | None = None,
     router_context: Any = None,
     cli: str | None = None,
 ) -> Callable[[F], F]:
@@ -252,25 +452,39 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         # Auto-tag seam: merge author-supplied caps + write/router context.
         tool_caps = _compute_tool_capabilities(set(capabilities), write=write, tool_name=resolved_tool_name)
 
-        if projection and (cel_filter_param is not None or fields_param is not None):
-            msg = (
-                "projection=True is sugar for `cel_filter_param='filter', fields_param='fields'` "
-                "with auto-injected wrapper params. Combine one path or the other, not both."
-            )
-            raise ValueError(msg)
+        # List-view modes (filter / fields / pagination) — verify Passthrough
+        # params exist on fn at decoration time. Local params are injected later.
+        _verify_passthrough_params(
+            fn,
+            sig,
+            filter_mode=filter,
+            fields_mode=fields,
+            pagination_mode=pagination,
+        )
+        has_listview = filter is not None or fields is not None or pagination is not None
 
-        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
+        # Connection handling — three modes:
+        #   1) connection=False         → no connection (utility tool)
+        #   2) connection_param=<name>  → legacy v0.8 path (deprecated, drops v0.10)
+        #   3) connection=True (default) → typed-info DI (v0.9 idiom)
+        info_target: tuple[str, type] | None = None
+        needs_connection_arg = False
+        if connection and connection_param is None:
+            info_target = _detect_info_param(fn, sig)
+            needs_connection_arg = info_target is not None or store is not None
+
+        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:  # noqa: C901
             """Run pre-call steps. Returns args/kwargs/key and a context-reset token."""
-            bound = sig.bind_partial(*args, **kwargs)
-            bound.apply_defaults()
-
-            if tool_call_guard:
-                _check_tool_call_contamination(bound, resolved_tool_name)
-
             connection_key: tuple[str, ...] | None = None
             ctx_token: Any = None
-            if connection_param is not None and connection_param in bound.arguments:
-                raw = bound.arguments[connection_param]
+
+            if needs_connection_arg:
+                # v0.9 path: kit injected `connection: str` into wrapper sig.
+                # Pop it before fn receives kwargs; bind resolved info to typed param.
+                raw = kwargs.pop("connection", None)
+                if raw is None:
+                    msg = f"Tool {resolved_tool_name!r} requires a `connection` argument (the saved connection key)."
+                    raise TypeError(msg)
                 connection_key = _resolve_connection_key(raw)
                 info = _lookup_connection(connection_key, store)
                 info = _resolve_info_strings(info, resolver_registry)
@@ -278,58 +492,47 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
                 if router_context is not None:
                     ctx_token = router_context._set(info)  # noqa: SLF001
+                if info_target is not None:
+                    kwargs[info_target[0]] = info
+            elif connection_param is not None:
+                # v0.8 legacy path — fn declares the param itself; we look it up
+                # by name in bound args. Deprecated; drops in v0.10.
+                bound = sig.bind_partial(*args, **kwargs)
+                bound.apply_defaults()
+                if connection_param in bound.arguments:
+                    raw = bound.arguments[connection_param]
+                    connection_key = _resolve_connection_key(raw)
+                    info = _lookup_connection(connection_key, store)
+                    info = _resolve_info_strings(info, resolver_registry)
+                    if write and getattr(info, "read_only", False):
+                        raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
+                    if router_context is not None:
+                        ctx_token = router_context._set(info)  # noqa: SLF001
+
+            # Tool-call envelope guard runs after kwargs mutation so the
+            # injected info object isn't pattern-matched as contaminated text.
+            if tool_call_guard:
+                bound = sig.bind_partial(*args, **kwargs)
+                bound.apply_defaults()
+                _check_tool_call_contamination(bound, resolved_tool_name)
+
             return args, kwargs, connection_key, ctx_token
-
-        def _extract_projection(bound: inspect.BoundArguments) -> tuple[str, list[str] | None]:
-            """Extract filter+fields values from bound args (for cel_filter_param / fields_param)."""
-            filter_expr = ""
-            fields_value: list[str] | None = None
-            if cel_filter_param is not None and cel_filter_param in bound.arguments:
-                raw = bound.arguments[cel_filter_param]
-                if isinstance(raw, str):
-                    filter_expr = raw
-            if fields_param is not None and fields_param in bound.arguments:
-                raw_f = bound.arguments[fields_param]
-                if isinstance(raw_f, list):
-                    fields_value = [str(f) for f in raw_f]
-            return filter_expr, fields_value
-
-        def _maybe_post_process(result: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-            if cel_filter_param is None and fields_param is None:
-                return result
-            bound = sig.bind_partial(*args, **kwargs)
-            bound.apply_defaults()
-            filter_expr, fields_value = _extract_projection(bound)
-            if not filter_expr and not fields_value:
-                return result
-            from a2kit.formatter import format_response  # noqa: PLC0415
-
-            return format_response(result, filter=filter_expr, fields=fields_value)
-
-        def _projection_pop(kwargs: dict[str, Any]) -> tuple[str, list[str] | None]:
-            """Pop synthesised `filter`+`fields` kwargs (projection=True path).
-
-            Defensive on type — non-str/non-list values fall back to empty.
-            """
-            raw_filter = kwargs.pop("filter", "")
-            raw_fields = kwargs.pop("fields", None)
-            filter_val = raw_filter if isinstance(raw_filter, str) else ""
-            fields_val = [str(f) for f in raw_fields] if isinstance(raw_fields, list) else None
-            return filter_val, fields_val
-
-        def _projection_post(result: Any, filter_val: str, fields_val: list[str] | None) -> Any:
-            if not (filter_val or fields_val):
-                return result
-            from a2kit.formatter import format_response  # noqa: PLC0415
-
-            return format_response(result, filter=filter_val, fields=fields_val)
 
         if is_async:
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 ctx_token: Any = None
-                proj_filter, proj_fields = _projection_pop(kwargs) if projection else ("", None)
+                lv_state = (
+                    _listview_extract_local(
+                        kwargs,
+                        filter_mode=filter,
+                        fields_mode=fields,
+                        pagination_mode=pagination,
+                    )
+                    if has_listview
+                    else {}
+                )
                 try:
                     args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
@@ -337,13 +540,19 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         result = await fn(*args, **kwargs)
                         if streaming and isinstance(result, AsyncIterator):
                             return await _consume_or_passthrough_async(result)
-                        if projection:
-                            return _projection_post(result, proj_filter, proj_fields)
-                        return _maybe_post_process(result, args, kwargs)
+                        if has_listview:
+                            return _listview_apply(
+                                result,
+                                lv_state,
+                                filter_mode=filter,
+                                fields_mode=fields,
+                                pagination_mode=pagination,
+                            )
+                        return result
                 except Exception as exc:
                     if enricher is None:
                         raise
-                    raise enricher.enrich(exc, tool_name=resolved_tool_name) from exc
+                    raise enricher(exc, resolved_tool_name) from exc
                 finally:
                     if ctx_token is not None and router_context is not None:
                         router_context._reset(ctx_token)  # noqa: SLF001
@@ -354,33 +563,74 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 ctx_token: Any = None
-                proj_filter, proj_fields = _projection_pop(kwargs) if projection else ("", None)
+                lv_state = (
+                    _listview_extract_local(
+                        kwargs,
+                        filter_mode=filter,
+                        fields_mode=fields,
+                        pagination_mode=pagination,
+                    )
+                    if has_listview
+                    else {}
+                )
                 try:
                     args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
                     with span_cm:
                         result = fn(*args, **kwargs)
-                        if projection:
-                            return _projection_post(result, proj_filter, proj_fields)
-                        return _maybe_post_process(result, args, kwargs)
+                        if has_listview:
+                            return _listview_apply(
+                                result,
+                                lv_state,
+                                filter_mode=filter,
+                                fields_mode=fields,
+                                pagination_mode=pagination,
+                            )
+                        return result
                 except Exception as exc:
                     if enricher is None:
                         raise
-                    raise enricher.enrich(exc, tool_name=resolved_tool_name) from exc
+                    raise enricher(exc, resolved_tool_name) from exc
                 finally:
                     if ctx_token is not None and router_context is not None:
                         router_context._reset(ctx_token)  # noqa: SLF001
 
             wrapper = sync_wrapper
 
-        if projection:
-            _inject_projection_signature(wrapper, fn, sig)
+        # Build the kit-injected param list: `connection: str` (if applicable)
+        # then Local list-view params. All splice in front of any VAR_KEYWORD.
+        injected: list[inspect.Parameter] = []
+        if needs_connection_arg:
+            injected.append(
+                inspect.Parameter(
+                    "connection",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=inspect.Parameter.empty,
+                    annotation=str,
+                )
+            )
+        injected.extend(_listview_local_params(filter_mode=filter, fields_mode=fields, pagination_mode=pagination))
+        # Hide the typed info-target param from the agent-facing schema —
+        # FastMCP introspects via the wrapper, so we strip it here.
+        hide_names: set[str] = {info_target[0]} if info_target is not None else set()
+        _splice_wrapper_signature(wrapper, fn, sig, injected, hide_names=hide_names)
 
         if return_anno is not None:
             wrapper.__annotations__ = {**wrapper.__annotations__, "return": return_anno}
             fn.__annotations__ = {**fn.__annotations__, "return": return_anno}
 
-        _inject_param_docs(wrapper, fn, sig, connection_param=connection_param, cli=cli)
+        # Auto-inject param docs. The injected `connection: str` (when present)
+        # is the agent-facing key — its docstring matters more than fn's typed
+        # info param (which the agent never sees). Legacy connection_param=
+        # uses its own name.
+        doc_connection_param = "connection" if needs_connection_arg else connection_param
+        _inject_param_docs(
+            wrapper,
+            fn,
+            sig,
+            connection_param=doc_connection_param,
+            cli=cli,
+        )
 
         # Stamp computed capability tags so the runner / select can filter.
         # `setattr` (rather than `wrapper._a2kit_capabilities = ...`) keeps ty
@@ -461,7 +711,10 @@ def _inject_param_docs(
     registry = _registered_param_docs()
     existing = wrapper.__doc__ or ""
     additions: list[str] = []
-    for param_name in sig.parameters:
+    # Use wrapper's spliced signature if set (so kit-injected `connection` is
+    # iterated alongside fn-declared params).
+    effective_sig = getattr(wrapper, "__signature__", None) or sig
+    for param_name in effective_sig.parameters:
         if param_name in existing:
             continue
         if param_name == connection_param:

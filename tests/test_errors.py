@@ -1,17 +1,10 @@
-"""Tests for a2kit.errors — ErrorEnricher protocol, registry, and built-in."""
+"""Tests for a2kit.errors — callable enricher contract + chain + built-in factory."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
-
-from a2kit import (
-    ConnectionNotFound,
-    ConnectionNotFoundEnricher,
-    EnricherRegistry,
-    ErrorEnricher,
-)
+from a2kit import ConnectionNotFound, chain, connection_enricher
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,75 +14,70 @@ if TYPE_CHECKING:
     from .conftest import AtlassianInfo
 
 
-def test_protocol_runtime_check_accepts_compatible_class() -> None:
-    class _MyEnricher:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return exc
-
-    assert isinstance(_MyEnricher(), ErrorEnricher)
+# ---- chain() ---------------------------------------------------------------
 
 
-def test_registry_returns_input_when_empty() -> None:
-    reg = EnricherRegistry()
+def test_chain_empty_is_identity() -> None:
+    chained = chain()
     exc = ValueError("x")
-    assert reg.enrich(exc) is exc
+    assert chained(exc) is exc
 
 
-def test_registry_first_matching_enricher_wins() -> None:
-    class _A:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            if isinstance(exc, ValueError):
-                return RuntimeError("from A")
-            return exc
+def test_chain_first_transformer_wins() -> None:
+    def a(exc: Exception, tool_name: str | None = None) -> Exception:
+        if isinstance(exc, ValueError):
+            return RuntimeError("from A")
+        return exc
 
-    class _B:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return RuntimeError("from B")  # would always fire
+    def b(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError("from B")  # would always fire if reached
 
-    reg = EnricherRegistry()
-    reg.register(_A())
-    reg.register(_B())
-
-    out = reg.enrich(ValueError("v"))
+    chained = chain(a, b)
+    out = chained(ValueError("v"))
     assert isinstance(out, RuntimeError)
     assert "from A" in str(out)
 
 
-def test_registry_falls_through_when_first_returns_input(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Pass:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return exc
+def test_chain_falls_through_to_next() -> None:
+    def passthrough(exc: Exception, tool_name: str | None = None) -> Exception:
+        return exc
 
-    class _Wins:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return RuntimeError(f"wins:{tool_name}")
+    def wins(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError(f"wins:{tool_name}")
 
-    reg = EnricherRegistry()
-    reg.register(_Pass())
-    reg.register(_Wins())
-
-    out = reg.enrich(ValueError("v"), tool_name="my_tool")
+    chained = chain(passthrough, wins)
+    out = chained(ValueError("v"), "my_tool")
     assert "wins:my_tool" in str(out)
 
 
-def test_connection_not_found_enricher_passes_through_other_exceptions(
+def test_chain_returns_input_when_no_match() -> None:
+    def never(exc: Exception, tool_name: str | None = None) -> Exception:
+        return exc
+
+    chained = chain(never, never)
+    exc = ValueError("v")
+    assert chained(exc) is exc
+
+
+# ---- connection_enricher() factory ------------------------------------------
+
+
+def test_connection_enricher_passes_through_other_exceptions(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    enricher = ConnectionNotFoundEnricher(atlassian_store)
+    enrich = connection_enricher(atlassian_store)
     exc = ValueError("nope")
-    assert enricher.enrich(exc) is exc
+    assert enrich(exc) is exc
 
 
-def test_connection_not_found_enricher_adds_available_list_and_suggestion(
-    atlassian_store: ConnectionStore[AtlassianInfo], config_dir: Path
-) -> None:
+def test_connection_enricher_adds_available_list_and_suggestion(atlassian_store: ConnectionStore[AtlassianInfo], config_dir: Path) -> None:
     from .conftest import AtlassianInfo
 
     atlassian_store.save(AtlassianInfo(key=("prod",), url="https://x", email="e", token="t"))
     atlassian_store.save(AtlassianInfo(key=("staging",), url="https://x", email="e", token="t"))
 
-    enricher = ConnectionNotFoundEnricher(atlassian_store)
-    out = enricher.enrich(ConnectionNotFound(("proteea",)), tool_name="my_tool")
+    enrich = connection_enricher(atlassian_store)
+    out = enrich(ConnectionNotFound(("proteea",)), "my_tool")
 
     assert isinstance(out, ConnectionNotFound)
     assert "Available" in str(out)
@@ -98,22 +86,22 @@ def test_connection_not_found_enricher_adds_available_list_and_suggestion(
     assert out.available_connections == ["prod", "staging"]
 
 
-def test_connection_not_found_enricher_handles_empty_store(
+def test_connection_enricher_handles_empty_store(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    enricher = ConnectionNotFoundEnricher(atlassian_store)
-    out = enricher.enrich(ConnectionNotFound(("missing",)))
+    enrich = connection_enricher(atlassian_store)
+    out = enrich(ConnectionNotFound(("missing",)))
     assert "No connections" in str(out)
 
 
-def test_connection_not_found_enricher_no_close_match(
+def test_connection_enricher_no_close_match(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
     from .conftest import AtlassianInfo
 
     atlassian_store.save(AtlassianInfo(key=("alpha",), url="https://x", email="e", token="t"))
-    enricher = ConnectionNotFoundEnricher(atlassian_store)
-    out = enricher.enrich(ConnectionNotFound(("zzzzzzzz",)))
+    enrich = connection_enricher(atlassian_store)
+    out = enrich(ConnectionNotFound(("zzzzzzzz",)))
     msg = str(out)
     assert "Available" in msg
     assert "Did you mean" not in msg

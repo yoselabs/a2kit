@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from a2kit import EnricherRegistry, InvalidToolReturnTypeError
+from a2kit import InvalidToolReturnTypeError
 from a2kit.tools import preserve_return_annotation, tool
 
 
@@ -50,28 +50,20 @@ def test_sync_passes_through_when_no_enricher() -> None:
 
 
 def test_sync_routes_exceptions_through_enricher() -> None:
-    class _E:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return RuntimeError(f"enriched:{tool_name}:{exc}")
-
-    reg = EnricherRegistry()
-    reg.register(_E())
+    def enrich(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError(f"enriched:{tool_name}:{exc}")
 
     def my_tool(x: int) -> dict:
         raise ValueError("boom")
 
-    wrapped = tool(enricher=reg)(my_tool)
+    wrapped = tool(enricher=enrich)(my_tool)
     with pytest.raises(RuntimeError, match="enriched:my_tool:boom"):
         wrapped(1)
 
 
 def test_async_passes_through_and_routes_through_enricher() -> None:
-    class _E:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return RuntimeError("enriched-async")
-
-    reg = EnricherRegistry()
-    reg.register(_E())
+    def enrich(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError("enriched-async")
 
     async def ok_tool(x: int) -> dict:
         return {"x": x}
@@ -79,8 +71,8 @@ def test_async_passes_through_and_routes_through_enricher() -> None:
     async def bad_tool(x: int) -> dict:
         raise ValueError("oops")
 
-    ok_wrapped = tool(enricher=reg)(ok_tool)
-    bad_wrapped = tool(enricher=reg)(bad_tool)
+    ok_wrapped = tool(enricher=enrich)(ok_tool)
+    bad_wrapped = tool(enricher=enrich)(bad_tool)
 
     assert asyncio.run(ok_wrapped(3)) == {"x": 3}
     with pytest.raises(RuntimeError, match="enriched-async"):
