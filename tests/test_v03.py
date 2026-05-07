@@ -349,6 +349,9 @@ def test_mcprunner_derives_class_from_store(tmp_path: Path) -> None:
         def __init__(self) -> None:
             self.settings = type("S", (), {"host": "h", "port": 1})()
 
+        def tool(self, *_a: Any, **_kw: Any) -> Any:
+            return lambda fn: fn
+
         def run(self, transport: str = "stdio") -> None:
             pass
 

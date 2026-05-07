@@ -1,6 +1,6 @@
 [project]
 name = "a2kit"
-version = "0.10.0"
+version = "0.11.0.dev0"
 description = "Thin library on top of FastMCP — additive primitives for connection management, tool decoration, schema snapshots, router-module registration, lint, capabilities + select grammar, and HTTP cassette testing."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]
@@ -92,7 +92,10 @@ max-returns = 6
     "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN206",
 ]
 "src/a2kit/lint/static.py" = ["C901", "PLR0911", "PLR0912", "SIM103", "PERF401", "FURB171", "RUF034"]
-"src/a2kit/scaffold.py" = ["C901"]
+# Pydantic-modeled module: field types (`EnricherFn`, `ResolverRegistry`,
+# `Mapping[...]`) must be importable at runtime for Pydantic to resolve them,
+# so the TYPE_CHECKING-block ruff hints don't apply.
+"src/a2kit/scaffold.py" = ["C901", "TC001", "TC003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

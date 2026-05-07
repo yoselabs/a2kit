@@ -26,8 +26,9 @@ import re
 import sys
 import tomllib
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, Unpack
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, NamedTuple, Protocol, TypeVar, Unpack, runtime_checkable
 
 import click
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -42,8 +43,10 @@ from a2kit._select import (
     parse_select,
     validate_atoms,
 )
-from a2kit.connections import ConnectionInfo, ConnectionStore
+from a2kit.connections import ConnectionInfo, ConnectionStore, ConnectionStoreLike
+from a2kit.enrichers import EnricherFn
 from a2kit.exceptions import ConnectionNotFound
+from a2kit.tokens import ResolverRegistry
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -79,9 +82,13 @@ class _EphemeralAwareStore:
     base-store keys + ephemeral keys uniformly.
     """
 
-    def __init__(self, base: Any, ephemeral: dict[tuple[str, ...], Any] | None) -> None:
+    def __init__(
+        self,
+        base: Any,
+        ephemeral: Mapping[tuple[str, ...], Any] | None,
+    ) -> None:
         self._base = base
-        self._ephemeral = ephemeral or {}
+        self._ephemeral = dict(ephemeral) if ephemeral else {}
 
     def load(self, key: tuple[str, ...]) -> Any:
         if key in self._ephemeral:
@@ -340,10 +347,15 @@ class Router(BaseModel, Generic[ConnT]):
     write_capabilities: ClassVar[set[Capability]] = {Cap.WRITE}
 
     # DI (router-level — inherited by every tool the router registers):
-    store: Any = None
-    enricher: Any = None
-    resolver_registry: Any = None
-    ephemeral: Any = None
+    # v0.11: typed via Protocols / type aliases (was `Any`). Pydantic still
+    # accepts these because `arbitrary_types_allowed=True`; ty / IDEs now see
+    # the real shape on every consumer.
+    store: ConnectionStoreLike | None = None
+    enricher: EnricherFn | None = None
+    resolver_registry: ResolverRegistry | None = None
+    # `Mapping` is covariant in the value type → callers can pass
+    # `dict[tuple[str, ...], MyConn]` for any `MyConn <: ConnectionInfo`.
+    ephemeral: Mapping[tuple[str, ...], ConnectionInfo] | None = None
 
     # Existing fields:
     snapshot_dir: Path | None = None
@@ -423,7 +435,7 @@ class Router(BaseModel, Generic[ConnT]):
 
     def _apply_bindings(self, server: Any, store: Any, *, mode_filter: set[str]) -> None:
         """Iterate `cls._tools`, call `@a2kit.tool(...)` with merged kwargs."""
-        from a2kit.errors import connection_enricher as _connection_enricher  # noqa: PLC0415
+        from a2kit.enrichers import connection_enricher as _connection_enricher  # noqa: PLC0415
         from a2kit.tools import tool as _tool_decorator  # noqa: PLC0415
 
         base_store = self.store if self.store is not None else store
@@ -464,29 +476,51 @@ class Router(BaseModel, Generic[ConnT]):
             _tool_decorator(**merged)(binding.fn)
 
 
+@runtime_checkable
+class _RegisterableRouter(Protocol):
+    """Internal Protocol — what `RouterRegistry.apply` actually needs from each entry.
+
+    Both `Router` instances and decorator-registered classes satisfy this
+    structurally. Defined here (not exported) to make the duck-typing in
+    `apply()` legible to ty / IDEs and to remove the `hasattr(...)` branches.
+    """
+
+    def register_read(self, server: Any, store: Any) -> None: ...
+
+    def register_write(self, server: Any, store: Any) -> None: ...
+
+
+class _RouterEntry(NamedTuple):
+    """One row in `RouterRegistry._routers`. Replaces the v0.10 raw 3-tuple."""
+
+    name: str
+    default: bool
+    item: Any  # `Router` instance or decorator-registered class — duck-typed
+
+
 class RouterRegistry:
     """Registry of routers — supports `Router` instances and class-decorator form."""
 
     def __init__(self) -> None:
-        self._routers: list[tuple[str, bool, Any]] = []
+        self._routers: list[_RouterEntry] = []
 
     def add(self, router: Router) -> Router:
         """Register a `Router` instance. Returns the instance for chaining."""
-        self._routers.append((router.name, router.default, router))
+        self._routers.append(_RouterEntry(router.name, router.default, router))
         return router
 
     def router(self, name: str, *, default: bool = True) -> Any:
         """Register a router class via decorator."""
 
         def decorator(cls: Any) -> Any:
-            self._routers.append((name, default, cls))
+            self._routers.append(_RouterEntry(name, default, cls))
             return cls
 
         return decorator
 
     def names(self) -> list[str]:
         """Return ordered router names."""
-        return [name for name, _default, _r in self._routers]
+        return [entry.name for entry in self._routers]
 
     def routers_with_stores(self, fallback_store: Any = None) -> list[tuple[str, Any]]:
         """Return [(router_name, store)] for routers that have a store (own or inherited).
@@ -495,16 +529,16 @@ class RouterRegistry:
         runner-level `fallback_store` is used.
         """
         out: list[tuple[str, Any]] = []
-        for name, _default, item in self._routers:
-            router_store = getattr(item, "store", None)
+        for entry in self._routers:
+            router_store = getattr(entry.item, "store", None)
             chosen = router_store if router_store is not None else fallback_store
             if chosen is not None:
-                out.append((name, chosen))
+                out.append((entry.name, chosen))
         return out
 
     def defaults(self) -> set[str]:
         """Return the set of names enabled-by-default."""
-        return {name for name, default, _r in self._routers if default}
+        return {entry.name for entry in self._routers if entry.default}
 
     def apply(
         self,
@@ -520,14 +554,15 @@ class RouterRegistry:
         so the fat decorator can auto-tag.
         """
         wanted = set(enabled) if enabled is not None else self.defaults()
-        unknown = wanted - {name for name, _d, _r in self._routers}
+        unknown = wanted - {entry.name for entry in self._routers}
         if unknown:
             msg = f"Unknown router(s): {sorted(unknown)}; available: {self.names()}"
             raise ValueError(msg)
         applied: list[str] = []
-        for name, _default, item in self._routers:
-            if name not in wanted:
+        for entry in self._routers:
+            if entry.name not in wanted:
                 continue
+            item = entry.item
             router_obj = item if isinstance(item, Router) else None
             # v0.6: per-router store wins over the runner-level fallback.
             effective_store = getattr(item, "store", None) or store
@@ -542,7 +577,7 @@ class RouterRegistry:
                     item.register_write(server, effective_store)
             finally:
                 _set_active(None, None)
-            applied.append(name)
+            applied.append(entry.name)
         return applied
 
 
@@ -601,6 +636,23 @@ def _register_pyproject_capabilities(a2kit_table: dict[str, Any]) -> None:
         )
 
 
+@runtime_checkable
+class FastMCPLike(Protocol):
+    """Minimum FastMCP server surface a2kit drives.
+
+    Any object passed to `MCPRunner(server, ...)` must satisfy this. The Protocol
+    is intentionally loose: nested `settings` is `Any` because we only assign
+    `settings.host` / `settings.port` at HTTP startup, and pinning the inner
+    shape would reject test fakes for no real safety win. Private surfaces
+    (`_tool_manager`) are accessed with `getattr` and not encoded here.
+    """
+
+    settings: Any
+
+    def tool(self, *args: Any, **kwargs: Any) -> Any: ...
+    def run(self, *args: Any, **kwargs: Any) -> Any: ...
+
+
 # --------------------------------------------------------------------------- #
 # MCPRunner — flag parsing + transport selection.
 # --------------------------------------------------------------------------- #
@@ -620,15 +672,15 @@ class MCPRunner:
 
     def __init__(
         self,
-        server: Any,
+        server: FastMCPLike,
         *,
-        store: Any | None = None,
+        store: ConnectionStore[Any] | None = None,
         router_registry: RouterRegistry | None = None,
         name: str = "a2kit",
         default_select: SelectExpr | str | None = None,
     ) -> None:
-        self.server = server
-        self.store = store
+        self.server: FastMCPLike = server
+        self.store: ConnectionStore[Any] | None = store
         self.router_registry = router_registry
         self.connection_class = store.connection_class if store is not None else None
         self.name = name
@@ -811,6 +863,7 @@ def _atom_polarity(expr: SelectExpr, _negated: bool = False) -> dict[tuple[str, 
 
 
 __all__ = [
+    "FastMCPLike",
     "MCPRunner",
     "Router",
     "RouterRegistry",

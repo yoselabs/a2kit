@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.11.0 — 2026-05-08 (in progress)
+
+**Contract-clarity turn.** Tightens the public vocabulary, restores type
+safety on the most-used classes, and exposes a stable accessor for tool
+metadata. No new behaviour — the engine is untouched. Existing v0.10 tools
+keep working without changes.
+
+### New
+
+- **`a2kit.enrichers`** is the canonical home for `EnricherFn`,
+  `chain(*fns)`, and `connection_enricher(store)`. The previous module
+  `a2kit.errors` is now a deprecation shim that re-exports from `enrichers`
+  and warns at import. Scheduled for removal in **v0.13**. Update imports:
+  `from a2kit.enrichers import ...`. The clarification: `a2kit.exceptions`
+  holds exception *classes*, `a2kit.enrichers` holds enrichment *functions*.
+- **`ConnectionInfoLike` / `ConnectionStoreLike`** moved to their natural
+  home `a2kit.connections` (still re-exported from the deprecated
+  `a2kit.errors` for one cycle, and from the top-level `a2kit` namespace).
+- **`FastMCPLike` Protocol** in `a2kit.scaffold` — the minimum FastMCP server
+  surface `MCPRunner` drives (`tool()`, `run()`, `settings`). Use it to type
+  your own server wrappers / mocks. Runtime-checkable.
+- **`tool_metadata(fn)` → `ToolMetadata`** — public, frozen, slotted accessor
+  for the kit-stamped `_a2kit_*` attrs (`tool_name`, `capabilities`,
+  `format`). Tests and consumers should assert against `ToolMetadata`, not
+  the underlying private attributes.
+
+### Changed (typing — no runtime behaviour change)
+
+- `Router.store / .enricher / .resolver_registry / .ephemeral` are now
+  typed (`ConnectionStoreLike | None`, `EnricherFn | None`,
+  `ResolverRegistry | None`, `Mapping[tuple[str, ...], ConnectionInfo] | None`)
+  instead of `Any`. Pydantic still accepts these — `arbitrary_types_allowed=True`
+  was already set — but ty / IDEs now see the real shape on every consumer.
+- `MCPRunner.__init__(server, store=...)` accepts `FastMCPLike` and
+  `ConnectionStore[Any] | None` instead of `Any`.
+- `RouterRegistry._routers` entries are now `_RouterEntry` NamedTuples
+  instead of bare 3-tuples — internal cleanup, no API change.
+- `Page[T]` docstring locks the convention: `T` is `BaseModel` (preferred —
+  enables tsv/toon precompute) or `dict[str, Any]` (ad-hoc rows). The
+  TypeVar bound is left off because Pydantic v2 generic-bound interplay
+  with `Page[dict[...]]` is fragile.
+- `next_cursor` documented as an opaque agent-only string (the kit never
+  parses or interprets it).
+
+### Removed
+
+- **`a2kit.A2KIT_CONFIG_HOME`** — was a self-alias for `ENV_CONFIG_HOME`.
+  Use `a2kit.ENV_CONFIG_HOME` instead. `a2kit.A2KIT_CONFIG_HOME` now raises
+  `ImportError` with a migration hint.
+
+### Deprecated
+
+- **`a2kit.errors` module** — emits `DeprecationWarning` at import. Removed
+  in v0.13.
+
+### Compatibility
+
+- All v0.10 tests pass unchanged. 618 tests, 100% coverage, ruff + ty clean.
+- Test fakes for `FastMCPLike`-typed args may need to add a `tool()` method
+  if they didn't have one (most fixtures already do for FastMCP parity).
+
 ## 0.10.0 — 2026-05-07
 
 **Surface-simplification turn.** Four targeted wins, all additive over v0.9:

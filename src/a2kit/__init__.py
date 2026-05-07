@@ -23,7 +23,7 @@ v0.7 highlights (idiomatic Python pass):
 
 from __future__ import annotations
 
-from a2kit import docs, errors, formatter, lint, projection, scaffold, testing, tools
+from a2kit import docs, enrichers, errors, formatter, lint, projection, scaffold, testing, tools
 from a2kit._capabilities import (
     Cap,
     Capability,
@@ -37,12 +37,12 @@ from a2kit._tool_kwargs import ToolKwargs
 from a2kit.connections import (
     ENV_CONFIG_HOME,
     ConnectionInfo,
+    ConnectionInfoLike,
     ConnectionStore,
+    ConnectionStoreLike,
     default_config_dir,
 )
-from a2kit.errors import (
-    ConnectionInfoLike,
-    ConnectionStoreLike,
+from a2kit.enrichers import (
     EnricherFn,
     chain,
     connection_enricher,
@@ -73,6 +73,7 @@ from a2kit.formatter import (
     format_response,
 )
 from a2kit.scaffold import (
+    FastMCPLike,
     MCPRunner,
     Router,
     RouterRegistry,
@@ -88,14 +89,11 @@ from a2kit.tokens import (
     resolve_op,
     resolve_token,
 )
-from a2kit.tools import tool
+from a2kit.tools import ToolMetadata, tool, tool_metadata
 
-A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
-
-__version__ = "0.10.0"
+__version__ = "0.11.0.dev0"
 
 __all__ = [
-    "A2KIT_CONFIG_HOME",
     "ENV_CONFIG_HOME",
     "A2KitError",
     "BudgetConfig",
@@ -109,6 +107,7 @@ __all__ = [
     "ConnectionStoreLike",
     "EnricherFn",
     "EnvVarNotFound",
+    "FastMCPLike",
     "InvalidConnectionKey",
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
@@ -133,6 +132,7 @@ __all__ = [
     "TokenResolutionError",
     "ToolCallContamination",
     "ToolKwargs",
+    "ToolMetadata",
     "UnknownCapability",
     "WriteNotAllowed",
     "__version__",
@@ -143,6 +143,7 @@ __all__ = [
     "default_config_dir",
     "default_registry",
     "docs",
+    "enrichers",
     "errors",
     "format_response",
     "formatter",
@@ -159,6 +160,7 @@ __all__ = [
     "sel",
     "testing",
     "tool",
+    "tool_metadata",
     "tools",
 ]
 
@@ -170,6 +172,9 @@ def __getattr__(name: str) -> object:
         raise ImportError(msg)
     if name == "FeatureRegistry":
         msg = "`a2kit.FeatureRegistry` was removed in v0.4. Use `a2kit.RouterRegistry`."
+        raise ImportError(msg)
+    if name == "A2KIT_CONFIG_HOME":
+        msg = "`a2kit.A2KIT_CONFIG_HOME` was removed in v0.11 (it was a self-alias). Use `a2kit.ENV_CONFIG_HOME` instead."
         raise ImportError(msg)
     msg = f"module 'a2kit' has no attribute {name!r}"
     raise AttributeError(msg)

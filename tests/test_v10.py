@@ -406,7 +406,7 @@ def _ephem_list(info: _Conn) -> dict:  # type: ignore[type-arg]
 def test_ephemeral_store_proxies_list_connections_for_enricher(tmp_path: Path) -> None:
     """Auto-enricher must work on a Router that mixes base + ephemeral connections."""
     base = _store(tmp_path)
-    ephemeral = {("ephem-only",): _Conn(key=("ephem-only",), base_url="https://e")}
+    ephemeral: dict[tuple[str, ...], _Conn] = {("ephem-only",): _Conn(key=("ephem-only",), base_url="https://e")}
 
     server = _FakeServer()
     EphemRouter(store=base, ephemeral=ephemeral).register_read(server, base)

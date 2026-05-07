@@ -380,6 +380,13 @@ class _RunServer:
         self.run_calls: list[str] = []
         self.tools: list[str] = []
 
+    def tool(self, *_a: Any, **_kw: Any) -> Any:
+        def deco(fn: Any) -> Any:
+            self.tools.append(fn.__name__)
+            return fn
+
+        return deco
+
     def run(self, transport: str = "stdio") -> None:
         self.run_calls.append(transport)
 
@@ -746,9 +753,13 @@ def test_lint_a2k009_skips_non_iterable_capabilities(tmp_path: Path) -> None:
     assert not any(f.rule == "A2K009" for f in findings)
 
 
-def test_a2kit_config_home_alias() -> None:
-    assert a2kit.A2KIT_CONFIG_HOME == "A2KIT_CONFIG_HOME"
+def test_a2kit_config_home_alias_removed() -> None:
+    """v0.11: `A2KIT_CONFIG_HOME` self-alias removed; the canonical name is `ENV_CONFIG_HOME`."""
+    import pytest
+
     assert a2kit.ENV_CONFIG_HOME == "A2KIT_CONFIG_HOME"
+    with pytest.raises(ImportError, match="ENV_CONFIG_HOME"):
+        _ = a2kit.A2KIT_CONFIG_HOME  # noqa: B018
 
 
 def test_lint_a2k008_explicit_tool_name(tmp_path: Path) -> None:

@@ -239,15 +239,25 @@ class Response(BaseModel):
 
 
 T = TypeVar("T")
+"""Page item type. `_dump_items` flattens `BaseModel` instances and `dict`s
+(other shapes degrade to runtime resolution); we leave `T` unbounded
+because Pydantic v2 generic-bound interplay with `Page[dict[...]]` is fragile,
+and a doc-only constraint is cheaper than the runtime cost."""
 
 
 class Page(BaseModel, Generic[T]):
     """Typed paginated result — the contract a tool returns when it owns
     pagination (`pagination=Passthrough` on the decorator).
 
-    The kit reads `next_cursor` and threads it back to the agent via the
-    enclosing `Response`. `items` is the page payload; downstream Local
-    filter/fields apply within the page.
+    The kit reads `next_cursor` (an opaque agent-only string — the kit never
+    parses or interprets it; tools mint it, agents echo it back) and threads
+    it through to the next call. `items` is the page payload; downstream
+    Local filter/fields apply within the page.
+
+    Convention: `T` is `BaseModel` (preferred — gives tsv/toon precompute)
+    or `dict[str, Any]` (ad-hoc rows; format resolved at runtime). Other
+    shapes (str/int/list/...) have no row interpretation and will surface
+    as a JSON dump or a runtime error from `_dump_items`.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

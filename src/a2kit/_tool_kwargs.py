@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 if TYPE_CHECKING:
     from a2kit._capabilities import Capability
     from a2kit.connections import ConnectionStore
-    from a2kit.errors import EnricherFn
+    from a2kit.enrichers import EnricherFn
     from a2kit.formatter import ListViewMode
     from a2kit.tokens import ResolverRegistry
 

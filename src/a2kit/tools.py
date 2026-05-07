@@ -42,6 +42,7 @@ import functools
 import inspect
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from a2kit._capabilities import Cap, Capability
@@ -67,7 +68,7 @@ class _NullSpan:
 
 if TYPE_CHECKING:
     from a2kit.connections import ConnectionInfo, ConnectionStore
-    from a2kit.errors import EnricherFn
+    from a2kit.enrichers import EnricherFn
     from a2kit.tokens import ResolverRegistry
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -721,7 +722,7 @@ def _safe_list_connection_keys(store: object) -> list[str] | None:
     captured at decoration time — `login` calls made after server build do
     not refresh the docstring.
     """
-    from a2kit.errors import ConnectionStoreLike  # noqa: PLC0415
+    from a2kit.connections import ConnectionStoreLike  # noqa: PLC0415
 
     if not isinstance(store, ConnectionStoreLike):
         return None
@@ -836,13 +837,49 @@ async def _consume_or_passthrough_async(async_iter: AsyncIterator[Any]) -> Any:
     return async_iter
 
 
+@dataclass(frozen=True, slots=True)
+class ToolMetadata:
+    """Public read-only view of `@a2kit.tool`-stamped attributes on a wrapper.
+
+    Returned by :func:`tool_metadata`. The shape is the contract; the underlying
+    `_a2kit_*` attributes are the implementation. Tests and consumers should
+    assert against `ToolMetadata`, not the raw attrs.
+    """
+
+    capabilities: frozenset[Any]
+    tool_name: str
+    format: FormatName | None
+
+
+def tool_metadata(fn: Any) -> ToolMetadata:
+    """Return the kit-stamped metadata for a `@a2kit.tool`-decorated function.
+
+    Raises ``AttributeError`` if `fn` was not decorated with the kit (i.e. the
+    `_a2kit_tool_name` stamp is missing). Stable across releases — the
+    underlying private attrs may change shape, the return value won't.
+    """
+    try:
+        tool_name = fn._a2kit_tool_name  # noqa: SLF001
+    except AttributeError as exc:  # pragma: no cover — defensive
+        msg = f"{getattr(fn, '__name__', fn)!r} is not decorated with @a2kit.tool"
+        raise AttributeError(msg) from exc
+    raw_caps = getattr(fn, "_a2kit_capabilities", set())
+    return ToolMetadata(
+        capabilities=frozenset(raw_caps),
+        tool_name=tool_name,
+        format=getattr(fn, "_a2kit_format", None),
+    )
+
+
 __all__ = [
+    "ToolMetadata",
     "_get_current_transport",
     "_reset_auto_inject_cache",
     "_set_current_transport",
     "assert_clean_string",
     "preserve_return_annotation",
     "tool",
+    "tool_metadata",
 ]
 
 

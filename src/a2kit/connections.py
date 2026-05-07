@@ -33,9 +33,12 @@ import stat
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import Any, ClassVar, Generic, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, NamedTuple, Protocol, TypeVar, runtime_checkable
 
 import tomli_w
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from a2kit.exceptions import (
@@ -47,6 +50,32 @@ from a2kit.exceptions import (
 )
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+@runtime_checkable
+class ConnectionInfoLike(Protocol):
+    """Anything with a `.key: tuple[str, ...]` attribute.
+
+    The minimum shape consumers (e.g. `connection_enricher`) need from a listed
+    connection. Both `ConnectionInfo` subclasses and bespoke records satisfy
+    this structurally. Lives here next to `ConnectionStore`; re-exported from
+    `a2kit.enrichers` for backward compatibility through one cycle.
+    """
+
+    key: tuple[str, ...]
+
+
+@runtime_checkable
+class ConnectionStoreLike(Protocol):
+    """Minimum store contract — `list_connections()` only.
+
+    Both `ConnectionStore` and the internal `_EphemeralAwareStore` proxy
+    satisfy this. Used by `connection_enricher` and the schema-hint helper to
+    avoid pulling in the full `ConnectionStore[ConnectionInfo]` generic.
+    """
+
+    def list_connections(self) -> Sequence[ConnectionInfoLike]: ...
+
 
 ENV_CONFIG_HOME = "A2KIT_CONFIG_HOME"
 DEFAULT_CONFIG_SUBDIR = Path(".config") / "a2kit" / "connections"
