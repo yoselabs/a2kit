@@ -1,0 +1,292 @@
+"""Tool decorator — composes with FastMCP's `@server.tool()`, does not replace it.
+
+v0.2 makes the decorator *fat*: connection lookup, token resolution, write-mode
+enforcement, XML-contamination guard, OTel spans, streaming awareness — all
+opt-in, all behind keyword args, all defaulting to v0.1's behaviour. A bare
+`@a2kit.tool()` (or the legacy `@a2kit.tools.tool()`) is byte-equivalent to
+v0.1.
+
+Behaviour order, before the wrapped function runs:
+
+1. Connection lookup (if `connection_param` set) — finds the connection key in
+   bound args, looks it up in `store` (and `ephemeral` dict if provided), raises
+   `ConnectionNotFound` enumerating available names if missing.
+2. Token resolution — recursively resolves `${ENV}` / `op://` / literals on every
+   string field of the loaded `ConnectionInfo`. The resolved info is injected as
+   a kwarg `info` (configurable via `info_kwarg=`).
+3. Read-only enforcement — if `write=True` and `info.read_only` is True, raises
+   `WriteNotAllowed`.
+4. String-param XML guard — every `str` argument is checked for the
+   `<parameter name=` pattern (tool-call-envelope contamination observed in
+   production). Disable via `xml_guard=False`.
+5. Run wrapped function (await if coroutine).
+6. Refuse `-> str` returns (decoration time) + preserve return annotation (v0.1).
+7. Error enrichment via the optional `enricher` (v0.1).
+8. OTel span — if `otel=True` AND `opentelemetry` is installed AND a non-default
+   tracer provider is configured, wraps the call in `a2kit.tool.<name>`. No-op
+   otherwise.
+9. Streaming awareness — if `streaming=True` and the wrapped function returns an
+   async iterator, the decorator collects items into a list on stdio transport
+   and yields them through on HTTP. Transport is read from the thread-local
+   `_current_transport` set by `MCPRunner`. No transport set → stdio.
+
+Standalone helper `assert_clean_string(value, param_name)` exposed for tests
+or non-decorated use.
+"""
+
+from __future__ import annotations
+
+import functools
+import inspect
+import threading
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, TypeVar
+
+from a2kit._otel import otel_span as _otel_span
+from a2kit.exceptions import (
+    ConnectionNotFound,
+    InvalidToolReturnTypeError,
+    ToolXMLContamination,
+    WriteNotAllowed,
+)
+
+
+class _NullSpan:
+    """Local no-op CM used when `otel=False` is passed to the decorator."""
+
+    def __enter__(self) -> _NullSpan:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+
+if TYPE_CHECKING:
+    from a2kit.connections import ConnectionInfo, ConnectionStore
+    from a2kit.errors import EnricherRegistry, ErrorEnricher
+    from a2kit.tokens import ResolverRegistry
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+# --------------------------------------------------------------------------- #
+# Transport seam — set by MCPRunner.run().
+# Documented seam: any code that needs to know transport reads via
+# `_get_current_transport()`. Tests can call `_set_current_transport()` directly.
+# --------------------------------------------------------------------------- #
+
+_TRANSPORT_LOCAL = threading.local()
+_XML_CONTAMINATION_MARKER = "<parameter name="
+
+
+def _set_current_transport(name: str | None) -> None:
+    """Internal seam used by `MCPRunner` (and tests) to flag transport."""
+    _TRANSPORT_LOCAL.value = name
+
+
+def _get_current_transport() -> str:
+    """Return current transport name; defaults to `'stdio'`."""
+    return getattr(_TRANSPORT_LOCAL, "value", None) or "stdio"
+
+
+# --------------------------------------------------------------------------- #
+# Helpers.
+# --------------------------------------------------------------------------- #
+
+
+def assert_clean_string(value: str, param_name: str = "<unnamed>", tool_name: str | None = None) -> None:
+    """Raise `ToolXMLContamination` if `value` contains the tool-XML opening tag.
+
+    Exposed standalone so consumers can run the same check in helper functions
+    that don't go through the decorator.
+    """
+    if isinstance(value, str) and _XML_CONTAMINATION_MARKER in value:
+        raise ToolXMLContamination(param_name=param_name, tool_name=tool_name)
+
+
+def preserve_return_annotation(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Copy `fn.__annotations__["return"]` onto the wrapper. Idempotent.
+
+    Use directly if you want the FastMCP annotation-hygiene fix without the rest
+    of `@tool(...)`. The trick: FastMCP walks `__wrapped__` chains via
+    `inspect.signature(follow_wrapped=True, eval_str=True)`; setting the
+    annotation on BOTH the wrapper and the wrapped survives that walk
+    (a2atlassian `decorators.py:84-85`).
+    """
+    return_anno = fn.__annotations__.get("return")
+    if return_anno is None:
+        return fn
+    fn.__annotations__["return"] = return_anno
+    return fn
+
+
+def _check_return_annotation(fn: Callable[..., Any]) -> Any:
+    """Reject `-> str` at decoration time. Returns the resolved annotation."""
+    annos = getattr(fn, "__annotations__", {})
+    if "return" not in annos:
+        return None
+    ret = annos["return"]
+    if ret is str or ret == "str":
+        raise InvalidToolReturnTypeError(fn.__name__)
+    return ret
+
+
+def _resolve_connection_key(value: Any) -> tuple[str, ...]:
+    """Coerce a connection arg into a tuple-key. Supports str / tuple / list."""
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, tuple):
+        return value
+    if isinstance(value, list):
+        return tuple(value)
+    msg = f"connection param must be str|tuple|list, got {type(value).__name__}"
+    raise TypeError(msg)
+
+
+def _lookup_connection(
+    key: tuple[str, ...],
+    store: ConnectionStore[Any] | None,
+    ephemeral: dict[tuple[str, ...], Any] | None,
+) -> Any:
+    if ephemeral is not None and key in ephemeral:
+        return ephemeral[key]
+    if store is None:
+        raise ConnectionNotFound(key)
+    return store.load(key)
+
+
+def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | None) -> ConnectionInfo:
+    """Return a copy of `info` with every str field resolved through `registry`.
+
+    Pydantic v2 frozen models support `.model_copy(update={...})`. We collect
+    the str-typed fields, resolve each, and produce one new instance.
+    """
+    from a2kit.tokens import resolve_token  # noqa: PLC0415 — keep tokens lazy
+
+    update: dict[str, str] = {}
+    for name, value in info.model_dump().items():
+        if isinstance(value, str) and name != "key":
+            update[name] = resolve_token(value, registry=registry)
+    if not update:
+        return info
+    return info.model_copy(update=update)
+
+
+def _check_xml_contamination(bound: inspect.BoundArguments, fn_name: str) -> None:
+    for name, value in bound.arguments.items():
+        if isinstance(value, str):
+            assert_clean_string(value, param_name=name, tool_name=fn_name)
+
+
+# --------------------------------------------------------------------------- #
+# The fat decorator.
+# --------------------------------------------------------------------------- #
+
+
+def tool(  # noqa: C901
+    *,
+    enricher: ErrorEnricher | EnricherRegistry | None = None,
+    store: ConnectionStore[Any] | None = None,
+    connection_param: str | None = None,
+    info_kwarg: str = "info",
+    ephemeral: dict[tuple[str, ...], Any] | None = None,
+    write: bool = False,
+    streaming: bool = False,
+    xml_guard: bool = True,
+    otel: bool = True,
+    tool_name: str | None = None,
+    resolver_registry: ResolverRegistry | None = None,
+) -> Callable[[F], F]:
+    """Compose with FastMCP's `@server.tool()`. See module docstring for behaviour.
+
+    All args optional. `@a2kit.tool()` with no args behaves identically to v0.1.
+
+    The decorator is intentionally a *factory* so `@a2kit.tool()` (parens) is the
+    only call shape — keeps the v0.1 contract.
+    """
+
+    def decorator(fn: F) -> F:  # noqa: C901
+        return_anno = _check_return_annotation(fn)
+        is_async = inspect.iscoroutinefunction(fn)
+        sig = inspect.signature(fn)
+        resolved_tool_name = tool_name or fn.__name__
+
+        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None]:
+            """Run pre-call steps. Returns the (possibly-mutated) args/kwargs and key."""
+            bound = sig.bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+
+            if xml_guard:
+                _check_xml_contamination(bound, resolved_tool_name)
+
+            connection_key: tuple[str, ...] | None = None
+            if connection_param is not None and connection_param in bound.arguments:
+                raw = bound.arguments[connection_param]
+                connection_key = _resolve_connection_key(raw)
+                info = _lookup_connection(connection_key, store, ephemeral)
+                info = _resolve_info_strings(info, resolver_registry)
+                if write and getattr(info, "read_only", False):
+                    raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
+                kwargs = {**kwargs, info_kwarg: info}
+            return args, kwargs, connection_key
+
+        if is_async:
+
+            @functools.wraps(fn)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    args, kwargs, conn_key = _prelude(args, kwargs)
+                    span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
+                    with span_cm:
+                        result = await fn(*args, **kwargs)
+                        if streaming and isinstance(result, AsyncIterator):
+                            return await _consume_or_passthrough_async(result)
+                        return result
+                except Exception as exc:
+                    if enricher is None:
+                        raise
+                    raise enricher.enrich(exc, tool_name=resolved_tool_name) from exc
+
+            wrapper: Callable[..., Any] = async_wrapper
+        else:
+
+            @functools.wraps(fn)
+            def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    args, kwargs, conn_key = _prelude(args, kwargs)
+                    span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
+                    with span_cm:
+                        return fn(*args, **kwargs)
+                except Exception as exc:
+                    if enricher is None:
+                        raise
+                    raise enricher.enrich(exc, tool_name=resolved_tool_name) from exc
+
+            wrapper = sync_wrapper
+
+        if return_anno is not None:
+            wrapper.__annotations__ = {**wrapper.__annotations__, "return": return_anno}
+            fn.__annotations__ = {**fn.__annotations__, "return": return_anno}
+        return wrapper  # type: ignore[return-value]
+
+    return decorator
+
+
+async def _consume_or_passthrough_async(async_iter: AsyncIterator[Any]) -> Any:
+    """If transport is stdio, collect into a list. Otherwise pass through."""
+    if _get_current_transport() == "stdio":
+        return [item async for item in async_iter]
+    return async_iter
+
+
+__all__ = [
+    "_get_current_transport",
+    "_set_current_transport",
+    "assert_clean_string",
+    "preserve_return_annotation",
+    "tool",
+]
+
+
+# Keep a useless reference so `from collections.abc import Awaitable` does not
+# trip the unused-import lint when type-checkers thin out the import block.
+_ = Awaitable
