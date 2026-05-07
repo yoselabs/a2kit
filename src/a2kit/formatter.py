@@ -16,14 +16,19 @@ Public API:
 - `toon_or_json(data)` — returns `(format, payload)` where `format` is `"toon"`
   or `"json"`. Heuristic: list-of-dicts with uniform keys → TOON; everything else
   → JSON-compact.
+- `Response` — typed Pydantic model returned by `format_response`. Fields:
+  `format` ("toon"|"json"), `data` (string), `truncated` (bool), `next_cursor`
+  (str | None — reserved for v0.9 pagination).
 - `format_response(data, *, truncate_at=2000)` — packages truncation + format
-  routing into the canonical envelope: `{"format": ..., "data": ..., "truncated": bool}`.
+  routing into a `Response`.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict
 
 DEFAULT_MAX_CHARS = 2000
 DEFAULT_MARKER = "…[truncated]"
@@ -74,7 +79,7 @@ def _toon_encode(rows: list[dict[str, Any]]) -> str:
     return f"{header}\n{body}"
 
 
-def toon_or_json(data: Any) -> tuple[str, Any]:
+def toon_or_json(data: Any) -> tuple[Literal["toon", "json"], str]:
     """Pick the wire format. Returns `(format_name, payload)`.
 
     - List-of-dicts with uniform keys → `("toon", "<encoded-string>")`.
@@ -88,6 +93,24 @@ def toon_or_json(data: Any) -> tuple[str, Any]:
     return "json", json.dumps(data, separators=(",", ":"), default=str, ensure_ascii=False)
 
 
+class Response(BaseModel):
+    """Typed envelope returned by `format_response` (v0.8).
+
+    Attributes:
+      format: ``"toon"`` or ``"json"`` — the wire format of `data`.
+      data: the encoded payload as a string.
+      truncated: True iff at least one string field was clipped past `truncate_at`.
+      next_cursor: reserved for v0.9 pagination; always None today.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format: Literal["toon", "json"]
+    data: str
+    truncated: bool
+    next_cursor: str | None = None
+
+
 def format_response(
     data: Any,
     *,
@@ -95,22 +118,22 @@ def format_response(
     fields: list[str] | None = None,
     truncate_at: int = DEFAULT_MAX_CHARS,
     marker: str = DEFAULT_MARKER,
-) -> dict[str, Any]:
+) -> Response:
     """Run filter (CEL) → projection → truncation → format routing.
 
-    Envelope: `{"format": "toon"|"json", "data": <string>, "truncated": bool}`.
+    Returns a `Response` with `.format`, `.data`, `.truncated`, `.next_cursor`.
 
     - `filter` — optional CEL boolean expression, applied only when `data` is a
       list of dicts. Uses `a2kit.projection.filter_records`.
     - `fields` — optional list of keys to keep per record (list-of-dicts only).
     - `truncate_at` — max char length per string before truncation.
 
-    `truncated=True` iff at least one string field was longer than `truncate_at`.
+    `.truncated == True` iff at least one string field was longer than `truncate_at`.
     """
     processed = _apply_filter_and_fields(data, filter_expr=filter, fields=fields)
     truncated_value = truncate(processed, truncate_at, marker)
     fmt, payload = toon_or_json(truncated_value)
-    return {"format": fmt, "data": payload, "truncated": marker in payload}
+    return Response(format=fmt, data=payload, truncated=marker in payload)
 
 
 def _apply_filter_and_fields(data: Any, *, filter_expr: str, fields: list[str] | None) -> Any:
@@ -129,4 +152,4 @@ def _apply_filter_and_fields(data: Any, *, filter_expr: str, fields: list[str] |
     return rows
 
 
-__all__ = ["DEFAULT_MARKER", "DEFAULT_MAX_CHARS", "format_response", "toon_or_json", "truncate"]
+__all__ = ["DEFAULT_MARKER", "DEFAULT_MAX_CHARS", "Response", "format_response", "toon_or_json", "truncate"]

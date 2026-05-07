@@ -1,10 +1,10 @@
-"""Tests for v0.2-only exception types: WriteNotAllowed, ToolXMLContamination."""
+"""Tests for v0.2-only exception types: WriteNotAllowed, ToolCallContamination."""
 
 from __future__ import annotations
 
 import pytest
 
-from a2kit import A2KitError, ToolXMLContamination, WriteNotAllowed
+from a2kit import A2KitError, ToolCallContamination, WriteNotAllowed
 
 
 def test_write_not_allowed_message() -> None:
@@ -26,15 +26,15 @@ def test_write_not_allowed_empty_key() -> None:
     assert "<unknown>" in str(exc)
 
 
-def test_xml_contamination_message() -> None:
-    exc = ToolXMLContamination("body", tool_name="t")
+def test_tool_call_contamination_message() -> None:
+    exc = ToolCallContamination("body", tool_name="t")
     assert "body" in str(exc)
     assert "t" in str(exc)
     assert isinstance(exc, ValueError)
 
 
-def test_xml_contamination_no_tool_name() -> None:
-    exc = ToolXMLContamination("body")
+def test_tool_call_contamination_no_tool_name() -> None:
+    exc = ToolCallContamination("body")
     assert "body" in str(exc)
 
 

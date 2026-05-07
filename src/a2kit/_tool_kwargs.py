@@ -41,14 +41,13 @@ class ToolKwargs(TypedDict, total=False):
     capabilities: set[Capability]
     write: bool
     streaming: bool
-    xml_guard: bool
+    tool_call_guard: bool
     otel: bool
     tool_name: str | None
     cel_filter_param: str | None
     fields_param: str | None
     enricher: ErrorEnricher | EnricherRegistry | None
     resolver_registry: ResolverRegistry | None
-    ephemeral: dict[tuple[str, ...], Any] | None
     cli: str | None
 
 

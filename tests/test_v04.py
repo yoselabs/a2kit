@@ -100,23 +100,23 @@ def test_projection_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_format_response_filter_only() -> None:
     rows = [{"x": 1}, {"x": 5}]
     env = a2kit.format_response(rows, filter="x > 3")
-    assert env["format"] == "toon"
-    assert "5" in env["data"]
-    assert "1" not in env["data"].split("\n")[1]
+    assert env.format == "toon"
+    assert "5" in env.data
+    assert "1" not in env.data.split("\n")[1]
 
 
 def test_format_response_fields_only() -> None:
     rows = [{"a": 1, "b": 2}]
     env = a2kit.format_response(rows, fields=["a"])
-    assert env["format"] == "toon"
-    assert "b" not in env["data"]
+    assert env.format == "toon"
+    assert "b" not in env.data
 
 
 def test_format_response_filter_and_fields() -> None:
     rows = [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
     env = a2kit.format_response(rows, filter="a > 2", fields=["a"])
-    assert env["format"] == "toon"
-    assert "3" in env["data"]
+    assert env.format == "toon"
+    assert "3" in env.data
 
 
 def test_format_response_no_filter_or_fields_unchanged() -> None:
@@ -129,12 +129,12 @@ def test_format_response_no_filter_or_fields_unchanged() -> None:
 def test_format_response_filter_skipped_for_non_list() -> None:
     """Filter only applies to list-of-dicts shapes."""
     env = a2kit.format_response({"a": 1}, filter="a > 0")
-    assert env["format"] == "json"
+    assert env.format == "json"
 
 
 def test_format_response_filter_skipped_for_mixed_list() -> None:
     env = a2kit.format_response([1, 2, 3], filter="x > 0")
-    assert env["format"] == "json"
+    assert env.format == "json"
 
 
 # ---- @a2kit.tool with cel_filter_param / fields_param ----------------------
@@ -148,9 +148,8 @@ def test_tool_cel_filter_param_threads_through() -> None:
         return rows
 
     env = list_widgets(filter="v > 5")
-    assert isinstance(env, dict)
-    assert env["format"] == "toon"
-    assert "10" in env["data"]
+    assert env.format == "toon"
+    assert "10" in env.data
 
 
 def test_tool_cel_filter_param_no_args_unchanged() -> None:
@@ -172,8 +171,7 @@ def test_tool_cel_filter_param_fields_only() -> None:
         return rows
 
     env = list_widgets(fields=["a"])
-    assert isinstance(env, dict)
-    assert "b" not in env["data"]
+    assert "b" not in env.data
 
 
 async def test_tool_cel_filter_param_async() -> None:
@@ -184,8 +182,7 @@ async def test_tool_cel_filter_param_async() -> None:
         return rows
 
     env = await list_widgets(filter="v > 5")
-    assert isinstance(env, dict)
-    assert env["format"] == "toon"
+    assert env.format == "toon"
 
 
 def test_tool_cel_filter_param_non_string_value_ignored() -> None:

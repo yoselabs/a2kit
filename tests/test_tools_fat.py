@@ -15,7 +15,7 @@ from a2kit import (
     ConnectionNotFound,
     ConnectionStore,
     ResolverRegistry,
-    ToolXMLContamination,
+    ToolCallContamination,
     WriteNotAllowed,
 )
 from a2kit._context import _RouterContext
@@ -79,10 +79,16 @@ async def test_connection_lookup_missing_raises(widget_store: ConnectionStore[Wi
 
 
 async def test_connection_ephemeral_priority(widget_store: ConnectionStore[WidgetConn]) -> None:
+    # v0.8: ephemeral connections live at the Router/store layer, not on the
+    # tool decorator. We exercise the same behaviour via _EphemeralAwareStore
+    # directly (the proxy Router._apply_bindings builds at runtime).
+    from a2kit.scaffold import _EphemeralAwareStore  # noqa: PLC0415
+
     eph = {("eph",): WidgetConn(key=("eph",), url="https://eph", api_key="x")}
     ctx = _ctx()
+    proxy = _EphemeralAwareStore(widget_store, eph)
 
-    @a2kit.tool(store=widget_store, connection_param="connection", ephemeral=eph, router_context=ctx)
+    @a2kit.tool(store=proxy, connection_param="connection", router_context=ctx)
     async def get(connection: str) -> dict:
         info = ctx.info()
         return {"url": info.url}
@@ -91,10 +97,13 @@ async def test_connection_ephemeral_priority(widget_store: ConnectionStore[Widge
 
 
 async def test_connection_no_store_only_ephemeral() -> None:
+    from a2kit.scaffold import _EphemeralAwareStore  # noqa: PLC0415
+
     eph = {("eph",): WidgetConn(key=("eph",), url="https://eph", api_key="x")}
     ctx = _ctx()
+    proxy = _EphemeralAwareStore(None, eph)
 
-    @a2kit.tool(connection_param="connection", ephemeral=eph, router_context=ctx)
+    @a2kit.tool(store=proxy, connection_param="connection", router_context=ctx)
     async def get(connection: str) -> dict:
         info = ctx.info()
         return {"url": info.url}
@@ -244,20 +253,20 @@ async def test_write_allowed_when_read_write(tmp_path: Path) -> None:
     assert await update("rw") == {"ok": True}
 
 
-# -- xml guard ---------------------------------------------------------------
+# -- tool-call guard ---------------------------------------------------------
 
 
-async def test_xml_guard_raises_on_contamination() -> None:
+async def test_tool_call_guard_raises_on_contamination() -> None:
     @a2kit.tool()
     async def f(text: str) -> dict:
         return {"text": text}
 
-    with pytest.raises(ToolXMLContamination):
+    with pytest.raises(ToolCallContamination):
         await f('<parameter name="x">foo')
 
 
-async def test_xml_guard_disabled() -> None:
-    @a2kit.tool(xml_guard=False)
+async def test_tool_call_guard_disabled() -> None:
+    @a2kit.tool(tool_call_guard=False)
     async def f(text: str) -> dict:
         return {"text": text}
 
@@ -267,7 +276,7 @@ async def test_xml_guard_disabled() -> None:
 
 def test_assert_clean_string_helper() -> None:
     assert_clean_string("clean", "p")
-    with pytest.raises(ToolXMLContamination):
+    with pytest.raises(ToolCallContamination):
         assert_clean_string('<parameter name="x">y', "p")
 
 
@@ -485,12 +494,12 @@ def test_sync_with_connection_lookup(widget_store: ConnectionStore[WidgetConn]) 
     assert get("prod") == {"url": "https://api"}
 
 
-def test_sync_xml_guard_raises() -> None:
+def test_sync_tool_call_guard_raises() -> None:
     @a2kit.tool()
     def f(text: str) -> dict:
         return {}
 
-    with pytest.raises(ToolXMLContamination):
+    with pytest.raises(ToolCallContamination):
         f('<parameter name="x">y')
 
 

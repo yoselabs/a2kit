@@ -27,10 +27,9 @@ class ToolConfig(BaseModel):
     server: Any = None
     store: Any = None
     connection_param: str | None = None
-    ephemeral: dict[tuple[str, ...], Any] | None = None
     write: bool = False
     streaming: bool = False
-    xml_guard: bool = True
+    tool_call_guard: bool = True
     otel: bool = True
     tool_name: str | None = None
     enricher: Any = None

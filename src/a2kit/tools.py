@@ -1,25 +1,26 @@
 """Tool decorator — composes with FastMCP's `@server.tool()`, does not replace it.
 
 v0.2 makes the decorator *fat*: connection lookup, token resolution, write-mode
-enforcement, XML-contamination guard, OTel spans, streaming awareness — all
-opt-in, all behind keyword args, all defaulting to v0.1's behaviour. A bare
-`@a2kit.tool()` (or the legacy `@a2kit.tools.tool()`) is byte-equivalent to
-v0.1.
+enforcement, tool-call envelope contamination guard, OTel spans, streaming
+awareness — all opt-in, all behind keyword args, all defaulting to v0.1's
+behaviour. A bare `@a2kit.tool()` (or the legacy `@a2kit.tools.tool()`) is
+byte-equivalent to v0.1.
 
 Behaviour order, before the wrapped function runs:
 
 1. Connection lookup (if `connection_param` set) — finds the connection key in
-   bound args, looks it up in `store` (and `ephemeral` dict if provided), raises
-   `ConnectionNotFound` enumerating available names if missing.
+   bound args, looks it up in `store`, raises `ConnectionNotFound` enumerating
+   available names if missing. Ephemeral connections are merged into `store` at
+   the Router level (v0.8); the decorator no longer takes an `ephemeral=` kwarg.
 2. Token resolution — recursively resolves `${ENV}` / `op://` / literals on every
    string field of the loaded `ConnectionInfo`. The resolved info is exposed via
    `Router.context.info()` (or a hand-built `_RouterContext`); the v0.6
    `info=` kwarg-injection path was removed in v0.7.
 3. Read-only enforcement — if `write=True` and `info.read_only` is True, raises
    `WriteNotAllowed`.
-4. String-param XML guard — every `str` argument is checked for the
+4. Tool-call envelope guard — every `str` argument is checked for the
    `<parameter name=` pattern (tool-call-envelope contamination observed in
-   production). Disable via `xml_guard=False`.
+   production). Disable via `tool_call_guard=False`.
 5. Run wrapped function (await if coroutine).
 6. Refuse `-> str` returns (decoration time) + preserve return annotation (v0.1).
 7. Error enrichment via the optional `enricher` (v0.1).
@@ -48,7 +49,7 @@ from a2kit._otel import otel_span as _otel_span
 from a2kit.exceptions import (
     ConnectionNotFound,
     InvalidToolReturnTypeError,
-    ToolXMLContamination,
+    ToolCallContamination,
     WriteNotAllowed,
 )
 
@@ -77,7 +78,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 # --------------------------------------------------------------------------- #
 
 _TRANSPORT_LOCAL = threading.local()
-_XML_CONTAMINATION_MARKER = "<parameter name="
+_TOOL_CALL_CONTAMINATION_MARKER = "<parameter name="
 
 
 def _set_current_transport(name: str | None) -> None:
@@ -96,13 +97,13 @@ def _get_current_transport() -> str:
 
 
 def assert_clean_string(value: str, param_name: str = "<unnamed>", tool_name: str | None = None) -> None:
-    """Raise `ToolXMLContamination` if `value` contains the tool-XML opening tag.
+    """Raise `ToolCallContamination` if `value` contains a tool-call envelope tag.
 
     Exposed standalone so consumers can run the same check in helper functions
     that don't go through the decorator.
     """
-    if isinstance(value, str) and _XML_CONTAMINATION_MARKER in value:
-        raise ToolXMLContamination(param_name=param_name, tool_name=tool_name)
+    if isinstance(value, str) and _TOOL_CALL_CONTAMINATION_MARKER in value:
+        raise ToolCallContamination(param_name=param_name, tool_name=tool_name)
 
 
 def preserve_return_annotation(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -147,10 +148,7 @@ def _resolve_connection_key(value: Any) -> tuple[str, ...]:
 def _lookup_connection(
     key: tuple[str, ...],
     store: ConnectionStore[Any] | None,
-    ephemeral: dict[tuple[str, ...], Any] | None,
 ) -> Any:
-    if ephemeral is not None and key in ephemeral:
-        return ephemeral[key]
     if store is None:
         raise ConnectionNotFound(key)
     return store.load(key)
@@ -173,7 +171,41 @@ def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | Non
     return info.model_copy(update=update)
 
 
-def _check_xml_contamination(bound: inspect.BoundArguments, fn_name: str) -> None:
+def _inject_projection_signature(wrapper: Any, fn: Any, sig: inspect.Signature) -> None:
+    """Synthesise wrapper signature with `filter` + `fields` kwonly params.
+
+    Used by `@a2kit.tool(projection=True)` so authors don't have to declare the
+    projection knobs on their function. FastMCP introspects the wrapper via
+    `inspect.signature(follow_wrapped=True)`; setting `wrapper.__signature__`
+    short-circuits the `__wrapped__` chain so the synthetic sig wins.
+
+    Refuses to inject if the function already declares `filter` or `fields`
+    (collision = author intent we shouldn't shadow).
+    """
+    if "filter" in sig.parameters or "fields" in sig.parameters:
+        msg = (
+            "projection=True cannot be used on a function that already declares "
+            "`filter` or `fields` parameters; rename them or drop projection=True."
+        )
+        raise ValueError(msg)
+    extra = [
+        inspect.Parameter("filter", inspect.Parameter.KEYWORD_ONLY, default="", annotation=str),
+        inspect.Parameter("fields", inspect.Parameter.KEYWORD_ONLY, default=None, annotation="list[str] | None"),
+    ]
+    # Insert before any VAR_KEYWORD to satisfy Signature ordering rules.
+    params = list(sig.parameters.values())
+    insert_at = next(
+        (i for i, p in enumerate(params) if p.kind == inspect.Parameter.VAR_KEYWORD),
+        len(params),
+    )
+    new_params = params[:insert_at] + extra + params[insert_at:]
+    wrapper.__signature__ = sig.replace(parameters=new_params)
+    extras_anno = {"filter": str, "fields": "list[str] | None"}
+    wrapper.__annotations__ = {**wrapper.__annotations__, **extras_anno}
+    fn.__annotations__ = {**fn.__annotations__, **extras_anno}
+
+
+def _check_tool_call_contamination(bound: inspect.BoundArguments, fn_name: str) -> None:
     for name, value in bound.arguments.items():
         if isinstance(value, str):
             assert_clean_string(value, param_name=name, tool_name=fn_name)
@@ -189,10 +221,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     enricher: ErrorEnricher | EnricherRegistry | None = None,
     store: ConnectionStore[Any] | None = None,
     connection_param: str | None = None,
-    ephemeral: dict[tuple[str, ...], Any] | None = None,
     write: bool = False,
     streaming: bool = False,
-    xml_guard: bool = True,
+    tool_call_guard: bool = True,
     otel: bool = True,
     tool_name: str | None = None,
     resolver_registry: ResolverRegistry | None = None,
@@ -200,6 +231,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     capabilities: Iterable[Capability] = (),
     cel_filter_param: str | None = None,
     fields_param: str | None = None,
+    projection: bool = False,
     router_context: Any = None,
     cli: str | None = None,
 ) -> Callable[[F], F]:
@@ -220,20 +252,27 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         # Auto-tag seam: merge author-supplied caps + write/router context.
         tool_caps = _compute_tool_capabilities(set(capabilities), write=write, tool_name=resolved_tool_name)
 
+        if projection and (cel_filter_param is not None or fields_param is not None):
+            msg = (
+                "projection=True is sugar for `cel_filter_param='filter', fields_param='fields'` "
+                "with auto-injected wrapper params. Combine one path or the other, not both."
+            )
+            raise ValueError(msg)
+
         def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
             """Run pre-call steps. Returns args/kwargs/key and a context-reset token."""
             bound = sig.bind_partial(*args, **kwargs)
             bound.apply_defaults()
 
-            if xml_guard:
-                _check_xml_contamination(bound, resolved_tool_name)
+            if tool_call_guard:
+                _check_tool_call_contamination(bound, resolved_tool_name)
 
             connection_key: tuple[str, ...] | None = None
             ctx_token: Any = None
             if connection_param is not None and connection_param in bound.arguments:
                 raw = bound.arguments[connection_param]
                 connection_key = _resolve_connection_key(raw)
-                info = _lookup_connection(connection_key, store, ephemeral)
+                info = _lookup_connection(connection_key, store)
                 info = _resolve_info_strings(info, resolver_registry)
                 if write and getattr(info, "read_only", False):
                     raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
@@ -267,11 +306,30 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
 
             return format_response(result, filter=filter_expr, fields=fields_value)
 
+        def _projection_pop(kwargs: dict[str, Any]) -> tuple[str, list[str] | None]:
+            """Pop synthesised `filter`+`fields` kwargs (projection=True path).
+
+            Defensive on type — non-str/non-list values fall back to empty.
+            """
+            raw_filter = kwargs.pop("filter", "")
+            raw_fields = kwargs.pop("fields", None)
+            filter_val = raw_filter if isinstance(raw_filter, str) else ""
+            fields_val = [str(f) for f in raw_fields] if isinstance(raw_fields, list) else None
+            return filter_val, fields_val
+
+        def _projection_post(result: Any, filter_val: str, fields_val: list[str] | None) -> Any:
+            if not (filter_val or fields_val):
+                return result
+            from a2kit.formatter import format_response  # noqa: PLC0415
+
+            return format_response(result, filter=filter_val, fields=fields_val)
+
         if is_async:
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 ctx_token: Any = None
+                proj_filter, proj_fields = _projection_pop(kwargs) if projection else ("", None)
                 try:
                     args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
@@ -279,6 +337,8 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         result = await fn(*args, **kwargs)
                         if streaming and isinstance(result, AsyncIterator):
                             return await _consume_or_passthrough_async(result)
+                        if projection:
+                            return _projection_post(result, proj_filter, proj_fields)
                         return _maybe_post_process(result, args, kwargs)
                 except Exception as exc:
                     if enricher is None:
@@ -294,11 +354,14 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 ctx_token: Any = None
+                proj_filter, proj_fields = _projection_pop(kwargs) if projection else ("", None)
                 try:
                     args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
                     with span_cm:
                         result = fn(*args, **kwargs)
+                        if projection:
+                            return _projection_post(result, proj_filter, proj_fields)
                         return _maybe_post_process(result, args, kwargs)
                 except Exception as exc:
                     if enricher is None:
@@ -309,6 +372,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         router_context._reset(ctx_token)  # noqa: SLF001
 
             wrapper = sync_wrapper
+
+        if projection:
+            _inject_projection_signature(wrapper, fn, sig)
 
         if return_anno is not None:
             wrapper.__annotations__ = {**wrapper.__annotations__, "return": return_anno}

@@ -12,7 +12,7 @@ See [CHANGELOG](CHANGELOG.md#070--2026-05-07) for the full migration recipe.
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
 token resolution, a fat tool decorator (connection lookup + token resolution +
-write enforcement + xml guard + OTel + streaming), an `ErrorEnricher` cascade,
+write enforcement + tool-call guard + OTel + streaming), an `ErrorEnricher` cascade,
 an `MCPRunner` for flag parsing + transport selection, a `RouterRegistry` for
 auto-tagged tool capabilities + the `--select` grammar, TOON/JSON formatting +
 recursive truncation, a JSON-schema snapshot harness, and a vcrpy-backed
@@ -57,7 +57,7 @@ Requires Python 3.11+ and `uv`.
 |---|---|---|
 | `ConnectionInfo` / `ConnectionStore` | `a2kit.connections` | [`examples/multi_field_key_style.py`](examples/multi_field_key_style.py), [`examples/flat_key_style.py`](examples/flat_key_style.py) |
 | `resolve_token` / `ResolverRegistry` | `a2kit.tokens` | [`examples/multi_field_key_style.py`](examples/multi_field_key_style.py) |
-| **Fat** `@a2kit.tool(...)` (connection lookup + token + write + xml + OTel + streaming) | `a2kit.tools` | [`examples/fat_tool.py`](examples/fat_tool.py) |
+| **Fat** `@a2kit.tool(...)` (connection lookup + token + write + tool-call guard + OTel + streaming) | `a2kit.tools` | [`examples/fat_tool.py`](examples/fat_tool.py) |
 | `tools.tool` (legacy, == v0.1), `preserve_return_annotation`, `assert_clean_string` | `a2kit.tools` | [`examples/tool_decorator.py`](examples/tool_decorator.py) |
 | `ErrorEnricher`, `EnricherRegistry`, `ConnectionNotFoundEnricher` | `a2kit.errors` | [`examples/error_enricher.py`](examples/error_enricher.py) |
 | `MCPRunner`, `RouterRegistry`, `Router`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` | [`examples/runner.py`](examples/runner.py), [`examples/feature_modules.py`](examples/feature_modules.py), [`examples/scaffold_cli.py`](examples/scaffold_cli.py) |
@@ -65,7 +65,7 @@ Requires Python 3.11+ and `uv`.
 | `filter_records`, `project_fields` (CEL projection) | `a2kit.projection` | [`examples/projection.py`](examples/projection.py), [`examples/cel_filter_tool.py`](examples/cel_filter_tool.py) |
 | `connection_param_doc` | `a2kit.docs` | [`examples/fat_tool.py`](examples/fat_tool.py) |
 | `snapshot_schemas`, `assert_schemas_match`, `cassette` + pytest fixtures | `a2kit.testing`, `a2kit.pytest_plugin` | [`examples/schema_snapshot.py`](examples/schema_snapshot.py), [`examples/cassette_test.py`](examples/cassette_test.py) |
-| `WriteNotAllowed`, `ToolXMLContamination` (new exceptions) | `a2kit.exceptions` | — |
+| `WriteNotAllowed`, `ToolCallContamination` (new exceptions) | `a2kit.exceptions` | — |
 
 Optional extras: `a2kit[otel]` (opentelemetry-api), `a2kit[testing]` (vcrpy),
 `a2kit[projection]` (cel-python).

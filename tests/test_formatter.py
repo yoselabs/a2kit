@@ -69,18 +69,22 @@ def test_json_for_list_of_non_dicts() -> None:
 
 def test_format_response_envelope_toon() -> None:
     out = formatter.format_response([{"a": 1}, {"a": 2}])
-    assert out == {"format": "toon", "data": "a\n1\n2", "truncated": False}
+    assert isinstance(out, formatter.Response)
+    assert out.format == "toon"
+    assert out.data == "a\n1\n2"
+    assert out.truncated is False
+    assert out.next_cursor is None
 
 
 def test_format_response_envelope_json_truncated() -> None:
     out = formatter.format_response({"big": "x" * 5000}, truncate_at=10, marker="…[truncated]")
-    assert out["format"] == "json"
-    assert out["truncated"] is True
-    assert "…[truncated]" in out["data"]
+    assert out.format == "json"
+    assert out.truncated is True
+    assert "…[truncated]" in out.data
 
 
 def test_format_response_default_marker_propagates() -> None:
     out = formatter.format_response("x" * 5000)
     # single string is not list-of-dicts → JSON
-    assert out["format"] == "json"
-    assert out["truncated"] is True
+    assert out.format == "json"
+    assert out.truncated is True

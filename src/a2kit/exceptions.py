@@ -179,11 +179,11 @@ class InvalidFilterExpression(A2KitError, ValueError):  # noqa: N818
         super().__init__(f"Invalid CEL filter expression {expr!r}: {hint}")
 
 
-class ToolXMLContamination(A2KitError, ValueError):  # noqa: N818
-    """Raised when a string-typed tool param contains an MCP tool-XML opening tag.
+class ToolCallContamination(A2KitError, ValueError):  # noqa: N818
+    """Raised when a string-typed tool param contains a leaked tool-call envelope tag.
 
     Contamination pattern observed in production: agents leak the `<parameter name="...">`
-    framing into the body of a string argument. The fat decorator's `xml_guard`
+    framing into the body of a string argument. The fat decorator's `tool_call_guard`
     catches it before the tool body runs.
     """
 
@@ -192,7 +192,7 @@ class ToolXMLContamination(A2KitError, ValueError):  # noqa: N818
         self.tool_name = tool_name
         suffix = f" (tool {tool_name!r})" if tool_name else ""
         super().__init__(
-            f"Parameter {param_name!r} contains a tool-XML opening tag (`<parameter name=`)"
+            f"Parameter {param_name!r} contains a tool-call envelope tag (`<parameter name=`)"
             f"{suffix}. The agent likely leaked its tool-call envelope into the value. "
             "Re-issue the call with the parameter value alone."
         )

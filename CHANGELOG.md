@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.8.0 — 2026-05-07
+
+**Polish bundle.** Pre-1.0 cleanups surfaced after v0.7: rename
+`xml_guard` → `tool_call_guard`, lift ephemeral handling out of the tool
+decorator, type-tighten `Router.tool/.read/.write` signatures, type-promote
+`format_response`, and add a `projection=True` ergonomic shortcut.
+
+### New
+
+- **`@a2kit.tool(projection=True)`** — auto-injects `filter: str` and
+  `fields: list[str] | None` keyword-only params into the wrapper signature
+  (FastMCP's tool schema picks them up; agents call with them) and post-processes
+  the result through `format_response`. Authors no longer write any projection
+  plumbing for the common case:
+
+  ```python
+  @a2kit.tool(projection=True)
+  def list_widgets() -> list[dict]:
+      """Return widgets."""
+      return _WIDGETS
+  ```
+
+  Collisions with author-declared `filter`/`fields` params raise at decoration
+  time. The explicit `cel_filter_param=`/`fields_param=` path remains as a
+  power-user escape hatch and cannot combine with `projection=True`.
+
+- **`a2kit.Response`** — typed Pydantic envelope returned by `format_response`.
+  Fields: `format` (`Literal["toon", "json"]`), `data` (`str`), `truncated`
+  (`bool`), `next_cursor` (`str | None`, reserved for v0.9 pagination). Frozen,
+  `extra="forbid"`.
+
+- **`Router.tool/.read/.write` signatures use `Unpack[ToolKwargs]`.** Authors
+  composing higher-order Router classmethods now get end-to-end type-checking
+  on the kwarg contract.
+
+### Breaking
+
+- **`xml_guard` → `tool_call_guard`** on `@a2kit.tool(...)`, `ToolConfig`, and
+  the public `ToolKwargs` TypedDict. Same behaviour, less misleading name —
+  the guard refuses any `str` arg containing `<parameter name=` (tool-call
+  envelope contamination from agents), and that's a tool-call concern, not
+  XML in the abstract.
+
+- **`ToolXMLContamination` → `ToolCallContamination`.** Same shape, same
+  message; renamed for symmetry with the kwarg.
+
+- **`format_response` returns `Response`, not `dict`.** Migration: replace
+  `env["format"]` with `env.format`, etc.
+
+- **`ephemeral=` removed from public `@a2kit.tool` kwargs** and from the public
+  `ToolKwargs` TypedDict. Ephemeral connections live at the Router level only —
+  `Router(..., ephemeral={...})` works unchanged. Internally,
+  `Router._apply_bindings` now wraps the effective store in a private
+  `_EphemeralAwareStore` proxy so the tool decorator never thinks about
+  ephemeral connections. Tools that previously passed `ephemeral=` directly to
+  the decorator should construct an `_EphemeralAwareStore` explicitly or use a
+  Router.
+
+### Internal
+
+- 556 tests, 100% line+branch coverage on 2224 statements / 832 branches.
+  No changes to the linter pack, scaffold CLI, or runtime introspection seams.
+
 ## 0.7.0 — 2026-05-07
 
 **Idiomatic Python pass.** Pre-1.0 cleanups: idiomatic `StrEnum Cap`, removal of

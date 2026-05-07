@@ -1,4 +1,4 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.7.0).
+"""a2kit — thin library for FastMCP-based MCPs (v0.8.0).
 
 Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
 to FastMCP at any boundary stays clean. See README for the full rundown.
@@ -59,10 +59,10 @@ from a2kit.exceptions import (
     ProjectionUnavailable,
     SchemaSnapshotMismatch,
     TokenResolutionError,
-    ToolXMLContamination,
+    ToolCallContamination,
     WriteNotAllowed,
 )
-from a2kit.formatter import format_response
+from a2kit.formatter import Response, format_response
 from a2kit.scaffold import (
     MCPRunner,
     Router,
@@ -83,7 +83,7 @@ from a2kit.tools import tool
 
 A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 __all__ = [
     "A2KIT_CONFIG_HOME",
@@ -110,6 +110,7 @@ __all__ = [
     "OpResolutionError",
     "ProjectionUnavailable",
     "ResolverRegistry",
+    "Response",
     "Router",
     "RouterRegistry",
     "RunnerConfig",
@@ -117,9 +118,9 @@ __all__ = [
     "SelectAtom",
     "SelectExpr",
     "TokenResolutionError",
+    "ToolCallContamination",
     "ToolConfig",
     "ToolKwargs",
-    "ToolXMLContamination",
     "UnknownCapability",
     "WriteNotAllowed",
     "__version__",

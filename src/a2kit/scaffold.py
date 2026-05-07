@@ -27,7 +27,7 @@ import sys
 import tomllib
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, Unpack
 
 import click
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -48,6 +48,8 @@ from a2kit.exceptions import ConnectionNotFound
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from a2kit._tool_kwargs import ToolKwargs
+
 C = TypeVar("C", bound=ConnectionInfo)
 ConnT = TypeVar("ConnT", bound=ConnectionInfo)
 
@@ -65,6 +67,24 @@ def _parse_key_arg(raw: str) -> tuple[str, ...]:
     if "/" in raw:
         return tuple(p for p in raw.split("/") if p)
     return (raw,)
+
+
+class _EphemeralAwareStore:
+    """Private store-proxy: short-circuits `.load()` to an ephemeral dict before
+    delegating to the base store. Used by `Router._apply_bindings` to lift
+    ephemeral handling out of the tool decorator (v0.8).
+    """
+
+    def __init__(self, base: Any, ephemeral: dict[tuple[str, ...], Any] | None) -> None:
+        self._base = base
+        self._ephemeral = ephemeral or {}
+
+    def load(self, key: tuple[str, ...]) -> Any:
+        if key in self._ephemeral:
+            return self._ephemeral[key]
+        if self._base is None:
+            raise ConnectionNotFound(key)
+        return self._base.load(key)
 
 
 def build_cli(
@@ -289,7 +309,9 @@ class Router(BaseModel, Generic[ConnT]):
     them for imperative dynamic-tool registration (escape hatch).
 
     Per-Router DI lifts to the class — `store`, `enricher`, `resolver_registry`,
-    `ephemeral`. Per-tool overrides remain available on the decorator kwargs.
+    `ephemeral`. Per-tool overrides remain available on the decorator kwargs
+    (except `ephemeral` — v0.8: ephemeral is a Router-level concern only and is
+    merged into the effective store via `_EphemeralAwareStore`).
 
     `name` is auto-tagged onto every registered tool (unless `auto_tag=False`).
     """
@@ -354,19 +376,19 @@ class Router(BaseModel, Generic[ConnT]):
     # --- Decorator factories — record bindings at class-body-eval time. -----
 
     @classmethod
-    def tool(cls, **kwargs: Any) -> Any:
+    def tool(cls, **kwargs: Unpack[ToolKwargs]) -> Any:
         """Underlying primitive — register a tool on this router with explicit caps."""
-        return _make_decorator(cls, mode="tool", decorator_kwargs=dict(kwargs))
+        return _make_decorator(cls, mode="tool", decorator_kwargs=dict(**kwargs))
 
     @classmethod
-    def read(cls, **kwargs: Any) -> Any:
+    def read(cls, **kwargs: Unpack[ToolKwargs]) -> Any:
         """Register a read-mode tool. Effective caps include `cls.read_capabilities`."""
-        return _make_decorator(cls, mode="read", decorator_kwargs=dict(kwargs))
+        return _make_decorator(cls, mode="read", decorator_kwargs=dict(**kwargs))
 
     @classmethod
-    def write(cls, **kwargs: Any) -> Any:
+    def write(cls, **kwargs: Unpack[ToolKwargs]) -> Any:
         """Register a write-mode tool. Effective caps include `cls.write_capabilities`."""
-        return _make_decorator(cls, mode="write", decorator_kwargs=dict(kwargs))
+        return _make_decorator(cls, mode="write", decorator_kwargs=dict(**kwargs))
 
     # --- Default register_* impls — walk _tools, build effective tool kwargs. -
 
@@ -385,7 +407,10 @@ class Router(BaseModel, Generic[ConnT]):
         """Iterate `cls._tools`, call `@a2kit.tool(...)` with merged kwargs."""
         from a2kit.tools import tool as _tool_decorator  # noqa: PLC0415
 
-        effective_store = self.store if self.store is not None else store
+        base_store = self.store if self.store is not None else store
+        # Lift ephemeral connections to the store layer — the tool decorator
+        # itself never sees them (v0.8: no `ephemeral=` kwarg on @a2kit.tool).
+        effective_store = _EphemeralAwareStore(base_store, self.ephemeral) if self.ephemeral else base_store
         for binding in self._tools:
             if binding.mode not in mode_filter:
                 continue
@@ -394,7 +419,6 @@ class Router(BaseModel, Generic[ConnT]):
                 "store": effective_store,
                 "enricher": self.enricher,
                 "resolver_registry": self.resolver_registry,
-                "ephemeral": self.ephemeral,
                 "router_context": self.__class__.context,
             }
             # Per-tool decorator kwargs win over router DI.

@@ -462,7 +462,7 @@ def test_tool_config_extra_forbid() -> None:
 def test_tool_config_defaults() -> None:
     cfg = ToolConfig()
     assert cfg.write is False
-    assert cfg.xml_guard is True
+    assert cfg.tool_call_guard is True
 
 
 def test_runner_config_extra_forbid() -> None:

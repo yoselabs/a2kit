@@ -3,7 +3,8 @@
 Each Router subclass owns a fresh `_tools: list[_ToolBinding]` (initialised in
 `__init_subclass__`). The decorators record bindings; `RouterRegistry.apply()`
 materialises them into FastMCP `server.tool()` registrations at runtime,
-injecting Router-level DI (store, enricher, resolver_registry, ephemeral)
+injecting Router-level DI (store, enricher, resolver_registry; ephemeral is
+merged into store via _EphemeralAwareStore)
 and the per-Router ContextVar accessor.
 
 # Author seam:

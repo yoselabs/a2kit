@@ -1,7 +1,7 @@
 """Example: the fat `@a2kit.tool` decorator with all bells.
 
 Demonstrates connection lookup + token resolution + write enforcement +
-xml guard + OTel (left disabled — opt-in via `otel=True` once a provider is set).
+tool-call guard + OTel (left disabled — opt-in via `otel=True` once a provider is set).
 
 Run: `uv run python examples/fat_tool.py`
 """
@@ -42,7 +42,7 @@ def main() -> None:
     @server.tool()
     @a2kit.tool(store=store, connection_param="connection", router_context=WidgetsRouter.context)
     async def get_widget(connection: str, widget_id: str) -> dict:
-        """Fetch a widget. The decorator handles connection lookup, token resolution, XML guard."""
+        """Fetch a widget. The decorator handles connection lookup, token resolution, tool-call guard."""
         info = WidgetsRouter.context.info()
         return {"id": widget_id, "url": info.base_url, "key_resolved": info.api_key}
 
@@ -61,8 +61,8 @@ def main() -> None:
         print("update_widget(prod) -> blocked:", exc)
     try:
         asyncio.run(get_widget("prod", '<parameter name="x">leak'))
-    except a2kit.ToolXMLContamination as exc:
-        print("xml-guard caught contamination:", exc)
+    except a2kit.ToolCallContamination as exc:
+        print("tool-call-guard caught contamination:", exc)
 
 
 if __name__ == "__main__":
