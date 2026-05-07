@@ -109,6 +109,29 @@ class WriteNotAllowed(A2KitError, PermissionError):  # noqa: N818
         super().__init__(f"Connection {joined!r} is read-only — cannot run write-marked tool{suffix}.")
 
 
+class ProjectionUnavailable(A2KitError, ImportError):  # noqa: N818
+    """Raised when CEL projection helpers are called without `celpy` installed.
+
+    Install via the optional extra: `pip install 'a2kit[projection]'` or
+    `uv pip install celpy>=0.5`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "CEL projection requires the optional `celpy` dependency. "
+            "Install with `pip install 'a2kit[projection]'` (or `uv pip install celpy>=0.5`)."
+        )
+
+
+class InvalidFilterExpression(A2KitError, ValueError):  # noqa: N818
+    """Raised when a CEL filter expression fails to parse or returns a non-bool result."""
+
+    def __init__(self, expr: str, hint: str) -> None:
+        self.expr = expr
+        self.hint = hint
+        super().__init__(f"Invalid CEL filter expression {expr!r}: {hint}")
+
+
 class ToolXMLContamination(A2KitError, ValueError):  # noqa: N818
     """Raised when a string-typed tool param contains an MCP tool-XML opening tag.
 

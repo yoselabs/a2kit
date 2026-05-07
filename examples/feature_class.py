@@ -1,18 +1,17 @@
-"""Example: v0.3 `Feature` is now a deprecated alias of v0.3.1 `Router`.
+"""Example: `Router` subclass with enricher + snapshot/cassette dirs.
 
-This example shows the migration path: same shape, but instantiated via
-keyword args (Pydantic) instead of class-level attribute assignments.
+v0.4: the v0.3 `Feature` alias was removed. Instantiate `Router` (Pydantic
+BaseModel) via keyword args.
 
 Run: `uv run python examples/feature_class.py`
 """
 
 from __future__ import annotations
 
-import warnings
 from pathlib import Path
 from typing import Any
 
-from a2kit.scaffold import Feature, Router, RouterRegistry
+from a2kit.scaffold import Router, RouterRegistry
 
 
 class _IssuesEnricher:
@@ -23,7 +22,7 @@ class _IssuesEnricher:
 
 
 class IssuesRouter(Router):
-    """Router subclass — instantiate with `name=...` etc. (no class-attr syntax)."""
+    """Router subclass — instantiate with `name=...` etc."""
 
     def register_read(self, server: Any, store: Any) -> None:
         server.tools.append("issues:get_issue")
@@ -54,16 +53,6 @@ def main() -> None:
     applied = reg.apply(server, None, include_writes=True)
     print(f"applied routers: {applied}")
     print(f"registered tools: {server.tools}")
-
-    # Demonstrate the deprecated `Feature` alias still works (one cycle):
-    with warnings.catch_warnings():
-        warnings.simplefilter("default", DeprecationWarning)
-
-        class _Legacy(Feature):
-            pass
-
-        legacy = _Legacy(name="legacy", default=False)
-        print(f"legacy router via Feature alias: {legacy.name} (deprecated)")
 
 
 if __name__ == "__main__":

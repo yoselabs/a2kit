@@ -40,7 +40,7 @@ def main() -> None:
 
     builtins.__import__ = fake_import
     try:
-        import a2kit  # noqa: PLC0415
+        import a2kit
 
         path = Path(tempfile.mkdtemp()) / "demo.yaml"
 

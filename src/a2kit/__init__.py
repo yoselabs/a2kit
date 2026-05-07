@@ -1,21 +1,25 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.3.1).
+"""a2kit — thin library for FastMCP-based MCPs (v0.4.0).
 
 Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
 to FastMCP at any boundary stays clean. See README for the full rundown.
 
-v0.3.1 highlights:
+v0.4 highlights:
 
-- `Router` (was `Feature`) is a Pydantic BaseModel with auto-tagging.
-- `Cap` constants + `capabilities` registry namespace + `UnknownCapability`.
-- `--select` boolean expression replaces `--enable`/`--no-enable`/`--writes`.
-- Typed builder `a2kit.sel(...)` mirrors the CLI grammar.
-- Pydantic configs (`ToolConfig`, `RunnerConfig`, `BudgetConfig`).
-- KEY_FIELDS validated via `@model_validator` on `ConnectionInfo`.
+- All v0.3 deprecation aliases removed (clean cut, pre-1.0).
+- CEL projection / filter primitive (`a2kit.projection`, `[projection]` extra).
+- `a2kit.format_response(data, *, filter=, fields=, ...)` composes filter +
+  projection + truncation.
+- Auto-load `[tool.a2kit.runner] default_select` and `[tool.a2kit.capabilities]`
+  from `pyproject.toml`.
+- A2K010 lint activated (validates `--select` atoms against the registry).
+- A2K011 advisory (prefer Pydantic return types over raw `dict`).
+- A2K005 completed (cross-checks tool param types against `KEY_FIELDS` arity).
+- `_select.py` split into `_select_parse.py` + `_select_eval.py`.
 """
 
 from __future__ import annotations
 
-from a2kit import docs, errors, formatter, lint, scaffold, testing, tools
+from a2kit import docs, errors, formatter, lint, projection, scaffold, testing, tools
 from a2kit._capabilities import (
     Cap,
     Capability,
@@ -41,18 +45,19 @@ from a2kit.exceptions import (
     ConnectionNotFound,
     EnvVarNotFound,
     InvalidConnectionKey,
+    InvalidFilterExpression,
     InvalidToolReturnTypeError,
     KeyArityMismatch,
     KeyFieldMissing,
     OpResolutionError,
+    ProjectionUnavailable,
     SchemaSnapshotMismatch,
     TokenResolutionError,
     ToolXMLContamination,
     WriteNotAllowed,
 )
+from a2kit.formatter import format_response
 from a2kit.scaffold import (
-    Feature,
-    FeatureRegistry,
     MCPRunner,
     Router,
     RouterRegistry,
@@ -70,11 +75,9 @@ from a2kit.tokens import (
 )
 from a2kit.tools import tool
 
-# A2KIT_CONFIG_HOME — re-export with the canonical name expected in the v0.3.1
-# spec (matches the env var documented in `a2kit.connections`).
 A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 __all__ = [
     "A2KIT_CONFIG_HOME",
@@ -91,14 +94,14 @@ __all__ = [
     "EnricherRegistry",
     "EnvVarNotFound",
     "ErrorEnricher",
-    "Feature",
-    "FeatureRegistry",
     "InvalidConnectionKey",
+    "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
     "KeyArityMismatch",
     "KeyFieldMissing",
     "MCPRunner",
     "OpResolutionError",
+    "ProjectionUnavailable",
     "ResolverRegistry",
     "Router",
     "RouterRegistry",
@@ -118,9 +121,11 @@ __all__ = [
     "default_registry",
     "docs",
     "errors",
+    "format_response",
     "formatter",
     "lint",
     "parse_select",
+    "projection",
     "register_ephemeral_connections",
     "resolve_env",
     "resolve_literal",
@@ -133,3 +138,15 @@ __all__ = [
     "tool",
     "tools",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Removed-API guards: emit a helpful migration hint instead of `AttributeError`."""
+    if name == "Feature":
+        msg = "`a2kit.Feature` was removed in v0.4. Use `a2kit.Router` instead (kwarg-init: `Router(name='issues', ...)`)."
+        raise ImportError(msg)
+    if name == "FeatureRegistry":
+        msg = "`a2kit.FeatureRegistry` was removed in v0.4. Use `a2kit.RouterRegistry`."
+        raise ImportError(msg)
+    msg = f"module 'a2kit' has no attribute {name!r}"
+    raise AttributeError(msg)

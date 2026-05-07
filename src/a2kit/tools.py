@@ -198,6 +198,8 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     resolver_registry: ResolverRegistry | None = None,
     server: Any = None,
     capabilities: Iterable[Capability] = (),
+    cel_filter_param: str | None = None,
+    fields_param: str | None = None,
 ) -> Callable[[F], F]:
     """Compose with FastMCP's `@server.tool()`. See module docstring for behaviour.
 
@@ -235,6 +237,32 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 kwargs = {**kwargs, info_kwarg: info}
             return args, kwargs, connection_key
 
+        def _extract_projection(bound: inspect.BoundArguments) -> tuple[str, list[str] | None]:
+            """Extract filter+fields values from bound args (for cel_filter_param / fields_param)."""
+            filter_expr = ""
+            fields_value: list[str] | None = None
+            if cel_filter_param is not None and cel_filter_param in bound.arguments:
+                raw = bound.arguments[cel_filter_param]
+                if isinstance(raw, str):
+                    filter_expr = raw
+            if fields_param is not None and fields_param in bound.arguments:
+                raw_f = bound.arguments[fields_param]
+                if isinstance(raw_f, list):
+                    fields_value = list(raw_f)
+            return filter_expr, fields_value
+
+        def _maybe_post_process(result: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+            if cel_filter_param is None and fields_param is None:
+                return result
+            bound = sig.bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            filter_expr, fields_value = _extract_projection(bound)
+            if not filter_expr and not fields_value:
+                return result
+            from a2kit.formatter import format_response  # noqa: PLC0415
+
+            return format_response(result, filter=filter_expr, fields=fields_value)
+
         if is_async:
 
             @functools.wraps(fn)
@@ -246,7 +274,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         result = await fn(*args, **kwargs)
                         if streaming and isinstance(result, AsyncIterator):
                             return await _consume_or_passthrough_async(result)
-                        return result
+                        return _maybe_post_process(result, args, kwargs)
                 except Exception as exc:
                     if enricher is None:
                         raise
@@ -261,7 +289,8 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     args, kwargs, conn_key = _prelude(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
                     with span_cm:
-                        return fn(*args, **kwargs)
+                        result = fn(*args, **kwargs)
+                        return _maybe_post_process(result, args, kwargs)
                 except Exception as exc:
                     if enricher is None:
                         raise

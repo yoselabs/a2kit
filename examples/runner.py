@@ -1,4 +1,4 @@
-"""Example: `MCPRunner` end-to-end with all flags.
+"""Example: `MCPRunner` end-to-end with v0.4 flags.
 
 Drives the runner with a fake-server stub so the example is hermetic. The
 production wiring is identical — replace `_FakeServer` with your `FastMCP`
@@ -47,36 +47,36 @@ def main() -> None:
     store: a2kit.ConnectionStore[WidgetConn] = a2kit.ConnectionStore(Path(tempfile.mkdtemp()), WidgetConn)
     store.save(WidgetConn(key=("prod",), url="https://api"))
 
-    features = a2kit.scaffold.FeatureRegistry()
+    routers = a2kit.RouterRegistry()
 
-    @features.feature("issues", default=True)
+    @routers.router("issues", default=True)
     class _Issues:
         @staticmethod
         def register_read(_server: Any, _store: Any) -> None:
             print("registered: issues.read")
 
-    @features.feature("sprints")
+    @routers.router("sprints", default=False)
     class _Sprints:
         @staticmethod
         def register_read(_server: Any, _store: Any) -> None:
             print("registered: sprints.read")
 
-    runner = a2kit.scaffold.MCPRunner(
+    runner = a2kit.MCPRunner(
         _FakeServer(),
         store=store,
-        feature_registry=features,
+        router_registry=routers,
         name="a2widgets",
     )
 
     print("--- defaults (issues only, stdio): ---")
     runner.run(argv=[])
 
-    print("\n--- enable both, http on :7000, ephemeral: ---")
-    a2kit.scaffold.MCPRunner(
+    print("\n--- enable both via --select, http on :7000, ephemeral: ---")
+    a2kit.MCPRunner(
         _FakeServer(),
         store=store,
-        feature_registry=features,
-    ).run(argv=["--enable", "issues,sprints", "--http", ":7000", "--register", "eph", "url=https://eph.example"])
+        router_registry=routers,
+    ).run(argv=["--select", "router:issues or router:sprints", "--http", ":7000", "--register", "eph", "url=https://eph.example"])
 
 
 if __name__ == "__main__":

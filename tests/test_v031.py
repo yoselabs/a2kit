@@ -359,46 +359,10 @@ def test_router_no_register_methods_skipped_via_decorator_class() -> None:
     reg.apply(_ToolServer(), None, include_writes=True)
 
 
-def test_router_registry_names_alias() -> None:
+def test_router_registry_names() -> None:
     reg = RouterRegistry()
     reg.add(Router(name="a"))
     assert reg.names() == ["a"]
-    assert reg.feature_names() == ["a"]
-
-
-def test_router_registry_feature_method_warns() -> None:
-    reg = RouterRegistry()
-    with pytest.warns(DeprecationWarning):
-
-        @reg.feature("a")
-        class A:
-            @staticmethod
-            def register_read(s: Any, _: Any) -> None:
-                pass
-
-
-def test_feature_alias_subclass_warns() -> None:
-    from a2kit import Feature
-
-    with pytest.warns(DeprecationWarning):
-
-        class MyOldFeat(Feature):
-            pass
-
-    f = MyOldFeat(name="legacy")
-    assert f.name == "legacy"
-
-
-def test_feature_subclass_blank_name_raises() -> None:
-    from a2kit import Feature
-
-    with pytest.warns(DeprecationWarning):
-
-        class _F(Feature):
-            pass
-
-    with pytest.raises(ValueError, match="non-empty"):
-        _F()
 
 
 # ---- MCPRunner with --select ------------------------------------------------
@@ -436,15 +400,6 @@ def test_runner_default_select_expr_arg() -> None:
     server = _RunServer()
     runner = MCPRunner(server, default_select=sel("default"))
     assert runner.default_select.op == "atom"
-
-
-def test_runner_legacy_translation_warns() -> None:
-    server = _RunServer()
-    reg = RouterRegistry()
-    reg.add(Router(name="a", default=True))
-    reg.add(Router(name="b", default=True))
-    with pytest.warns(DeprecationWarning):
-        MCPRunner(server, router_registry=reg).run(argv=["--no-enable", "b"])
 
 
 def test_runner_select_with_router_registry() -> None:
@@ -494,42 +449,6 @@ def test_runner_select_includes_writes_when_mentioned() -> None:
     reg.add(A(name="a", default=True))
     MCPRunner(server, router_registry=reg).run(argv=["--select", "a and write"])
     assert "write" in visited
-
-
-def test_runner_legacy_writes_only() -> None:
-    server = _RunServer()
-    reg = RouterRegistry()
-
-    class A(Router):
-        def register_read(self, s: Any, _: Any) -> None:
-            s.tools.append("a.r")
-
-        def register_write(self, s: Any, _: Any) -> None:
-            s.tools.append("a.w")
-
-    reg.add(A(name="a", default=True))
-    with pytest.warns(DeprecationWarning):
-        MCPRunner(server, router_registry=reg).run(argv=["--writes"])
-    assert server.tools == ["a.r", "a.w"]
-
-
-def test_runner_legacy_enable_only() -> None:
-    server = _RunServer()
-    reg = RouterRegistry()
-
-    class A(Router):
-        def register_read(self, s: Any, _: Any) -> None:
-            s.tools.append("a")
-
-    class B(Router):
-        def register_read(self, s: Any, _: Any) -> None:
-            s.tools.append("b")
-
-    reg.add(A(name="a", default=True))
-    reg.add(B(name="b", default=False))
-    with pytest.warns(DeprecationWarning):
-        MCPRunner(server, router_registry=reg).run(argv=["--enable", "b"])
-    assert "b" in server.tools
 
 
 # ---- Configs ----------------------------------------------------------------
@@ -719,19 +638,6 @@ def test_runner_explicit_positive_no_match_falls_back() -> None:
     MCPRunner(server, router_registry=reg).run(argv=["--select", "router:nonexistent"])
 
 
-def test_feature_class_attr_is_hoisted_to_init_kwargs() -> None:
-    """Feature subclass uses class-level `default = True`; init pulls it through."""
-    from a2kit import Feature
-
-    with pytest.warns(DeprecationWarning):
-
-        class _F(Feature):
-            pass
-
-    f = _F(name="x", default=True)
-    assert f.default is True
-
-
 # ---- Lint A2K008/A2K009 -----------------------------------------------------
 
 
@@ -791,13 +697,13 @@ def test_lint_a2k008_collision_with_builtin_cap(tmp_path: Path) -> None:
 
 
 def test_lint_a2k008_class_attribute_router_name(tmp_path: Path) -> None:
-    """A2K008 — picks up `class Foo(Feature): name = 'x'` declarations too."""
+    """A2K008 — picks up `class Foo(Router): name = 'x'` declarations too."""
     from a2kit.lint.static import run_static_rules
 
     src = tmp_path / "src" / "mod.py"
     src.parent.mkdir(parents=True)
     src.write_text(
-        "import a2kit\nclass IssuesFeature(a2kit.Feature):\n    name = 'foo'\n@a2kit.tool()\nasync def foo() -> dict:\n    return {}\n"
+        "import a2kit\nclass IssuesRouter(a2kit.Router):\n    name = 'foo'\n@a2kit.tool()\nasync def foo() -> dict:\n    return {}\n"
     )
     findings = run_static_rules([src])
     assert any(f.rule == "A2K008" for f in findings)
@@ -840,25 +746,6 @@ def test_a2kit_config_home_alias() -> None:
     assert a2kit.ENV_CONFIG_HOME == "A2KIT_CONFIG_HOME"
 
 
-def test_feature_class_pulls_enricher_attr() -> None:
-    """Feature subclass with class-level `enricher = ...` is hoisted into init kwargs."""
-    from a2kit import Feature
-
-    class _MyEnricher:
-        def enrich(self, exc: Exception, *, tool_name: str | None = None) -> Exception:
-            return exc
-
-    enricher = _MyEnricher()
-    with pytest.warns(DeprecationWarning):
-
-        class _F(Feature):
-            pass
-
-    _F.enricher = enricher  # type: ignore[attr-defined]
-    f = _F(name="x")
-    assert f.enricher is enricher
-
-
 def test_lint_a2k008_explicit_tool_name(tmp_path: Path) -> None:
     """A2K008 — `@a2kit.tool(tool_name='collide')` collides with router 'collide'."""
     from a2kit.lint.static import run_static_rules
@@ -896,14 +783,13 @@ def test_lint_a2k008_class_with_non_name_assignments(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
-        "class IssuesFeature(a2kit.Feature):\n"
+        "class IssuesRouter(a2kit.Router):\n"
         "    name = 'foo'\n"
         "    other = 1 + 2  # non-Constant value\n"
         "    a, b = 1, 2  # tuple target (non-Name target)\n"
         "    def method(self): pass  # FunctionDef inside body\n"
     )
     findings = run_static_rules([src])
-    # Just exercising the branch coverage; assertion is loose.
     assert isinstance(findings, list)
 
 

@@ -28,13 +28,20 @@ def test_cli_lint_no_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     p = tmp_path / "ok.py"
     p.write_text(
         """
+from pydantic import BaseModel
 import a2kit
+
+
+class _R(BaseModel):
+    ok: bool
+
+
 @a2kit.tool()
-def f() -> dict:
-    return {}
+def f() -> _R:
+    return _R(ok=True)
 """
     )
-    rc = lint_cli.main(["lint", str(p)])
+    rc = lint_cli.main(["lint", str(p), "--disabled", "A2K003"])
     assert rc == 0
 
 

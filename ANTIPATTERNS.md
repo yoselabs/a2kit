@@ -203,3 +203,81 @@ returns are returned-as-is and FastMCP will probably reject them — by
 design.
 
 Citation: a2kit `src/a2kit/tools.py::_consume_or_passthrough_async`.
+
+## 14. Pydantic models can't use bare class-attribute defaults for fields
+
+The mistake: subclassing a Pydantic model and overriding a field by writing
+`name = "issues"` (no annotation). Pydantic v2 only registers a class
+attribute as a field when there's an annotation, so the bare assignment
+silently shadows the parent field — the subclass instance carries the
+parent's default, not yours, and `extra="forbid"` won't catch the typo.
+
+What to do: pass the value at instantiation. `IssuesRouter(name="issues",
+capabilities={Cap.EXTERNAL})` is the canonical form. If you need a
+class-level override, you must repeat the annotation: `name: str = "issues"`.
+Pydantic v0.3.1's `Router` rewrite hit this — the v0.3 `class IssuesFeature(Feature): name = "issues"` style was dropped because the assignment didn't bind a field.
+
+Citation: `src/a2kit/scaffold.py::Router` (v0.3.1 rewrite).
+
+## 15. `Capability = str` runtime alias forces `# noqa: TC001` quirk
+
+The mistake: hiding `Capability: TypeAlias = str` under `if TYPE_CHECKING:`.
+Pydantic v2 reads field annotations *at runtime* to build the validator
+schema, so anything used as a type annotation must be importable at runtime,
+even if the value is a `TypeAlias`. Hiding the alias inside `TYPE_CHECKING`
+causes Pydantic to fail with `NameError: name 'Capability' is not defined`
+the first time you instantiate the model.
+
+What to do: import `Capability` at runtime, accept the `TC001` noqa on the
+import line, and document the pattern. The `_capabilities.py` and
+`_configs.py` modules both carry the noqa for this reason.
+
+Citation: `src/a2kit/_capabilities.py::Capability`,
+`src/a2kit/_configs.py::ToolConfig`.
+
+## 16. `from __future__ import annotations` interacts with Pydantic forward references
+
+The mistake: turning on `from __future__ import annotations` (PEP 563),
+declaring a Generic Pydantic model, and having Pydantic still see the type
+parameter as a string at validation time. Symptom: `PydanticUserError:
+... is not fully defined; you should define X, then call .model_rebuild()`.
+
+What to do: after the forward-ref class is defined, call
+`Model.model_rebuild()`. For most a2kit models we sidestep this by keeping
+generic parameters narrow (`TypeVar(... bound=ConnectionInfo)`), but the
+gotcha resurfaces every time a new generic is added. Prefer concrete unions
+when the generic doesn't earn its complexity.
+
+Citation: `src/a2kit/scaffold.py::Router` (Generic[ConnT]).
+
+## 17. Don't auto-register pytest plugins via `pytest11` entry points
+
+The mistake (already in v0.1, extended in v0.3.1): shipping a `pytest11`
+entry point in `pyproject.toml` so consumers automatically pick up your
+plugin. Any plugin that imports the parent package zeros out `pytest-cov`
+measurement on the package — coverage is collected by source instrumentation,
+which doesn't run for code already imported before pytest-cov starts.
+
+What to do: opt-in only. Document `pytest_plugins = ["a2kit.pytest_plugin"]`
+in the consumer's `conftest.py`. The plugin still ships in the wheel, but
+nothing imports it until the consumer asks for it.
+
+Citation: `src/a2kit/pytest_plugin.py`; consumer setup in
+`tests/conftest.py:6`.
+
+## 18. Synthetic clauses in deprecation aliases are tech debt
+
+The mistake: implementing `--writes` (deprecated) by synthesising a `(read or
+write)` clause into a `--select` expression internally. The translation
+worked at runtime but polluted the AST: the lint rule A2K010 saw `read` and
+`write` atoms in the user's expression that the user never wrote, which
+prevented clean atom validation and made the error messages confusing.
+
+What to do: prefer hard breaks over compatibility shims when the consumer
+count is zero (pre-1.0, internal-only). v0.4 removed `--enable`, `--no-enable`,
+and `--writes` entirely. Migration is documented one-line per flag in the
+CHANGELOG. The lesson generalises: synthetic AST manipulation in a
+compatibility layer makes the next layer's correctness story harder.
+
+Citation: removed v0.4; previously at
+`src/a2kit/scaffold.py::MCPRunner._legacy_to_select` (v0.3.1).

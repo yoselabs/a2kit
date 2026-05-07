@@ -23,9 +23,8 @@ if TYPE_CHECKING:
 def test_build_cli_login_logout_show_list_delete(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo, name="a2x")
+    cli = build_cli(atlassian_store, name="a2x")
     runner = CliRunner()
 
     # login
@@ -66,9 +65,8 @@ def test_build_cli_login_logout_show_list_delete(
 def test_build_cli_no_subcommand_shows_help(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo)
+    cli = build_cli(atlassian_store)
     runner = CliRunner()
     result = runner.invoke(cli, [])
     assert result.exit_code == 0
@@ -78,9 +76,8 @@ def test_build_cli_no_subcommand_shows_help(
 def test_build_cli_show_missing_raises(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo)
+    cli = build_cli(atlassian_store)
     runner = CliRunner()
     result = runner.invoke(cli, ["connections", "show", "missing"])
     assert result.exit_code != 0
@@ -89,9 +86,8 @@ def test_build_cli_show_missing_raises(
 def test_build_cli_login_invalid_field_format(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo)
+    cli = build_cli(atlassian_store)
     runner = CliRunner()
     result = runner.invoke(
         cli,
@@ -103,9 +99,8 @@ def test_build_cli_login_invalid_field_format(
 def test_build_cli_logout_succeeds_after_login(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo)
+    cli = build_cli(atlassian_store)
     runner = CliRunner()
     runner.invoke(cli, ["login", "test", "--field", "url=https://x", "--field", "email=e", "--field", "token=t"])
     result = runner.invoke(cli, ["logout", "test"])
@@ -116,9 +111,8 @@ def test_build_cli_logout_succeeds_after_login(
 def test_build_cli_connections_delete_missing_raises(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo)
+    cli = build_cli(atlassian_store)
     runner = CliRunner()
     result = runner.invoke(cli, ["connections", "delete", "ghost"])
     assert result.exit_code != 0
@@ -127,27 +121,24 @@ def test_build_cli_connections_delete_missing_raises(
 def test_build_cli_logout_missing_raises(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo)
+    cli = build_cli(atlassian_store)
     runner = CliRunner()
     result = runner.invoke(cli, ["logout", "ghost"])
     assert result.exit_code != 0
 
 
 def test_build_cli_list_empty(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
-    from .conftest import AtlassianInfo
 
-    cli = build_cli(atlassian_store, connection_class=AtlassianInfo)
+    cli = build_cli(atlassian_store)
     runner = CliRunner()
     result = runner.invoke(cli, ["connections", "list"])
     assert "No connections" in result.output
 
 
 def test_build_cli_handles_multipart_keys(db_store: ConnectionStore[DbInfo]) -> None:
-    from .conftest import DbInfo
 
-    cli = build_cli(db_store, connection_class=DbInfo)
+    cli = build_cli(db_store)
     runner = CliRunner()
     result = runner.invoke(
         cli,
@@ -158,19 +149,12 @@ def test_build_cli_handles_multipart_keys(db_store: ConnectionStore[DbInfo]) -> 
     assert "acme/prod/main" in result.output
 
 
-def test_register_ephemeral_parses_single_block() -> None:
-    from .conftest import AtlassianInfo
-
-    out = register_ephemeral_connections(
-        ["--register", "prod", "url=https://x", "email=e", "token=t"],
-        AtlassianInfo,
-    )
+def test_register_ephemeral_parses_single_block(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
+    out = register_ephemeral_connections(["--register", "prod", "url=https://x", "email=e", "token=t"], store=atlassian_store)
     assert ("prod",) in out
 
 
-def test_register_ephemeral_parses_multiple_blocks() -> None:
-    from .conftest import AtlassianInfo
-
+def test_register_ephemeral_parses_multiple_blocks(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
     out = register_ephemeral_connections(
         [
             "--register",
@@ -184,43 +168,28 @@ def test_register_ephemeral_parses_multiple_blocks() -> None:
             "email=e2",
             "token=t2",
         ],
-        AtlassianInfo,
+        store=atlassian_store,
     )
     assert {("a",), ("b",)} == set(out.keys())
 
 
-def test_register_ephemeral_stops_at_unknown_token() -> None:
-    from .conftest import AtlassianInfo
-
-    out = register_ephemeral_connections(
-        ["--register", "a", "url=https://x", "email=e", "token=t", "--other-flag"],
-        AtlassianInfo,
-    )
+def test_register_ephemeral_stops_at_unknown_token(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
+    out = register_ephemeral_connections(["--register", "a", "url=https://x", "email=e", "token=t", "--other-flag"], store=atlassian_store)
     assert ("a",) in out
 
 
-def test_register_ephemeral_skips_non_register_args() -> None:
-    from .conftest import AtlassianInfo
-
-    out = register_ephemeral_connections(["--unrelated", "x"], AtlassianInfo)
+def test_register_ephemeral_skips_non_register_args(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
+    out = register_ephemeral_connections(["--unrelated", "x"], store=atlassian_store)
     assert out == {}
 
 
-def test_register_ephemeral_missing_key_raises() -> None:
-    from .conftest import AtlassianInfo
-
+def test_register_ephemeral_missing_key_raises(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
     with pytest.raises(ValueError, match="key argument"):
-        register_ephemeral_connections(["--register"], AtlassianInfo)
+        register_ephemeral_connections(["--register"], store=atlassian_store)
 
 
-def test_register_ephemeral_stops_at_non_kv_arg() -> None:
-    """Args without `=` are treated as caller's flags — parser stops collecting."""
-    from .conftest import DbInfo
-
-    out = register_ephemeral_connections(
-        ["--register", "a/b/c", "dsn=postgresql://x", "no-equals"],
-        DbInfo,
-    )
+def test_register_ephemeral_stops_at_non_kv_arg(db_store: ConnectionStore[DbInfo]) -> None:
+    out = register_ephemeral_connections(["--register", "a/b/c", "dsn=postgresql://x", "no-equals"], store=db_store)
     assert ("a", "b", "c") in out
 
 

@@ -1,4 +1,4 @@
-"""Example: `FeatureRegistry` with two features and `--enable`.
+"""Example: `RouterRegistry` with two routers and `--select`.
 
 Run: `uv run python examples/feature_modules.py`
 """
@@ -16,10 +16,10 @@ class _FakeServer:
 
 
 def main() -> None:
-    features = a2kit.scaffold.FeatureRegistry()
+    routers = a2kit.RouterRegistry()
 
-    @features.feature("issues", default=True)
-    class IssuesFeature:
+    @routers.router("issues", default=True)
+    class IssuesRouter:
         @staticmethod
         def register_read(server: Any, _store: Any) -> None:
             server.tools.append("issues:get_issue")
@@ -29,8 +29,8 @@ def main() -> None:
         def register_write(server: Any, _store: Any) -> None:
             server.tools.append("issues:create_issue")
 
-    @features.feature("sprints")
-    class SprintsFeature:
+    @routers.router("sprints", default=False)
+    class SprintsRouter:
         @staticmethod
         def register_read(server: Any, _store: Any) -> None:
             server.tools.append("sprints:get_sprint")
@@ -39,16 +39,16 @@ def main() -> None:
         def register_write(server: Any, _store: Any) -> None:
             server.tools.append("sprints:create_sprint")
 
-    print(f"available features: {features.feature_names()}")
-    print(f"defaults: {features.defaults()}")
+    print(f"available routers: {routers.names()}")
+    print(f"defaults: {routers.defaults()}")
 
     s1 = _FakeServer()
-    features.apply(s1, None)
+    routers.apply(s1, None)
     print(f"defaults applied (no writes): {s1.tools}")
 
     s2 = _FakeServer()
-    features.apply(s2, None, enabled=("issues", "sprints"), include_writes=True)
-    print(f"all features + writes: {s2.tools}")
+    routers.apply(s2, None, enabled=("issues", "sprints"), include_writes=True)
+    print(f"all routers + writes: {s2.tools}")
 
 
 if __name__ == "__main__":

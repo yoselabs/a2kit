@@ -2,7 +2,7 @@
 
 Demonstrates:
 - `build_cli(...)` returns a Click group with login/logout/connections list/show/delete.
-- `MCPRunner` absorbs `--register` / `--scope` / `--enable` / `--http` parsing
+- `MCPRunner` absorbs `--register` / `--scope` / `--select` / `--http` parsing
   AND transport selection in one call.
 
 Run:

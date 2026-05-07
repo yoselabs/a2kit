@@ -3,26 +3,35 @@
 Provides building blocks — NOT a `main()`. The MCP author owns the FastMCP server
 instance and the program entry; a2kit only ships the recurring chunks.
 
-v0.3.1: `Feature` is renamed `Router` (Pydantic BaseModel, Generic over ConnT).
-`FeatureRegistry` is renamed `RouterRegistry`. The v0.3 names remain as
-`DeprecationWarning` aliases for one cycle.
+v0.4: Removed all v0.3 deprecation aliases (clean cut, no external consumers).
+The `Feature`/`FeatureRegistry` classes, the `--enable`/`--no-enable`/`--writes`
+flags, and the `connection_class=` kwargs are gone. Migration recipes:
 
-The runner replaces the v0.3 `--enable`/`--no-enable`/`--writes` flag soup with
-a single `--select` flag carrying a boolean expression. v0.3 flags are still
-parsed and translated to a `--select` expression internally (with a warning).
+- `Feature` / `FeatureRegistry` → `Router` / `RouterRegistry` (kwarg init).
+- `RouterRegistry.feature(name, ...)` → `RouterRegistry.router(name, ...)`.
+- `--enable issues,sprints` → `--select "router:issues or router:sprints"`.
+- `--no-enable sprints` → `--select "default and not router:sprints"`.
+- `--writes` → include `(read or write)` in your `--select`.
+- `build_cli(store, connection_class=...)` → `build_cli(store, ...)`.
+- `MCPRunner(server, connection_class=...)` → `MCPRunner(server, store=store)`.
+- `register_ephemeral_connections(args, connection_class)` → use `store=`.
+
+v0.4 also auto-loads `[tool.a2kit.runner] default_select` and
+`[tool.a2kit.capabilities]` from `pyproject.toml` (walks up from CWD).
 """
 
 from __future__ import annotations
 
 import sys
+import tomllib
 import warnings
-from pathlib import Path  # noqa: TC003 — runtime-needed for Pydantic field annotation
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import click
 from pydantic import BaseModel, ConfigDict, Field
 
-from a2kit._capabilities import Capability  # noqa: TC001 — runtime-needed for Pydantic field annotation
+from a2kit._capabilities import Capability, UnknownCapability, capabilities
 from a2kit._router_state import _set_active
 from a2kit._select import (
     SelectExpr,
@@ -55,21 +64,13 @@ def _parse_key_arg(raw: str) -> tuple[str, ...]:
     return (raw,)
 
 
-def build_cli(  # noqa: C901
+def build_cli(
     store: ConnectionStore[C],
     *,
-    connection_class: type[C] | None = None,
     name: str = "a2kit",
 ) -> click.Group:
     """Build a Click group with standard connection-management commands."""
-    if connection_class is not None:
-        warnings.warn(
-            "build_cli(connection_class=...) is deprecated; the store knows its model. "
-            "Drop the kwarg — `build_cli(store, name=...)` is enough.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    connection_class = connection_class or store.connection_class
+    connection_class = store.connection_class
 
     @click.group(name=name, invoke_without_command=True)
     @click.pass_context
@@ -140,23 +141,14 @@ def build_cli(  # noqa: C901
 
 def register_ephemeral_connections(
     args: list[str],
-    connection_class: type[C] | None = None,
     *,
-    store: ConnectionStore[C] | None = None,
+    store: ConnectionStore[C],
 ) -> dict[tuple[str, ...], C]:
-    """Parse `--register` blocks from a flat argv list."""
-    if connection_class is None and store is None:
-        msg = "register_ephemeral_connections requires either store= or connection_class"
-        raise TypeError(msg)
-    if connection_class is not None and store is None:
-        warnings.warn(
-            "Pass `store=` instead of `connection_class=`; the store knows its model.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    if store is not None:
-        connection_class = store.connection_class
-    assert connection_class is not None  # for type narrowing  # noqa: S101
+    """Parse `--register` blocks from a flat argv list.
+
+    v0.4: `store=` is required (the v0.3 positional-class shape is gone).
+    """
+    connection_class = store.connection_class
     out: dict[tuple[str, ...], C] = {}
     i = 0
     while i < len(args):
@@ -213,14 +205,14 @@ def scope_filter(store: ConnectionStore[C], scope: str | None) -> Any:
 
 
 # --------------------------------------------------------------------------- #
-# Router (v0.3.1 — was Feature) — Pydantic-modeled router with auto-tagging.
+# Router — Pydantic-modeled router with auto-tagging.
 # --------------------------------------------------------------------------- #
 
 
 class Router(BaseModel, Generic[ConnT]):
     """Pydantic-modeled router: enricher + snapshot_dir + cassette_dir + register hooks.
 
-    Subclass and instantiate, e.g. `IssuesRouter(name='issues', enricher=...)`.
+    Subclass and instantiate via kwargs, e.g. `IssuesRouter(name='issues', enricher=...)`.
     `register_read` / `register_write` are methods you override to register tools.
 
     `name` becomes a capability atom (auto-tagged onto every tool registered
@@ -245,23 +237,18 @@ class Router(BaseModel, Generic[ConnT]):
 
 
 class RouterRegistry:
-    """Registry of routers — supports v0.3.1 Router instances + v0.3 decorator.
-
-    `apply()` sets the active router context (read by the fat decorator's
-    auto-tag seam) before invoking each `register_read` / `register_write`.
-    """
+    """Registry of routers — supports `Router` instances and class-decorator form."""
 
     def __init__(self) -> None:
         self._routers: list[tuple[str, bool, Any]] = []
 
     def add(self, router: Router) -> Router:
         """Register a `Router` instance. Returns the instance for chaining."""
-        # Pydantic enforces `name` is non-empty (`pattern=...`); no extra check needed.
         self._routers.append((router.name, router.default, router))
         return router
 
     def router(self, name: str, *, default: bool = True) -> Any:
-        """Register a router class via decorator. v0.3.1 form."""
+        """Register a router class via decorator."""
 
         def decorator(cls: Any) -> Any:
             self._routers.append((name, default, cls))
@@ -269,22 +256,9 @@ class RouterRegistry:
 
         return decorator
 
-    def feature(self, name: str, *, default: bool = False) -> Any:
-        """Deprecated: use `.router()`."""
-        warnings.warn(
-            "FeatureRegistry.feature() / RouterRegistry.feature() is deprecated; use .router() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.router(name, default=default)
-
     def names(self) -> list[str]:
         """Return ordered router names."""
         return [name for name, _default, _r in self._routers]
-
-    def feature_names(self) -> list[str]:
-        """Deprecated alias for `.names()`."""
-        return self.names()
 
     def defaults(self) -> set[str]:
         """Return the set of names enabled-by-default."""
@@ -328,45 +302,59 @@ class RouterRegistry:
         return applied
 
 
-# Deprecation aliases: Feature / FeatureRegistry remain available one cycle.
+# --------------------------------------------------------------------------- #
+# pyproject.toml loader — walks up from CWD.
+# --------------------------------------------------------------------------- #
 
 
-class Feature(Router):
-    """Deprecated: renamed to `Router`. Retained for one cycle.
+def _find_pyproject(start: Path | None = None) -> Path | None:
+    """Walk up from `start` (default CWD) to find a pyproject.toml."""
+    cur = (start or Path.cwd()).resolve()
+    for parent in [cur, *cur.parents]:
+        candidate = parent / "pyproject.toml"
+        if candidate.is_file():
+            return candidate
+    return None
 
-    Supports v0.3 class-attribute style (`class IssuesFeature(Feature): name = "issues"`)
-    by reading attributes off the subclass and feeding them to the BaseModel init.
+
+def _load_pyproject_a2kit() -> dict[str, Any]:
+    """Read `[tool.a2kit]` from the nearest pyproject.toml; empty dict if none."""
+    path = _find_pyproject()
+    if path is None:
+        return {}
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    tool = data.get("tool", {})
+    if not isinstance(tool, dict):  # pragma: no cover — TOML-impossible
+        return {}
+    a2k = tool.get("a2kit", {})
+    return a2k if isinstance(a2k, dict) else {}
+
+
+def _register_pyproject_capabilities(a2kit_table: dict[str, Any]) -> None:
+    """Register entries under `[tool.a2kit.capabilities]` into the global registry.
+
+    Each entry: `"name" = { description = "...", aliases = [...] }`. Bad entries
+    raise `ValueError` so misconfiguration surfaces at startup.
     """
-
-    name: str = "_feature_placeholder"  # type: ignore[assignment]
-    default: bool = False  # type: ignore[assignment]
-
-    def __init_subclass__(cls, **kw: Any) -> None:
-        super().__init_subclass__(**kw)
-        warnings.warn(
-            f"`Feature` is deprecated; subclass `Router` instead (used by {cls.__name__}).",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    def __init__(self, **kw: Any) -> None:
-        # Pull v0.3 class-level attributes if instance kwargs don't override.
-        for attr in ("name", "default", "enricher", "snapshot_dir", "cassette_dir"):
-            if attr not in kw:
-                cls_val = type(self).__dict__.get(attr)
-                if cls_val is not None:
-                    kw[attr] = cls_val
-        # Bare Feature() instantiation (base class) is allowed for legacy tests
-        # that exercise the no-op register methods. Subclasses must set name.
-        if type(self) is not Feature and (not kw.get("name") or kw.get("name") == "_feature_placeholder"):
-            msg = f"{type(self).__name__}.name must be a non-empty string"
+    caps_table = a2kit_table.get("capabilities", {})
+    if not caps_table:
+        return
+    if not isinstance(caps_table, dict):
+        msg = "[tool.a2kit.capabilities] must be a table of name -> {description, aliases}"
+        raise ValueError(msg)
+    for name, body in caps_table.items():
+        # TOML key-uniqueness is enforced at parse time; no need to dedupe here.
+        if not isinstance(body, dict):
+            msg = f"Capability {name!r} body must be a table; got {type(body).__name__}"
             raise ValueError(msg)
-        kw.setdefault("name", "_feature_base")
-        super().__init__(**kw)
-
-
-class FeatureRegistry(RouterRegistry):
-    """Deprecated: renamed to `RouterRegistry`. Retained for one cycle."""
+        capabilities.register(
+            name,
+            description=body.get("description", ""),
+            aliases=list(body.get("aliases", []) or []),
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -377,9 +365,13 @@ class FeatureRegistry(RouterRegistry):
 class MCPRunner:
     """Wraps `server.run()` to handle `--register`, `--scope`, `--select`, `--http`.
 
-    v0.3.1: replaces `--enable` / `--no-enable` / `--writes` with a single
-    `--select` boolean expression. The deprecated flags are still parsed and
-    translated to a `--select` expression with a `DeprecationWarning`.
+    v0.4: `--enable` / `--no-enable` / `--writes` are gone. Only `--select`
+    remains. `default_select` resolves in order: explicit kwarg →
+    `[tool.a2kit.runner] default_select` in pyproject.toml → hard default
+    `"default and not write and not destructive"`.
+
+    pyproject.toml is walked up from CWD on init; `[tool.a2kit.capabilities]`
+    entries are auto-registered.
     """
 
     def __init__(
@@ -387,45 +379,53 @@ class MCPRunner:
         server: Any,
         *,
         store: Any | None = None,
-        feature_registry: RouterRegistry | None = None,
         router_registry: RouterRegistry | None = None,
-        connection_class: type[ConnectionInfo] | None = None,
         name: str = "a2kit",
         default_select: SelectExpr | str | None = None,
     ) -> None:
-        if connection_class is not None:
-            warnings.warn(
-                "MCPRunner(connection_class=...) is deprecated; pass `store=` instead. The store knows its model.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        if feature_registry is not None and router_registry is None:
-            # `feature_registry` retained without warning — it's a kwarg name only;
-            # the underlying class is now `RouterRegistry`. Migrate at leisure.
-            router_registry = feature_registry
         self.server = server
         self.store = store
         self.router_registry = router_registry
-        self.feature_registry = router_registry  # backcompat alias
-        if connection_class is None and store is not None:
-            connection_class = store.connection_class
-        self.connection_class = connection_class
+        self.connection_class = store.connection_class if store is not None else None
         self.name = name
-        if isinstance(default_select, str):
-            default_select = parse_select(default_select)
-        self.default_select: SelectExpr = default_select or default_select_expr()
 
-    def _parse(self, argv: list[str]) -> dict[str, Any]:  # noqa: C901
+        a2kit_table = _load_pyproject_a2kit()
+        # Register pyproject-declared capabilities first so `default_select`
+        # validation can resolve their atoms.
+        _register_pyproject_capabilities(a2kit_table)
+
+        self.default_select: SelectExpr = self._resolve_default_select(default_select, a2kit_table)
+
+    @staticmethod
+    def _resolve_default_select(
+        explicit: SelectExpr | str | None,
+        a2kit_table: dict[str, Any],
+    ) -> SelectExpr:
+        """Resolution order: explicit kwarg → pyproject value → hard default."""
+        if isinstance(explicit, SelectExpr):
+            return explicit
+        if isinstance(explicit, str):
+            return parse_select(explicit)
+        runner_table = a2kit_table.get("runner", {})
+        pyp_value = runner_table.get("default_select") if isinstance(runner_table, dict) else None
+        if isinstance(pyp_value, str):
+            try:
+                return parse_select(pyp_value)
+            except (ValueError, UnknownCapability) as exc:
+                warnings.warn(
+                    f"[tool.a2kit.runner] default_select={pyp_value!r} failed to parse: {exc}; falling back to the hard-coded default.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+        return default_select_expr()
+
+    def _parse(self, argv: list[str]) -> dict[str, Any]:
         i = 0
         result: dict[str, Any] = {
             "scope": None,
             "select": None,
             "http": None,
             "register_args": [],
-            # deprecated v0.3 flags:
-            "enable": None,
-            "no_enable": set(),
-            "writes": False,
         }
         while i < len(argv):
             a = argv[i]
@@ -435,16 +435,6 @@ class MCPRunner:
             elif a == "--select" and i + 1 < len(argv):
                 result["select"] = argv[i + 1]
                 i += 2
-            elif a == "--enable" and i + 1 < len(argv):
-                names = [n.strip() for n in argv[i + 1].replace(",", " ").split() if n.strip()]
-                result["enable"] = (result["enable"] or []) + names
-                i += 2
-            elif a == "--no-enable" and i + 1 < len(argv):
-                result["no_enable"].update(n.strip() for n in argv[i + 1].split(",") if n.strip())
-                i += 2
-            elif a == "--writes":
-                result["writes"] = True
-                i += 1
             elif a == "--http":
                 if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
                     result["http"] = argv[i + 1]
@@ -462,61 +452,29 @@ class MCPRunner:
                 i += 1
         return result
 
-    def _legacy_to_select(self, parsed: dict[str, Any]) -> SelectExpr | None:
-        """Translate deprecated v0.3 --enable/--no-enable/--writes into a SelectExpr."""
-        if parsed["enable"] is None and not parsed["no_enable"] and not parsed["writes"]:
-            return None
-        warnings.warn(
-            '--enable/--no-enable/--writes are deprecated; use --select "<expr>" instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        parts: list[str] = []
-        if parsed["enable"] is None:
-            parts.append("default")
-        else:
-            chosen = " or ".join(f"router:{n}" for n in parsed["enable"])
-            parts.append(f"({chosen})")
-        parts.extend(f"not router:{excluded}" for excluded in parsed["no_enable"])
-        # Mention `write` either way so `_expr_mentions(expr, 'write')` triggers
-        # include_writes when --writes is on (and stays excluded when off).
-        if parsed["writes"]:
-            parts.append("(read or write)")
-        else:
-            parts.append("not write")
-        return parse_select(" and ".join(parts))
-
     def _select_expr(self, parsed: dict[str, Any]) -> SelectExpr:
         """Resolve effective SelectExpr from CLI."""
         if parsed["select"] is not None:
             return parse_select(parsed["select"])
-        legacy = self._legacy_to_select(parsed)
-        return legacy if legacy is not None else self.default_select
+        return self.default_select
 
     def _apply_routers(self, parsed: dict[str, Any]) -> SelectExpr:
         """Apply routers honouring the resolved --select expression. Returns the expr."""
         expr = self._select_expr(parsed)
         if self.router_registry is None:
             return expr
-        # Routers needed: any whose name appears in the expression OR the defaults.
         wanted = self._wanted_routers(expr)
-        # Validate atoms post-hoc against the union of registered routers (best-effort).
-        # The lint rule (A2K010, future) covers source-time validation; runtime stays lax.
+        # Best-effort post-hoc validation; the lint rule (A2K010) covers source-time.
         import contextlib  # noqa: PLC0415
 
         with contextlib.suppress(Exception):
             validate_atoms(expr, known_routers=set(self.router_registry.names()), known_tools=set())
-        # Determine include_writes: any branch references write.
         include_writes = _expr_mentions(expr, "write") or _expr_mentions(expr, "destructive")
         self.router_registry.apply(self.server, self.store, enabled=wanted, include_writes=include_writes)
         return expr
 
     def _wanted_routers(self, expr: SelectExpr) -> set[str]:
-        """Best-effort: which routers should `apply()` register?
-
-        Heuristic: if `default` is mentioned (positive) → start from defaults;
-        otherwise start from explicitly-named routers. Negated atoms are removed.
-        """
+        """Best-effort: which routers should `apply()` register?"""
         assert self.router_registry is not None  # noqa: S101
         all_names = set(self.router_registry.names())
         mentions = _atom_polarity(expr)
@@ -533,9 +491,9 @@ class MCPRunner:
         return wanted
 
     def _ephemeral(self, parsed: dict[str, Any]) -> dict[tuple[str, ...], Any]:
-        if self.connection_class is None or not parsed["register_args"]:
+        if self.store is None or not parsed["register_args"]:
             return {}
-        return register_ephemeral_connections(parsed["register_args"], self.connection_class)
+        return register_ephemeral_connections(parsed["register_args"], store=self.store)
 
     def _http_settings(self, raw: str) -> tuple[str, int]:
         host, port = "127.0.0.1", 8080
@@ -586,11 +544,7 @@ def _expr_mentions(expr: SelectExpr, name: str) -> bool:
 
 
 def _atom_polarity(expr: SelectExpr, _negated: bool = False) -> dict[tuple[str, str | None], str]:
-    """Walk `expr`, return {(name, namespace): 'pos'|'neg'}.
-
-    Best-effort: tracks whether each atom is under an even/odd number of `not`s.
-    Mixed-polarity atoms collapse to whichever first appeared.
-    """
+    """Walk `expr`, return {(name, namespace): 'pos'|'neg'}."""
     out: dict[tuple[str, str | None], str] = {}
     if expr.op == "atom":
         assert expr.atom is not None  # noqa: S101
@@ -604,8 +558,6 @@ def _atom_polarity(expr: SelectExpr, _negated: bool = False) -> dict[tuple[str, 
 
 
 __all__ = [
-    "Feature",
-    "FeatureRegistry",
     "MCPRunner",
     "Router",
     "RouterRegistry",

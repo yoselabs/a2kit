@@ -1,6 +1,6 @@
 [project]
 name = "a2kit"
-version = "0.3.1"
+version = "0.4.0"
 description = "Thin library on top of FastMCP — additive primitives for connection management, tool decoration, schema snapshots, router-module registration, lint, capabilities + select grammar, and HTTP cassette testing."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]
@@ -37,6 +37,9 @@ otel = [
 ]
 testing = [
     "vcrpy>=6",
+]
+projection = [
+    "cel-python>=0.5",
 ]
 
 [build-system]
@@ -85,9 +88,11 @@ max-returns = 6
 ]
 "scripts/**" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201"]
 "examples/**" = [
-    "T201", "S101", "S105", "S106", "SLF001", "ARG002",
+    "T201", "S101", "S105", "S106", "SLF001", "ARG002", "PLC0415",
     "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN206",
 ]
+"src/a2kit/lint/static.py" = ["C901", "PLR0911", "PLR0912", "SIM103", "PERF401", "FURB171", "RUF034"]
+"src/a2kit/scaffold.py" = ["C901"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -119,6 +124,8 @@ dev = [
     "ruff>=0.9",
     "vcrpy>=6",
     "diff-cover>=9",
+    "ty>=0.0.34",
+    "cel-python>=0.5",
 ]
 
 [tool.a2kit.lint]

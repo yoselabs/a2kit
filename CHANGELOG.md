@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.4.0 — 2026-05-07
+
+Pre-1.0 clean cut. Removes all v0.3 deprecation aliases (no external consumers
+to break). Adds CEL projection, completes A2K005, activates A2K010, ships
+A2K011, auto-loads pyproject defaults, splits `_select.py`. Internal repo only —
+not published to PyPI.
+
+**Breaking changes (deprecation aliases removed):**
+
+- `a2kit.Feature` / `a2kit.FeatureRegistry` — gone. `from a2kit import Feature`
+  raises `ImportError` with a migration hint. Use `Router` / `RouterRegistry`
+  (kwarg-init).
+- `RouterRegistry.feature(...)` decorator — gone. Use `RouterRegistry.router(...)`.
+- `MCPRunner` flags `--enable`, `--no-enable`, `--writes` — gone. The synthetic
+  `(read or write)` clause translation is removed. Migration:
+  - `--enable issues,sprints` → `--select "router:issues or router:sprints"`
+  - `--no-enable sprints`     → `--select "default and not router:sprints"`
+  - `--writes`                → include `(read or write)` in your `--select`
+- `build_cli(connection_class=...)` kwarg — gone. Derived from
+  `store.connection_class`.
+- `MCPRunner(connection_class=...)` kwarg — gone. Same derivation.
+- `register_ephemeral_connections(args, connection_class)` positional — gone.
+  Only `register_ephemeral_connections(args, store=store)` remains.
+
+**New**
+
+- `a2kit.projection` module: `filter_records(records, *, expr)` (CEL boolean
+  expression filter), `project_fields(records, *, fields)` (key selection).
+  `[projection]` extra brings in `cel-python>=0.5`. Lazy-imported; missing
+  dep raises `ProjectionUnavailable`.
+- `a2kit.format_response(data, *, filter="", fields=None, ...)` composes
+  filter → projection → truncation → format routing.
+- `@a2kit.tool(cel_filter_param="filter", fields_param="fields")` auto-threads
+  the named function args into `format_response`.
+- New exceptions: `ProjectionUnavailable`, `InvalidFilterExpression`.
+- `MCPRunner` auto-loads `[tool.a2kit.runner] default_select` from the nearest
+  `pyproject.toml` (walks up from CWD). Resolution order: explicit kwarg →
+  pyproject value → hard default `"default and not write and not destructive"`.
+- `[tool.a2kit.capabilities]` table in `pyproject.toml`. Each entry is
+  registered into `a2kit.capabilities` at `MCPRunner.__init__` time. Same
+  `CapabilityRecord` validation as the code-side path.
+- **A2K010** lint activated: scans `default_select=...`, `parse_select(...)`,
+  `--select "<expr>"` literals in source, `scripts/*.sh`, `Makefile`, and
+  `pyproject.toml`. Unknown atoms emit `A2K010` with `difflib` suggestions.
+- **A2K011** advisory lint: `@a2kit.tool` returning raw `dict`/`Mapping` is
+  flagged ("prefer Pydantic BaseModel for richer schema snapshots").
+  Configurable via `[tool.a2kit.lint] disabled = ["A2K011"]`. Suppressible
+  via `# noqa: A2K011` on the function definition line.
+- **A2K005 completed**: cross-checks tool `connection_param` type annotation
+  against the resolved store's `KEY_FIELDS` arity. `str` for arity > 1 is
+  rejected; `tuple[...]`, typed key model, or `dict[str, str]` accepted.
+  Falls back to advisory when the store can't be resolved within the file.
+
+**Cleanups / refactors**
+
+- `_select.py` split into `_select_parse.py` (~110 LOC) + `_select_eval.py`
+  (~40 LOC) + `_select.py` façade. Public re-exports unchanged.
+- `examples/projection.py`, `examples/cel_filter_tool.py`,
+  `examples/toml_capabilities.py`, `examples/v04_minimal_mcp.py` — new.
+- ANTIPATTERNS.md adds entries 14–18 (Pydantic class-attr fields, runtime
+  `Capability` alias, forward refs + `__future__` annotations, opt-in pytest
+  plugins, hard breaks vs synthetic deprecation clauses).
+- `tests/test_v04.py` covers projection, A2K005 multi-field, A2K010, A2K011,
+  TOML capability loading, removal guards.
+
+**No PyPI publish.** Repo push is the only release channel for v0.4.
+
 ## 0.3.1 — 2026-05-07
 
 Patch on top of v0.3.0. Adds Router (Pydantic) + capabilities + select grammar

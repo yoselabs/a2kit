@@ -1,4 +1,4 @@
-# a2kit lint rules (v0.3.1)
+# a2kit lint rules (v0.4.0)
 
 Three layers — pick the strictest your CI tolerates:
 
@@ -43,11 +43,45 @@ Locally-defined Pydantic classes used as tool return annotations are flagged.
 
 A tool with a parameter named `connection` must reference `a2kit.docs.connection_param_doc()`.
 
-### A2K005 — `KEY_FIELDS` shape and usage
+### A2K005 — `KEY_FIELDS` shape and multi-field tool-param compat
 
 A `ConnectionInfo` subclass declaring `KEY_FIELDS` must use a tuple of lowercase
 Python identifier strings. v0.3.1 also runs the same checks at class-creation
 time via `ConnectionInfo.__init_subclass__`.
+
+**v0.4 extension** — when a `@a2kit.tool(store=widget_store, connection_param="conn")`
+decoration references a store whose `ConnectionInfo` has `KEY_FIELDS` arity > 1,
+the function's `conn` parameter type annotation must be one of:
+
+- `tuple[str, ...]`
+- `tuple[str, str, ...]` (matching arity)
+- A typed key model (BaseModel subclass with the field names)
+- `dict[str, str]`
+
+Bare `str` is rejected for arity > 1 (only valid for arity == 1). The lint walks
+the AST to resolve the store's `ConnectionInfo` class within the same file. If
+the store is imported from another module, the rule degrades to an advisory
+(`could not resolve store ...; check arity manually`).
+
+### A2K010 — Unknown atom in a `--select` expression
+
+Activated in v0.4. The lint scans `--select` strings in source files (any
+`MCPRunner(default_select=...)`, `parse_select(...)`, or `--select "<expr>"`
+inside argv lists / `subprocess.run(...)` calls), shell scripts (`scripts/*.sh`),
+Makefiles, and the `[tool.a2kit.runner] default_select` value in
+`pyproject.toml`. Each atom is parsed and validated against the union of
+declared routers, tool names, capability names, and the special `default` atom.
+Unknown atoms raise A2K010 with `difflib.get_close_matches` suggestions.
+
+### A2K011 — Tools should return Pydantic models (advisory, warning)
+
+When a `@a2kit.tool` function declares a `-> dict` / `-> Mapping` return,
+the schema-snapshot harness can't extract a typed shape and falls back to a
+permissive schema. Returning a Pydantic `BaseModel` lets
+`model.model_json_schema()` produce a tight, version-controllable schema. This
+rule is advisory (not error). Configurable via
+`[tool.a2kit.lint] disabled = ["A2K011"]`. Suppressible via
+`# noqa: A2K011` on the function definition line.
 
 ### A2K006 — Duplicate param description across tools
 

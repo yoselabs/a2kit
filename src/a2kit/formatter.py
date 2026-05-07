@@ -87,18 +87,45 @@ def toon_or_json(data: Any) -> tuple[str, Any]:
     return "json", json.dumps(data, separators=(",", ":"), default=str, ensure_ascii=False)
 
 
-def format_response(data: Any, *, truncate_at: int = DEFAULT_MAX_CHARS, marker: str = DEFAULT_MARKER) -> dict[str, Any]:
-    """Run truncation, then format routing. Returns the canonical envelope.
+def format_response(
+    data: Any,
+    *,
+    filter: str = "",  # noqa: A002 — public API kwarg name is part of the contract
+    fields: list[str] | None = None,
+    truncate_at: int = DEFAULT_MAX_CHARS,
+    marker: str = DEFAULT_MARKER,
+) -> dict[str, Any]:
+    """Run filter (CEL) → projection → truncation → format routing.
 
     Envelope: `{"format": "toon"|"json", "data": <string>, "truncated": bool}`.
 
+    - `filter` — optional CEL boolean expression, applied only when `data` is a
+      list of dicts. Uses `a2kit.projection.filter_records`.
+    - `fields` — optional list of keys to keep per record (list-of-dicts only).
+    - `truncate_at` — max char length per string before truncation.
+
     `truncated=True` iff at least one string field was longer than `truncate_at`.
-    Detection compares marker presence in the post-truncate string; cheaper than
-    deep-walking twice.
     """
-    truncated_value = truncate(data, truncate_at, marker)
+    processed = _apply_filter_and_fields(data, filter_expr=filter, fields=fields)
+    truncated_value = truncate(processed, truncate_at, marker)
     fmt, payload = toon_or_json(truncated_value)
     return {"format": fmt, "data": payload, "truncated": marker in payload}
+
+
+def _apply_filter_and_fields(data: Any, *, filter_expr: str, fields: list[str] | None) -> Any:
+    """Apply CEL filter then field projection, but only on list-of-dicts shapes."""
+    if not (filter_expr or fields):
+        return data
+    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+        return data
+    from a2kit import projection  # noqa: PLC0415 — keep CEL import lazy
+
+    rows: list[dict[str, Any]] = data
+    if filter_expr:
+        rows = projection.filter_records(rows, expr=filter_expr)
+    if fields:
+        rows = projection.project_fields(rows, fields=fields)
+    return rows
 
 
 __all__ = ["DEFAULT_MARKER", "DEFAULT_MAX_CHARS", "format_response", "toon_or_json", "truncate"]

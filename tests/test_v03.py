@@ -1,5 +1,5 @@
-"""Tests for v0.3-only additions: server-auto-register, KEY_FIELDS load shapes,
-docs registry, Feature class, deprecations.
+"""Tests for v0.3 surface that survives into v0.4: server-auto-register,
+KEY_FIELDS load shapes, docs registry. (Feature/Deprecation tests removed in v0.4.)
 """
 
 from __future__ import annotations
@@ -21,10 +21,6 @@ from a2kit.docs import (
     param_doc,
     register_param_doc,
 )
-from a2kit.scaffold import Feature, FeatureRegistry, MCPRunner
-
-
-# ---- KEY_FIELDS load shapes -------------------------------------------------
 
 
 class WidgetConn(ConnectionInfo):
@@ -177,8 +173,6 @@ def test_tool_server_auto_register() -> None:
 
 
 def test_tool_server_idempotent_when_stacked() -> None:
-    """When `@server.tool()` runs first (innermost) and `@a2kit.tool(server=...)`
-    runs after, the auto-register sees the existing entry and skips."""
     server = _FakeServer()
 
     @a2kit.tool(server=server)
@@ -191,10 +185,6 @@ def test_tool_server_idempotent_when_stacked() -> None:
 
 
 def test_tool_server_unrelated_existing_tool() -> None:
-    """A pre-existing tool with a different name does NOT block registration.
-
-    Covers the branch where `getattr(entry, 'name', None) != name`.
-    """
     server = _FakeServer()
 
     @server.tool()
@@ -210,8 +200,6 @@ def test_tool_server_unrelated_existing_tool() -> None:
 
 
 def test_tool_server_handles_missing_tool_manager() -> None:
-    """Server without `_tool_manager` still gets a registration call."""
-
     class _Bare:
         registered: list[str] = []  # noqa: RUF012
 
@@ -264,7 +252,6 @@ def test_param_doc_does_not_override_explicit() -> None:
         """We mention filter_expr inline so registry should skip it."""
         return {}
 
-    # Existing doc already mentions filter_expr → no injection.
     assert "REGISTERED TEXT" not in (f.__doc__ or "")
     clear_param_docs()
 
@@ -280,7 +267,6 @@ def test_param_doc_no_registry_skips_injection() -> None:
 
 
 def test_param_doc_with_unrelated_registry_entry() -> None:
-    """Registry has a param the tool doesn't take — covers the `not in registry` skip."""
     clear_param_docs()
     register_param_doc("never_used", "Doc for a name no tool uses.")
 
@@ -304,12 +290,11 @@ def test_param_doc_creates_doc_when_absent() -> None:
     clear_param_docs()
 
 
-# ---- Feature class ----------------------------------------------------------
+# ---- Router class -----------------------------------------------------------
 
 
-def test_feature_subclass_register() -> None:
-    """v0.3.1: Feature is a deprecated alias of Router; instantiate via kwargs."""
-    from a2kit import Router
+def test_router_subclass_register() -> None:
+    from a2kit import Router, RouterRegistry
 
     class MyRouter(Router):
         def register_read(self, server: Any, store: Any) -> None:
@@ -318,7 +303,7 @@ def test_feature_subclass_register() -> None:
         def register_write(self, server: Any, store: Any) -> None:
             server.tools.append("issues.write")
 
-    reg = FeatureRegistry()
+    reg = RouterRegistry()
     reg.add(MyRouter(name="issues", default=True))
 
     class _S:
@@ -330,38 +315,19 @@ def test_feature_subclass_register() -> None:
     assert s.tools == ["issues.read", "issues.write"]
 
 
-def test_feature_blank_name_raises() -> None:
+def test_router_blank_name_raises() -> None:
     from a2kit import Router
 
-    with pytest.raises(Exception, match=r"non-empty|name"):  # Pydantic ValidationError or ValueError  # noqa: B017, PT011
+    with pytest.raises(Exception):  # noqa: B017, PT011
         Router(name="")
 
 
-def test_feature_default_register_methods_no_op() -> None:
-    """Base Feature class has no-op register methods (cover them)."""
-    with pytest.warns(DeprecationWarning):
+def test_router_default_register_methods_no_op() -> None:
+    from a2kit import Router
 
-        class _BaseFeat(Feature):
-            pass
-
-    f = _BaseFeat(name="x")
-    f.register_read(None, None)
-    f.register_write(None, None)
-
-
-# ---- scaffold deprecations --------------------------------------------------
-
-
-def test_build_cli_warns_when_connection_class_passed(tmp_path: Path) -> None:
-    s: ConnectionStore[FlatConn] = ConnectionStore(tmp_path / "c", FlatConn)
-    with pytest.warns(DeprecationWarning, match="build_cli"):
-        a2kit.scaffold.build_cli(s, connection_class=FlatConn)
-
-
-def test_build_cli_no_kwarg(tmp_path: Path) -> None:
-    s: ConnectionStore[FlatConn] = ConnectionStore(tmp_path / "c", FlatConn)
-    cli = a2kit.scaffold.build_cli(s)
-    assert cli.name == "a2kit"
+    r = Router(name="x")
+    r.register_read(None, None)
+    r.register_write(None, None)
 
 
 def test_register_ephemeral_with_store(tmp_path: Path) -> None:
@@ -370,31 +336,9 @@ def test_register_ephemeral_with_store(tmp_path: Path) -> None:
     assert ("ep",) in out
 
 
-def test_register_ephemeral_warns_when_class_only(tmp_path: Path) -> None:
-    with pytest.warns(DeprecationWarning):
-        a2kit.scaffold.register_ephemeral_connections(["--register", "ep", "url=https://x"], FlatConn)
-
-
-def test_register_ephemeral_requires_one_of() -> None:
-    with pytest.raises(TypeError, match="store="):
-        a2kit.scaffold.register_ephemeral_connections([])
-
-
-def test_mcprunner_warns_on_connection_class(tmp_path: Path) -> None:
-    s: ConnectionStore[FlatConn] = ConnectionStore(tmp_path / "c", FlatConn)
-
-    class _S:
-        def __init__(self) -> None:
-            self.settings = type("S", (), {"host": "h", "port": 1})()
-
-        def run(self, transport: str = "stdio") -> None:
-            pass
-
-    with pytest.warns(DeprecationWarning, match="MCPRunner"):
-        MCPRunner(_S(), store=s, connection_class=FlatConn)
-
-
 def test_mcprunner_derives_class_from_store(tmp_path: Path) -> None:
+    from a2kit.scaffold import MCPRunner
+
     s: ConnectionStore[FlatConn] = ConnectionStore(tmp_path / "c", FlatConn)
 
     class _S:

@@ -37,6 +37,8 @@ class ToolConfig(BaseModel):
     enricher: Any = None
     resolver_registry: Any = None
     capabilities: frozenset[Capability] = Field(default_factory=frozenset)
+    cel_filter_param: str | None = None
+    fields_param: str | None = None
 
 
 class RunnerConfig(BaseModel):
@@ -48,10 +50,6 @@ class RunnerConfig(BaseModel):
     http: str | None = None
     register_args: list[str] = Field(default_factory=list)
     scope: str | None = None
-    # Deprecated v0.3 flags — translate to --select internally:
-    enable: list[str] | None = None
-    no_enable: list[str] = Field(default_factory=list)
-    writes: bool = False
 
 
 class BudgetConfig(BaseModel):

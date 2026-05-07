@@ -55,13 +55,15 @@ Requires Python 3.11+ and `uv`.
 | **Fat** `@a2kit.tool(...)` (connection lookup + token + write + xml + OTel + streaming) | `a2kit.tools` | [`examples/fat_tool.py`](examples/fat_tool.py) |
 | `tools.tool` (legacy, == v0.1), `preserve_return_annotation`, `assert_clean_string` | `a2kit.tools` | [`examples/tool_decorator.py`](examples/tool_decorator.py) |
 | `ErrorEnricher`, `EnricherRegistry`, `ConnectionNotFoundEnricher` | `a2kit.errors` | [`examples/error_enricher.py`](examples/error_enricher.py) |
-| `MCPRunner`, `FeatureRegistry`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` | [`examples/runner.py`](examples/runner.py), [`examples/feature_modules.py`](examples/feature_modules.py), [`examples/scaffold_cli.py`](examples/scaffold_cli.py) |
-| `truncate`, `toon_or_json`, `format_response` | `a2kit.formatter` | [`examples/formatter.py`](examples/formatter.py) |
+| `MCPRunner`, `RouterRegistry`, `Router`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` | [`examples/runner.py`](examples/runner.py), [`examples/feature_modules.py`](examples/feature_modules.py), [`examples/scaffold_cli.py`](examples/scaffold_cli.py) |
+| `truncate`, `toon_or_json`, `format_response(filter=, fields=)` | `a2kit.formatter` | [`examples/formatter.py`](examples/formatter.py), [`examples/projection.py`](examples/projection.py) |
+| `filter_records`, `project_fields` (CEL projection) | `a2kit.projection` | [`examples/projection.py`](examples/projection.py), [`examples/cel_filter_tool.py`](examples/cel_filter_tool.py) |
 | `connection_param_doc` | `a2kit.docs` | [`examples/fat_tool.py`](examples/fat_tool.py) |
 | `snapshot_schemas`, `assert_schemas_match`, `cassette` + pytest fixtures | `a2kit.testing`, `a2kit.pytest_plugin` | [`examples/schema_snapshot.py`](examples/schema_snapshot.py), [`examples/cassette_test.py`](examples/cassette_test.py) |
 | `WriteNotAllowed`, `ToolXMLContamination` (new exceptions) | `a2kit.exceptions` | — |
 
-Optional extras: `a2kit[otel]` (opentelemetry-api), `a2kit[testing]` (vcrpy).
+Optional extras: `a2kit[otel]` (opentelemetry-api), `a2kit[testing]` (vcrpy),
+`a2kit[projection]` (cel-python).
 Both are lazy-imported; the minimal install runs without either.
 
 ### `a2kit.connections`
