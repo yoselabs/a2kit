@@ -338,6 +338,11 @@ class Router(BaseModel, Generic[ConnT]):
     default: bool = True
     auto_tag: bool = True
 
+    # v0.10: when True (default) AND `store` is set AND no explicit `enricher`
+    # is provided, the kit wires `connection_enricher(store)` so a typo in the
+    # `connection` arg returns "Did you mean…?" instead of a raw KeyError.
+    auto_connection_enricher: bool = True
+
     # Per-subclass tool registry — populated by `@cls.read/.write/.tool` decorators.
     # Each subclass gets a fresh empty list via `__init_subclass__`.
     _tools: ClassVar[list[_ToolBinding]] = []
@@ -405,19 +410,26 @@ class Router(BaseModel, Generic[ConnT]):
 
     def _apply_bindings(self, server: Any, store: Any, *, mode_filter: set[str]) -> None:
         """Iterate `cls._tools`, call `@a2kit.tool(...)` with merged kwargs."""
+        from a2kit.errors import connection_enricher as _connection_enricher  # noqa: PLC0415
         from a2kit.tools import tool as _tool_decorator  # noqa: PLC0415
 
         base_store = self.store if self.store is not None else store
         # Lift ephemeral connections to the store layer — the tool decorator
         # itself never sees them (v0.8: no `ephemeral=` kwarg on @a2kit.tool).
         effective_store = _EphemeralAwareStore(base_store, self.ephemeral) if self.ephemeral else base_store
+        # v0.10: auto-wire connection_enricher when the router has a store and
+        # no explicit enricher is configured. Author can disable by setting
+        # `auto_connection_enricher=False` on the Router subclass.
+        default_enricher: Any = self.enricher
+        if default_enricher is None and effective_store is not None and self.auto_connection_enricher:
+            default_enricher = _connection_enricher(effective_store)
         for binding in self._tools:
             if binding.mode not in mode_filter:
                 continue
             merged: dict[str, Any] = {
                 "server": server,
                 "store": effective_store,
-                "enricher": self.enricher,
+                "enricher": default_enricher,
                 "resolver_registry": self.resolver_registry,
                 "router_context": self.__class__.context,
             }

@@ -30,13 +30,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from difflib import get_close_matches
-from typing import TYPE_CHECKING
+from typing import Any
 
 from a2kit.exceptions import ConnectionNotFound
-
-if TYPE_CHECKING:
-    from a2kit.connections import ConnectionInfo, ConnectionStore
-
 
 EnricherFn = Callable[[Exception, "str | None"], Exception]
 """Type alias: an enricher is `(exc, tool_name) -> exc`. Returning the same
@@ -59,7 +55,7 @@ def chain(*enrichers: EnricherFn) -> EnricherFn:
     return chained
 
 
-def connection_enricher(store: ConnectionStore[ConnectionInfo]) -> EnricherFn:
+def connection_enricher(store: Any) -> EnricherFn:
     """Enrich `ConnectionNotFound` with available-keys list + difflib suggestion.
 
     Other exceptions pass through. Replaces the v0.8

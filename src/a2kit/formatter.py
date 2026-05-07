@@ -26,10 +26,14 @@ Public API:
 from __future__ import annotations
 
 import json
+import types
+import typing
 from enum import Enum
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict
+
+FormatName = Literal["tsv", "toon", "json"]
 
 DEFAULT_MAX_CHARS = 2000
 DEFAULT_MARKER = "…[truncated]"
@@ -92,7 +96,109 @@ def _tabular_encode(rows: list[dict[str, Any]]) -> str:
     return f"{header}\n{body}"
 
 
-def toon_or_json(data: Any) -> tuple[Literal["tsv", "toon", "json"], str]:
+def _flat_pydantic_fields(model_cls: type[BaseModel]) -> bool | None:
+    """Inspect a Pydantic model class — True if all fields are flat scalars,
+    False if at least one is structurally nested (list/dict/BaseModel).
+
+    Returns ``None`` if the field-type set is ambiguous (e.g. `Any`) — caller
+    should fall back to runtime detection.
+    """
+    saw_any = False
+    for field in model_cls.model_fields.values():
+        anno = field.annotation
+        origin = get_origin(anno)
+        # Optional[T] / Union[..., None] / `T | None` — strip None, take the non-None side.
+        if origin is typing.Union or origin is types.UnionType:
+            non_none = [a for a in get_args(anno) if a is not type(None)]
+            if len(non_none) == 1:
+                anno = non_none[0]
+                origin = get_origin(anno)
+        if anno is Any:
+            saw_any = True
+            continue
+        if origin in (list, tuple, set, dict, frozenset):
+            return False
+        if isinstance(anno, type) and issubclass(anno, BaseModel):
+            return False
+    if saw_any:
+        return None
+    return True
+
+
+def format_from_annotation(anno: Any) -> FormatName | None:  # noqa: PLR0911
+    """Precompute the wire format from a return type annotation, if possible.
+
+    Returns:
+      - ``"tsv"``: list of Pydantic models with all-flat fields, or ``Page[T]`` of same.
+      - ``"toon"``: list of Pydantic models with at least one nested field, or ``Page[T]`` of same.
+      - ``"json"``: scalar / single dict / single Pydantic / non-list shapes.
+      - ``None``: insufficient info to lock (untyped `list`, `list[dict]`, ``Any``).
+    """
+    if anno is None or anno is type(None):
+        return "json"
+
+    # Pydantic generics (Page[T] etc.) report themselves via metadata, not
+    # the typing.get_origin/get_args path. Inspect first so Page[T] → tsv/toon.
+    pyd_meta = getattr(anno, "__pydantic_generic_metadata__", None)
+    if pyd_meta is not None:
+        pyd_origin = pyd_meta.get("origin")
+        pyd_args = pyd_meta.get("args", ())
+        if pyd_origin is Page:
+            return _list_format_from_item(pyd_args[0]) if pyd_args else None
+        if pyd_origin is None and isinstance(anno, type) and issubclass(anno, Page):
+            # Bare `Page` (unparametrised) — can't lock format.
+            return None
+
+    origin = get_origin(anno)
+    args = get_args(anno)
+
+    if origin in (list, tuple):
+        if not args:
+            return None
+        return _list_format_from_item(args[0])
+
+    # Single dict / Pydantic / scalar → JSON envelope.
+    if origin is dict:
+        return "json"
+    if isinstance(anno, type) and issubclass(anno, BaseModel):
+        return "json"
+    if isinstance(anno, type) and anno in (str, int, float, bool, bytes):
+        return "json"
+    return None
+
+
+def _list_format_from_item(item_anno: Any) -> FormatName | None:
+    """Decide tsv/toon for a list whose item annotation is `item_anno`.
+
+    Pydantic item with all-flat fields → tsv; with nested → toon.
+    `dict` items or `Any` → None (runtime).
+    """
+    if isinstance(item_anno, type) and issubclass(item_anno, BaseModel):
+        flat = _flat_pydantic_fields(item_anno)
+        if flat is True:
+            return "tsv"
+        if flat is False:
+            return "toon"
+        return None
+    return None
+
+
+def _dump_items(items: list[Any]) -> list[dict[str, Any]]:
+    """Normalize a list of Pydantic-or-dict to a list of dicts.
+
+    Used before tabular encoding so `Page[Pydantic]` and `list[Pydantic]` go
+    through the same TSV/TOON path as raw `list[dict]`.
+    """
+    out: list[dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, BaseModel):
+            out.append(item.model_dump(mode="python"))
+        elif isinstance(item, dict):
+            out.append(item)
+    return out
+
+
+def toon_or_json(data: Any) -> tuple[FormatName, str]:
     """Pick the wire format. Returns `(format_name, payload)`.
 
     Decision tree:
@@ -180,6 +286,7 @@ def format_response(
     fields: list[str] | None = None,
     truncate_at: int = DEFAULT_MAX_CHARS,
     marker: str = DEFAULT_MARKER,
+    format_hint: FormatName | None = None,
 ) -> Response:
     """Run filter (CEL) → projection → truncation → format routing.
 
@@ -189,13 +296,28 @@ def format_response(
       list of dicts. Uses `a2kit.projection.filter_records`.
     - `fields` — optional list of keys to keep per record (list-of-dicts only).
     - `truncate_at` — max char length per string before truncation.
+    - `format_hint` — pre-computed format from a return-type annotation. When
+      set, skips the runtime list-of-dicts walk; the hint is trusted unless
+      `data` is plainly incompatible (e.g. hint says ``"tsv"`` but `data` is
+      a single dict).
 
     `.truncated == True` iff at least one string field was longer than `truncate_at`.
     """
+    if isinstance(data, list):
+        data = _dump_items(data)
     processed = _apply_filter_and_fields(data, filter_expr=filter, fields=fields)
     truncated_value = truncate(processed, truncate_at, marker)
-    fmt, payload = toon_or_json(truncated_value)
+    fmt, payload = _encode(truncated_value, format_hint)
     return Response(format=fmt, data=payload, truncated=marker in payload)
+
+
+def _encode(data: Any, hint: FormatName | None) -> tuple[FormatName, str]:
+    """Encode `data` honouring the format hint when shape-compatible."""
+    if hint in ("tsv", "toon") and _is_uniform_row_list(data):
+        return hint, _tabular_encode(data)
+    if hint == "json":
+        return "json", json.dumps(data, separators=(",", ":"), default=str, ensure_ascii=False)
+    return toon_or_json(data)
 
 
 def _apply_filter_and_fields(data: Any, *, filter_expr: str, fields: list[str] | None) -> Any:
@@ -217,11 +339,13 @@ def _apply_filter_and_fields(data: Any, *, filter_expr: str, fields: list[str] |
 __all__ = [
     "DEFAULT_MARKER",
     "DEFAULT_MAX_CHARS",
+    "FormatName",
     "ListViewMode",
     "Local",
     "Page",
     "Passthrough",
     "Response",
+    "format_from_annotation",
     "format_response",
     "toon_or_json",
     "truncate",

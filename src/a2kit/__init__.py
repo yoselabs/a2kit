@@ -1,4 +1,4 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.9.0).
+"""a2kit — thin library for FastMCP-based MCPs (v0.10.0).
 
 Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
 to FastMCP at any boundary stays clean. See README for the full rundown.
@@ -90,7 +90,7 @@ from a2kit.tools import tool
 
 A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 __all__ = [
     "A2KIT_CONFIG_HOME",

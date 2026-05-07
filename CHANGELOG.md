@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.10.0 — 2026-05-07
+
+**Surface-simplification turn.** Four targeted wins, all additive over v0.9:
+the wire format is decided at decoration time when possible, `Page[T]` of
+Pydantic models actually serialises to TSV/TOON, every Router with a store
+gets the typo-suggestion enricher for free, and the agent-facing
+`connection: str` schema lists the saved keys it knows about.
+
+### New
+
+- **Format-from-type at decoration time.** When the tool's return type is
+  concrete (`list[Issue]`, `Page[Issue]`, `dict`, `Issue`, `int`, …), the kit
+  precomputes the wire format (`tsv` / `toon` / `json`) once. Each call skips
+  the runtime list-of-dicts walk. Stamped on the wrapper as `_a2kit_format`.
+
+  Decision tree:
+  - `list[T]` / `Page[T]` where `T` is a Pydantic model with all-flat
+    fields → `tsv` locked.
+  - Same shape with at least one `list` / `dict` / nested-Pydantic field →
+    `toon` locked.
+  - Single `dict`, single Pydantic model, scalar return, `None` → `json` locked.
+  - Untyped `list`, `list[dict]`, `Any`, unresolvable forward ref → `None`
+    (runtime fallback, identical to v0.9 behaviour).
+
+- **`Page[T]` with Pydantic items.** `_dump_items()` flattens
+  `Page[Issue].items` via `model_dump()` before the tabular encoder sees
+  them, so `Page[Pydantic]` returns a real TSV/TOON payload instead of
+  `str(Issue)` slop. Same fix applies to `list[Pydantic]`.
+
+- **Auto-wired `connection_enricher` on Routers with a store.** A typo in
+  the `connection` arg now returns
+
+  ```
+  Connection not found: prdo
+  Available: prod, staging
+  Did you mean: prod?
+  ```
+
+  …without the author wiring `enricher=connection_enricher(self.store)`.
+  Disable with `auto_connection_enricher=False` on the Router subclass; an
+  explicit `enricher=` still wins.
+
+- **Schema enrichment for `connection: str`.** The injected docstring
+  inlines the saved connection keys (`Currently saved: 'prod', 'staging'`)
+  so the agent sees valid values inline instead of having to call
+  `connections list` out-of-band. Empty stores fall back to the v0.9
+  generic phrasing.
+
+### Changed
+
+- `format_response(...)` accepts `format_hint: FormatName | None` (default
+  `None`). Hint is trusted unless the data shape is incompatible (e.g.
+  `tsv` hint on a single dict → falls back to JSON).
+- `connection_enricher(store)` parameter type relaxed from
+  `ConnectionStore[ConnectionInfo]` to `Any` — the function only needs
+  `.list_connections()`. Lets the router's internal `_EphemeralAwareStore`
+  proxy flow through without `cast()`.
+
+### Migration from 0.9
+
+No breaking changes. `connection_param=` is still a soft-deprecated alias
+(slated for v0.11). Three opt-out hooks:
+
+- Router auto-enricher: `class WidgetsRouter(Router): auto_connection_enricher = False`
+- Schema-key enrichment: not configurable in v0.10 — keys are listed when
+  `store.list_connections()` succeeds and yields ≥ 1 entry.
+- Format-from-type: omit the return annotation, or annotate with `list[dict]` /
+  `Any` to force the runtime path.
+
 ## 0.9.0 — 2026-05-07
 
 **Ergonomic overhaul.** Pre-1.0, no users — clean breaks across error

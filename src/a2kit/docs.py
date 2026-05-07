@@ -21,12 +21,26 @@ def connection_param_doc(
     cli: str = "a2kit",
     example: str = "prod",
     custom_suffix: str | None = None,
+    available: list[str] | None = None,
 ) -> str:
-    """Canonical sentence for the connection parameter — eliminates per-tool drift."""
-    base = (
-        f"{name}: Saved {cli} connection name (e.g. {example!r}), not a project key or ID. "
-        f"Use `{cli} connections list` to see available names."
-    )
+    """Canonical sentence for the connection parameter — eliminates per-tool drift.
+
+    `available`: optional list of currently-saved connection keys. When
+    non-empty, the docstring lists them inline so the agent can pick a valid
+    value without a side-channel `connections list` round-trip.
+    """
+    if available:
+        sample = ", ".join(repr(k) for k in available[:8])
+        suffix_extra = f" Currently saved: {sample}."
+        base = (
+            f"{name}: Saved {cli} connection name (not a project key or ID). "
+            f"Use `{cli} connections list` to see all available names.{suffix_extra}"
+        )
+    else:
+        base = (
+            f"{name}: Saved {cli} connection name (e.g. {example!r}), not a project key or ID. "
+            f"Use `{cli} connections list` to see available names."
+        )
     if custom_suffix:
         base = f"{base} {custom_suffix}"
     return base

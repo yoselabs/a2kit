@@ -52,7 +52,7 @@ from a2kit.exceptions import (
     ToolCallContamination,
     WriteNotAllowed,
 )
-from a2kit.formatter import ListViewMode, Page
+from a2kit.formatter import FormatName, ListViewMode, Page, format_from_annotation
 
 
 class _NullSpan:
@@ -121,6 +121,22 @@ def preserve_return_annotation(fn: Callable[..., Any]) -> Callable[..., Any]:
         return fn
     fn.__annotations__["return"] = return_anno
     return fn
+
+
+def _resolve_return_annotation(fn: Any, raw: Any) -> Any:
+    """Resolve a possibly string-form return annotation to its runtime type.
+
+    Under `from __future__ import annotations`, `fn.__annotations__["return"]`
+    is a string. Use `inspect.get_annotations(eval_str=True)` so format-from-
+    type detection sees `list[Row]` rather than `"list[Row]"`.
+    """
+    if raw is None or not isinstance(raw, str):
+        return raw
+    try:
+        hints = inspect.get_annotations(fn, eval_str=True)
+    except Exception:  # noqa: BLE001 — forward-ref or non-toplevel name; fall back to None
+        return None
+    return hints.get("return")
 
 
 def _check_return_annotation(fn: Callable[..., Any]) -> Any:
@@ -365,19 +381,23 @@ def _listview_apply(
     filter_mode: ListViewMode | None,
     fields_mode: ListViewMode | None,
     pagination_mode: ListViewMode | None,
+    format_hint: FormatName | None = None,
 ) -> Any:
     """Pipeline: unwrap Page → local filter → local fields → local paginate → Response.
 
     If `result` isn't a list or Page (e.g. a scalar / single dict), bypass
-    list-view processing and return as-is.
+    list-view processing and return as-is. Pydantic-model items are dumped
+    to dicts so the tabular encoder sees flat rows.
     """
+    from a2kit.formatter import _dump_items as _fmt_dump_items  # noqa: PLC0415
+
     next_cursor: str | None = None
     items: list[dict[str, Any]]
     if isinstance(result, Page):
-        items = list(result.items)
+        items = _fmt_dump_items(list(result.items))
         next_cursor = result.next_cursor
     elif isinstance(result, list):
-        items = [r for r in result if isinstance(r, dict)]
+        items = _fmt_dump_items(result)
     else:
         return result  # not a list-view-shaped result, leave alone
 
@@ -400,7 +420,7 @@ def _listview_apply(
 
     from a2kit.formatter import Response, format_response  # noqa: PLC0415
 
-    base = format_response(items)
+    base = format_response(items, format_hint=format_hint)
     return Response(format=base.format, data=base.data, truncated=base.truncated, next_cursor=next_cursor)
 
 
@@ -446,6 +466,11 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
 
     def decorator(fn: F) -> F:  # noqa: C901, PLR0915
         return_anno = _check_return_annotation(fn)
+        # Precompute the wire format from the return type. Locked at decoration
+        # so each call skips a 1-2 dict walks; ``None`` falls back to runtime.
+        # Resolve string annotations (PEP 563 / `from __future__ import annotations`).
+        resolved_return_anno = _resolve_return_annotation(fn, return_anno)
+        precomputed_format: FormatName | None = format_from_annotation(resolved_return_anno) if resolved_return_anno is not None else None
         is_async = inspect.iscoroutinefunction(fn)
         sig = inspect.signature(fn)
         resolved_tool_name = tool_name or fn.__name__
@@ -547,6 +572,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                                 filter_mode=filter,
                                 fields_mode=fields,
                                 pagination_mode=pagination,
+                                format_hint=precomputed_format,
                             )
                         return result
                 except Exception as exc:
@@ -585,6 +611,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                                 filter_mode=filter,
                                 fields_mode=fields,
                                 pagination_mode=pagination,
+                                format_hint=precomputed_format,
                             )
                         return result
                 except Exception as exc:
@@ -630,6 +657,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             sig,
             connection_param=doc_connection_param,
             cli=cli,
+            available_connections=_safe_list_connection_keys(store),
         )
 
         # Stamp computed capability tags so the runner / select can filter.
@@ -638,8 +666,10 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         # ty considers closed.
         setattr(wrapper, "_a2kit_capabilities", tool_caps)  # noqa: B010
         setattr(wrapper, "_a2kit_tool_name", resolved_tool_name)  # noqa: B010
+        setattr(wrapper, "_a2kit_format", precomputed_format)  # noqa: B010
         setattr(fn, "_a2kit_capabilities", tool_caps)  # noqa: B010
         setattr(fn, "_a2kit_tool_name", resolved_tool_name)  # noqa: B010
+        setattr(fn, "_a2kit_format", precomputed_format)  # noqa: B010
 
         if server is not None:
             _register_with_server(server, wrapper, resolved_tool_name)
@@ -681,6 +711,20 @@ def _compute_tool_capabilities(author: set[Capability], *, write: bool, tool_nam
     return caps
 
 
+def _safe_list_connection_keys(store: Any) -> list[str] | None:
+    """Best-effort list of saved connection keys for schema enrichment.
+
+    Returns ``None`` if the store can't list (no method, missing dir, etc.) so
+    the docstring builder uses the generic phrasing instead.
+    """
+    if store is None or not hasattr(store, "list_connections"):
+        return None
+    try:
+        return ["-".join(info.key) for info in store.list_connections()]
+    except Exception:  # noqa: BLE001 — never fail decoration on store I/O issues
+        return None
+
+
 def _inject_param_docs(
     wrapper: Any,
     fn: Any,
@@ -688,6 +732,7 @@ def _inject_param_docs(
     *,
     connection_param: str | None = None,
     cli: str | None = None,
+    available_connections: list[str] | None = None,
 ) -> None:
     """Auto-inject canonical param-doc text into the function's docstring.
 
@@ -718,7 +763,13 @@ def _inject_param_docs(
         if param_name in existing:
             continue
         if param_name == connection_param:
-            additions.append(connection_param_doc(param_name, cli=cli or "a2kit"))
+            additions.append(
+                connection_param_doc(
+                    param_name,
+                    cli=cli or "a2kit",
+                    available=available_connections,
+                )
+            )
         elif param_name in registry:
             additions.append(f"{param_name}: {registry[param_name]}")
     if not additions:
