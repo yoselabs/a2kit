@@ -26,11 +26,12 @@ import re
 import stat
 import tempfile
 import tomllib
+import warnings
 from pathlib import Path
 from typing import Any, ClassVar, Generic, TypeVar
 
 import tomli_w
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from a2kit.exceptions import (
     ConnectionNotFound,
@@ -84,6 +85,35 @@ class ConnectionInfo(BaseModel):
 
     KEY_FIELDS: ClassVar[tuple[str, ...]] = ("name",)
     """Subclass-level field names. Defaults to a single flat `name` key."""
+
+    def __init_subclass__(cls, **kw: Any) -> None:
+        """v0.3.1: validate KEY_FIELDS shape once per subclass.
+
+        - Must be a tuple of strings.
+        - Non-empty.
+        - Each entry a Python identifier.
+        - Lowercase (warn, do not error, on uppercase).
+        """
+        super().__init_subclass__(**kw)
+        kf = cls.__dict__.get("KEY_FIELDS")
+        if kf is None:
+            return
+        if not isinstance(kf, tuple):
+            msg = f"{cls.__name__}.KEY_FIELDS must be a tuple, got {type(kf).__name__}"
+            raise TypeError(msg)
+        if not kf:
+            msg = f"{cls.__name__}.KEY_FIELDS must be non-empty"
+            raise ValueError(msg)
+        for field_name in kf:
+            if not isinstance(field_name, str) or not field_name.isidentifier():
+                msg = f"{cls.__name__}.KEY_FIELDS entry {field_name!r} is not a valid Python identifier"
+                raise ValueError(msg)
+            if field_name != field_name.lower():
+                warnings.warn(
+                    f"{cls.__name__}.KEY_FIELDS entry {field_name!r} should be lowercase",
+                    UserWarning,
+                    stacklevel=3,
+                )
 
     @field_validator("key")
     @classmethod
@@ -229,7 +259,15 @@ class ConnectionStore(Generic[C]):
             raise ConnectionNotFound(key)
         data = tomllib.loads(path.read_text())
         data["key"] = tuple(data["key"])
-        return self.model.model_validate(data)
+        try:
+            return self.model.model_validate(data)
+        except ValidationError as exc:  # v0.3.1: unwrap to surface KeyArityMismatch / KeyFieldMissing
+            for err in exc.errors():
+                ctx = err.get("ctx", {})
+                inner = ctx.get("error") if isinstance(ctx, dict) else None
+                if isinstance(inner, (KeyArityMismatch, KeyFieldMissing, InvalidConnectionKey)):
+                    raise inner from exc
+            raise
 
     def list_connections(self) -> list[C]:
         """List all valid connections in the config dir, sorted by filename."""

@@ -30,8 +30,12 @@ A2K003 = "A2K003"
 A2K004 = "A2K004"
 A2K005 = "A2K005"
 A2K006 = "A2K006"
+A2K008 = "A2K008"
+A2K009 = "A2K009"
 
-ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006)
+ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009)
+
+_BUILTIN_CAPS = {"read", "write", "destructive", "expensive", "pii", "external"}
 
 
 _FIXTURE_PATH_TOKENS = ("tests/", "tests\\", "examples/", "examples\\")
@@ -181,12 +185,113 @@ def _rule_a2k006_cross(per_file: dict[str, dict[str, list[str]]]) -> Iterable[Li
             )
 
 
+def rule_a2k009(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
+    """A2K009 — Raw built-in capability string.
+
+    `capabilities={'write'}` literal where `Cap.WRITE` is type-safer. Warning.
+    Skipped under tests/ and examples/ (test fixtures often use raw strings on
+    purpose to exercise the rule itself or for brevity).
+    """
+    if _is_fixture_path(filename):
+        return
+    noqa = parse_noqa(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        for kw in node.keywords:
+            if kw.arg != "capabilities":
+                continue
+            for raw in _iter_string_literals(kw.value):
+                if raw.value in _BUILTIN_CAPS and not suppressed(noqa, A2K009, raw.lineno):
+                    suggestion = f"Cap.{raw.value.upper()}"
+                    yield _msg(
+                        A2K009,
+                        filename,
+                        raw,
+                        f"raw built-in capability string {raw.value!r}; prefer {suggestion}",
+                    )
+
+
+def _iter_string_literals(node: ast.expr) -> Iterable[ast.Constant]:
+    """Yield string-constant elements inside a set/list/tuple literal."""
+    if isinstance(node, (ast.Set, ast.List, ast.Tuple)):
+        for elt in node.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                yield elt
+
+
+def _collect_router_names(tree: ast.AST) -> set[str]:
+    """Best-effort: pull names from `Router(name='...')` / `Feature` subclass `name = '...'`."""
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            for kw in node.keywords:
+                if kw.arg == "name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    out.add(kw.value.value)
+        if isinstance(node, ast.ClassDef):
+            for stmt in node.body:
+                if isinstance(stmt, ast.Assign):
+                    for tgt in stmt.targets:
+                        if (
+                            isinstance(tgt, ast.Name)
+                            and tgt.id == "name"
+                            and isinstance(stmt.value, ast.Constant)
+                            and isinstance(stmt.value.value, str)
+                        ):
+                            out.add(stmt.value.value)
+    return out
+
+
+def _collect_tool_names(tree: ast.AST) -> set[str]:
+    """Tool names = function names of `@a2kit.tool(...)` decorated functions, plus explicit tool_name=."""
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for dec in node.decorator_list:
+            if not isinstance(dec, ast.Call):
+                continue
+            for kw in dec.keywords:
+                if kw.arg == "tool_name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    out.add(kw.value.value)
+                    break
+            # Include the function name as a candidate tool name.
+            out.add(node.name)
+            break
+    return out
+
+
+def _rule_a2k008_cross(per_file: dict[str, tuple[set[str], set[str]]]) -> Iterable[LintMessage]:
+    """A2K008 — name collision: a router name, capability name, and tool name overlap."""
+    all_routers: set[str] = set()
+    all_tools: set[str] = set()
+    first_seen: dict[str, str] = {}
+    for filename, (routers, tools) in per_file.items():
+        for r in routers:
+            first_seen.setdefault(r, filename)
+        for t in tools:
+            first_seen.setdefault(t, filename)
+        all_routers.update(routers)
+        all_tools.update(tools)
+    collisions = (all_routers & all_tools) | (all_routers & _BUILTIN_CAPS) | (all_tools & _BUILTIN_CAPS)
+    for name in sorted(collisions):
+        filename = first_seen.get(name, "<unknown>")
+        yield LintMessage(
+            rule=A2K008,
+            filename=filename,
+            line=1,
+            col=0,
+            message=f"name {name!r} collides across router/tool/capability namespaces",
+        )
+
+
 _RULES_PER_FILE = (
     (A2K001, rule_a2k001),
     (A2K002, rule_a2k002),
     (A2K003, rule_a2k003),
     (A2K004, rule_a2k004),
     (A2K005, rule_a2k005),
+    (A2K009, rule_a2k009),
 )
 
 
@@ -194,7 +299,8 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
     """Run all static rules on `paths`. Returns concatenated findings."""
     disabled_set = set(disabled)
     results: list[LintMessage] = []
-    per_file: dict[str, dict[str, list[str]]] = {}
+    per_file_a2k006: dict[str, dict[str, list[str]]] = {}
+    per_file_a2k008: dict[str, tuple[set[str], set[str]]] = {}
     for path in paths:
         try:
             source = path.read_text(encoding="utf-8")
@@ -209,7 +315,11 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
                 continue
             results.extend(rule(tree, str(path), source))
         if A2K006 not in disabled_set:
-            per_file[str(path)] = _collect_param_descriptions(tree)
+            per_file_a2k006[str(path)] = _collect_param_descriptions(tree)
+        if A2K008 not in disabled_set and not _is_fixture_path(str(path)):
+            per_file_a2k008[str(path)] = (_collect_router_names(tree), _collect_tool_names(tree))
     if A2K006 not in disabled_set:
-        results.extend(_rule_a2k006_cross(per_file))
+        results.extend(_rule_a2k006_cross(per_file_a2k006))
+    if A2K008 not in disabled_set:
+        results.extend(_rule_a2k008_cross(per_file_a2k008))
     return results

@@ -1,0 +1,11 @@
+{
+  "name": "a2kit-meta",
+  "private": true,
+  "scripts": {
+    "lint:jscpd": "jscpd .",
+    "lint:actions": "actionlint"
+  },
+  "devDependencies": {
+    "jscpd": "^4"
+  }
+}

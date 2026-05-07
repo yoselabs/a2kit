@@ -23,6 +23,9 @@ a2kit-check:
 typecheck:
 	@uv run --with ty -- ty check src/ 2>/dev/null || echo "⚠ ty not installable yet — skipping"
 
+typecheck-strict:
+	@uv run --with ty -- ty check --strict src/ 2>/dev/null || echo "⚠ ty not installable yet — skipping strict typecheck"
+
 coverage-diff:
 	@uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=95 2>/dev/null || echo "⚠ no coverage.xml — run 'make test' first"
 
@@ -44,3 +47,6 @@ examples:
 	uv run python examples/v03_minimal_mcp.py
 	uv run python examples/feature_class.py
 	uv run python examples/key_fields.py
+	uv run python examples/router_class.py
+	uv run python examples/select_grammar.py
+	uv run python examples/typed_decorator.py

@@ -95,7 +95,7 @@ def test_feature_registry_explicit_enable_includes_writes() -> None:
 
 def test_feature_registry_unknown_raises() -> None:
     reg = FeatureRegistry()
-    with pytest.raises(ValueError, match="Unknown feature"):
+    with pytest.raises(ValueError, match="Unknown router"):
         reg.apply(_FakeServer(), None, enabled=["does-not-exist"])
 
 
@@ -163,12 +163,14 @@ def test_runner_scope_parsed() -> None:
 
 
 def test_runner_writes_flag() -> None:
-    parsed = MCPRunner(_FakeServer()).run(argv=["--writes"])
+    with pytest.warns(DeprecationWarning):
+        parsed = MCPRunner(_FakeServer()).run(argv=["--writes"])
     assert parsed["writes"] is True
 
 
 def test_runner_enable_comma_separated() -> None:
-    parsed = MCPRunner(_FakeServer()).run(argv=["--enable", "a,b"])
+    with pytest.warns(DeprecationWarning):
+        parsed = MCPRunner(_FakeServer()).run(argv=["--enable", "a,b"])
     assert parsed["enable"] == ["a", "b"]
 
 
@@ -188,7 +190,8 @@ def test_runner_no_enable_excludes_default() -> None:
         def register_read(s: Any, _store: Any) -> None:
             s.tools.append("b")
 
-    MCPRunner(server, feature_registry=reg).run(argv=["--no-enable", "b"])
+    with pytest.warns(DeprecationWarning):
+        MCPRunner(server, feature_registry=reg).run(argv=["--no-enable", "b"])
     assert server.tools == ["a"]
 
 
@@ -215,7 +218,8 @@ def test_runner_features_applied(store: ConnectionStore[WConn]) -> None:
         def register_read(s: Any, _store: Any) -> None:
             s.tools.append("a.read")
 
-    MCPRunner(server, store=store, feature_registry=reg).run(argv=["--enable", "a"])
+    with pytest.warns(DeprecationWarning):
+        MCPRunner(server, store=store, feature_registry=reg).run(argv=["--enable", "a"])
     assert server.tools == ["a.read"]
 
 

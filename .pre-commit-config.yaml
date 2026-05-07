@@ -1,0 +1,25 @@
+repos:
+  - repo: local
+    hooks:
+      - id: a2kit-lint
+        name: a2kit static lint
+        entry: uv run a2kit lint src/ tests/ examples/
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: ruff
+        name: ruff check
+        entry: uv run ruff check
+        language: system
+        pass_filenames: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --check
+        language: system
+        pass_filenames: true
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        pass_filenames: false
+        files: ^\.github/workflows/.*\.ya?ml$

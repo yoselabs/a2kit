@@ -1,0 +1,12 @@
+{
+  "threshold": 1,
+  "min-lines": 10,
+  "ignore": [
+    "**/__snapshots__/**",
+    "**/cassettes/**",
+    "**/_test_data/**",
+    "**/.venv/**",
+    "**/node_modules/**"
+  ],
+  "format": ["python"]
+}

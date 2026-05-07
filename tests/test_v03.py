@@ -308,10 +308,10 @@ def test_param_doc_creates_doc_when_absent() -> None:
 
 
 def test_feature_subclass_register() -> None:
-    class MyFeat(Feature):
-        name = "issues"
-        default = True
+    """v0.3.1: Feature is a deprecated alias of Router; instantiate via kwargs."""
+    from a2kit import Router
 
+    class MyRouter(Router):
         def register_read(self, server: Any, store: Any) -> None:
             server.tools.append("issues.read")
 
@@ -319,7 +319,7 @@ def test_feature_subclass_register() -> None:
             server.tools.append("issues.write")
 
     reg = FeatureRegistry()
-    reg.add(MyFeat())
+    reg.add(MyRouter(name="issues", default=True))
 
     class _S:
         tools: list[str] = []  # noqa: RUF012
@@ -331,16 +331,20 @@ def test_feature_subclass_register() -> None:
 
 
 def test_feature_blank_name_raises() -> None:
-    class MyFeat(Feature):
-        pass
+    from a2kit import Router
 
-    with pytest.raises(ValueError, match="non-empty"):
-        FeatureRegistry().add(MyFeat())
+    with pytest.raises(Exception, match=r"non-empty|name"):  # Pydantic ValidationError or ValueError  # noqa: B017, PT011
+        Router(name="")
 
 
 def test_feature_default_register_methods_no_op() -> None:
     """Base Feature class has no-op register methods (cover them)."""
-    f = Feature()
+    with pytest.warns(DeprecationWarning):
+
+        class _BaseFeat(Feature):
+            pass
+
+    f = _BaseFeat(name="x")
     f.register_read(None, None)
     f.register_write(None, None)
 

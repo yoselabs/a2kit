@@ -1,14 +1,17 @@
 # a2kit
 
-**Status:** v0.3 — feature class, KEY_FIELDS, server-auto-register, lint subpackage.
+**Status:** v0.3.1 — Router (Pydantic) + capabilities + select grammar +
+Pydantic configs + strict types. Patch on top of v0.3.0 (Feature class,
+KEY_FIELDS, server-auto-register, lint subpackage).
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
 token resolution, a fat tool decorator (connection lookup + token resolution +
 write enforcement + xml guard + OTel + streaming), an `ErrorEnricher` cascade,
-an `MCPRunner` for flag parsing + transport selection, a `FeatureRegistry` for
-`--enable`, TOON/JSON formatting + recursive truncation, a JSON-schema snapshot
-harness, and a vcrpy-backed cassette helper.
+an `MCPRunner` for flag parsing + transport selection, a `RouterRegistry` for
+auto-tagged tool capabilities + the `--select` grammar, TOON/JSON formatting +
+recursive truncation, a JSON-schema snapshot harness, and a vcrpy-backed
+cassette helper.
 
 See [`ANTIPATTERNS.md`](ANTIPATTERNS.md) for the 13 concrete failures this
 library exists to absorb.
@@ -146,21 +149,20 @@ enrichers in registration order; first divergent return wins.
 
 ```python
 import a2kit
-import click
 
-cli = a2kit.scaffold.build_cli(store, connection_class=MyConn, name="a2example")
+cli = a2kit.scaffold.build_cli(store, name="a2example")
 
 @cli.command("serve")
 def serve():
-    ephemeral = a2kit.scaffold.register_ephemeral_connections(sys.argv[1:], MyConn)
-    server = make_fastmcp_server(store, ephemeral)
-    server.run()
+    server = make_fastmcp_server(store)
+    a2kit.scaffold.MCPRunner(server, store=store).run()
 ```
 
 `build_cli` returns a Click group with the standard
 `login`/`logout`/`connections list`/`connections show`/`connections delete`
 commands. The MCP author adds `serve` (or anything else) themselves; a2kit owns
-no `main()`.
+no `main()`. `MCPRunner` parses `--register`, `--scope`, `--select`, `--http`
+out of argv and dispatches the right transport.
 
 ### `a2kit.testing`
 
@@ -194,15 +196,16 @@ forces a rewrite.
 imports the rest of the package and zeroes out import-time coverage. Opt-in
 via `pytest_plugins` in your `conftest.py` is one line and avoids the trap.
 
-## How a new MCP starts here (v0.3)
+## How a new MCP starts here (v0.3.1)
 
 The v0.3 default is the **one-decorator path**: `@a2kit.tool(server=...)`
-auto-registers with FastMCP. No `@server.tool()` wrapper, no `KEY_PARTS`, no
-`MyConn` repetition.
+auto-registers with FastMCP. v0.3.1 adds capability tagging and the `--select`
+grammar.
 
 ```python
 # my_mcp/server.py
 import a2kit
+from a2kit import Cap, Router
 from mcp.server.fastmcp import FastMCP
 
 class WidgetConn(a2kit.ConnectionInfo):
@@ -217,17 +220,34 @@ enricher.register(a2kit.ConnectionNotFoundEnricher(store))
 
 server = FastMCP("widgets")
 
-@a2kit.tool(server=server, store=store, connection_param="connection", enricher=enricher)
-async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
-    f"""Fetch a widget. {a2kit.docs.connection_param_doc(cli="a2widgets")}"""
-    return {"id": widget_id, "url": info.base_url}
+class WidgetsRouter(Router):
+    def register_read(self, server, store):
+        @a2kit.tool(server=server, store=store, connection_param="connection", enricher=enricher)
+        async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
+            f"""Fetch a widget. {a2kit.docs.connection_param_doc(cli="a2widgets")}"""
+            return {"id": widget_id, "url": info.base_url}
 
-@a2kit.tool(server=server, store=store, connection_param="connection", write=True, enricher=enricher)
-async def update_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
-    return {"id": widget_id, "updated": True}
+    def register_write(self, server, store):
+        @a2kit.tool(
+            server=server, store=store, connection_param="connection",
+            write=True, capabilities={Cap.DESTRUCTIVE}, enricher=enricher,
+        )
+        async def update_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
+            return {"id": widget_id, "updated": True}
+
+routers = a2kit.RouterRegistry()
+routers.add(WidgetsRouter(name="widgets", default=True))
 
 if __name__ == "__main__":
-    a2kit.scaffold.MCPRunner(server, store=store).run()
+    a2kit.scaffold.MCPRunner(server, store=store, router_registry=routers).run()
+```
+
+Run it with the default safe selection (read-only, non-destructive):
+
+```bash
+my-mcp                                        # → --select "default and not write and not destructive"
+my-mcp --select "widgets and (read or write)" # opt into writes
+my-mcp --select "router:widgets and not destructive"
 ```
 
 If you need explicit FastMCP options (custom `name=`, `description=`), the
@@ -277,7 +297,51 @@ drop the line entirely.
 Cumulatively against v0.2: ~35 LOC saved on a 30-tool MCP, plus the
 removal of the parallel `KEY_PARTS` / `connection_class=` plumbing.
 
-## Lint and runtime checks (v0.3)
+## Capabilities (v0.3.1)
+
+Tools carry a set of capability tags. Tags drive the `--select` grammar.
+
+**Built-ins** (importable as `a2kit.Cap`):
+
+| Constant | Tag | Auto-applied by |
+|---|---|---|
+| `Cap.READ` | `read` | `Router.register_read` |
+| `Cap.WRITE` | `write` | `Router.register_write` or `@a2kit.tool(write=True)` |
+| `Cap.DESTRUCTIVE` | `destructive` | author |
+| `Cap.EXPENSIVE` | `expensive` | author |
+| `Cap.PII` | `pii` | author |
+| `Cap.EXTERNAL` | `external` | author |
+
+**Custom caps** (register at app startup):
+
+```python
+a2kit.capabilities.register("tickets-management", description="Ticket flows that may modify upstream state.")
+```
+
+**Author-tagging on a tool:**
+
+```python
+@a2kit.tool(capabilities={Cap.PII, "tickets-management"})
+async def export_tickets(...) -> dict: ...
+```
+
+**`--select` grammar** (CLI + typed builder):
+
+- Atoms: bare names — `issues`, `read`, `purge`.
+- Optional namespace: `tool:purge`, `router:issues`, `cap:write`.
+- Operators: `and`, `or`, `not`, parentheses.
+- Default expression: `default and not write and not destructive`. Override
+  per project via `[tool.a2kit.runner] default_select = "..."`.
+
+```python
+# CLI: my-mcp --select "default and not destructive"
+# In code:
+from a2kit import sel, Cap
+selected = sel("issues") & ~sel(Cap.DESTRUCTIVE)
+runner = a2kit.scaffold.MCPRunner(server, store=store, default_select=selected)
+```
+
+## Lint and runtime checks (v0.3.1)
 
 ```bash
 uvx a2kit lint src/ tests/ examples/

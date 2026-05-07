@@ -39,9 +39,10 @@ from __future__ import annotations
 import functools
 import inspect
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from a2kit._capabilities import Cap, Capability
 from a2kit._otel import otel_span as _otel_span
 from a2kit.exceptions import (
     ConnectionNotFound,
@@ -182,7 +183,7 @@ def _check_xml_contamination(bound: inspect.BoundArguments, fn_name: str) -> Non
 # --------------------------------------------------------------------------- #
 
 
-def tool(  # noqa: C901, PLR0915
+def tool(  # noqa: C901, PLR0915 — fat decorator by design
     *,
     enricher: ErrorEnricher | EnricherRegistry | None = None,
     store: ConnectionStore[Any] | None = None,
@@ -196,6 +197,7 @@ def tool(  # noqa: C901, PLR0915
     tool_name: str | None = None,
     resolver_registry: ResolverRegistry | None = None,
     server: Any = None,
+    capabilities: Iterable[Capability] = (),
 ) -> Callable[[F], F]:
     """Compose with FastMCP's `@server.tool()`. See module docstring for behaviour.
 
@@ -206,11 +208,13 @@ def tool(  # noqa: C901, PLR0915
     (idempotent — the second registration is a no-op).
     """
 
-    def decorator(fn: F) -> F:  # noqa: C901
+    def decorator(fn: F) -> F:  # noqa: C901, PLR0915
         return_anno = _check_return_annotation(fn)
         is_async = inspect.iscoroutinefunction(fn)
         sig = inspect.signature(fn)
         resolved_tool_name = tool_name or fn.__name__
+        # Auto-tag seam: merge author-supplied caps + write/router context.
+        tool_caps = _compute_tool_capabilities(set(capabilities), write=write, tool_name=resolved_tool_name)
 
         def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None]:
             """Run pre-call steps. Returns the (possibly-mutated) args/kwargs and key."""
@@ -271,12 +275,50 @@ def tool(  # noqa: C901, PLR0915
 
         _inject_param_docs(wrapper, fn, sig)
 
+        # Stamp computed capability tags so the runner / select can filter:
+        wrapper._a2kit_capabilities = tool_caps  # type: ignore[attr-defined]  # noqa: SLF001
+        wrapper._a2kit_tool_name = resolved_tool_name  # type: ignore[attr-defined]  # noqa: SLF001
+        fn._a2kit_capabilities = tool_caps  # type: ignore[attr-defined]  # noqa: SLF001
+        fn._a2kit_tool_name = resolved_tool_name  # type: ignore[attr-defined]  # noqa: SLF001
+
         if server is not None:
             _register_with_server(server, wrapper, resolved_tool_name)
 
         return wrapper  # type: ignore[return-value]
 
     return decorator
+
+
+# Auto-tag seam:
+# `_compute_tool_capabilities` reads the active router (set by
+# `RouterRegistry.apply()` via `a2kit._router_state._set_active`). It unions:
+#   - author-supplied `capabilities=`
+#   - `Cap.READ` or `Cap.WRITE` (router phase or `write=True` flag)
+#   - active router name (if `router.auto_tag=True`) and `router.capabilities`
+#   - `tool:<resolved_tool_name>` for tool-namespace selection
+def _compute_tool_capabilities(author: set[Capability], *, write: bool, tool_name: str) -> set[Capability]:
+    from a2kit._router_state import _get_active  # noqa: PLC0415
+
+    caps: set[Capability] = set(author)
+    if write:
+        caps.add(Cap.WRITE)
+    active = _get_active()
+    if active is not None:
+        caps.update(active.router.capabilities)
+        if active.router.auto_tag:
+            caps.add(active.router.name)
+            caps.add(f"router:{active.router.name}")
+        if active.phase == "read":
+            caps.add(Cap.READ)
+        elif active.phase == "write":
+            caps.add(Cap.WRITE)
+        if active.router.default:
+            caps.add("default")
+    else:
+        # Router-less tool: still default-on (so `--select default` picks it up).
+        caps.add("default")
+    caps.add(f"tool:{tool_name}")
+    return caps
 
 
 def _inject_param_docs(wrapper: Any, fn: Any, sig: inspect.Signature) -> None:

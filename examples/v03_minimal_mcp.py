@@ -1,7 +1,4 @@
-"""Example: shortest working v0.3 MCP. < 30 lines for a 2-tool setup.
-
-Demonstrates: `@a2kit.tool(server=...)` (no `@server.tool()` wrapper),
-`KEY_FIELDS` (no `KEY_PARTS`), `MCPRunner(server, store=...)` (no `connection_class=`).
+"""Example: shortest working v0.3.1 MCP — using Router + --select + Cap constants.
 
 Run: `uv run python examples/v03_minimal_mcp.py`
 """
@@ -53,20 +50,21 @@ def main() -> None:
     store.save(WidgetConn(key=("prod",), base_url="https://api"))
     server = _FakeServer()
 
-    @a2kit.tool(server=server, store=store, connection_param="connection")
+    @a2kit.tool(server=server, store=store, connection_param="connection", capabilities={a2kit.Cap.EXTERNAL})
     async def get_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
         """Fetch one widget."""
         assert info is not None
         return {"id": widget_id, "url": info.base_url}
 
-    @a2kit.tool(server=server, store=store, connection_param="connection", write=True)
+    @a2kit.tool(server=server, store=store, connection_param="connection", write=True, capabilities={a2kit.Cap.DESTRUCTIVE})
     async def update_widget(connection: str, widget_id: str, *, info: WidgetConn | None = None) -> dict:
         """Update one widget."""
         assert info is not None
         return {"id": widget_id, "updated": True}
 
     print(f"registered: {[t.name for t in server._tool_manager.list_tools()]}")
-    a2kit.scaffold.MCPRunner(server, store=store).run(argv=[])
+    # `--select` carries the boolean expression; default = read-only, non-destructive.
+    a2kit.scaffold.MCPRunner(server, store=store).run(argv=["--select", "default and not destructive"])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.3.1 — 2026-05-07
+
+Patch on top of v0.3.0. Adds Router (Pydantic) + capabilities + select grammar
++ Pydantic configs + strict types. Backward-compatible aliases for one cycle.
+
+**New**
+
+- `Router` (Pydantic `BaseModel`, generic over `ConnT`) replaces `Feature`.
+  Subclass and instantiate via kwargs: `IssuesRouter(name="issues", capabilities={Cap.EXTERNAL})`.
+- `RouterRegistry.apply()` sets a thread-local `_active_router`; the fat
+  `@a2kit.tool` decorator reads this via the **auto-tag seam** and merges
+  the router's name + capabilities + `Cap.READ`/`Cap.WRITE` (per phase) onto
+  every registered tool's tag set.
+- `Cap` constants (`Cap.READ`, `Cap.WRITE`, `Cap.DESTRUCTIVE`, `Cap.EXPENSIVE`,
+  `Cap.PII`, `Cap.EXTERNAL`).
+- `a2kit.capabilities` namespace — register custom caps:
+  `a2kit.capabilities.register("tickets-management", description="...")`.
+- `--select` boolean expression flag on `MCPRunner`. Grammar:
+  atoms (router/tool/capability names), operators `and`/`or`/`not`,
+  optional `tool:` / `router:` / `cap:` namespace prefix, parentheses.
+  Default: `default and not write and not destructive`.
+- `a2kit.sel(...)` typed builder mirrors the CLI grammar via `&`, `|`, `~`.
+- `SelectExpr` (Pydantic AST), `SelectAtom`, `parse_select()`.
+- Pydantic configs: `ToolConfig`, `RunnerConfig`, `BudgetConfig` (all
+  `extra="forbid"`, `frozen=True`).
+- `ConnectionInfo.__init_subclass__` validates `KEY_FIELDS` shape (tuple,
+  non-empty, identifier per entry, lowercase warned).
+- `ConnectionStore.load(...)` unwraps `pydantic.ValidationError` and re-raises
+  the underlying `KeyArityMismatch` / `KeyFieldMissing` / `InvalidConnectionKey`.
+- `UnknownCapability` exception with `difflib`-based `suggestions=[...]`.
+- New lint rules:
+  - **A2K008** — Name collision across router/tool/capability namespaces.
+  - **A2K009** — Raw built-in capability string (`'write'` instead of `Cap.WRITE`).
+  - **A2K010** — Reserved (v0.4) — unknown atom in `--select` expressions.
+- Ruff `ANN` rules added to `[tool.ruff.lint]` selection. `tests/` and
+  `examples/` paths get per-file ignores for `ANN001`/`ANN201`/etc.
+- New examples: `examples/router_class.py`, `examples/select_grammar.py`,
+  `examples/typed_decorator.py`. Updated `examples/v03_minimal_mcp.py`,
+  `examples/feature_class.py`.
+- `make typecheck-strict` target (graceful fallback if ty unavailable).
+- `.pre-commit-config.yaml`, `package.json` (jscpd + actionlint),
+  `.jscpd.json`, `scripts/find_similar.py` (similar-tool-name detector).
+
+**Breaking changes**
+
+- `--enable` / `--no-enable` / `--writes` flags on `MCPRunner` are deprecated.
+  They still work for one cycle (with `DeprecationWarning`) and are translated
+  internally to a `--select` expression.
+
+  Migration recipe:
+  - `--enable issues,sprints` → `--select "router:issues or router:sprints"`
+  - `--no-enable sprints`     → `--select "default and not router:sprints"`
+  - `--writes`                → include `(read or write)` in your `--select`
+  - `--enable issues --writes` → `--select "router:issues and (read or write)"`
+
+**Deprecations (one-cycle warning, removal in v0.4)**
+
+- `Feature` / `FeatureRegistry` (use `Router` / `RouterRegistry`).
+  Class-attribute style (`class IssuesFeature(Feature): name = "issues"`) is
+  not supported under Pydantic; use `IssuesRouter(name="issues", ...)` instead.
+- `RouterRegistry.feature(...)` decorator (use `RouterRegistry.router(...)`).
+- `--enable` / `--no-enable` / `--writes` (use `--select`).
+
+**Internal renames (underscore-prefixed; no external impact)**
+
+- `a2kit/_capabilities.py`, `a2kit/_select.py`, `a2kit/_router_state.py`,
+  `a2kit/_configs.py` — all leading-underscore internals.
+
 ## 0.3.0 — 2026-05-07
 
 Feature class, KEY_FIELDS, server-auto-register, lint subpackage. Internal-only
