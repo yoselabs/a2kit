@@ -1,11 +1,11 @@
 """Tests for v0.3.1 additions: capabilities registry, sel/SelectExpr grammar,
-Router auto-tag, --select runner, configs, KEY_FIELDS validator, lint A2K008/9.
+Router auto-tag, --select runner, configs, lint A2K008/9.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 from pydantic import ValidationError
@@ -476,42 +476,46 @@ def test_budget_config_load() -> None:
     assert b.total == 500
 
 
-# ---- ConnectionInfo KEY_FIELDS validator ------------------------------------
+# ---- ConnectionInfo NamedTuple-key validator (v0.5) ------------------------
 
 
-def test_key_fields_validator_non_tuple_raises() -> None:
-    with pytest.raises(TypeError, match="must be a tuple"):
+def test_key_validator_non_namedtuple_raises() -> None:
+    with pytest.raises(TypeError, match="must be a NamedTuple"):
 
-        class _Bad(ConnectionInfo):
-            KEY_FIELDS = "name"  # type: ignore[assignment]
-
-
-def test_key_fields_validator_empty_raises() -> None:
-    with pytest.raises(ValueError, match="non-empty"):
-
-        class _Bad(ConnectionInfo):
-            KEY_FIELDS = ()
+        class _Bad(ConnectionInfo, key=tuple):  # type: ignore[arg-type]
+            url: str
 
 
-def test_key_fields_validator_non_identifier_raises() -> None:
-    with pytest.raises(ValueError, match="not a valid Python identifier"):
+def test_key_validator_empty_namedtuple_raises() -> None:
+    class EmptyKey(NamedTuple):
+        pass
 
-        class _Bad(ConnectionInfo):
-            KEY_FIELDS = ("a-b",)
+    with pytest.raises(ValueError, match="at least one field"):
+
+        class _Bad(ConnectionInfo, key=EmptyKey):
+            url: str
 
 
-def test_key_fields_validator_uppercase_warns() -> None:
-    with pytest.warns(UserWarning, match="should be lowercase"):
+def test_key_fields_legacy_raises_migration_required() -> None:
+    from typing import ClassVar
 
-        class _Up(ConnectionInfo):
-            KEY_FIELDS = ("Name",)
+    from a2kit import MigrationRequired
+
+    with pytest.raises(MigrationRequired, match="legacy"):
+
+        class _Old(ConnectionInfo):
+            KEY_FIELDS: ClassVar[tuple[str, ...]] = ("name",)
+            url: str
 
 
 def test_load_unwraps_validation_error_for_arity(tmp_path: Path) -> None:
     """Manually corrupted TOML triggers KeyArityMismatch (unwrapped)."""
 
-    class _C(ConnectionInfo):
-        KEY_FIELDS = ("project", "env")
+    class _CKey(NamedTuple):
+        project: str
+        env: str
+
+    class _C(ConnectionInfo, key=_CKey):
         url: str
 
     cfg = tmp_path / "c"
@@ -609,7 +613,6 @@ def test_load_unwraps_validation_error_passthrough(tmp_path: Path) -> None:
     """If ValidationError doesn't carry a key-related inner, original re-raises."""
 
     class _C(ConnectionInfo):
-        KEY_FIELDS = ("name",)
         url: str  # required field — missing it triggers a different ValidationError
 
     cfg = tmp_path / "c"

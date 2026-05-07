@@ -1,10 +1,10 @@
-"""Example: minimum viable v0.4 MCP — auto-loaded `default_select`, auto-tagged
-Router, `format_response` envelope.
+"""Example: minimum viable v0.5 MCP — NamedTuple key, auto-loaded `default_select`,
+auto-tagged Router, `format_response` envelope.
 
-Even shorter than v0.3's minimal. The author owns the FastMCP server; a2kit
+Even shorter than v0.4's minimal. The author owns the FastMCP server; a2kit
 threads connections, capabilities, select grammar, and projection.
 
-Run: `uv run python examples/v04_minimal_mcp.py`
+Run: `uv run python examples/v05_minimal_mcp.py`
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ class _FakeServer:
         print(f"[run] transport={transport}, tools={self.tools}")
 
 
+# Default key (no `key=`) — `cls.Key = _DefaultKey(name: str)`.
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("name",)
     url: str
 
 

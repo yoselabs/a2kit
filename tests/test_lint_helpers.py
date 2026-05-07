@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 
 from a2kit.lint._ast_helpers import (
+    connection_info_key_class,
     connection_info_subclasses,
     decorator_kwargs,
     is_a2kit_tool_decorator,
@@ -12,6 +13,7 @@ from a2kit.lint._ast_helpers import (
     is_tool_function,
     key_fields_value,
     local_pydantic_classes,
+    namedtuple_field_count,
 )
 
 
@@ -134,3 +136,70 @@ def test_is_a2kit_tool_decorator_subscript_target_falls_through() -> None:
     tree = ast.parse(code)
     func = tree.body[0]
     assert is_a2kit_tool_decorator(func.decorator_list[0]) is False
+
+
+# ---- v0.5 helpers ----------------------------------------------------------
+
+
+def test_connection_info_key_class_present() -> None:
+    code = "class C(ConnectionInfo, key=WidgetKey): pass\n"
+    cls = ast.parse(code).body[0]
+    assert connection_info_key_class(cls) == "WidgetKey"
+
+
+def test_connection_info_key_class_absent() -> None:
+    code = "class C(ConnectionInfo): pass\n"
+    cls = ast.parse(code).body[0]
+    assert connection_info_key_class(cls) is None
+
+
+def test_connection_info_key_class_non_name_value() -> None:
+    """`key=some.attr` (Attribute, not Name) returns None — opaque."""
+    code = "class C(ConnectionInfo, key=mod.WidgetKey): pass\n"
+    cls = ast.parse(code).body[0]
+    assert connection_info_key_class(cls) is None
+
+
+def test_namedtuple_field_count_basic() -> None:
+    code = "from typing import NamedTuple\nclass K(NamedTuple):\n    a: str\n    b: str\n"
+    tree = ast.parse(code)
+    assert namedtuple_field_count(tree, "K") == 2
+
+
+def test_namedtuple_field_count_missing() -> None:
+    tree = ast.parse("x = 1\n")
+    assert namedtuple_field_count(tree, "K") is None
+
+
+def test_namedtuple_field_count_non_module() -> None:
+    """A non-Module AST short-circuits to None."""
+    expr = ast.parse("1 + 2", mode="eval")
+    assert namedtuple_field_count(expr, "K") is None
+
+
+def test_namedtuple_field_count_not_namedtuple_base() -> None:
+    """Class not subclassing NamedTuple → None."""
+    code = "class K:\n    a: str\n"
+    tree = ast.parse(code)
+    assert namedtuple_field_count(tree, "K") is None
+
+
+def test_namedtuple_field_count_attribute_base() -> None:
+    """`class K(typing.NamedTuple)` (Attribute base) is also recognised."""
+    code = "class K(typing.NamedTuple):\n    a: str\n    b: str\n"
+    tree = ast.parse(code)
+    assert namedtuple_field_count(tree, "K") == 2
+
+
+def test_namedtuple_field_count_skips_methods() -> None:
+    """Function defs inside the body shouldn't count toward field count."""
+    code = "from typing import NamedTuple\nclass K(NamedTuple):\n    a: str\n    def method(self): pass\n"
+    tree = ast.parse(code)
+    assert namedtuple_field_count(tree, "K") == 1
+
+
+def test_namedtuple_field_count_multi_base() -> None:
+    """Multiple bases — only NamedTuple is matched, others iterated past."""
+    code = "from typing import NamedTuple\nclass Mixin: pass\nclass K(Mixin, NamedTuple):\n    a: str\n"
+    tree = ast.parse(code)
+    assert namedtuple_field_count(tree, "K") == 1

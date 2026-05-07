@@ -46,25 +46,27 @@ Locally-defined Pydantic classes used as tool return annotations are flagged.
 
 A tool with a parameter named `connection` must reference `a2kit.docs.connection_param_doc()`.
 
-### A2K005 — `KEY_FIELDS` shape and multi-field tool-param compat
+### A2K005 — Legacy `KEY_FIELDS` migration aid + tool-param compat against `cls.Key`
 
-A `ConnectionInfo` subclass declaring `KEY_FIELDS` must use a tuple of lowercase
-Python identifier strings. v0.3.1 also runs the same checks at class-creation
-time via `ConnectionInfo.__init_subclass__`.
+v0.5: `KEY_FIELDS` is removed. The lint rule now (a) flags any leftover
+`KEY_FIELDS = ...` declaration on a `ConnectionInfo` subclass as a migration
+error, and (b) continues to cross-check tool `connection_param` arity against
+`cls.Key._fields` of the resolved store.
 
-**v0.4 extension** — when a `@a2kit.tool(store=widget_store, connection_param="conn")`
-decoration references a store whose `ConnectionInfo` has `KEY_FIELDS` arity > 1,
+For (b), when a `@a2kit.tool(store=widget_store, connection_param="conn")`
+decoration references a store whose `ConnectionInfo` declares
+`class WidgetConn(ConnectionInfo, key=WidgetKey)` and `WidgetKey` has arity > 1,
 the function's `conn` parameter type annotation must be one of:
 
-- `tuple[str, ...]`
-- `tuple[str, str, ...]` (matching arity)
-- A typed key model (BaseModel subclass with the field names)
+- The NamedTuple key class itself (e.g. `WidgetKey`)
+- `tuple[str, ...]` / `tuple[str, str, ...]` (matching arity)
 - `dict[str, str]`
 
-Bare `str` is rejected for arity > 1 (only valid for arity == 1). The lint walks
-the AST to resolve the store's `ConnectionInfo` class within the same file. If
-the store is imported from another module, the rule degrades to an advisory
-(`could not resolve store ...; check arity manually`).
+Bare `str` is rejected for arity > 1 (only valid for arity == 1, i.e. the
+default `_DefaultKey(name)` shape). The lint walks the AST to resolve the
+store's `ConnectionInfo` class — and from there its `key=` NamedTuple — within
+the same file. If the store is imported from another module, the rule degrades
+to an advisory (`could not resolve store ...; check arity manually`).
 
 ### A2K010 — Unknown atom in a `--select` expression
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from a2kit.lint._ast_helpers import (
+    connection_info_key_class,
     connection_info_subclasses,
     decorator_kwargs,
     function_has_param,
@@ -19,6 +20,7 @@ from a2kit.lint._ast_helpers import (
     is_tool_function,
     key_fields_value,
     local_pydantic_classes,
+    namedtuple_field_count,
 )
 from a2kit.lint._common import LintMessage, parse_noqa, suppressed
 
@@ -121,41 +123,45 @@ def rule_a2k004(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessa
 
 
 # --------------------------------------------------------------------------- #
-# A2K005 — KEY_FIELDS shape + multi-field tool param type compat (v0.4).
+# A2K005 — leftover KEY_FIELDS detection + NamedTuple key arity compat (v0.5).
 # --------------------------------------------------------------------------- #
 
 
-def _check_key_fields_value(cls: ast.ClassDef, kf: ast.expr, filename: str, noqa: dict) -> Iterable[LintMessage]:
+def _check_legacy_key_fields(cls: ast.ClassDef, filename: str, noqa: dict) -> Iterable[LintMessage]:
+    """v0.5: any leftover `KEY_FIELDS = ...` is a migration error."""
+    kf = key_fields_value(cls)
+    if kf is None:
+        return
     if suppressed(noqa, A2K005, cls.lineno):
         return
-    if not isinstance(kf, ast.Tuple):
-        yield _msg(A2K005, filename, cls, f"{cls.name}.KEY_FIELDS must be a tuple of strings")
-        return
-    for elt in kf.elts:
-        if not isinstance(elt, ast.Constant) or not isinstance(elt.value, str):
-            yield _msg(A2K005, filename, cls, f"{cls.name}.KEY_FIELDS contains non-string element")
-            continue
-        v = elt.value
-        if not v.isidentifier():
-            yield _msg(A2K005, filename, cls, f"{cls.name}.KEY_FIELDS element {v!r} is not a valid identifier")
-        elif v != v.lower():
-            yield _msg(A2K005, filename, cls, f"{cls.name}.KEY_FIELDS element {v!r} should be lowercase")
+    yield _msg(
+        A2K005,
+        filename,
+        cls,
+        f"{cls.name}.KEY_FIELDS is a v0.4 legacy attribute removed in v0.5; "
+        f"declare a NamedTuple and pass `class {cls.name}(ConnectionInfo, key=YourKey)` instead",
+    )
 
 
 def _store_var_to_arity(tree: ast.AST) -> dict[str, int]:
-    """Best-effort: map module-local variable name → arity of its store's KEY_FIELDS.
+    """Best-effort: map module-local variable name → arity of its store's `cls.Key`.
 
     Recognises:
         store = ConnectionStore(config_dir, WidgetConn)
         store: ConnectionStore[WidgetConn] = ConnectionStore(config_dir, WidgetConn)
-    where `WidgetConn` is a top-level `ConnectionInfo` subclass with a literal
-    `KEY_FIELDS = (...)` assignment in this same module.
+    where `WidgetConn` is a top-level `class WidgetConn(ConnectionInfo, key=WidgetKey):`
+    and `WidgetKey` is a top-level NamedTuple in the same module.
     """
     arity_by_class: dict[str, int] = {}
     for cls in connection_info_subclasses(tree):
-        kf = key_fields_value(cls)
-        if isinstance(kf, ast.Tuple):
-            arity_by_class[cls.name] = len(kf.elts)
+        key_name = connection_info_key_class(cls)
+        if key_name is None:
+            # Default `_DefaultKey` arity 1.
+            arity_by_class[cls.name] = 1
+            continue
+        count = namedtuple_field_count(tree, key_name)
+        if count is not None:
+            arity_by_class[cls.name] = count
 
     if not arity_by_class or not isinstance(tree, ast.Module):
         return {}
@@ -252,8 +258,8 @@ def _scan_a2k005_tool_calls(tree: ast.AST, filename: str, source: str, store_ari
                     A2K005,
                     filename,
                     node,
-                    f"tool {node.name!r}: {cp.value}: str is insufficient for KEY_FIELDS arity {arity}; "
-                    "use tuple[str, ...], typed key model, or dict[str, str]",
+                    f"tool {node.name!r}: {cp.value}: str is insufficient for cls.Key arity {arity}; "
+                    "use the NamedTuple key class, tuple[str, ...], or dict[str, str]",
                 )
 
 
@@ -266,15 +272,10 @@ def _find_param_annotation(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str
 
 
 def rule_a2k005(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K005 — KEY_FIELDS shape (tuple of lowercase identifiers) + multi-field
-    tool-param type compat (v0.4).
-    """
+    """A2K005 — leftover `KEY_FIELDS` migration aid + tool-param compat against `cls.Key` arity (v0.5)."""
     noqa = parse_noqa(source)
     for cls in connection_info_subclasses(tree):
-        kf = key_fields_value(cls)
-        if kf is None:
-            continue
-        yield from _check_key_fields_value(cls, kf, filename, noqa)
+        yield from _check_legacy_key_fields(cls, filename, noqa)
     if _is_fixture_path(filename):
         return
     store_arity = _store_var_to_arity(tree)

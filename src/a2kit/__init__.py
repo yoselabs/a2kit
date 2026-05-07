@@ -1,20 +1,18 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.4.0).
+"""a2kit — thin library for FastMCP-based MCPs (v0.5.0).
 
 Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
 to FastMCP at any boundary stays clean. See README for the full rundown.
 
-v0.4 highlights:
+v0.5 highlights:
 
-- All v0.3 deprecation aliases removed (clean cut, pre-1.0).
-- CEL projection / filter primitive (`a2kit.projection`, `[projection]` extra).
-- `a2kit.format_response(data, *, filter=, fields=, ...)` composes filter +
-  projection + truncation.
-- Auto-load `[tool.a2kit.runner] default_select` and `[tool.a2kit.capabilities]`
-  from `pyproject.toml`.
-- A2K010 lint activated (validates `--select` atoms against the registry).
-- A2K011 advisory (prefer Pydantic return types over raw `dict`).
-- A2K005 completed (cross-checks tool param types against `KEY_FIELDS` arity).
-- `_select.py` split into `_select_parse.py` + `_select_eval.py`.
+- **Breaking:** `KEY_FIELDS: ClassVar[tuple[str, ...]]` is gone. Connection keys
+  are now NamedTuple-based: `class WidgetConn(a2kit.ConnectionInfo, key=WidgetKey)`.
+  Subclasses still using `KEY_FIELDS` raise `MigrationRequired` at class creation.
+- `cls.Key` is the canonical NamedTuple per subclass; default is `_DefaultKey(name: str)`.
+- `Literal[...]` per-field typing now possible (e.g. `env: Literal["dev","staging","prod"]`).
+- `store.load(WidgetKey(...))` joins the existing tuple/positional/kwargs/bare-string shapes.
+- A2K005 simplified: detects leftover `KEY_FIELDS` (lint-time migration aid) and
+  cross-checks tool `connection_param` arity against `cls.Key._fields`.
 """
 
 from __future__ import annotations
@@ -49,6 +47,7 @@ from a2kit.exceptions import (
     InvalidToolReturnTypeError,
     KeyArityMismatch,
     KeyFieldMissing,
+    MigrationRequired,
     OpResolutionError,
     ProjectionUnavailable,
     SchemaSnapshotMismatch,
@@ -77,7 +76,7 @@ from a2kit.tools import tool
 
 A2KIT_CONFIG_HOME = ENV_CONFIG_HOME
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "A2KIT_CONFIG_HOME",
@@ -100,6 +99,7 @@ __all__ = [
     "KeyArityMismatch",
     "KeyFieldMissing",
     "MCPRunner",
+    "MigrationRequired",
     "OpResolutionError",
     "ProjectionUnavailable",
     "ResolverRegistry",

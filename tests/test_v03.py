@@ -1,11 +1,11 @@
-"""Tests for v0.3 surface that survives into v0.4: server-auto-register,
-KEY_FIELDS load shapes, docs registry. (Feature/Deprecation tests removed in v0.4.)
+"""Tests for v0.3 surface that survives into v0.5: server-auto-register,
+NamedTuple-key load shapes, docs registry. (Feature/Deprecation tests removed in v0.4.)
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 
@@ -23,13 +23,17 @@ from a2kit.docs import (
 )
 
 
-class WidgetConn(ConnectionInfo):
-    KEY_FIELDS = ("project", "env", "db")
+class WidgetKey(NamedTuple):
+    project: str
+    env: str
+    db: str
+
+
+class WidgetConn(ConnectionInfo, key=WidgetKey):
     base_url: str
 
 
 class FlatConn(ConnectionInfo):
-    KEY_FIELDS = ("name",)
     url: str
 
 

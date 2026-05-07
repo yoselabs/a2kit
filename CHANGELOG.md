@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.5.0 — 2026-05-07
+
+**Breaking change.** `KEY_FIELDS: ClassVar[tuple[str, ...]]` is removed in favour
+of a NamedTuple-based `Key` class declared via `key=` on the subclass. This
+unlocks per-field types (e.g. `env: Literal["dev", "staging", "prod"]`),
+keeps NamedTuple-as-tuple compatibility for the existing positional/tuple/kwargs
+load shapes, and adds a fully-typed `store.load(WidgetKey(...))` shape.
+
+**Migration recipe:**
+
+```python
+# Before (v0.4):
+class WidgetConn(a2kit.ConnectionInfo):
+    KEY_FIELDS = ("project", "env", "db")
+
+# After (v0.5):
+from typing import NamedTuple
+
+class WidgetKey(NamedTuple):
+    project: str
+    env: str
+    db: str
+
+class WidgetConn(a2kit.ConnectionInfo, key=WidgetKey):
+    ...
+```
+
+Subclasses that still declare `KEY_FIELDS` raise `MigrationRequired` at class
+creation time with a generated migration snippet. (Pre-1.0 clean cut: no alias,
+no warning grace period.)
+
+**New**
+
+- `ConnectionInfo.__init_subclass__` accepts `key=<NamedTupleClass>`. The class
+  is bound as `cls.Key`. Default is the built-in `_DefaultKey(name: str)`.
+- `ConnectionStore.load()` accepts a NamedTuple instance directly as a
+  fifth call shape: `store.load(WidgetKey(project="a", env="dev", db="c"))`.
+  All previous shapes (kwargs / tuple / list / positional / bare-string) still work.
+- `ConnectionStore.key_class` property — exposes `model.Key`.
+- `ConnectionStore.list_keys()` — returns typed NamedTuple instances rather
+  than raw `tuple[str, ...]`. Existing index-style access still works.
+- New exception: `MigrationRequired`.
+- Examples: `examples/typed_key_literal.py` (per-field `Literal` typing),
+  renamed `examples/key_namedtuple.py` (was `key_fields.py`),
+  renamed `examples/v05_minimal_mcp.py` (was `v04_minimal_mcp.py`).
+
+**Behavioural changes**
+
+- `KeyFieldMissing` / `KeyArityMismatch` messages now reference the NamedTuple
+  class name (e.g. `"Missing key field 'env' on WidgetKey"`).
+- A2K005 lint rule simplified: no longer validates `KEY_FIELDS` shape (the
+  attribute is gone). Now flags any leftover `KEY_FIELDS = ...` as a v0.5
+  migration error and continues to cross-check `connection_param` arity against
+  `cls.Key._fields`.
+
+**Removed**
+
+- `KEY_FIELDS: ClassVar[tuple[str, ...]]` — gone. The `__init_subclass__`
+  validator that warned on uppercase entries is also gone (NamedTuples enforce
+  identifier-shape at the language level).
+
 ## 0.4.1 — 2026-05-07
 
 Patch on top of v0.4.0. Three changes: `ty` becomes a hard gate, internal

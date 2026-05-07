@@ -14,7 +14,6 @@ from a2kit import Cap, Router, RouterRegistry
 
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("name",)
     base_url: str
 
 

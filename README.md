@@ -1,8 +1,8 @@
 # a2kit
 
-**Status:** v0.3.1 — Router (Pydantic) + capabilities + select grammar +
-Pydantic configs + strict types. Patch on top of v0.3.0 (Feature class,
-KEY_FIELDS, server-auto-register, lint subpackage).
+**Status:** v0.5.0 — NamedTuple-based connection keys (replaces v0.4 `KEY_FIELDS`
+with field-level types via `class WidgetKey(NamedTuple)`). Breaking change:
+subclasses still using `KEY_FIELDS` raise `MigrationRequired` at class creation.
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
@@ -71,8 +71,8 @@ Both are lazy-imported; the minimal install runs without either.
 ```python
 from a2kit import ConnectionInfo, ConnectionStore, resolve_token
 
+# No `key=` declared → cls.Key resolves to the built-in `_DefaultKey(name: str)`.
 class AtlassianInfo(ConnectionInfo):
-    KEY_FIELDS = ("name",)   # default; can be omitted
     url: str
     email: str
     token: str
@@ -80,24 +80,31 @@ class AtlassianInfo(ConnectionInfo):
 
 store = ConnectionStore(config_dir, AtlassianInfo)
 store.save(AtlassianInfo(key=("prod",), url="...", email="...", token="${ATL}"))
-# v0.3 load shapes — pick the most readable for your call site:
+# Load shapes — pick the most readable for your call site:
 info = store.load("prod")              # bare-string sugar (single field)
 info = store.load(name="prod")         # kwargs
-info = store.load(("prod",))           # tuple (migration path)
+info = store.load(("prod",))           # tuple
 real_token = resolve_token(info.token)   # raises EnvVarNotFound on missing
 ```
 
-Multi-part keys are declared as a named tuple:
+Multi-part keys declare a NamedTuple and pass it via `key=`:
 
 ```python
-class WidgetConn(ConnectionInfo):
-    KEY_FIELDS = ("project", "env", "db")
+from typing import Literal, NamedTuple
+
+class WidgetKey(NamedTuple):
+    project: str
+    env: Literal["dev", "staging", "prod"]   # ty rejects env="production"
+    db: str
+
+class WidgetConn(ConnectionInfo, key=WidgetKey):
     base_url: str
     api_key: str
 
-store.load(project="acme", env="prod", db="main")  # preferred
-store.load(("acme", "prod", "main"))               # tuple
-store.load("acme", "prod", "main")                 # positional
+store.load(WidgetKey(project="acme", env="prod", db="main"))  # typed instance — most explicit
+store.load(project="acme", env="prod", db="main")             # kwargs
+store.load(("acme", "prod", "main"))                          # tuple
+store.load("acme", "prod", "main")                            # positional
 ```
 
 Atomic save (tempfile + chmod 0600 + rename), `A2KIT_CONFIG_HOME` env override,
@@ -197,11 +204,12 @@ forces a rewrite.
 imports the rest of the package and zeroes out import-time coverage. Opt-in
 via `pytest_plugins` in your `conftest.py` is one line and avoids the trap.
 
-## How a new MCP starts here (v0.3.1)
+## How a new MCP starts here (v0.5)
 
 The v0.3 default is the **one-decorator path**: `@a2kit.tool(server=...)`
-auto-registers with FastMCP. v0.3.1 adds capability tagging and the `--select`
-grammar.
+auto-registers with FastMCP. v0.3.1 added capability tagging and the `--select`
+grammar. v0.5 swaps `KEY_FIELDS` for a NamedTuple `key=` argument (default key
+class is still a single-field `name`, so single-key MCPs need no extra type).
 
 ```python
 # my_mcp/server.py
@@ -210,7 +218,7 @@ from a2kit import Cap, Router
 from mcp.server.fastmcp import FastMCP
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("name",)   # optional — this is the default
+    # No `key=` → defaults to single-field `_DefaultKey(name: str)`.
     base_url: str
     api_key: str
     read_only: bool = True
@@ -292,8 +300,8 @@ per tool: 1 decorator line.** A 30-tool MCP saves ~30 lines.
 
 **Per-MCP savings (entrypoint):** dropping `connection_class=` from
 `MCPRunner(...)` and `build_cli(...)` removes 2 redundant references to the
-connection class. `KEY_FIELDS` defaults to `("name",)`, so single-key MCPs
-drop the line entirely.
+connection class. The default `cls.Key` is `_DefaultKey(name: str)`, so
+single-key MCPs need no `key=` argument either.
 
 Cumulatively against v0.2: ~35 LOC saved on a 30-tool MCP, plus the
 removal of the parallel `KEY_PARTS` / `connection_class=` plumbing.

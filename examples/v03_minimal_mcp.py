@@ -13,7 +13,6 @@ import a2kit
 
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("name",)
     base_url: str
 
 

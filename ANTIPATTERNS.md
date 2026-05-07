@@ -283,3 +283,41 @@ compatibility layer makes the next layer's correctness story harder.
 
 Citation: removed v0.4; previously at
 `src/a2kit/scaffold.py::MCPRunner._legacy_to_select` (v0.3.1).
+
+## 19. String-tuple drift: loose `KEY_FIELDS` over typed NamedTuples
+
+The mistake (v0.3 through v0.4): declaring multi-field connection keys as
+`KEY_FIELDS: ClassVar[tuple[str, ...]] = ("project", "env", "db")`. The
+attribute carried only field names — every part of the key was implicitly
+`str`. Calls like `store.load(env="production")` (note: `production`, not
+`prod`) were valid Python and passed the runtime arity check, only failing
+deep inside the store as `ConnectionNotFound`. There was no way to express
+"the `env` part must be one of `dev`/`staging`/`prod`" at the type level.
+
+The lint rule A2K005 attempted to compensate by cross-checking tool
+parameter types against `KEY_FIELDS` arity, but it could only enforce
+*shape*, not *values*. Any string passed as a key part was nominally legal.
+
+What to do (v0.5): declare a NamedTuple per connection class and bind it
+via `class WidgetConn(ConnectionInfo, key=WidgetKey)`. Use `Literal[...]`
+on individual fields to constrain values:
+
+```python
+class WidgetKey(NamedTuple):
+    project: str
+    env: Literal["dev", "staging", "prod"]
+    db: str
+```
+
+ty / pyright now reject `WidgetKey(env="production")` at type-check time.
+The NamedTuple is still a tuple, so `store.load(("a", "dev", "c"))` and
+the other legacy shapes keep working — but `store.load(WidgetKey(...))`
+is the new most-explicit form, and `store.list_keys()` returns NamedTuple
+instances rather than raw tuples.
+
+Generalisation: if you find yourself reaching for `tuple[str, ...]` plus
+a parallel name list to identify positions, you're describing a NamedTuple.
+The string-tuple shape always under-types the data.
+
+Citation: `src/a2kit/connections.py` (v0.5); migration via
+`a2kit.exceptions.MigrationRequired`.

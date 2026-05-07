@@ -29,21 +29,64 @@ class InvalidConnectionKey(A2KitError, ValueError):  # noqa: N818
 
 
 class KeyFieldMissing(A2KitError, KeyError):  # noqa: N818
-    """Raised when a `load(**kwargs)` call omits a required `KEY_FIELDS` name."""
+    """Raised when a `load(**kwargs)` call omits a required key NamedTuple field."""
 
-    def __init__(self, field: str, *, have: list[str]) -> None:
+    def __init__(self, field: str, *, have: list[str], key_class: str | None = None) -> None:
         self.field = field
         self.have = list(have)
-        super().__init__(f"Missing key field {field!r}; have: {sorted(self.have)}. Pass it as a keyword argument to load()/delete().")
+        self.key_class = key_class
+        suffix = f" on {key_class}" if key_class else ""
+        super().__init__(
+            f"Missing key field {field!r}{suffix}; have: {sorted(self.have)}. "
+            f"Pass it as a keyword argument to load()/delete(), or construct the typed key directly."
+        )
 
 
 class KeyArityMismatch(A2KitError, ValueError):  # noqa: N818
     """Raised when a tuple/positional key has the wrong number of parts."""
 
-    def __init__(self, *, expected: tuple[str, ...], got: tuple[str, ...]) -> None:
+    def __init__(self, *, expected: tuple[str, ...], got: tuple[str, ...], key_class: str | None = None) -> None:
         self.expected = expected
         self.got = got
-        super().__init__(f"Key arity mismatch: KEY_FIELDS={list(expected)} (arity {len(expected)}) but got {list(got)} (arity {len(got)}).")
+        self.key_class = key_class
+        suffix = f" {key_class}({', '.join(expected)})" if key_class else f"={list(expected)}"
+        super().__init__(
+            f"Key arity mismatch:{suffix} (arity {len(expected)}) but got {list(got)} (arity {len(got)}). "
+            f"Use the typed key class or pass kwargs."
+        )
+
+
+class MigrationRequired(A2KitError, TypeError):  # noqa: N818
+    """Raised at class-creation when a v0.4 `KEY_FIELDS = (...)` is found on a `ConnectionInfo` subclass.
+
+    v0.5 replaced `KEY_FIELDS` with a NamedTuple-based `Key` class. Migration:
+
+        # before:
+        class WidgetConn(a2kit.ConnectionInfo):
+            KEY_FIELDS = ("project", "env", "db")
+
+        # after:
+        class WidgetKey(NamedTuple):
+            project: str
+            env: str
+            db: str
+
+        class WidgetConn(a2kit.ConnectionInfo, key=WidgetKey):
+            ...
+    """
+
+    def __init__(self, cls_name: str, key_fields: tuple[str, ...]) -> None:
+        self.cls_name = cls_name
+        self.key_fields = key_fields
+        fields_repr = ", ".join(f"{f}: str" for f in key_fields)
+        super().__init__(
+            f"{cls_name} declares legacy `KEY_FIELDS = {key_fields!r}`. v0.5 requires a NamedTuple `key=` argument. "
+            f"Migrate to:\n\n"
+            f"    class {cls_name}Key(NamedTuple):\n"
+            f"        {fields_repr.replace(', ', chr(10) + '        ')}\n\n"
+            f"    class {cls_name}(a2kit.ConnectionInfo, key={cls_name}Key):\n"
+            f"        ..."
+        )
 
 
 class TokenResolutionError(A2KitError):

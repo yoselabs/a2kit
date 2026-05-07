@@ -1,22 +1,28 @@
 """ConnectionStore — TOML-backed save/load/list/delete for named connections.
 
-v0.3: keys are **named tuples** declared via `KEY_FIELDS: ClassVar[tuple[str, ...]]`.
-Defaults to `("name",)` so the common single-key case is zero-config. Multi-part
-keys are declared positionally on the subclass:
+v0.5: keys are **NamedTuple instances** declared via `key=` on the subclass:
 
-    class WidgetConn(a2kit.ConnectionInfo):
-        KEY_FIELDS = ("project", "env", "db")
-        ...
+    class WidgetKey(NamedTuple):
+        project: str
+        env: Literal["dev", "staging", "prod"]
+        db: str
+
+    class WidgetConn(a2kit.ConnectionInfo, key=WidgetKey):
+        base_url: str
+        api_key: str
+
+If `key=` is omitted, `cls.Key` defaults to a single-field `_DefaultKey(name: str)`
+so the common case stays zero-config.
 
 Filename derivation unchanged: `"-".join(values) + ".toml"`.
 
 Loading shapes (all equivalent):
 
-    store.load(name="prod")              # kwargs (preferred)
-    store.load("prod")                   # bare-string sugar (single-field default)
-    store.load(("project", "env", "db"))   # tuple (migration path)
-    store.load("p", "e", "d")              # positional
-    store.load(project=..., env=..., db=...)
+    store.load(WidgetKey(project="a", env="dev", db="c"))   # typed instance
+    store.load(project="a", env="dev", db="c")              # kwargs
+    store.load(("a", "dev", "c"))                           # tuple
+    store.load("a", "dev", "c")                             # positional
+    store.load("prod")                                      # bare-string sugar (single-field default)
 """
 
 from __future__ import annotations
@@ -26,9 +32,8 @@ import re
 import stat
 import tempfile
 import tomllib
-import warnings
 from pathlib import Path
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, NamedTuple, TypeVar
 
 import tomli_w
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -38,12 +43,24 @@ from a2kit.exceptions import (
     InvalidConnectionKey,
     KeyArityMismatch,
     KeyFieldMissing,
+    MigrationRequired,
 )
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 ENV_CONFIG_HOME = "A2KIT_CONFIG_HOME"
 DEFAULT_CONFIG_SUBDIR = Path(".config") / "a2kit" / "connections"
+
+
+class _DefaultKey(NamedTuple):
+    """Built-in single-field key used when no `key=` is declared on a subclass."""
+
+    name: str
+
+
+def _is_namedtuple_class(obj: object) -> bool:
+    """True if `obj` is a NamedTuple subclass (has `_fields` and inherits from tuple)."""
+    return isinstance(obj, type) and issubclass(obj, tuple) and hasattr(obj, "_fields")
 
 
 def _validate_key_part(part: str) -> str:
@@ -75,53 +92,64 @@ def default_config_dir() -> Path:
 class ConnectionInfo(BaseModel):
     """Base frozen connection record. Subclass and add domain fields.
 
-    `KEY_FIELDS` declares the named-tuple shape of the key. The on-disk filename
-    is `"-".join(values) + ".toml"`.
+    Declare a NamedTuple via `key=`; on-disk filename is `"-".join(values) + ".toml"`.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     key: tuple[str, ...] = Field(min_length=1)
 
-    KEY_FIELDS: ClassVar[tuple[str, ...]] = ("name",)
-    """Subclass-level field names. Defaults to a single flat `name` key."""
+    Key: ClassVar[type[NamedTuple]] = _DefaultKey
+    """The NamedTuple key class for this subclass. Bound by `__init_subclass__`."""
 
-    def __init_subclass__(cls, **kw: Any) -> None:
-        """v0.3.1: validate KEY_FIELDS shape once per subclass.
+    def __init_subclass__(cls, *, key: type[NamedTuple] | None = None, **kwargs: Any) -> None:
+        """v0.5: capture `key=` and bind as `cls.Key`. Reject leftover `KEY_FIELDS`.
 
-        - Must be a tuple of strings.
-        - Non-empty.
-        - Each entry a Python identifier.
-        - Lowercase (warn, do not error, on uppercase).
+        - `key=WidgetKey` must be a NamedTuple subclass (validated structurally).
+        - If absent, inherits from a parent that already set `Key` (typically `_DefaultKey`).
+        - Legacy `KEY_FIELDS` on the subclass body raises `MigrationRequired`.
         """
-        super().__init_subclass__(**kw)
-        kf = cls.__dict__.get("KEY_FIELDS")
-        if kf is None:
-            return
-        if not isinstance(kf, tuple):
-            msg = f"{cls.__name__}.KEY_FIELDS must be a tuple, got {type(kf).__name__}"
-            raise TypeError(msg)
-        if not kf:
-            msg = f"{cls.__name__}.KEY_FIELDS must be non-empty"
-            raise ValueError(msg)
-        for field_name in kf:
-            if not isinstance(field_name, str) or not field_name.isidentifier():
-                msg = f"{cls.__name__}.KEY_FIELDS entry {field_name!r} is not a valid Python identifier"
+        super().__init_subclass__(**kwargs)
+        if "KEY_FIELDS" in cls.__dict__:
+            raise MigrationRequired(cls.__name__, tuple(cls.__dict__["KEY_FIELDS"]))
+        if key is not None:
+            if not _is_namedtuple_class(key):
+                msg = f"{cls.__name__}: `key=` must be a NamedTuple subclass, got {key!r}"
+                raise TypeError(msg)
+            if not key._fields:  # type: ignore[attr-defined]
+                msg = f"{cls.__name__}: `key={key.__name__}` must have at least one field"
                 raise ValueError(msg)
-            if field_name != field_name.lower():
-                warnings.warn(
-                    f"{cls.__name__}.KEY_FIELDS entry {field_name!r} should be lowercase",
-                    UserWarning,
-                    stacklevel=3,
-                )
+            cls.Key = key
+
+    @classmethod
+    def _key_field_names(cls) -> tuple[str, ...]:
+        return tuple(cls.Key._fields)  # type: ignore[attr-defined]
+
+    @field_validator("key", mode="before")
+    @classmethod
+    def _coerce_key_input(cls, v: Any) -> tuple[str, ...]:
+        """Accept NamedTuple instance / tuple / list / dict / kwargs-like dict for `key`."""
+        fields = cls._key_field_names()
+        if isinstance(v, dict):
+            missing = [f for f in fields if f not in v]
+            if missing:
+                raise KeyFieldMissing(missing[0], have=[str(k) for k in v], key_class=cls.Key.__name__)
+            return tuple(str(v[f]) for f in fields)
+        if isinstance(v, list):
+            return tuple(str(p) for p in v)
+        if isinstance(v, tuple):
+            # NamedTuple instance is also a tuple; same path is fine.
+            return tuple(str(p) for p in v)
+        return v  # let pydantic surface a TypeError downstream
 
     @field_validator("key")
     @classmethod
     def _validate_key(cls, v: tuple[str, ...]) -> tuple[str, ...]:
         v = _validate_key(v)
-        expected = len(cls.KEY_FIELDS)
+        fields = cls._key_field_names()
+        expected = len(fields)
         if len(v) != expected:
-            raise KeyArityMismatch(expected=cls.KEY_FIELDS, got=v)
+            raise KeyArityMismatch(expected=fields, got=v, key_class=cls.Key.__name__)
         return v
 
     @property
@@ -131,56 +159,57 @@ class ConnectionInfo(BaseModel):
 
 
 C = TypeVar("C", bound=ConnectionInfo)
+K = TypeVar("K", bound=tuple[Any, ...])
 
 
-def _coerce_key(  # noqa: C901
+def _coerce_key(  # noqa: C901, PLR0912
     model: type[C],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> tuple[str, ...]:
     """Resolve `load(...)` / `delete(...)` arguments into a validated key tuple."""
-    fields = model.KEY_FIELDS
+    key_cls = model.Key
+    fields = tuple(key_cls._fields)  # type: ignore[attr-defined]
     expected = len(fields)
+    cls_name = key_cls.__name__
 
     # All-kwargs path.
     if not args and kwargs:
         missing = [f for f in fields if f not in kwargs]
         extras = [k for k in kwargs if k not in fields]
         if missing:
-            raise KeyFieldMissing(missing[0], have=[f for f in fields if f in kwargs])
+            raise KeyFieldMissing(missing[0], have=[f for f in fields if f in kwargs], key_class=cls_name)
         if extras:
-            msg = f"Unknown key field(s) {extras!r}; expected one of {list(fields)}"
-            raise InvalidConnectionKey(extras[0]) if False else ValueError(msg)
+            msg = f"Unknown key field(s) {extras!r} on {cls_name}; expected one of {list(fields)}"
+            raise ValueError(msg)
         return tuple(str(kwargs[f]) for f in fields)
 
     if not args and not kwargs:
-        msg = f"load() requires {expected} key field(s): {list(fields)}"
-        raise KeyFieldMissing(fields[0] if fields else "name", have=[])
+        raise KeyFieldMissing(fields[0] if fields else "name", have=[], key_class=cls_name)
 
-    # Tuple-shape path: load(("a", "b", "c")).
-    if len(args) == 1 and isinstance(args[0], tuple) and not kwargs:
-        got = args[0]
-        if len(got) != expected:
-            raise KeyArityMismatch(expected=fields, got=got)
-        return tuple(str(p) for p in got)
-
-    # List-shape path (mirror tuple).
-    if len(args) == 1 and isinstance(args[0], list) and not kwargs:
-        got = tuple(args[0])
-        if len(got) != expected:
-            raise KeyArityMismatch(expected=fields, got=got)
-        return tuple(str(p) for p in got)
-
-    # Single-string-sugar (only for the default single-field shape).
-    if len(args) == 1 and isinstance(args[0], str) and not kwargs:
-        if expected != 1:
-            raise KeyArityMismatch(expected=fields, got=(args[0],))
-        return (args[0],)
+    # Single arg: NamedTuple instance / tuple / list / single-string sugar.
+    if len(args) == 1 and not kwargs:
+        sole = args[0]
+        if isinstance(sole, key_cls):
+            return tuple(str(p) for p in sole)
+        if isinstance(sole, tuple):
+            if len(sole) != expected:
+                raise KeyArityMismatch(expected=fields, got=sole, key_class=cls_name)
+            return tuple(str(p) for p in sole)
+        if isinstance(sole, list):
+            got = tuple(sole)
+            if len(got) != expected:
+                raise KeyArityMismatch(expected=fields, got=got, key_class=cls_name)
+            return tuple(str(p) for p in got)
+        if isinstance(sole, str):
+            if expected != 1:
+                raise KeyArityMismatch(expected=fields, got=(sole,), key_class=cls_name)
+            return (sole,)
 
     # Positional path: load("p", "e", "d").
     if args and not kwargs:
         if len(args) != expected:
-            raise KeyArityMismatch(expected=fields, got=tuple(str(a) for a in args))
+            raise KeyArityMismatch(expected=fields, got=tuple(str(a) for a in args), key_class=cls_name)
         return tuple(str(a) for a in args)
 
     msg = "Cannot mix positional and keyword key arguments"
@@ -190,8 +219,8 @@ def _coerce_key(  # noqa: C901
 class ConnectionStore(Generic[C]):
     """Manages connection TOML files for a single `ConnectionInfo` subclass.
 
-    `store.connection_class` exposes the model type for code that wants to derive
-    it from the store rather than passing it twice.
+    Generic on the `ConnectionInfo` subclass; the key NamedTuple is derived from
+    `model.Key` (same class is exposed as `store.key_class`).
     """
 
     def __init__(self, config_dir: Path, model: type[C]) -> None:
@@ -202,6 +231,11 @@ class ConnectionStore(Generic[C]):
     def connection_class(self) -> type[C]:
         """The `ConnectionInfo` subclass this store is bound to."""
         return self.model
+
+    @property
+    def key_class(self) -> type[NamedTuple]:
+        """The NamedTuple key class for this store (`model.Key`)."""
+        return self.model.Key
 
     # -- key/path ------------------------------------------------------------
 
@@ -261,7 +295,7 @@ class ConnectionStore(Generic[C]):
         data["key"] = tuple(data["key"])
         try:
             return self.model.model_validate(data)
-        except ValidationError as exc:  # v0.3.1: unwrap to surface KeyArityMismatch / KeyFieldMissing
+        except ValidationError as exc:  # surface KeyArityMismatch / KeyFieldMissing
             for err in exc.errors():
                 ctx = err.get("ctx", {})
                 inner = ctx.get("error") if isinstance(ctx, dict) else None
@@ -279,3 +313,12 @@ class ConnectionStore(Generic[C]):
             data["key"] = tuple(data["key"])
             results.append(self.model.model_validate(data))
         return results
+
+    def list_keys(self) -> list[tuple[str, ...]]:
+        """List all stored keys as `model.Key` NamedTuple instances.
+
+        Returns the typed key (e.g. `WidgetKey(project=..., env=..., db=...)`)
+        rather than a raw tuple — callers iterating by index still work because
+        `NamedTuple` supports indexing.
+        """
+        return [self.model.Key(*info.key) for info in self.list_connections()]  # type: ignore[misc]

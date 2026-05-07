@@ -174,7 +174,6 @@ def test_listing_with_tuple_subclass_field(atlassian_store: ConnectionStore[Atla
     """Cover the tuple-field coercion path on save (extra tuple field on subclass)."""
 
     class WithTuple(ConnectionInfo):
-        KEY_FIELDS = ("name",)
         admins: tuple[str, ...] = ()
 
     store: ConnectionStore[WithTuple] = ConnectionStore(atlassian_store.config_dir, WithTuple)
@@ -225,3 +224,23 @@ def test_save_path_only_visible_to_owner(db_store: ConnectionStore[DbInfo]) -> N
     info = DbInfo(key=("a", "b", "c"), dsn="sqlite://")
     path = db_store.save(info)
     assert os.stat(path).st_mode & 0o077 == 0
+
+
+def test_store_exposes_key_class(db_store: ConnectionStore[DbInfo]) -> None:
+    """v0.5: `store.key_class` exposes the NamedTuple key type."""
+    from .conftest import DbKey
+
+    assert db_store.key_class is DbKey
+    assert db_store.key_class._fields == ("project", "env", "db")
+
+
+def test_list_keys_returns_namedtuples(db_store: ConnectionStore[DbInfo]) -> None:
+    """v0.5: `store.list_keys()` returns typed NamedTuple instances."""
+    from .conftest import DbKey
+
+    db_store.save(DbInfo(key=("acme", "prod", "main"), dsn="sqlite://"))
+    keys = db_store.list_keys()
+    assert keys == [DbKey(project="acme", env="prod", db="main")]
+    # NamedTuple supports both attr-style and index-style access:
+    assert keys[0].project == "acme"
+    assert keys[0][0] == "acme"

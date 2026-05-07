@@ -18,8 +18,9 @@ from pathlib import Path
 from a2kit import ConnectionInfo, ConnectionStore, resolve_token
 
 
+# No `key=` declared → cls.Key resolves to the built-in `_DefaultKey(name: str)`.
+# This means `store.load("prod")` (bare-string sugar) and `store.load(name="prod")` both work.
 class AtlassianInfo(ConnectionInfo):
-    KEY_FIELDS = ("name",)
     url: str
     email: str
     token: str

@@ -234,69 +234,42 @@ def f(connection: str) -> dict:
     assert list(rule_a2k004(tree, "f.py", src)) == []
 
 
-def test_a2k005_flags_uppercase_field() -> None:
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("Project", "env", "db")
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k005(tree, "f.py", src))
-    assert any(m.rule == A2K005 for m in msgs)
-
-
-def test_a2k005_flags_non_identifier() -> None:
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("a-b",)
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k005(tree, "f.py", src))
-    assert any("identifier" in m.message for m in msgs)
-
-
-def test_a2k005_flags_non_string_element() -> None:
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):
-    KEY_FIELDS = (1, 2)
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k005(tree, "f.py", src))
-    assert any("non-string" in m.message for m in msgs)
-
-
-def test_a2k005_flags_non_tuple() -> None:
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):
-    KEY_FIELDS = "name"
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k005(tree, "f.py", src))
-    assert any("must be a tuple" in m.message for m in msgs)
-
-
-def test_a2k005_passes_lowercase_tuple() -> None:
+def test_a2k005_flags_legacy_key_fields() -> None:
+    """v0.5: any leftover `KEY_FIELDS = ...` becomes a migration error."""
     code = """
 import a2kit
 class Conn(a2kit.ConnectionInfo):
     KEY_FIELDS = ("project", "env", "db")
 """
     tree, src = _parse(code)
-    assert list(rule_a2k005(tree, "f.py", src)) == []
+    msgs = list(rule_a2k005(tree, "f.py", src))
+    assert any(m.rule == A2K005 and "legacy" in m.message for m in msgs)
 
 
-def test_a2k005_ann_assign_supported() -> None:
+def test_a2k005_flags_legacy_ann_assign() -> None:
     code = """
 import a2kit
 class Conn(a2kit.ConnectionInfo):
-    KEY_FIELDS: tuple[str, ...] = ("project", "Env")
+    KEY_FIELDS: tuple[str, ...] = ("project", "env")
 """
     tree, src = _parse(code)
     msgs = list(rule_a2k005(tree, "f.py", src))
-    assert any("lowercase" in m.message for m in msgs)
+    assert any(m.rule == A2K005 and "legacy" in m.message for m in msgs)
+
+
+def test_a2k005_passes_namedtuple_key() -> None:
+    code = """
+from typing import NamedTuple
+import a2kit
+class WidgetKey(NamedTuple):
+    project: str
+    env: str
+    db: str
+class Conn(a2kit.ConnectionInfo, key=WidgetKey):
+    pass
+"""
+    tree, src = _parse(code)
+    assert list(rule_a2k005(tree, "f.py", src)) == []
 
 
 def test_a2k005_skips_classes_without_key_fields() -> None:

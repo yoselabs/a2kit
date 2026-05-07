@@ -46,11 +46,12 @@ examples:
 	uv run python examples/cassette_test.py
 	uv run python examples/v03_minimal_mcp.py
 	uv run python examples/feature_class.py
-	uv run python examples/key_fields.py
+	uv run python examples/key_namedtuple.py
 	uv run python examples/router_class.py
 	uv run python examples/select_grammar.py
 	uv run python examples/typed_decorator.py
 	uv run python examples/projection.py
 	uv run python examples/cel_filter_tool.py
 	uv run python examples/toml_capabilities.py
-	uv run python examples/v04_minimal_mcp.py
+	uv run python examples/v05_minimal_mcp.py
+	uv run python examples/typed_key_literal.py

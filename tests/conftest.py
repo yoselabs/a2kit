@@ -9,7 +9,7 @@ import os
 import stat
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
@@ -29,17 +29,21 @@ def config_dir(tmp_path: Path) -> Path:
 # -- Domain models used across tests -----------------------------------------
 
 
-class DbInfo(ConnectionInfo):
+class DbKey(NamedTuple):
+    project: str
+    env: str
+    db: str
+
+
+class DbInfo(ConnectionInfo, key=DbKey):
     """Multi-field-key style record: 3-part key + DSN."""
 
-    KEY_FIELDS = ("project", "env", "db")
     dsn: str
 
 
 class AtlassianInfo(ConnectionInfo):
-    """Flat-key style record: flat 1-part key + URL/email/token + read_only."""
+    """Flat-key style record: default `_DefaultKey(name)` + URL/email/token + read_only."""
 
-    KEY_FIELDS = ("name",)
     url: str
     email: str
     token: str

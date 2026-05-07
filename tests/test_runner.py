@@ -35,7 +35,6 @@ class _FakeServer:
 
 
 class WConn(ConnectionInfo):
-    KEY_FIELDS = ("name",)
     url: str
 
 

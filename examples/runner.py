@@ -39,7 +39,6 @@ class _FakeServer:
 
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("name",)
     url: str
 
 

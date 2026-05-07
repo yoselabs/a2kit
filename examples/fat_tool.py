@@ -19,7 +19,6 @@ import a2kit
 
 
 class WidgetConn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("name",)
     base_url: str
     api_key: str
     read_only: bool = True

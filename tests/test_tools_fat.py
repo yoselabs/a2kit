@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 
@@ -26,7 +26,6 @@ from a2kit.tools import (
 
 
 class WidgetConn(ConnectionInfo):
-    KEY_FIELDS = ("name",)
     url: str
     api_key: str
     read_only: bool = True
@@ -103,8 +102,12 @@ async def test_connection_no_store_missing_raises() -> None:
 
 
 async def test_connection_tuple_key(tmp_path: Path) -> None:
-    class TripleConn(ConnectionInfo):
-        KEY_FIELDS = ("project", "env", "db")
+    class TripleKey(NamedTuple):
+        project: str
+        env: str
+        db: str
+
+    class TripleConn(ConnectionInfo, key=TripleKey):
         url: str
 
     store: ConnectionStore[TripleConn] = ConnectionStore(tmp_path / "c", TripleConn)
@@ -119,8 +122,12 @@ async def test_connection_tuple_key(tmp_path: Path) -> None:
 
 
 async def test_connection_list_key_coerced(tmp_path: Path) -> None:
-    class TripleConn(ConnectionInfo):
-        KEY_FIELDS = ("project", "env", "db")
+    class TripleKey(NamedTuple):
+        project: str
+        env: str
+        db: str
+
+    class TripleConn(ConnectionInfo, key=TripleKey):
         url: str
 
     store: ConnectionStore[TripleConn] = ConnectionStore(tmp_path / "c", TripleConn)
@@ -147,7 +154,7 @@ async def test_resolve_info_strings_no_op_path(tmp_path: Path) -> None:
     """A connection with only the (tuple) key — nothing to resolve. Hits the early-return path."""
 
     class BareConn(ConnectionInfo):
-        KEY_FIELDS = ("name",)
+        pass
 
     store: ConnectionStore[BareConn] = ConnectionStore(tmp_path / "c", BareConn)
     store.save(BareConn(key=("p",)))

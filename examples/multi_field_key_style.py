@@ -11,12 +11,18 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 from a2kit import ConnectionInfo, ConnectionStore, resolve_token
 
 
-class DbInfo(ConnectionInfo):
-    KEY_FIELDS = ("project", "env", "db")
+class DbKey(NamedTuple):
+    project: str
+    env: str
+    db: str
+
+
+class DbInfo(ConnectionInfo, key=DbKey):
     dsn: str
 
 
@@ -29,16 +35,25 @@ def main() -> None:
 
         store.save(
             DbInfo(
-                key=("acme", "prod", "main"),
+                key=DbKey(project="acme", env="prod", db="main"),
                 dsn="postgresql://user:${EXAMPLE_DB_PASSWORD}@db.acme.io/main",
             )
         )
 
-        loaded = store.load(("acme", "prod", "main"))
+        # All four load() shapes work:
+        # 1. Typed NamedTuple instance — most explicit, fully type-checked:
+        loaded = store.load(DbKey(project="acme", env="prod", db="main"))
+        # 2. kwargs:
+        store.load(project="acme", env="prod", db="main")
+        # 3. tuple:
+        store.load(("acme", "prod", "main"))
+        # 4. positional:
+        store.load("acme", "prod", "main")
+
         print(f"key: {loaded.key}")
         print(f"raw dsn: {loaded.dsn}")
         print(f"resolved dsn: {resolve_token(loaded.dsn)}")
-        print(f"all connections: {[info.key for info in store.list_connections()]}")
+        print(f"all connections: {store.list_keys()}")
 
 
 if __name__ == "__main__":

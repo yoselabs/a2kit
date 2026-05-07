@@ -268,7 +268,6 @@ def test_lint_a2k005_arity1_str_ok(tmp_path: Path) -> None:
         "import a2kit\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
         "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('name',)\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -285,9 +284,13 @@ def test_lint_a2k005_arity3_str_fails(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -303,9 +306,13 @@ def test_lint_a2k005_arity3_tuple_ok(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -321,9 +328,13 @@ def test_lint_a2k005_arity3_tuple_variadic_ok(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -339,9 +350,13 @@ def test_lint_a2k005_arity3_typed_model_ok(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -360,7 +375,6 @@ def test_lint_a2k005_arity1_non_str_ok(tmp_path: Path) -> None:
         "import a2kit\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
         "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('name',)\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -377,9 +391,13 @@ def test_lint_a2k005_ann_assign_store_resolves(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store: ConnectionStore[C] = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -397,9 +415,13 @@ def test_lint_a2k005_arity_gt1_subscript_other_base(tmp_path: Path) -> None:
     src.write_text(
         "from typing import Sequence\n"
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -416,9 +438,13 @@ def test_lint_a2k005_no_annotation_unresolvable(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -449,9 +475,13 @@ def test_lint_a2k005_param_loop_iteration(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -468,9 +498,13 @@ def test_lint_a2k005_other_call_in_module_skipped(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "other = print('hi')  # non-ConnectionStore call\n"
         "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
@@ -488,9 +522,13 @@ def test_lint_a2k005_tuple_target_skipped(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo, ConnectionStore\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "a, b = ConnectionStore('/tmp', C), 1\n"  # noqa: S108
         "@a2kit.tool(store=a, connection_param='conn')\n"
@@ -508,9 +546,13 @@ def test_lint_a2k005_store_assigned_to_non_call(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_text(
         "import a2kit\n"
+        "from typing import NamedTuple\n"
         "from a2kit import ConnectionInfo\n"
-        "class C(ConnectionInfo):\n"
-        "    KEY_FIELDS = ('p', 'e', 'd')\n"
+        "class K(NamedTuple):\n"
+        "    p: str\n"
+        "    e: str\n"
+        "    d: str\n"
+        "class C(ConnectionInfo, key=K):\n"
         "    url: str\n"
         "store = some_external_thing\n"
         "@a2kit.tool(store=store, connection_param='conn')\n"
@@ -518,6 +560,26 @@ def test_lint_a2k005_store_assigned_to_non_call(tmp_path: Path) -> None:
         "    return {}\n"
     )
     findings = run_static_rules([src], disabled=["A2K011"])
+    assert any(f.rule == "A2K005" and "could not resolve" in f.message for f in findings)
+
+
+def test_lint_a2k005_key_class_not_namedtuple_in_module(tmp_path: Path) -> None:
+    """`key=External` where External isn't a NamedTuple in this module → arity unresolved."""
+    src = tmp_path / "src" / "mod.py"
+    src.parent.mkdir(parents=True)
+    src.write_text(
+        "import a2kit\n"
+        "from a2kit import ConnectionInfo, ConnectionStore\n"
+        "class C(ConnectionInfo, key=ExternalKey):\n"
+        "    url: str\n"
+        "store = ConnectionStore('/tmp', C)\n"  # noqa: S108
+        "@a2kit.tool(store=store, connection_param='conn')\n"
+        "async def t(conn: str) -> dict:\n"
+        "    return {}\n"
+    )
+    findings = run_static_rules([src], disabled=["A2K011"])
+    # ExternalKey not in this module → namedtuple_field_count returns None →
+    # arity_by_class skips C → store advisory "could not resolve".
     assert any(f.rule == "A2K005" and "could not resolve" in f.message for f in findings)
 
 

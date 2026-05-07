@@ -23,7 +23,6 @@ import a2kit
 
 
 class MyConn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("name",)
     url: str
     email: str
     token: str
