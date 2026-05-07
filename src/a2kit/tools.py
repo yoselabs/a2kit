@@ -134,7 +134,9 @@ def _resolve_return_annotation(fn: Any, raw: Any) -> Any:
         return raw
     try:
         hints = inspect.get_annotations(fn, eval_str=True)
-    except Exception:  # noqa: BLE001 — forward-ref or non-toplevel name; fall back to None
+    except (NameError, AttributeError, SyntaxError):
+        # Forward refs / non-toplevel names / malformed annotations — safe to
+        # fall back. Other exceptions (TypeError, etc.) are real bugs and bubble.
         return None
     return hints.get("return")
 

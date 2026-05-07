@@ -390,6 +390,78 @@ def test_connection_enricher_factory_passthrough_for_other_exceptions(tmp_path: 
 
 
 # ---------------------------------------------------------------- #
+# Review follow-ups: ephemeral store `list_connections` proxy
+# ---------------------------------------------------------------- #
+
+
+class EphemRouter(Router[_Conn]):
+    pass
+
+
+@EphemRouter.read()
+def _ephem_list(info: _Conn) -> dict:  # type: ignore[type-arg]
+    return {"x": info.base_url}
+
+
+def test_ephemeral_store_proxies_list_connections_for_enricher(tmp_path: Path) -> None:
+    """Auto-enricher must work on a Router that mixes base + ephemeral connections."""
+    base = _store(tmp_path)
+    ephemeral = {("ephem-only",): _Conn(key=("ephem-only",), base_url="https://e")}
+
+    server = _FakeServer()
+    EphemRouter(store=base, ephemeral=ephemeral).register_read(server, base)
+    fn = server.tools[-1]
+
+    with pytest.raises(ConnectionNotFound) as exc:
+        fn(connection="missing")
+    msg = str(exc.value)
+    assert "Available:" in msg
+    # Both base and ephemeral keys appear:
+    assert "prod" in msg
+    assert "ephem-only" in msg
+
+
+def test_ephemeral_store_list_connections_dedupes_overrides() -> None:
+    """If ephemeral overrides a base key, the ephemeral entry wins (no double-listing)."""
+    from a2kit.scaffold import _EphemeralAwareStore
+
+    class _BaseStub:
+        def list_connections(self) -> list[Any]:
+            return [_Conn(key=("prod",), base_url="https://base")]
+
+    ephemeral = {("prod",): _Conn(key=("prod",), base_url="https://override")}
+    proxy = _EphemeralAwareStore(_BaseStub(), ephemeral)
+    keys = [info.key for info in proxy.list_connections()]
+    # Only one "prod" entry survives.
+    assert keys.count(("prod",)) == 1
+
+
+def test_ephemeral_store_list_connections_with_no_base() -> None:
+    """A pure ephemeral router (no base store) still lists ephemeral keys."""
+    from a2kit.scaffold import _EphemeralAwareStore
+
+    ephemeral = {("ephem",): _Conn(key=("ephem",), base_url="https://e")}
+    proxy = _EphemeralAwareStore(None, ephemeral)
+    assert [info.key for info in proxy.list_connections()] == [("ephem",)]
+
+
+def test_resolve_return_annotation_propagates_unexpected_errors() -> None:
+    """Bug-masking guard: errors outside (NameError, AttributeError, SyntaxError) bubble.
+
+    Otherwise authors get silent `_a2kit_format = None` instead of a stack
+    trace pointing at their broken annotation.
+    """
+    from a2kit.tools import _resolve_return_annotation
+
+    def f() -> int:
+        return 0
+
+    f.__annotations__ = {"return": "1/0"}  # eval will raise ZeroDivisionError
+    with pytest.raises(ZeroDivisionError):
+        _resolve_return_annotation(f, "1/0")
+
+
+# ---------------------------------------------------------------- #
 # Helpers
 # ---------------------------------------------------------------- #
 

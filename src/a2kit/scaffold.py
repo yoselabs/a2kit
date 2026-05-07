@@ -73,6 +73,10 @@ class _EphemeralAwareStore:
     """Private store-proxy: short-circuits `.load()` to an ephemeral dict before
     delegating to the base store. Used by `Router._apply_bindings` to lift
     ephemeral handling out of the tool decorator (v0.8).
+
+    v0.10: `list_connections()` proxied so the auto-wired
+    `connection_enricher` and connection-key schema enrichment can list
+    base-store keys + ephemeral keys uniformly.
     """
 
     def __init__(self, base: Any, ephemeral: dict[tuple[str, ...], Any] | None) -> None:
@@ -85,6 +89,15 @@ class _EphemeralAwareStore:
         if self._base is None:
             raise ConnectionNotFound(key)
         return self._base.load(key)
+
+    def list_connections(self) -> list[Any]:
+        base_list = self._base.list_connections() if self._base is not None and hasattr(self._base, "list_connections") else []
+        existing_keys = {tuple(getattr(info, "key", ())) for info in base_list}
+        merged = list(base_list)
+        for key, info in self._ephemeral.items():
+            if key not in existing_keys:
+                merged.append(info)
+        return merged
 
 
 def build_cli(
