@@ -46,12 +46,10 @@ unchanged. Internal modules:
 """
 
 from a2kit.tools._connection import (
-    _detect_info_param,
     _lookup_connection_async,
     _lookup_connection_sync,
     _resolve_connection_key,
     _resolve_info_strings,
-    _safe_list_connection_keys,
 )
 from a2kit.tools._decorator import tool
 from a2kit.tools._metadata import (
@@ -94,7 +92,6 @@ __all__ = [
     "_compute_tool_capabilities",
     "_consume_or_passthrough_async",
     "_decode_cursor",
-    "_detect_info_param",
     "_encode_cursor",
     "_get_current_transport",
     "_inject_param_docs",
@@ -108,7 +105,6 @@ __all__ = [
     "_resolve_connection_key",
     "_resolve_info_strings",
     "_resolve_return_annotation",
-    "_safe_list_connection_keys",
     "_set_current_transport",
     "_splice_wrapper_signature",
     "_verify_passthrough_params",

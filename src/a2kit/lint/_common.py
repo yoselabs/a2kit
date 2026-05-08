@@ -9,10 +9,8 @@ if TYPE_CHECKING:
     import ast
 
 # Rule codes — declared here so each rule module can import its own.
-A2K001 = "A2K001"
 A2K002 = "A2K002"
 A2K003 = "A2K003"
-A2K004 = "A2K004"
 A2K006 = "A2K006"
 A2K008 = "A2K008"
 A2K009 = "A2K009"
@@ -22,7 +20,7 @@ A2K012 = "A2K012"
 A2K013 = "A2K013"
 A2K014 = "A2K014"
 
-ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012, A2K013, A2K014)
+ALL_RULES = (A2K002, A2K003, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012, A2K013, A2K014)
 
 # Default file-size budget for A2K014. Override via `[tool.a2kit.lint] max_lines`.
 DEFAULT_MAX_LINES = 500

@@ -1,4 +1,4 @@
-"""Tests for a2kit.lint.static — A2K001..A2K006 + run_static_rules."""
+"""Tests for a2kit.lint.static — A2K002..A2K006 + run_static_rules."""
 
 from __future__ import annotations
 
@@ -7,80 +7,17 @@ from pathlib import Path
 
 from a2kit.lint._common import LintMessage, parse_noqa, suppressed
 from a2kit.lint.static import (
-    A2K001,
     A2K002,
     A2K003,
-    A2K004,
     A2K006,
-    rule_a2k001,
     rule_a2k002,
     rule_a2k003,
-    rule_a2k004,
     run_static_rules,
 )
 
 
 def _parse(code: str) -> tuple[ast.AST, str]:
     return ast.parse(code), code
-
-
-def test_a2k001_flags_missing_connection_param() -> None:
-    code = """
-import a2kit
-@a2kit.tool(connection_param="conn")
-def f(x: str) -> dict:
-    return {}
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k001(tree, "f.py", src))
-    assert len(msgs) == 1
-    assert msgs[0].rule == A2K001
-
-
-def test_a2k001_passes_when_param_present() -> None:
-    code = """
-import a2kit
-@a2kit.tool(connection_param="conn")
-def f(conn: str) -> dict:
-    return {}
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k001(tree, "f.py", src)) == []
-
-
-def test_a2k001_handles_bare_name_decorator() -> None:
-    code = """
-from a2kit import tool
-@tool(connection_param="conn")
-def f(x: str) -> dict:
-    return {}
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k001(tree, "f.py", src))
-    assert msgs and msgs[0].rule == A2K001
-
-
-def test_a2k001_skips_when_connection_param_not_constant() -> None:
-    code = """
-import a2kit
-NAME = "conn"
-@a2kit.tool(connection_param=NAME)
-def f(x: str) -> dict:
-    return {}
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k001(tree, "f.py", src)) == []
-
-
-def test_a2k001_respects_noqa() -> None:
-    code = """
-import a2kit
-@a2kit.tool(connection_param="conn")
-def f(x: str) -> dict:  # noqa: A2K001
-    return {}
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k001(tree, "f.py", src)) == []
 
 
 def test_a2k002_flags_str_return_on_a2kit_tool() -> None:
@@ -172,18 +109,6 @@ def f() -> Out:
     assert list(rule_a2k003(tree, "tests/test_x.py", src)) == []
 
 
-def test_a2k004_skips_test_paths() -> None:
-    """A2K004 short-circuits on test/example files."""
-    code = """
-import a2kit
-@a2kit.tool(connection_param="connection")
-def f(connection: str) -> dict:
-    return {}
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k004(tree, "examples/foo.py", src)) == []
-
-
 def test_a2k003_skips_when_no_local_models() -> None:
     code = """
 import a2kit
@@ -205,31 +130,6 @@ def f() -> Out:
 """
     tree, src = _parse(code)
     assert list(rule_a2k003(tree, "f.py", src)) == []
-
-
-def test_a2k004_flags_missing_doc_helper() -> None:
-    code = '''
-import a2kit
-@a2kit.tool(connection_param="connection")
-def f(connection: str) -> dict:
-    """No mention of the helper."""
-    return {}
-'''
-    tree, src = _parse(code)
-    msgs = list(rule_a2k004(tree, "f.py", src))
-    assert msgs and msgs[0].rule == A2K004
-
-
-def test_a2k004_skips_when_helper_referenced() -> None:
-    code = '''
-import a2kit
-@a2kit.tool(connection_param="connection")
-def f(connection: str) -> dict:
-    """Use connection_param_doc()."""
-    return {}
-'''
-    tree, src = _parse(code)
-    assert list(rule_a2k004(tree, "f.py", src)) == []
 
 
 def test_a2k006_cross_file_dedup(tmp_path: Path) -> None:
@@ -261,17 +161,6 @@ def test_run_static_rules_skips_unreadable(tmp_path: Path) -> None:
     assert msgs == []
 
 
-def test_a2k001_skips_non_a2kit_decorators() -> None:
-    """A function with only `@server.tool()` (not a2kit) is skipped by A2K001."""
-    code = """
-@server.tool()
-def f(x: str) -> dict:
-    return {}
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k001(tree, "f.py", src)) == []
-
-
 def test_a2k003_non_name_return_annotation() -> None:
     """`-> Mapping[str, int]` — return annotation is a Subscript, not a Name."""
     code = """
@@ -286,17 +175,6 @@ def f() -> Mapping[str, int]:
 """
     tree, src = _parse(code)
     assert list(rule_a2k003(tree, "f.py", src)) == []
-
-
-def test_a2k004_noqa_suppresses() -> None:
-    code = """
-import a2kit
-@a2kit.tool(connection_param="connection")
-def f(connection: str) -> dict:  # noqa: A2K004
-    return {}
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k004(tree, "f.py", src)) == []
 
 
 def test_a2k006_two_files_below_threshold(tmp_path: Path) -> None:

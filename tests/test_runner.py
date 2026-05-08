@@ -189,7 +189,7 @@ def test_runner_no_enable_excludes_default_via_select() -> None:
 
 def test_runner_register_ephemeral(store: ConnectionStore[WConn]) -> None:
     server = _FakeServer()
-    parsed = MCPRunner(server, store=store).run(argv=["--register", "ep", "url=https://x"])
+    parsed = MCPRunner(server, connection_store=store).run(argv=["--register", "ep", "url=https://x"])
     assert ("ep",) in parsed["ephemeral"]
     assert parsed["ephemeral"][("ep",)].url == "https://x"
 
@@ -210,7 +210,7 @@ def test_runner_routers_applied(store: ConnectionStore[WConn]) -> None:
         def register_read(s: Any, _store: Any) -> None:
             s.tools.append("a.read")
 
-    MCPRunner(server, store=store, router_registry=reg).run(argv=["--select", "router:a"])
+    MCPRunner(server, connection_store=store, router_registry=reg).run(argv=["--select", "router:a"])
     assert server.tools == ["a.read"]
 
 
@@ -222,7 +222,7 @@ def test_runner_unknown_flag_skipped() -> None:
 
 def test_runner_register_terminated_by_other_flag(store: ConnectionStore[WConn]) -> None:
     server = _FakeServer()
-    parsed = MCPRunner(server, store=store).run(argv=["--register", "ep", "url=https://x", "--scope", "ep"])
+    parsed = MCPRunner(server, connection_store=store).run(argv=["--register", "ep", "url=https://x", "--scope", "ep"])
     assert parsed["scope"] == "ep"
     assert ("ep",) in parsed["ephemeral"]
 
@@ -390,7 +390,7 @@ def test_build_cli_rejects_connection_class_kwarg(tmp_path: Path) -> None:
 def test_mcprunner_rejects_connection_class_kwarg(tmp_path: Path) -> None:
     s: ConnectionStore[WConn] = ConnectionStore(tmp_path / "c", WConn)
     with pytest.raises(TypeError):
-        MCPRunner(_FakeServer(), store=s, connection_class=WConn)  # type: ignore[call-arg]
+        MCPRunner(_FakeServer(), connection_store=s, connection_class=WConn)  # type: ignore[call-arg]
 
 
 def test_runner_no_writes_flag(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -458,5 +458,5 @@ def test_runner_options_register(tmp_path: Path) -> None:
 
     server = _FakeServer()
     store: ConnectionStore[WConn] = ConnectionStore(tmp_path / "c", WConn)
-    parsed = MCPRunner(server, store=store).run(options=RunnerOptions(registers=("ep url=https://x",)))
+    parsed = MCPRunner(server, connection_store=store).run(options=RunnerOptions(registers=("ep url=https://x",)))
     assert parsed["ephemeral"]

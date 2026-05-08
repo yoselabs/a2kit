@@ -1,26 +1,22 @@
-"""Connection lookup, key coercion, and typed-info DI detection.
+"""Connection lookup + key coercion.
 
 Sync and async paths share the same store contract — `_lookup_connection_sync`
 drives the async coroutine via anyio's 3-tier drain.
-`_safe_list_connection_keys` runs at decoration time to populate the canonical
-connection-param docstring with available keys.
 """
 
 from __future__ import annotations
 
 import concurrent.futures
-import inspect
 from typing import TYPE_CHECKING, Any
 
 import anyio
 import anyio.from_thread
 
-from a2kit.connections import ConnectionInfo, ConnectionStoreLike
 from a2kit.exceptions import ConnectionNotFound
 from a2kit.tokens import resolve_token
 
 if TYPE_CHECKING:
-    from a2kit.connections import ConnectionStore
+    from a2kit.connections import ConnectionInfo, ConnectionStore
     from a2kit.tokens import ResolverRegistry
 
 
@@ -34,36 +30,6 @@ def _resolve_connection_key(value: Any) -> tuple[str, ...]:
         return tuple(value)
     msg = f"connection param must be str|tuple|list, got {type(value).__name__}"
     raise TypeError(msg)
-
-
-def _detect_info_param(fn: Any, sig: inspect.Signature) -> tuple[str, type] | None:
-    """Type-driven info DI — find a `ConnectionInfo`-typed param on `fn`.
-
-    Returns ``(param_name, info_class)`` if exactly one such param exists;
-    ``None`` if zero. Raises if more than one.
-    """
-    try:
-        hints = inspect.get_annotations(fn, eval_str=True)
-    except (NameError, AttributeError):  # pragma: no cover — forward-ref fallback
-        hints = getattr(fn, "__annotations__", {})
-
-    matches: list[tuple[str, type]] = []
-    for name in sig.parameters:
-        anno = hints.get(name)
-        if isinstance(anno, type) and issubclass(anno, ConnectionInfo):
-            matches.append((name, anno))
-    if not matches:
-        return None
-    if len(matches) > 1:
-        names = [m[0] for m in matches]
-        msg = (
-            f"Tool {fn.__name__!r} declares multiple ConnectionInfo-typed "
-            f"parameters {names}. Only one info-injection target is supported "
-            "per tool; use `Router.context.info()` from a helper for "
-            "cross-context access."
-        )
-        raise ValueError(msg)
-    return matches[0]
 
 
 async def _lookup_connection_async(
@@ -119,34 +85,9 @@ def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | Non
     return info.model_copy(update=update)
 
 
-def _safe_list_connection_keys(store: object) -> list[str] | None:
-    """Best-effort list of saved connection keys for schema enrichment.
-
-    Returns ``None`` if the store can't list (no method, missing dir, etc.) so
-    the docstring builder uses the generic phrasing instead. Note: keys are
-    captured at decoration time — `login` calls made after server build do
-    not refresh the docstring.
-
-    v0.11: `store.list_connections` is async; decoration time has no event
-    loop, so we drive the coroutine through `anyio.run`. If decoration ever
-    happens *inside* a running loop (rare — module imports usually predate
-    `anyio.run(main)`), `anyio.run` raises and we degrade gracefully.
-    """
-    if not isinstance(store, ConnectionStoreLike):
-        return None
-
-    try:
-        infos = anyio.run(store.list_connections)
-        return ["-".join(info.key) for info in infos]
-    except (OSError, AttributeError, ValueError, RuntimeError):
-        return None
-
-
 __all__ = [
-    "_detect_info_param",
     "_lookup_connection_async",
     "_lookup_connection_sync",
     "_resolve_connection_key",
     "_resolve_info_strings",
-    "_safe_list_connection_keys",
 ]

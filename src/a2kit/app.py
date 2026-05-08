@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import click
 
@@ -42,7 +42,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from a2kit.di import Plugin, Provider
     from a2kit.enrichers import EnricherFn
 
 C = TypeVar("C", bound=ConnectionInfo)
@@ -71,8 +70,6 @@ class App:
 
         self._stores: list[ConnectionStore[Any]] = []
         self._routers: list[Router] = []
-        self._plugins: list[Plugin] = []
-        self._providers: list[Any] = []
         self._runner: MCPRunner | None = None
 
         # v0.13: FastAPI-idiom test override map for `Annotated[T, Depends(factory)]`.
@@ -105,15 +102,12 @@ class App:
         self._stores.append(store)
         return store
 
-    def use(self, item: type[Router] | Router | Provider | Plugin) -> None:
-        """Register a Router (instance or class), a Provider, or a Plugin.
+    def use(self, item: type[Router] | Router) -> None:
+        """Register a Router (instance or class) on the App.
 
-        - A Router (or Router subclass) joins the RouterRegistry.
-        - A Provider (anything with `provides: type` + async `get`) is added
-          to the runner's chained-DI index and made available for tool
-          auto-injection (`*, store: TrackerStore`).
-        - Anything else is treated as a Plugin (legacy v0.12 shape — gets
-          deleted in v0.13 per the Composition Root pivot).
+        v0.15: only Router (or Router subclass) is accepted. The v0.12-era
+        `Provider` / `Plugin` arms are gone — DI is fully Annotated/Depends
+        now. Connection wiring lives in `contrib.connections.get_conn_factory`.
         """
         if isinstance(item, type) and issubclass(item, Router):
             instance = item()
@@ -122,11 +116,9 @@ class App:
         elif isinstance(item, Router):
             self._attach_overrides(item)
             self._routers.append(item)
-        elif hasattr(item, "provides") and isinstance(item.provides, type):
-            self._providers.append(cast("Provider", item))
         else:
-            # Anything else — assume Plugin.
-            self._plugins.append(cast("Plugin", item))
+            msg = f"App.use only accepts Router (or Router subclass); got {type(item).__name__}"
+            raise TypeError(msg)
 
     def _attach_overrides(self, router: Router) -> None:
         """Pin the App's `dependency_overrides` dict onto the router so its
@@ -143,21 +135,11 @@ class App:
             return self._runner
         registry = RouterRegistry()
         for r in self._routers:
-            # If the Router doesn't have an explicit store and we have exactly
-            # one registered, wire it. If multiple — leave to the user (Router
-            # construction site can pass `store=app.connect(...)`).
-            if r.store is None and len(self._stores) == 1:
-                r.store = self._stores[0]
             registry.add(r)
-        # v0.12: stores stay in `store=` / Router.store. The `provides=` kwarg
-        # is for explicit Provider instances (step 6+ work). Until ConnectionStore
-        # itself satisfies the Provider Protocol, App keeps them separate.
         self._runner = MCPRunner(
             self.server,
-            store=self._stores[0] if self._stores else None,
+            connection_store=self._stores[0] if self._stores else None,
             router_registry=registry,
-            plugins=self._plugins,
-            provides=self._providers or None,
         )
         return self._runner
 
@@ -227,10 +209,6 @@ class App:
                 )
                 raise ValueError(msg)
             self._add_tool_subcommand(group, tool_name)
-
-        # Plugin-contributed commands.
-        for cmd in self.runner.cli_commands:
-            group.add_command(cmd)
 
         return group
 

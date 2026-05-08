@@ -24,7 +24,6 @@ from a2kit._select import (
     parse_select,
     validate_atoms,
 )
-from a2kit.di import Plugin, Provider, ProviderCollisionError, _validate_provider_graph, resolve_chain
 from a2kit.scaffold._cli import _parse_multistore_register, register_ephemeral_connections
 
 if TYPE_CHECKING:
@@ -134,103 +133,23 @@ class MCPRunner:
         self,
         server: FastMCPLike,
         *,
-        store: ConnectionStore[Any] | None = None,
+        connection_store: ConnectionStore[Any] | None = None,
         router_registry: RouterRegistry | None = None,
         name: str = "a2kit",
         default_select: SelectExpr | str | None = None,
-        provides: list[Provider] | None = None,
-        plugins: list[Plugin] | None = None,
     ) -> None:
         self.server: FastMCPLike = server
-        self.store: ConnectionStore[Any] | None = store
+        # v0.15: connection store is private; v0.12's `MCPRunner.store=`
+        # public attribute is gone. App.connect() owns store lifecycle now.
+        self._connection_store: ConnectionStore[Any] | None = connection_store
         self.router_registry = router_registry
-        self.connection_class = store.connection_class if store is not None else None
+        self.connection_class = connection_store.connection_class if connection_store is not None else None
         self.name = name
-
-        # v0.12: DI container — providers + plugins. The type→provider index
-        # is built lazily at `_prepare()` (after tool decorators have fired),
-        # not in __init__.
-        self._provides: list[Provider] = list(provides) if provides else []
-        self._plugins: list[Plugin] = list(plugins) if plugins else []
-        self._type_to_provider: dict[type, Provider] | None = None
 
         a2kit_table = _load_pyproject_a2kit()
         _register_pyproject_capabilities(a2kit_table)
 
         self.default_select: SelectExpr = self._resolve_default_select(default_select, a2kit_table)
-
-    def _build_provider_index(self) -> dict[type, Provider]:
-        """Build the type→provider dispatch index from `provides=` + plugin
-        contributions. Idempotent — safe to call multiple times. Raises
-        `ProviderCollisionError` when two providers claim the same type, plus
-        `UnknownProviderDepError` / `ProviderCycleError` when chained-dep validation
-        fails. All three surface at startup, not mid-call.
-        """
-        if self._type_to_provider is not None:
-            return self._type_to_provider
-        index: dict[type, Provider] = {}
-        all_providers: list[Provider] = list(self._provides)
-        for plugin in self._plugins:
-            all_providers.extend(getattr(plugin, "providers", []) or [])
-        for provider in all_providers:
-            t = provider.provides
-            if t in index:
-                raise ProviderCollisionError(t, type(index[t]), type(provider))
-            index[t] = provider
-        # Validate chained-DI graph: every typed kwonly dep must resolve, and
-        # the dep graph must be a DAG. Step 6 of v0.12. Connection types
-        # registered via stores are "soft known" — providers may depend on
-        # them even though no explicit Provider produces them (the tool
-        # wrapper preloads the cache from the loaded ConnectionInfo).
-        soft_known: frozenset[type] = frozenset(s.connection_class for s in [self.store] if s is not None)
-        _validate_provider_graph(index, soft_known=soft_known)
-        self._type_to_provider = index
-        return index
-
-    def lookup_provider(self, type_: type) -> Provider | None:
-        """Return the provider for `type_`, or `None` if no provider is registered.
-
-        Builds the index on first call. Used by the @tool decorator (in v0.12+)
-        to bind type-annotated kwonly params to providers at compile time.
-        """
-        return self._build_provider_index().get(type_)
-
-    async def resolve(
-        self,
-        type_: type,
-        /,
-        *,
-        preloaded: dict[type, Any] | None = None,
-        **call_ctx: Any,
-    ) -> Any:
-        """Resolve `type_` from the runner's provider index, chaining typed
-        kwonly deps. Per-call caching prevents diamond re-instantiation.
-
-        `preloaded` seeds the resolution cache — the tool wrapper passes the
-        already-loaded connection here so chained providers depending on it
-        don't trigger a second store fetch.
-
-        `call_ctx` is forwarded to each provider's `get(**)` for params not
-        satisfied by chained deps (e.g. the connection key from the tool call).
-
-        Step 6 of v0.12 — wires Provider.get() factory chains. Validation
-        happens at `_build_provider_index()` so missing deps and cycles are
-        caught at startup, not here.
-        """
-        return await resolve_chain(self._build_provider_index(), type_, preloaded=preloaded, **call_ctx)
-
-    @property
-    def cli_commands(self) -> list[Any]:
-        """Aggregate `click.Command` objects contributed by all plugins.
-
-        Returns a fresh list each call. Hosts that build their own
-        `click.Group` add these via `for cmd in runner.cli_commands:
-        group.add_command(cmd)`.
-        """
-        out: list[Any] = []
-        for plugin in self._plugins:
-            out.extend(getattr(plugin, "commands", []) or [])
-        return out
 
     @staticmethod
     def _resolve_default_select(
@@ -303,7 +222,7 @@ class MCPRunner:
         with contextlib.suppress(Exception):
             validate_atoms(expr, known_routers=set(self.router_registry.names()), known_tools=set())
         include_writes = _expr_mentions(expr, "write") or _expr_mentions(expr, "destructive")
-        self.router_registry.apply(self.server, self.store, enabled=wanted, include_writes=include_writes)
+        self.router_registry.apply(self.server, self._connection_store, enabled=wanted, include_writes=include_writes)
         return expr
 
     def _wanted_routers(self, expr: SelectExpr) -> set[str]:
@@ -327,13 +246,13 @@ class MCPRunner:
         if not parsed["register_args"]:
             return {}
         if self.router_registry is not None:
-            stores_by_router = dict(self.router_registry.routers_with_stores(fallback_store=self.store))
+            stores_by_router = dict(self.router_registry.routers_with_stores(fallback_store=self._connection_store))
             distinct_stores = {id(s) for s in stores_by_router.values()}
             if len(distinct_stores) > 1:
                 return _parse_multistore_register(parsed["register_args"], stores_by_router)
-        if self.store is None:
+        if self._connection_store is None:
             return {}
-        return register_ephemeral_connections(parsed["register_args"], store=self.store)
+        return register_ephemeral_connections(parsed["register_args"], store=self._connection_store)
 
     def _http_settings(self, raw: str) -> tuple[str, int]:
         host, port = "127.0.0.1", 8080
@@ -379,15 +298,11 @@ class MCPRunner:
         """Parse argv, register routers, decide transport. Pure-sync orchestration —
         shared by `run` (sync entry) and `run_async` (embedded entry).
 
-        v0.12: also builds the DI provider index. Collisions surface as
-        `ProviderCollisionError` here, before the first request — not deep in a
-        per-call lookup.
+        v0.15: provider/plugin DI is gone; resolution flows through
+        Annotated[T, Depends(factory)] markers on tool kwonly params.
         """
-        # Build provider index early — fails fast on misconfiguration.
-        self._build_provider_index()
-
-        # Publish the runner so the tool wrapper can find us at call time
-        # for chained-DI param resolution. Idempotent — last-prepare wins.
+        # Publish the runner so callers can find it during prepare(). Kept
+        # for parity with the v0.12 contextvar; no auto-injection now.
         _CURRENT_RUNNER.set(self)
 
         if options is not None:
