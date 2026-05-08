@@ -158,6 +158,7 @@ dev = [
     "diff-cover>=9",
     "ty>=0.0.34",
     "cel-python>=0.5",
+    "hypothesis>=6",
 ]
 
 [tool.a2kit.lint]

@@ -227,10 +227,13 @@ def test_format_from_annotation_bare_tuple_returns_none() -> None:
     assert formatter.format_from_annotation(tuple) is None
 
 
-def test_dump_items_silently_drops_non_dict_non_basemodel() -> None:
-    """Hit branch 196->193 (item is neither dict nor BaseModel)."""
-    out = formatter._dump_items([1, 2, "x", _FlatRow(a=1, b="y")])
-    assert out == [{"a": 1, "b": "y"}]
+def test_dump_items_raises_on_non_dict_non_basemodel() -> None:
+    """v0.17: `_dump_items` raises on non-row items instead of silently dropping.
+
+    Pre-v0.17 the function returned `[]` for `[1, 2, 3]`, masking row-shape bugs.
+    """
+    with pytest.raises(TypeError, match="expected dict or BaseModel rows"):
+        formatter._dump_items([1, 2, "x", _FlatRow(a=1, b="y")])
 
 
 def test_format_response_filter_only(tmp_path: Path) -> None:

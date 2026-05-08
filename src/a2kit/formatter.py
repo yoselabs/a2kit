@@ -96,23 +96,36 @@ def _tabular_encode(rows: list[dict[str, Any]]) -> str:
     return f"{header}\n{body}"
 
 
-def _flat_pydantic_fields(model_cls: type[BaseModel]) -> bool | None:
+def _flat_pydantic_fields(model_cls: type[BaseModel]) -> bool | None:  # noqa: C901 — flat field decision is irreducibly branchy (single-arm/multi-arm/Any/nested)
     """Inspect a Pydantic model class — True if all fields are flat scalars,
     False if at least one is structurally nested (list/dict/BaseModel).
 
     Returns ``None`` if the field-type set is ambiguous (e.g. `Any`) — caller
     should fall back to runtime detection.
+
+    v0.17: ``Optional[Union[A, B]]`` (and other multi-arm unions) are now
+    handled — every non-None arm is examined; if any arm is structurally
+    nested the field is non-flat, otherwise the field is flat.
     """
     saw_any = False
     for field in model_cls.model_fields.values():
         anno = field.annotation
         origin = get_origin(anno)
-        # Optional[T] / Union[..., None] / `T | None` — strip None, take the non-None side.
+        # Optional[T] / Union[..., None] / `T | None` — strip None.
         if origin is typing.Union or origin is types.UnionType:
             non_none = [a for a in get_args(anno) if a is not type(None)]
             if len(non_none) == 1:
                 anno = non_none[0]
                 origin = get_origin(anno)
+            elif len(non_none) > 1:  # pragma: no branch — `Union[None]` (zero non-None arms) is degenerate
+                # Multi-arm union — examine each arm. Any nested arm makes the
+                # field non-flat. Any `Any` arm forces ambiguity.
+                arm_results = [_classify_arm(arm) for arm in non_none]
+                if any(r is False for r in arm_results):
+                    return False
+                if any(r is None for r in arm_results):
+                    saw_any = True
+                continue
         if anno is Any:
             saw_any = True
             continue
@@ -125,7 +138,17 @@ def _flat_pydantic_fields(model_cls: type[BaseModel]) -> bool | None:
     return True
 
 
-def format_from_annotation(anno: Any) -> FormatName | None:  # noqa: PLR0911
+def _classify_arm(anno: Any) -> bool | None:
+    """Classify one union arm as flat (True), nested (False), or ambiguous (None)."""
+    if anno is Any:
+        return None
+    origin = get_origin(anno)
+    if origin in (list, tuple, set, dict, frozenset):
+        return False
+    return not (isinstance(anno, type) and issubclass(anno, BaseModel))
+
+
+def format_from_annotation(anno: Any) -> FormatName | None:  # noqa: PLR0911, C901 — decision tree spans 6 distinct shape categories
     """Precompute the wire format from a return type annotation, if possible.
 
     Returns:
@@ -133,9 +156,17 @@ def format_from_annotation(anno: Any) -> FormatName | None:  # noqa: PLR0911
       - ``"toon"``: list of Pydantic models with at least one nested field, or ``Page[T]`` of same.
       - ``"json"``: scalar / single dict / single Pydantic / non-list shapes.
       - ``None``: insufficient info to lock (untyped `list`, `list[dict]`, ``Any``).
+
+    v0.17 additions:
+      - ``Awaitable[T]`` / ``Coroutine[..., ..., T]`` are unwrapped to ``T``
+        before classification — async tools no longer lose precomputation.
+      - Bare ``dict``, ``Mapping[...]``, ``TypedDict`` subclasses → ``"json"``.
     """
     if anno is None or anno is type(None):
         return "json"
+
+    # Unwrap Awaitable[T] / Coroutine[Y, S, T] before classifying.
+    anno = _unwrap_awaitable(anno)
 
     # Pydantic generics (Page[T] etc.) report themselves via metadata, not
     # the typing.get_origin/get_args path. Inspect first so Page[T] → tsv/toon.
@@ -158,13 +189,52 @@ def format_from_annotation(anno: Any) -> FormatName | None:  # noqa: PLR0911
         return _list_format_from_item(args[0])
 
     # Single dict / Pydantic / scalar → JSON envelope.
-    if origin is dict:
+    if origin is dict or _is_mapping_origin(origin):
+        return "json"
+    if anno is dict:
+        return "json"
+    if _is_typed_dict(anno):
         return "json"
     if isinstance(anno, type) and issubclass(anno, BaseModel):
         return "json"
     if isinstance(anno, type) and anno in (str, int, float, bool, bytes):
         return "json"
     return None
+
+
+def _unwrap_awaitable(anno: Any) -> Any:
+    """If `anno` is `Awaitable[T]` / `Coroutine[Y, S, T]`, return `T`. Else `anno`."""
+    import collections.abc as _cabc  # noqa: PLC0415 — narrow scope, avoid module-top churn
+    import typing as _t  # noqa: PLC0415
+
+    origin = get_origin(anno)
+    if origin in (_cabc.Awaitable, _t.Awaitable):
+        args = get_args(anno)
+        if args:  # pragma: no branch — get_origin returns None for bare Awaitable, so origin-match implies args
+            return args[0]
+    if origin in (_cabc.Coroutine, _t.Coroutine):
+        args = get_args(anno)
+        if len(args) == 3:  # pragma: no branch
+            return args[2]
+    return anno
+
+
+def _is_mapping_origin(origin: Any) -> bool:
+    """True if `origin` is a Mapping / MutableMapping origin from typing or collections.abc."""
+    import collections.abc as _cabc  # noqa: PLC0415
+
+    return origin in (_cabc.Mapping, _cabc.MutableMapping)
+
+
+def _is_typed_dict(anno: Any) -> bool:
+    """True if `anno` is a TypedDict subclass."""
+    if not isinstance(anno, type):
+        return False
+    return (
+        getattr(anno, "__total__", None) is not None
+        and hasattr(anno, "__annotations__")
+        and getattr(anno, "__required_keys__", None) is not None
+    )
 
 
 def _list_format_from_item(item_anno: Any) -> FormatName | None:
@@ -188,13 +258,24 @@ def _dump_items(items: list[Any]) -> list[dict[str, Any]]:
 
     Used before tabular encoding so `Page[Pydantic]` and `list[Pydantic]` go
     through the same TSV/TOON path as raw `list[dict]`.
+
+    Raises ``TypeError`` if any item is neither a Pydantic ``BaseModel`` nor a
+    ``dict``. The pre-v0.17 behaviour silently dropped such items, which
+    turned ``[1, 2, 3]`` into ``[]`` — a bug class that was easy to miss in
+    tools whose row type drifted away from the kit's expectations.
     """
     out: list[dict[str, Any]] = []
-    for item in items:
+    for index, item in enumerate(items):
         if isinstance(item, BaseModel):
             out.append(item.model_dump(mode="python"))
         elif isinstance(item, dict):
             out.append(item)
+        else:
+            raise TypeError(
+                f"_dump_items expected dict or BaseModel rows; got {type(item).__name__} "
+                f"at index {index}. Tabular encoding (TSV/TOON) requires uniform row shapes — "
+                "wrap scalar/heterogeneous results so they go through the JSON path instead."
+            )
     return out
 
 
@@ -313,7 +394,10 @@ def format_response(
 
     `.truncated == True` iff at least one string field was longer than `truncate_at`.
     """
-    if isinstance(data, list):
+    if isinstance(data, list) and data and isinstance(data[0], (BaseModel, dict)):
+        # Only normalize when the list looks like rows. Heterogeneous /
+        # scalar lists fall through to the JSON path; `_dump_items` would
+        # otherwise raise on them.
         data = _dump_items(data)
     processed = _apply_filter_and_fields(data, filter_expr=filter, fields=fields)
     truncated_value = truncate(processed, truncate_at, marker)
