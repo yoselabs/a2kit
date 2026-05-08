@@ -1,117 +1,48 @@
-"""HTTP cassette helper — thin wrapper around `vcrpy`.
+"""HTTP cassette helper — thin pass-through to `vcrpy`.
 
-Optional `[testing]` extra. The wrapper:
+The kit's contribution is a 5-line policy: missing cassette → record once;
+existing cassette → replay only. Otherwise this is `vcr.use_cassette(...)`
+unchanged.
 
-- Records HTTP traffic on first run; replays on subsequent runs.
-- Plays nicely with both pytest functions and `async with` context-manager use.
-- Honours the `--update-cassettes` pytest flag (registered by the pytest plugin).
+vcrpy's returned object (`CassetteContextDecorator`) already supports both
+sync context-manager use (`with cassette(...): ...`) and decorator use
+(`@cassette(...)`). v0.13 dropped the bespoke async-CM adapter — vcrpy
+records HTTP synchronously at the socket layer, so `async with` was never
+doing anything async-aware.
 
-Vcrpy's own integration story is fine; we ship a wrapper anyway because:
+vcrpy ships in the optional `a2kit[testing]` extra; this module imports it
+lazily so a minimal install can still import `a2kit.testing`.
 
-- The pytest plugin already owns one CLI flag (`--update-schema-snapshots`); a
-  second is cheaper than asking consumers to wire their own.
-- vcrpy's default `record_mode='once'` is the right default for our use case
-  but is one configuration step every consumer would otherwise reinvent.
-
-Public API: `cassette(path, *, record_mode=None)` returns a value that works as
-both a function decorator and an async context manager.
+Public API: `cassette(path, *, record_mode=None) -> CassetteContextDecorator`.
 """
 
 from __future__ import annotations
 
-import functools
-from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
-    from types import TracebackType
+from typing import Any
 
 
 def _import_vcr() -> Any:
     try:
-        import vcr  # type: ignore[import-not-found]  # noqa: PLC0415
+        import vcr  # type: ignore[import-untyped]  # noqa: PLC0415
     except ImportError as exc:
         msg = "vcrpy is not installed; add `a2kit[testing]` to your dev deps."
         raise ImportError(msg) from exc
     return vcr
 
 
-class _Cassette:
-    """Hybrid decorator + context manager.
+def cassette(path: str | Path, *, record_mode: str | None = None) -> Any:
+    """Return a vcrpy cassette CM/decorator with kit-friendly defaults.
 
-    Construction is lazy: the underlying `vcr.use_cassette()` is only called
-    inside `_open()` so importing this module without vcrpy installed is fine,
-    as long as you don't actually use the helper.
+    `record_mode` defaults to `"once"` when the cassette file is missing
+    (record on first run) and `"none"` when present (replay only). Pass an
+    explicit value to override.
     """
-
-    def __init__(self, path: str | Path, *, record_mode: str | None = None) -> None:
-        self.path = Path(path)
-        self.record_mode = record_mode
-
-    def _resolved_record_mode(self) -> str:
-        if self.record_mode is not None:
-            return self.record_mode
-        # File missing → record once. File present → replay only.
-        return "once" if not self.path.exists() else "none"
-
-    @contextmanager
-    def _open(self) -> Iterator[Any]:
-        vcr_module = _import_vcr()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with vcr_module.use_cassette(str(self.path), record_mode=self._resolved_record_mode()) as ctx:
-            yield ctx
-
-    # --- async context-manager protocol --------------------------------------
-
-    async def __aenter__(self) -> Any:
-        self._cm = self._open()
-        return self._cm.__enter__()
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        self._cm.__exit__(exc_type, exc_val, exc_tb)
-
-    # --- sync context-manager protocol ---------------------------------------
-
-    def __enter__(self) -> Any:
-        self._cm = self._open()
-        return self._cm.__enter__()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        self._cm.__exit__(exc_type, exc_val, exc_tb)
-
-    # --- decorator -----------------------------------------------------------
-
-    def __call__(self, fn: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(fn)
-        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            with self._open():
-                return fn(*args, **kwargs)
-
-        @functools.wraps(fn)
-        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            with self._open():
-                return await fn(*args, **kwargs)
-
-        import inspect  # noqa: PLC0415 — keep import local
-
-        return async_wrapper if inspect.iscoroutinefunction(fn) else sync_wrapper
-
-
-def cassette(path: str | Path, *, record_mode: str | None = None) -> _Cassette:
-    """Create a cassette helper. Use as decorator or `async with`."""
-    return _Cassette(path, record_mode=record_mode)
+    vcr = _import_vcr()
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    mode = record_mode if record_mode is not None else ("once" if not p.exists() else "none")
+    return vcr.use_cassette(str(p), record_mode=mode)
 
 
 __all__ = ["cassette"]

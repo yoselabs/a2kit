@@ -137,10 +137,11 @@ def assert_schemas_match(server: FastMCP, snapshot_dir: Path) -> None:
 
 
 def cassette(path: Any, *, record_mode: str | None = None) -> Any:
-    """Re-export of `a2kit._cassette.cassette` — only imported when called.
+    """Re-export of `a2kit._cassette.cassette` (vcrpy passthrough).
 
-    The `vcrpy` dep is in the optional `[testing]` extra; lazy import keeps the
-    minimal install free of it.
+    The `vcrpy` dep is in the optional `[testing]` extra; the underlying
+    helper imports it lazily so a minimal install can still import this
+    module.
     """
     from a2kit._cassette import cassette as _impl  # noqa: PLC0415
 

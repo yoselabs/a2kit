@@ -1,4 +1,4 @@
-"""Tests for a2kit.testing.cassette — vcrpy thin wrapper."""
+"""Tests for a2kit.testing.cassette — vcrpy thin passthrough."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from typing import Any
 import pytest
 
 import a2kit
-from a2kit._cassette import _Cassette, cassette
+from a2kit import _cassette
+from a2kit._cassette import cassette
 
 
 class _FakeCassetteCtx:
@@ -38,14 +39,7 @@ class _FakeVcr:
 @pytest.fixture
 def fake_vcr(monkeypatch: pytest.MonkeyPatch) -> _FakeVcr:
     fake = _FakeVcr()
-    real_import = builtins.__import__
-
-    def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
-        if name == "vcr":
-            return fake  # noqa: TRY300
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(_cassette, "_import_vcr", lambda: fake)
     return fake
 
 
@@ -71,33 +65,16 @@ def test_cassette_explicit_record_mode(tmp_path: Path, fake_vcr: _FakeVcr) -> No
     assert fake_vcr.last_mode == "all"
 
 
-async def test_cassette_async_context(tmp_path: Path, fake_vcr: _FakeVcr) -> None:
-    async with cassette(tmp_path / "c.yaml"):
+def test_cassette_creates_parent_dir(tmp_path: Path, fake_vcr: _FakeVcr) -> None:
+    nested = tmp_path / "deep" / "nested" / "c.yaml"
+    with cassette(nested):
         pass
-    assert fake_vcr.last_path is not None
-
-
-def test_cassette_decorator_on_sync(tmp_path: Path, fake_vcr: _FakeVcr) -> None:
-    @cassette(tmp_path / "c.yaml")
-    def sync_test() -> int:
-        return 1
-
-    assert sync_test() == 1
-    assert fake_vcr.last_path is not None
-
-
-async def test_cassette_decorator_on_async(tmp_path: Path, fake_vcr: _FakeVcr) -> None:
-    @cassette(tmp_path / "c.yaml")
-    async def async_test() -> int:
-        return 2
-
-    assert await async_test() == 2
-    assert fake_vcr.last_path is not None
+    assert nested.parent.exists()
 
 
 def test_cassette_re_export_from_testing(tmp_path: Path, fake_vcr: _FakeVcr) -> None:
     obj = a2kit.testing.cassette(tmp_path / "c.yaml")
-    assert isinstance(obj, _Cassette)
+    assert isinstance(obj, _FakeCassetteCtx)
 
 
 def test_cassette_missing_vcr_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -109,5 +86,5 @@ def test_cassette_missing_vcr_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    with pytest.raises(ImportError, match="vcrpy"), cassette(tmp_path / "c.yaml"):
-        pass
+    with pytest.raises(ImportError, match="vcrpy"):
+        cassette(tmp_path / "c.yaml")
