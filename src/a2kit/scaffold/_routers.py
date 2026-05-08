@@ -1,9 +1,9 @@
 """Router + RouterRegistry — class-based routing with auto-tagging.
 
 Pulled out of scaffold.py in v0.11. The runtime decorators
-(`_router_decorators`, `_router_state`, `_context`) live in their own
-private modules at the package root because they're imported by `tools.py`
-without going through `scaffold` (avoids an import cycle).
+(`_router_decorators`, `_router_state`) live in their own private modules
+at the package root because they're imported by `tools.py` without going
+through `scaffold` (avoids an import cycle).
 """
 
 from __future__ import annotations
@@ -14,25 +14,19 @@ from collections.abc import (  # noqa: F401  # `Awaitable`/`Callable` used by `E
     Awaitable,
     Callable,
     Iterable,
-    Mapping,
 )
 from pathlib import Path  # used by `Router.snapshot_dir`/`cassette_dir` at Pydantic model-build time
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, NamedTuple, Protocol, TypeVar, Unpack, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Protocol, Unpack, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from a2kit._capabilities import Cap, Capability
-from a2kit._context import _RouterContext
 from a2kit._router_decorators import _make_decorator, _ToolBinding
 from a2kit._router_state import _set_active
-from a2kit.connections import ConnectionInfo, ConnectionStoreLike
 from a2kit.enrichers import EnricherFn
-from a2kit.tokens import ResolverRegistry
 
 if TYPE_CHECKING:
     from a2kit._tool_kwargs import ToolKwargs
-
-ConnT = TypeVar("ConnT", bound=ConnectionInfo)
 
 # `list` is a classmethod on `Router` (the verb-shaped decorator) which shadows
 # the builtin in class-scope annotations. Use this alias for `list[...]` types
@@ -58,7 +52,7 @@ def _slugify(class_name: str) -> str:
     return "-".join(p.lower() for p in parts if p)
 
 
-class Router(BaseModel, Generic[ConnT]):
+class Router(BaseModel):
     """Pydantic-modeled router with v0.6 ergonomics.
 
     Subclass it; the slug `name` is auto-derived from the class name (strip
@@ -69,12 +63,12 @@ class Router(BaseModel, Generic[ConnT]):
     `register_read` / `register_write` walk `cls._tools` by default; override
     them for imperative dynamic-tool registration (escape hatch).
 
-    Per-Router DI lifts to the class — `store`, `enricher`, `resolver_registry`,
-    `ephemeral`. Per-tool overrides remain available on the decorator kwargs
-    (except `ephemeral` — v0.8: ephemeral is a Router-level concern only and is
-    merged into the effective store via `_EphemeralAwareStore`).
-
     `name` is auto-tagged onto every registered tool (unless `auto_tag=False`).
+
+    v0.15: `Router` is no longer Generic over a connection type and no longer
+    carries a `store` field. Connections live in `App.connect()` + the
+    `Annotated[T, Depends(get_conn)]` resolver. Routers stay focused on
+    grouping tools and contributing an enricher.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=False, extra="forbid")
@@ -85,36 +79,18 @@ class Router(BaseModel, Generic[ConnT]):
     read_capabilities: ClassVar[set[Capability]] = {Cap.READ}
     write_capabilities: ClassVar[set[Capability]] = {Cap.WRITE}
 
-    # DI (router-level — inherited by every tool the router registers):
-    # v0.11: typed via Protocols / type aliases (was `Any`). Pydantic still
-    # accepts these because `arbitrary_types_allowed=True`; ty / IDEs now see
-    # the real shape on every consumer.
-    store: ConnectionStoreLike | None = None
     enricher: EnricherFn | None = None
-    resolver_registry: ResolverRegistry | None = None
-    # `Mapping` is covariant in the value type → callers can pass
-    # `dict[tuple[str, ...], MyConn]` for any `MyConn <: ConnectionInfo`.
-    ephemeral: Mapping[tuple[str, ...], ConnectionInfo] | None = None
 
     snapshot_dir: Path | None = None
     cassette_dir: Path | None = None
     default: bool = True
     auto_tag: bool = True
 
-    # v0.10: when True (default) AND `store` is set AND no explicit `enricher`
-    # is provided, the kit wires `connection_enricher(store)` so a typo in the
-    # `connection` arg returns "Did you mean…?" instead of a raw KeyError.
-    auto_connection_enricher: bool = True
-
     _tools: ClassVar[_list[_ToolBinding]] = []
-    context: ClassVar[Any] = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         cls._tools = []
-        # FQN-based naming (v0.7) — collision-free across modules.
-        fqn = f"{cls.__module__}.{cls.__qualname__}"
-        cls.context = _RouterContext(router_name=cls.__name__, fqn=fqn)
 
     @model_validator(mode="before")
     @classmethod
@@ -127,7 +103,7 @@ class Router(BaseModel, Generic[ConnT]):
         return values
 
     @model_validator(mode="after")
-    def _validate_slug(self) -> Router[ConnT]:
+    def _validate_slug(self) -> Router:
         if not _SLUG_RE.match(self.name):
             msg = f"Router.name {self.name!r} must match pattern {_SLUG_RE.pattern}"
             raise ValueError(msg)
@@ -247,14 +223,15 @@ class RouterRegistry:
         return [entry.name for entry in self._routers]
 
     def routers_with_stores(self, fallback_store: Any = None) -> list[tuple[str, Any]]:
-        """Return [(router_name, store)] for routers that have a store (own or inherited)."""
-        out: list[tuple[str, Any]] = []
-        for entry in self._routers:
-            router_store = getattr(entry.item, "store", None)
-            chosen = router_store if router_store is not None else fallback_store
-            if chosen is not None:
-                out.append((entry.name, chosen))
-        return out
+        """Return [(router_name, fallback_store)] for every router.
+
+        v0.15: routers no longer own a per-router store; the App-level store
+        applies uniformly. Kept for the `--register` ephemeral-connection path,
+        which still iterates over `(router_name, store)` pairs.
+        """
+        if fallback_store is None:
+            return []
+        return [(entry.name, fallback_store) for entry in self._routers]
 
     def defaults(self) -> set[str]:
         """Return the set of names enabled-by-default."""
@@ -284,16 +261,15 @@ class RouterRegistry:
                 continue
             item = entry.item
             router_obj = item if isinstance(item, Router) else None
-            effective_store = getattr(item, "store", None) or store
             try:
                 if router_obj is not None:
                     _set_active(router_obj, "read")
                 if hasattr(item, "register_read"):
-                    item.register_read(server, effective_store)
+                    item.register_read(server, store)
                 if include_writes and hasattr(item, "register_write"):
                     if router_obj is not None:
                         _set_active(router_obj, "write")
-                    item.register_write(server, effective_store)
+                    item.register_write(server, store)
             finally:
                 _set_active(None, None)
             applied.append(entry.name)
