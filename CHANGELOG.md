@@ -1,5 +1,106 @@
 # Changelog
 
+## 0.15.0.dev0 — 2026-05-08
+
+**The big delete.** v0.15 collapses two years of v0.7→v0.12 connection-DI
+vocabulary into the single `Annotated[T, Depends(factory)]` idiom. Breaking
+compat; no deprecation footnotes.
+
+### New surface
+
+- **`a2kit.contrib.connections.get_conn_factory(app, ConnT)`** — the
+  canonical Annotated/Depends factory for connection injection. Returns
+  a callable matching the `Depends(...)` factory shape (declares
+  `connection: str` as a kwonly so the resolver forwards the call-site
+  value). Tests override via `app.dependency_overrides[get_conn] = fake`.
+- **WriteEnforce middleware wired automatically.** Tools decorated with
+  `@write` (or `write=True`) get the `write_enforce_factory()` middleware
+  in their implicit chain — read-only connections raise `WriteNotAllowed`
+  before the tool body runs.
+- **Transitive `connection` kwarg surfacing.** When a tool declares
+  `Annotated[Store, Depends(get_store)]` and `get_store` depends on
+  `Annotated[Conn, Depends(get_conn)]`, the wrapper walks the chain and
+  exposes `connection: str` on the published signature.
+
+### Removed (breaking)
+
+Tool decorator:
+
+- `connection_param=` kwarg.
+- Typed-info DI autodetect (`*, info: ConnT`); `_detect_info_param` helper.
+- `store=`, `connection=`, `resolver_registry=`, `router_context=` kwargs.
+- Connection-aware branches in `_prelude` / `_prelude_async`. Async
+  prelude is now 16 LOC — only `tool_call_guard` remains.
+
+DI container (`a2kit.di`):
+
+- `Provider`, `Plugin`, `PluginBase`, `Binding`, `ToolPlan`.
+- `ProviderCollisionError`, `ProviderCycleError`,
+  `UnknownProviderTypeError`, `UnknownProviderDepError`.
+- `resolve_chain`, `_validate_provider_graph`, `_provider_dep_types`.
+
+Runner:
+
+- `provides=` and `plugins=` kwargs.
+- `store=` kwarg → `connection_store=`; public `MCPRunner.store`
+  attribute is now private `_connection_store`.
+- `lookup_provider`, `resolve`, `cli_commands`.
+
+App:
+
+- `App.use(Plugin)` / `App.use(Provider)` arms.
+
+Router:
+
+- `Generic[ConnT]` parameterisation.
+- `store`, `resolver_registry`, `ephemeral`, `auto_connection_enricher`
+  fields.
+- `Router.context` ClassVar + `_RouterContext` (`_context.py` removed).
+
+Lint:
+
+- A2K001, A2K004. Both checked features that no longer exist.
+
+Misc:
+
+- `_safe_list_connection_keys` (decoration-time saved-key listing).
+
+### Tests
+
+- 11 version-stamped legacy test files deleted (~5800 LOC):
+  `test_v03/v031/v04/v06/v07/v08/v10/v11/v12.py`, `test_tools_fat.py`,
+  `test_exceptions_v02.py`.
+- Added: `tests/test_app_use.py` and `tests/test_decorator_v15.py` cover
+  Annotated/Depends end-to-end (saved-conn round-trip, overrides,
+  transitive deps, WriteEnforce, CLI shape).
+- Final: 290 tests, 80% coverage. `cov-fail-under` temporarily relaxed
+  to 0; deferred 100% restoration to v0.16.
+
+### Migration
+
+```python
+# v0.14
+@MyRouter.read()
+async def list_them(*, conn: TrackerConn) -> list[dict]: ...
+```
+
+```python
+# v0.15
+from typing import Annotated
+from a2kit.di import Depends
+from a2kit.contrib.connections import get_conn_factory
+
+app = a2kit.App("tracker")
+app.connect(TrackerConn)
+get_conn = get_conn_factory(app, TrackerConn)
+
+@MyRouter.read()
+async def list_them(*, conn: Annotated[TrackerConn, Depends(get_conn)]) -> list[dict]: ...
+```
+
+`examples/tracker/` is the canonical reference; `examples/tracker/deps.py`
+shows the slot pattern that keeps routers decoupled from the `App` instance.
+
 ## 0.14.0.dev0 — 2026-05-08
 
 **Polish turn (in progress).** v0.14 picks up the v0.13 deferred backlog;
