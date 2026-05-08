@@ -26,7 +26,7 @@ import re
 import sys
 import tomllib
 import warnings
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping  # noqa: F401  # `Awaitable`/`Callable` used by `EnricherFn` resolution
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, NamedTuple, Protocol, TypeVar, Unpack, runtime_checkable
 
@@ -90,15 +90,18 @@ class _EphemeralAwareStore:
         self._base = base
         self._ephemeral = dict(ephemeral) if ephemeral else {}
 
-    def load(self, key: tuple[str, ...]) -> Any:
+    async def load(self, key: tuple[str, ...]) -> Any:
         if key in self._ephemeral:
             return self._ephemeral[key]
         if self._base is None:
             raise ConnectionNotFound(key)
-        return self._base.load(key)
+        return await self._base.load(key)
 
-    def list_connections(self) -> list[Any]:
-        base_list = self._base.list_connections() if self._base is not None and hasattr(self._base, "list_connections") else []
+    async def list_connections(self) -> list[Any]:
+        if self._base is not None and hasattr(self._base, "list_connections"):
+            base_list = await self._base.list_connections()
+        else:
+            base_list = []
         existing_keys = {tuple(getattr(info, "key", ())) for info in base_list}
         merged = list(base_list)
         for key, info in self._ephemeral.items():
@@ -112,7 +115,14 @@ def build_cli(
     *,
     name: str = "a2kit",
 ) -> click.Group:
-    """Build a Click group with standard connection-management commands."""
+    """Build a Click group with standard connection-management commands.
+
+    v0.11: store methods are async; Click is sync. Each command wraps the
+    one async call site with `anyio.run(...)` — the rest of the command body
+    stays sync.
+    """
+    import anyio  # noqa: PLC0415
+
     connection_class = store.connection_class
 
     @click.group(name=name, invoke_without_command=True)
@@ -132,7 +142,7 @@ def build_cli(
             k, v = _parse_kv_pair(item)
             kwargs[k] = v
         info = connection_class(key=key_tuple, **kwargs)
-        path = store.save(info)
+        path = anyio.run(store.save, info)
         click.echo(f"Saved: {path}")
 
     @cli.command("logout")
@@ -140,7 +150,7 @@ def build_cli(
     def logout(key: str) -> None:
         """Remove a saved connection."""
         try:
-            store.delete(_parse_key_arg(key))
+            anyio.run(store.delete, _parse_key_arg(key))
         except ConnectionNotFound as exc:
             raise click.ClickException(str(exc)) from exc
         click.echo(f"Removed: {key}")
@@ -152,7 +162,7 @@ def build_cli(
     @connections.command("list")
     def connections_list() -> None:
         """List all saved connections."""
-        results = store.list_connections()
+        results = anyio.run(store.list_connections)
         if not results:
             click.echo("No connections found.")
             return
@@ -164,7 +174,7 @@ def build_cli(
     def connections_show(key: str) -> None:
         """Show one saved connection (no secrets resolved)."""
         try:
-            info = store.load(_parse_key_arg(key))
+            info = anyio.run(store.load, _parse_key_arg(key))
         except ConnectionNotFound as exc:
             raise click.ClickException(str(exc)) from exc
         click.echo(info.model_dump_json(indent=2))
@@ -174,7 +184,7 @@ def build_cli(
     def connections_delete(key: str) -> None:
         """Delete a saved connection."""
         try:
-            store.delete(_parse_key_arg(key))
+            anyio.run(store.delete, _parse_key_arg(key))
         except ConnectionNotFound as exc:
             raise click.ClickException(str(exc)) from exc
         click.echo(f"Removed: {key}")
@@ -274,13 +284,13 @@ class _FilteredStore(Generic[C]):
     def _matches(self, key: tuple[str, ...]) -> bool:
         return any(self._scope == part for part in key)
 
-    def load(self, key: tuple[str, ...]) -> C:
+    async def load(self, key: tuple[str, ...]) -> C:
         if not self._matches(key):
             raise ConnectionNotFound(key)
-        return self._store.load(key)
+        return await self._store.load(key)
 
-    def list_connections(self) -> list[C]:
-        return [info for info in self._store.list_connections() if self._matches(info.key)]
+    async def list_connections(self) -> list[C]:
+        return [info for info in await self._store.list_connections() if self._matches(info.key)]
 
     @property
     def config_dir(self) -> Any:
@@ -812,10 +822,9 @@ class MCPRunner:
                 host = raw
         return host, port
 
-    def run(self, argv: list[str] | None = None, *, transport: str | None = None) -> dict[str, Any]:
-        """Parse argv, register routers, set transport seam, run the server."""
-        from a2kit.tools import _set_current_transport  # noqa: PLC0415
-
+    def _prepare(self, argv: list[str] | None, transport: str | None) -> tuple[dict[str, Any], str]:
+        """Parse argv, register routers, decide transport. Pure-sync orchestration —
+        shared by `run` (sync entry) and `run_async` (embedded entry)."""
         argv = list(sys.argv[1:]) if argv is None else list(argv)
         parsed = self._parse(argv)
         ephemeral = self._ephemeral(parsed)
@@ -826,15 +835,53 @@ class MCPRunner:
         if chosen is None:
             chosen = "http" if parsed["http"] is not None else "stdio"
 
+        if chosen == "http":
+            host, port = self._http_settings(parsed["http"] or "")
+            self.server.settings.host = host
+            self.server.settings.port = port
+        return parsed, chosen
+
+    def run(self, argv: list[str] | None = None, *, transport: str | None = None) -> dict[str, Any]:
+        """Parse argv, register routers, set transport seam, run the server."""
+        from a2kit.tools import _set_current_transport  # noqa: PLC0415
+
+        parsed, chosen = self._prepare(argv, transport)
         _set_current_transport(chosen)
         try:
             if chosen == "http":
-                host, port = self._http_settings(parsed["http"] or "")
-                self.server.settings.host = host
-                self.server.settings.port = port
                 self.server.run(transport="streamable-http")
             else:
                 self.server.run(transport="stdio")
+        finally:
+            _set_current_transport(None)
+        return parsed
+
+    async def run_async(self, argv: list[str] | None = None, *, transport: str | None = None) -> dict[str, Any]:
+        """Async entry — for embedding a2kit inside a host that already runs an event loop.
+
+        Awaits `server.run_async(...)` when the FastMCP server exposes it.
+        Falls back to a clear error otherwise — running the blocking sync
+        `server.run` from inside a host loop would deadlock or starve other
+        tasks, so we don't try to paper over that.
+        """
+        from a2kit.tools import _set_current_transport  # noqa: PLC0415
+
+        run_async = getattr(self.server, "run_async", None)
+        if run_async is None:
+            msg = (
+                f"{type(self.server).__name__}.run_async is not defined. "
+                "Use `runner.run(...)` from a sync entry point, or upgrade your "
+                "FastMCP server to a version that exposes `run_async`."
+            )
+            raise RuntimeError(msg)
+
+        parsed, chosen = self._prepare(argv, transport)
+        _set_current_transport(chosen)
+        try:
+            if chosen == "http":
+                await run_async(transport="streamable-http")
+            else:
+                await run_async(transport="stdio")
         finally:
             _set_current_transport(None)
         return parsed

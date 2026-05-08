@@ -38,9 +38,9 @@ class WidgetConn(ConnectionInfo):
 
 
 @pytest.fixture
-def widget_store(tmp_path: Path) -> ConnectionStore[WidgetConn]:
+async def widget_store(tmp_path: Path) -> ConnectionStore[WidgetConn]:
     store: ConnectionStore[WidgetConn] = ConnectionStore(tmp_path / "c", WidgetConn)
-    store.save(WidgetConn(key=("prod",), url="https://api", api_key="literal-key"))
+    await store.save(WidgetConn(key=("prod",), url="https://api", api_key="literal-key"))
     return store
 
 
@@ -130,7 +130,7 @@ async def test_connection_tuple_key(tmp_path: Path) -> None:
         url: str
 
     store: ConnectionStore[TripleConn] = ConnectionStore(tmp_path / "c", TripleConn)
-    store.save(TripleConn(key=("a", "b", "c"), url="x"))
+    await store.save(TripleConn(key=("a", "b", "c"), url="x"))
     ctx: _RouterContext[TripleConn] = _RouterContext(router_name="triple", fqn="tests.triple-tuple")
 
     @a2kit.tool(store=store, connection_param="conn", router_context=ctx)
@@ -151,7 +151,7 @@ async def test_connection_list_key_coerced(tmp_path: Path) -> None:
         url: str
 
     store: ConnectionStore[TripleConn] = ConnectionStore(tmp_path / "c", TripleConn)
-    store.save(TripleConn(key=("a", "b", "c"), url="x"))
+    await store.save(TripleConn(key=("a", "b", "c"), url="x"))
     ctx: _RouterContext[TripleConn] = _RouterContext(router_name="triple", fqn="tests.triple-list")
 
     @a2kit.tool(store=store, connection_param="conn", router_context=ctx)
@@ -178,7 +178,7 @@ async def test_resolve_info_strings_no_op_path(tmp_path: Path) -> None:
         pass
 
     store: ConnectionStore[BareConn] = ConnectionStore(tmp_path / "c", BareConn)
-    store.save(BareConn(key=("p",)))
+    await store.save(BareConn(key=("p",)))
     ctx: _RouterContext[BareConn] = _RouterContext(router_name="bare", fqn="tests.bare")
 
     @a2kit.tool(store=store, connection_param="connection", router_context=ctx)
@@ -196,7 +196,7 @@ async def test_resolve_info_strings_no_op_path(tmp_path: Path) -> None:
 async def test_token_resolution_runs_on_strings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("WIDGET_KEY", "real-key-from-env")
     store: ConnectionStore[WidgetConn] = ConnectionStore(tmp_path / "c", WidgetConn)
-    store.save(WidgetConn(key=("p",), url="https://api", api_key="${WIDGET_KEY}"))
+    await store.save(WidgetConn(key=("p",), url="https://api", api_key="${WIDGET_KEY}"))
 
     ctx: _RouterContext[WidgetConn] = _RouterContext(router_name="w", fqn="tests.w-tok")
     captured: dict[str, str] = {}
@@ -213,7 +213,7 @@ async def test_token_resolution_runs_on_strings(monkeypatch: pytest.MonkeyPatch,
 
 async def test_token_resolution_custom_registry(tmp_path: Path) -> None:
     store: ConnectionStore[WidgetConn] = ConnectionStore(tmp_path / "c", WidgetConn)
-    store.save(WidgetConn(key=("p",), url="https://api", api_key="raw"))
+    await store.save(WidgetConn(key=("p",), url="https://api", api_key="raw"))
     reg = ResolverRegistry()
     reg.register(lambda v: v == "raw", lambda _v: "swapped")
 
@@ -244,7 +244,7 @@ async def test_write_blocked_on_read_only(widget_store: ConnectionStore[WidgetCo
 
 async def test_write_allowed_when_read_write(tmp_path: Path) -> None:
     store: ConnectionStore[WidgetConn] = ConnectionStore(tmp_path / "c", WidgetConn)
-    store.save(WidgetConn(key=("rw",), url="https://api", api_key="x", read_only=False))
+    await store.save(WidgetConn(key=("rw",), url="https://api", api_key="x", read_only=False))
 
     @a2kit.tool(store=store, connection_param="connection", write=True)
     async def update(connection: str) -> dict:

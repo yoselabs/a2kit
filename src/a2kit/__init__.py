@@ -23,7 +23,12 @@ v0.7 highlights (idiomatic Python pass):
 
 from __future__ import annotations
 
-from a2kit import docs, enrichers, errors, formatter, lint, projection, scaffold, testing, tools
+from a2kit import docs, enrichers, formatter, lint, projection, scaffold, testing, tools
+
+# `a2kit.errors` is the v0.11 deprecation shim — left out of the eager import
+# above so plain `import a2kit` doesn't fire the rename DeprecationWarning.
+# Users who still `from a2kit import errors` (or `import a2kit.errors`) get
+# the warning at their import site, which is the point.
 from a2kit._capabilities import (
     Cap,
     Capability,
@@ -144,7 +149,6 @@ __all__ = [
     "default_registry",
     "docs",
     "enrichers",
-    "errors",
     "format_response",
     "formatter",
     "lint",

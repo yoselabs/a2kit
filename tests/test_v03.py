@@ -38,98 +38,98 @@ class FlatConn(ConnectionInfo):
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> ConnectionStore[WidgetConn]:
+async def store(tmp_path: Path) -> ConnectionStore[WidgetConn]:
     s: ConnectionStore[WidgetConn] = ConnectionStore(tmp_path / "c", WidgetConn)
-    s.save(WidgetConn(key=("p", "e", "d"), base_url="https://api"))
+    await s.save(WidgetConn(key=("p", "e", "d"), base_url="https://api"))
     return s
 
 
 @pytest.fixture
-def flat_store(tmp_path: Path) -> ConnectionStore[FlatConn]:
+async def flat_store(tmp_path: Path) -> ConnectionStore[FlatConn]:
     s: ConnectionStore[FlatConn] = ConnectionStore(tmp_path / "c", FlatConn)
-    s.save(FlatConn(key=("prod",), url="https://x"))
+    await s.save(FlatConn(key=("prod",), url="https://x"))
     return s
 
 
-def test_load_kwargs(store: ConnectionStore[WidgetConn]) -> None:
-    info = store.load(project="p", env="e", db="d")
+async def test_load_kwargs(store: ConnectionStore[WidgetConn]) -> None:
+    info = await store.load(project="p", env="e", db="d")
     assert info.base_url == "https://api"
 
 
-def test_load_tuple(store: ConnectionStore[WidgetConn]) -> None:
-    info = store.load(("p", "e", "d"))
+async def test_load_tuple(store: ConnectionStore[WidgetConn]) -> None:
+    info = await store.load(("p", "e", "d"))
     assert info.base_url == "https://api"
 
 
-def test_load_list(store: ConnectionStore[WidgetConn]) -> None:
-    info = store.load(["p", "e", "d"])
+async def test_load_list(store: ConnectionStore[WidgetConn]) -> None:
+    info = await store.load(["p", "e", "d"])
     assert info.base_url == "https://api"
 
 
-def test_load_positional(store: ConnectionStore[WidgetConn]) -> None:
-    info = store.load("p", "e", "d")
+async def test_load_positional(store: ConnectionStore[WidgetConn]) -> None:
+    info = await store.load("p", "e", "d")
     assert info.base_url == "https://api"
 
 
-def test_load_bare_string_single_field(flat_store: ConnectionStore[FlatConn]) -> None:
-    info = flat_store.load("prod")
+async def test_load_bare_string_single_field(flat_store: ConnectionStore[FlatConn]) -> None:
+    info = await flat_store.load("prod")
     assert info.url == "https://x"
 
 
-def test_load_kwargs_single_field(flat_store: ConnectionStore[FlatConn]) -> None:
-    info = flat_store.load(name="prod")
+async def test_load_kwargs_single_field(flat_store: ConnectionStore[FlatConn]) -> None:
+    info = await flat_store.load(name="prod")
     assert info.url == "https://x"
 
 
-def test_load_missing_kwarg_raises(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_missing_kwarg_raises(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(KeyFieldMissing):
-        store.load(project="p", env="e")
+        await store.load(project="p", env="e")
 
 
-def test_load_unknown_kwarg_raises(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_unknown_kwarg_raises(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(ValueError, match="Unknown key field"):
-        store.load(project="p", env="e", db="d", extra="x")
+        await store.load(project="p", env="e", db="d", extra="x")
 
 
-def test_load_arity_mismatch_tuple(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_arity_mismatch_tuple(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(KeyArityMismatch):
-        store.load(("p", "e"))
+        await store.load(("p", "e"))
 
 
-def test_load_arity_mismatch_list(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_arity_mismatch_list(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(KeyArityMismatch):
-        store.load(["p", "e"])
+        await store.load(["p", "e"])
 
 
-def test_load_arity_mismatch_positional(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_arity_mismatch_positional(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(KeyArityMismatch):
-        store.load("p", "e")
+        await store.load("p", "e")
 
 
-def test_load_bare_string_arity_mismatch(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_bare_string_arity_mismatch(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(KeyArityMismatch):
-        store.load("p")
+        await store.load("p")
 
 
-def test_load_no_args_raises(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_no_args_raises(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(KeyFieldMissing):
-        store.load()
+        await store.load()
 
 
-def test_load_mixed_args_raises(store: ConnectionStore[WidgetConn]) -> None:
+async def test_load_mixed_args_raises(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(TypeError, match="mix positional"):
-        store.load("p", env="e")
+        await store.load("p", env="e")
 
 
-def test_delete_kwargs(store: ConnectionStore[WidgetConn]) -> None:
-    store.delete(project="p", env="e", db="d")
+async def test_delete_kwargs(store: ConnectionStore[WidgetConn]) -> None:
+    await store.delete(project="p", env="e", db="d")
     with pytest.raises(a2kit.ConnectionNotFound):
-        store.load(("p", "e", "d"))
+        await store.load(("p", "e", "d"))
 
 
-def test_delete_missing_raises(store: ConnectionStore[WidgetConn]) -> None:
+async def test_delete_missing_raises(store: ConnectionStore[WidgetConn]) -> None:
     with pytest.raises(a2kit.ConnectionNotFound):
-        store.delete(("a", "b", "c"))
+        await store.delete(("a", "b", "c"))
 
 
 def test_store_exposes_connection_class(store: ConnectionStore[WidgetConn]) -> None:

@@ -72,9 +72,12 @@ class ConnectionStoreLike(Protocol):
     Both `ConnectionStore` and the internal `_EphemeralAwareStore` proxy
     satisfy this. Used by `connection_enricher` and the schema-hint helper to
     avoid pulling in the full `ConnectionStore[ConnectionInfo]` generic.
+
+    v0.11: `list_connections()` is `async def`. Sync callers wrap with
+    `anyio.run(store.list_connections())`.
     """
 
-    def list_connections(self) -> Sequence[ConnectionInfoLike]: ...
+    async def list_connections(self) -> Sequence[ConnectionInfoLike]: ...
 
 
 ENV_CONFIG_HOME = "A2KIT_CONFIG_HOME"
@@ -275,9 +278,18 @@ class ConnectionStore(Generic[C]):
     def _path(self, key: tuple[str, ...]) -> Path:
         return self.config_dir / self._filename(key)
 
-    # -- mutations -----------------------------------------------------------
+    # -- async-first API (v0.11) ---------------------------------------------
+    #
+    # `save` / `load` / `list_connections` / `list_keys` are `async def`. The
+    # bodies are sync (TOML files are tiny — ~1KB; the sync work runs inline,
+    # no `to_thread` overhead). What async-first buys is API consistency with
+    # FastMCP's tool model: tools are async, so reaching for the connection
+    # store reads `await store.load(key)`. Sync callers (CLI commands, tests,
+    # decoration-time enrichment) wrap one call site with `anyio.run(...)`.
+    #
+    # `delete` is also async for symmetry, even though its body is also sync.
 
-    def save(self, info: C) -> Path:
+    async def save(self, info: C) -> Path:
         """Save a connection atomically (tempfile + chmod 0600 + rename)."""
         self.config_dir.mkdir(parents=True, exist_ok=True)
         path = self._path(info.key)
@@ -304,7 +316,7 @@ class ConnectionStore(Generic[C]):
             raise
         return path
 
-    def delete(self, *args: Any, **kwargs: Any) -> None:
+    async def delete(self, *args: Any, **kwargs: Any) -> None:
         """Delete a connection. Accepts the same call shapes as `load`."""
         key = _coerce_key(self.model, args, kwargs)
         path = self._path(key)
@@ -312,9 +324,7 @@ class ConnectionStore(Generic[C]):
             raise ConnectionNotFound(key)
         path.unlink()
 
-    # -- queries -------------------------------------------------------------
-
-    def load(self, *args: Any, **kwargs: Any) -> C:
+    async def load(self, *args: Any, **kwargs: Any) -> C:
         """Load by key. See module docstring for accepted call shapes."""
         key = _coerce_key(self.model, args, kwargs)
         path = self._path(key)
@@ -332,7 +342,7 @@ class ConnectionStore(Generic[C]):
                     raise inner from exc
             raise
 
-    def list_connections(self) -> list[C]:
+    async def list_connections(self) -> list[C]:
         """List all valid connections in the config dir, sorted by filename."""
         if not self.config_dir.exists():
             return []
@@ -343,11 +353,11 @@ class ConnectionStore(Generic[C]):
             results.append(self.model.model_validate(data))
         return results
 
-    def list_keys(self) -> list[tuple[str, ...]]:
+    async def list_keys(self) -> list[tuple[str, ...]]:
         """List all stored keys as `model.Key` NamedTuple instances.
 
         Returns the typed key (e.g. `WidgetKey(project=..., env=..., db=...)`)
         rather than a raw tuple — callers iterating by index still work because
         `NamedTuple` supports indexing.
         """
-        return [self.model.Key(*info.key) for info in self.list_connections()]  # type: ignore[misc]
+        return [self.model.Key(*info.key) for info in await self.list_connections()]  # type: ignore[misc]

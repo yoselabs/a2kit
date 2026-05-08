@@ -202,3 +202,196 @@ def test_fastmcp_like_rejects_missing_method() -> None:
             return None
 
     assert not isinstance(_NoTool(), FastMCPLike)
+
+
+# --- Async-first connection-store API ----------------------------------------
+
+
+class _Conn(a2kit.ConnectionInfo):
+    base_url: str
+
+
+@pytest.fixture
+def async_store(tmp_path: Any) -> a2kit.ConnectionStore[_Conn]:
+    return a2kit.ConnectionStore(tmp_path / "c", _Conn)
+
+
+async def test_async_store_round_trip(async_store: a2kit.ConnectionStore[_Conn]) -> None:
+    """v0.11 async-first: `save` / `load` are `async def`."""
+    info = _Conn(key=("dev",), base_url="https://dev.example.com")
+    await async_store.save(info)
+    loaded = await async_store.load("dev")
+    assert loaded.base_url == "https://dev.example.com"
+
+
+async def test_async_store_list_connections(async_store: a2kit.ConnectionStore[_Conn]) -> None:
+    await async_store.save(_Conn(key=("a",), base_url="https://a"))
+    await async_store.save(_Conn(key=("b",), base_url="https://b"))
+    listed = await async_store.list_connections()
+    keys = sorted(info.key for info in listed)
+    assert keys == [("a",), ("b",)]
+
+
+async def test_async_tool_awaits_store_load(async_store: a2kit.ConnectionStore[_Conn]) -> None:
+    """An async tool decorated with `@a2kit.tool(store=...)` awaits
+    `store.load` directly — no thread offload, no `_async` sibling."""
+    await async_store.save(_Conn(key=("prod",), base_url="https://prod"))
+
+    @a2kit.tool(store=async_store)
+    async def fetch(*, info: _Conn) -> dict[str, str]:
+        return {"url": info.base_url}
+
+    out = await fetch(connection="prod")
+    assert out == {"url": "https://prod"}
+
+
+async def test_sync_tool_drives_async_store_via_anyio(async_store: a2kit.ConnectionStore[_Conn]) -> None:
+    """Sync wrappers drive the async store through `_lookup_connection_sync`,
+    which uses `anyio.from_thread.run` (worker-thread context) or
+    `anyio.run` (no-loop context)."""
+    await async_store.save(_Conn(key=("staging",), base_url="https://staging"))
+
+    @a2kit.tool(store=async_store)
+    def fetch_sync(*, info: _Conn) -> dict[str, str]:
+        return {"url": info.base_url}
+
+    # Worker-thread path: from_thread.run hops to the host loop.
+    import anyio.to_thread
+
+    out = await anyio.to_thread.run_sync(lambda: fetch_sync(connection="staging"))
+    assert out == {"url": "https://staging"}
+
+
+# --- MCPRunner.run_async ------------------------------------------------------
+
+
+class _AsyncFakeServer:
+    """Server fake that exposes both `run` (sync, raises) and `run_async`."""
+
+    def __init__(self) -> None:
+        self.settings = type("S", (), {"host": "", "port": 0})()
+        self.run_async_calls: list[str] = []
+
+    def tool(self, *_a: Any, **_kw: Any) -> Any:
+        return lambda fn: fn
+
+    def run(self, *_a: Any, **_kw: Any) -> None:
+        msg = "sync run should not be called when run_async is available"
+        raise AssertionError(msg)
+
+    async def run_async(self, *, transport: str = "stdio") -> None:
+        self.run_async_calls.append(transport)
+
+
+class _SyncOnlyFakeServer:
+    """Server fake without `run_async` — emulates older FastMCP."""
+
+    def __init__(self) -> None:
+        self.settings = type("S", (), {"host": "", "port": 0})()
+
+    def tool(self, *_a: Any, **_kw: Any) -> Any:
+        return lambda fn: fn
+
+    def run(self, *_a: Any, **_kw: Any) -> None:
+        return None
+
+
+async def test_mcprunner_run_async_invokes_server_run_async() -> None:
+    from a2kit.scaffold import MCPRunner
+
+    server = _AsyncFakeServer()
+    parsed = await MCPRunner(server).run_async(argv=[], transport="stdio")
+    assert server.run_async_calls == ["stdio"]
+    assert "effective_select" in parsed
+
+
+async def test_mcprunner_run_async_http_sets_settings() -> None:
+    from a2kit.scaffold import MCPRunner
+
+    server = _AsyncFakeServer()
+    await MCPRunner(server).run_async(argv=["--http", "0.0.0.0:7777"])  # noqa: S104
+    assert server.run_async_calls == ["streamable-http"]
+    assert server.settings.host == "0.0.0.0"  # noqa: S104
+    assert server.settings.port == 7777
+
+
+async def test_mcprunner_run_async_raises_without_server_support() -> None:
+    from a2kit.scaffold import MCPRunner
+
+    server = _SyncOnlyFakeServer()
+    with pytest.raises(RuntimeError, match="run_async is not defined"):
+        await MCPRunner(server).run_async(argv=[])
+
+
+# --- Async enrichers ---------------------------------------------------------
+
+
+async def test_async_enricher_awaited_by_async_tool() -> None:
+    """An `async def` enricher returns a coroutine; the async tool wrapper awaits it."""
+
+    async def async_enricher(exc: Exception, tool_name: str | None = None) -> Exception:
+        # Imagine an async lookup happening here (SSO token resolution, etc.).
+        return RuntimeError(f"enriched: {exc} (tool={tool_name})")
+
+    @a2kit.tool(enricher=async_enricher)
+    async def boom() -> dict[str, str]:
+        msg = "kaboom"
+        raise ValueError(msg)
+
+    with pytest.raises(RuntimeError, match=r"enriched: kaboom \(tool=boom\)"):
+        await boom()
+
+
+async def test_chain_with_async_enricher() -> None:
+    """`chain(...)` short-circuits on the first awaitable result."""
+    from a2kit.enrichers import chain
+
+    def sync_passthrough(exc: Exception, tool_name: str | None = None) -> Exception:
+        return exc  # no transformation
+
+    async def async_transform(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError(f"async-enriched: {exc}")
+
+    composed = chain(sync_passthrough, async_transform)
+
+    @a2kit.tool(enricher=composed)
+    async def boom() -> dict[str, str]:
+        msg = "x"
+        raise ValueError(msg)
+
+    with pytest.raises(RuntimeError, match="async-enriched: x"):
+        await boom()
+
+
+def test_async_enricher_drained_for_sync_tool() -> None:
+    """v0.11: async enrichers (e.g. the built-in `connection_enricher`)
+    are drained by the sync tool wrapper through `anyio.from_thread.run`
+    or `anyio.run`. Sync tools keep the feature without writing async."""
+
+    async def async_enricher(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError(f"async-enriched: {exc}")
+
+    @a2kit.tool(enricher=async_enricher)
+    def boom() -> dict[str, str]:
+        msg = "x"
+        raise ValueError(msg)
+
+    with pytest.raises(RuntimeError, match="async-enriched: x"):
+        boom()
+
+
+async def test_async_enricher_drained_for_sync_tool_called_from_async_test() -> None:
+    """Last-resort drainage path: async test → sync tool → async enricher.
+    A loop is already running on this thread, so `anyio.run` raises and we
+    fall back to a fresh worker thread."""
+
+    async def async_enricher(exc: Exception, tool_name: str | None = None) -> Exception:
+        return RuntimeError(f"thread-drained: {exc}")
+
+    @a2kit.tool(enricher=async_enricher)
+    def boom() -> dict[str, str]:
+        msg = "y"
+        raise ValueError(msg)
+
+    with pytest.raises(RuntimeError, match="thread-drained: y"):
+        boom()

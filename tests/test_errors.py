@@ -62,22 +62,24 @@ def test_chain_returns_input_when_no_match() -> None:
 # ---- connection_enricher() factory ------------------------------------------
 
 
-def test_connection_enricher_passes_through_other_exceptions(
+async def test_connection_enricher_passes_through_other_exceptions(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
     enrich = connection_enricher(atlassian_store)
     exc = ValueError("nope")
-    assert enrich(exc) is exc
+    assert await enrich(exc) is exc
 
 
-def test_connection_enricher_adds_available_list_and_suggestion(atlassian_store: ConnectionStore[AtlassianInfo], config_dir: Path) -> None:
+async def test_connection_enricher_adds_available_list_and_suggestion(
+    atlassian_store: ConnectionStore[AtlassianInfo], config_dir: Path,
+) -> None:
     from .conftest import AtlassianInfo
 
-    atlassian_store.save(AtlassianInfo(key=("prod",), url="https://x", email="e", token="t"))
-    atlassian_store.save(AtlassianInfo(key=("staging",), url="https://x", email="e", token="t"))
+    await atlassian_store.save(AtlassianInfo(key=("prod",), url="https://x", email="e", token="t"))
+    await atlassian_store.save(AtlassianInfo(key=("staging",), url="https://x", email="e", token="t"))
 
     enrich = connection_enricher(atlassian_store)
-    out = enrich(ConnectionNotFound(("proteea",)), "my_tool")
+    out = await enrich(ConnectionNotFound(("proteea",)), "my_tool")
 
     assert isinstance(out, ConnectionNotFound)
     assert "Available" in str(out)
@@ -86,22 +88,22 @@ def test_connection_enricher_adds_available_list_and_suggestion(atlassian_store:
     assert out.available_connections == ["prod", "staging"]
 
 
-def test_connection_enricher_handles_empty_store(
+async def test_connection_enricher_handles_empty_store(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
     enrich = connection_enricher(atlassian_store)
-    out = enrich(ConnectionNotFound(("missing",)))
+    out = await enrich(ConnectionNotFound(("missing",)))
     assert "No connections" in str(out)
 
 
-def test_connection_enricher_no_close_match(
+async def test_connection_enricher_no_close_match(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
     from .conftest import AtlassianInfo
 
-    atlassian_store.save(AtlassianInfo(key=("alpha",), url="https://x", email="e", token="t"))
+    await atlassian_store.save(AtlassianInfo(key=("alpha",), url="https://x", email="e", token="t"))
     enrich = connection_enricher(atlassian_store)
-    out = enrich(ConnectionNotFound(("zzzzzzzz",)))
+    out = await enrich(ConnectionNotFound(("zzzzzzzz",)))
     msg = str(out)
     assert "Available" in msg
     assert "Did you mean" not in msg

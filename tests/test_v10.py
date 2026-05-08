@@ -247,7 +247,7 @@ def test_listview_tool_with_pydantic_return_uses_tsv() -> None:
     assert "a\tb\tc" in out.data
 
 
-def test_listview_tool_with_page_pydantic_uses_tsv() -> None:
+async def test_listview_tool_with_page_pydantic_uses_tsv() -> None:
     @a2kit.tool(connection=False, pagination=Passthrough)
     def list_rows(*, limit: int = 10, cursor: str | None = None) -> Page[_FlatRow]:
         return Page(items=[_FlatRow(a=1, b="x")], next_cursor="abc")
@@ -271,9 +271,23 @@ class _Conn(ConnectionInfo, key=_ConnKey):
 
 
 def _store(tmp_path: Path) -> ConnectionStore[_Conn]:
-    s = ConnectionStore(tmp_path, _Conn)
-    s.save(_Conn(key=("prod",), base_url="https://x"))
-    s.save(_Conn(key=("staging",), base_url="https://y"))
+    """Sync helper — wraps async setup so test bodies stay declarative. Works
+    from both sync tests (no loop) and async tests (loop already on this
+    thread) by escaping to a fresh worker thread when needed."""
+    import anyio  # noqa: PLC0415
+    import concurrent.futures  # noqa: PLC0415
+
+    s: ConnectionStore[_Conn] = ConnectionStore(tmp_path, _Conn)
+
+    async def _setup() -> None:
+        await s.save(_Conn(key=("prod",), base_url="https://x"))
+        await s.save(_Conn(key=("staging",), base_url="https://y"))
+
+    try:
+        anyio.run(_setup)
+    except RuntimeError:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            ex.submit(anyio.run, _setup).result()
     return s
 
 
@@ -383,10 +397,10 @@ def test_safe_list_connection_keys_handles_broken_store() -> None:
 # ---------------------------------------------------------------- #
 
 
-def test_connection_enricher_factory_passthrough_for_other_exceptions(tmp_path: Path) -> None:
+async def test_connection_enricher_factory_passthrough_for_other_exceptions(tmp_path: Path) -> None:
     enricher = connection_enricher(_store(tmp_path))
     other = ValueError("nope")
-    assert enricher(other) is other
+    assert await enricher(other) is other
 
 
 # ---------------------------------------------------------------- #
@@ -421,28 +435,28 @@ def test_ephemeral_store_proxies_list_connections_for_enricher(tmp_path: Path) -
     assert "ephem-only" in msg
 
 
-def test_ephemeral_store_list_connections_dedupes_overrides() -> None:
+async def test_ephemeral_store_list_connections_dedupes_overrides() -> None:
     """If ephemeral overrides a base key, the ephemeral entry wins (no double-listing)."""
     from a2kit.scaffold import _EphemeralAwareStore
 
     class _BaseStub:
-        def list_connections(self) -> list[Any]:
+        async def list_connections(self) -> list[Any]:
             return [_Conn(key=("prod",), base_url="https://base")]
 
     ephemeral = {("prod",): _Conn(key=("prod",), base_url="https://override")}
     proxy = _EphemeralAwareStore(_BaseStub(), ephemeral)
-    keys = [info.key for info in proxy.list_connections()]
+    keys = [info.key for info in await proxy.list_connections()]
     # Only one "prod" entry survives.
     assert keys.count(("prod",)) == 1
 
 
-def test_ephemeral_store_list_connections_with_no_base() -> None:
+async def test_ephemeral_store_list_connections_with_no_base() -> None:
     """A pure ephemeral router (no base store) still lists ephemeral keys."""
     from a2kit.scaffold import _EphemeralAwareStore
 
     ephemeral = {("ephem",): _Conn(key=("ephem",), base_url="https://e")}
     proxy = _EphemeralAwareStore(None, ephemeral)
-    assert [info.key for info in proxy.list_connections()] == [("ephem",)]
+    assert [info.key for info in await proxy.list_connections()] == [("ephem",)]
 
 
 def test_resolve_return_annotation_propagates_unexpected_errors() -> None:

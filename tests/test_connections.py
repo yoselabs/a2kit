@@ -19,15 +19,15 @@ from a2kit import (
 from .conftest import AtlassianInfo, DbInfo
 
 
-def test_db_roundtrip(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_db_roundtrip(db_store: ConnectionStore[DbInfo]) -> None:
     info = DbInfo(key=("acme", "prod", "main"), dsn="postgresql://u@h/db")
-    path = db_store.save(info)
+    path = await db_store.save(info)
     assert path.name == "acme-prod-main.toml"
-    loaded = db_store.load(("acme", "prod", "main"))
+    loaded = await db_store.load(("acme", "prod", "main"))
     assert loaded == info
 
 
-def test_atlassian_roundtrip(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
+async def test_atlassian_roundtrip(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
     info = AtlassianInfo(
         key=("prod",),
         url="https://example.atlassian.net",
@@ -35,67 +35,67 @@ def test_atlassian_roundtrip(atlassian_store: ConnectionStore[AtlassianInfo]) ->
         token="${ATLASSIAN_TOKEN}",
         read_only=False,
     )
-    path = atlassian_store.save(info)
+    path = await atlassian_store.save(info)
     assert path.name == "prod.toml"
-    loaded = atlassian_store.load(("prod",))
+    loaded = await atlassian_store.load(("prod",))
     assert loaded == info
 
 
-def test_save_overwrites(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_save_overwrites(db_store: ConnectionStore[DbInfo]) -> None:
     info1 = DbInfo(key=("a", "b", "c"), dsn="sqlite:///one.db")
     info2 = DbInfo(key=("a", "b", "c"), dsn="sqlite:///two.db")
-    db_store.save(info1)
-    db_store.save(info2)
-    assert db_store.load(("a", "b", "c")).dsn == "sqlite:///two.db"
+    await db_store.save(info1)
+    await db_store.save(info2)
+    assert (await db_store.load(("a", "b", "c"))).dsn == "sqlite:///two.db"
 
 
-def test_atomic_save_chmod_0600(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_atomic_save_chmod_0600(db_store: ConnectionStore[DbInfo]) -> None:
     info = DbInfo(key=("a", "b", "c"), dsn="sqlite://")
-    path = db_store.save(info)
+    path = await db_store.save(info)
     mode = path.stat().st_mode & 0o777
     assert mode == 0o600
 
 
-def test_load_missing_raises(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_load_missing_raises(db_store: ConnectionStore[DbInfo]) -> None:
     with pytest.raises(ConnectionNotFound) as excinfo:
-        db_store.load(("nope", "nope", "nope"))
+        await db_store.load(("nope", "nope", "nope"))
     assert excinfo.value.key == ("nope", "nope", "nope")
 
 
-def test_delete(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_delete(db_store: ConnectionStore[DbInfo]) -> None:
     info = DbInfo(key=("x", "y", "z"), dsn="sqlite://")
-    db_store.save(info)
-    db_store.delete(("x", "y", "z"))
+    await db_store.save(info)
+    await db_store.delete(("x", "y", "z"))
     with pytest.raises(ConnectionNotFound):
-        db_store.load(("x", "y", "z"))
+        await db_store.load(("x", "y", "z"))
 
 
-def test_delete_missing_raises(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_delete_missing_raises(db_store: ConnectionStore[DbInfo]) -> None:
     with pytest.raises(ConnectionNotFound):
-        db_store.delete(("missing", "1", "2"))
+        await db_store.delete(("missing", "1", "2"))
 
 
-def test_list_empty_when_dir_absent(tmp_path: Path) -> None:
+async def test_list_empty_when_dir_absent(tmp_path: Path) -> None:
     store: ConnectionStore[DbInfo] = ConnectionStore(tmp_path / "does-not-exist", DbInfo)
-    assert store.list_connections() == []
+    assert await store.list_connections() == []
 
 
-def test_list_returns_sorted(db_store: ConnectionStore[DbInfo]) -> None:
-    db_store.save(DbInfo(key=("z", "p", "m"), dsn="sqlite://"))
-    db_store.save(DbInfo(key=("a", "p", "m"), dsn="sqlite://"))
-    db_store.save(DbInfo(key=("m", "p", "m"), dsn="sqlite://"))
-    listed = db_store.list_connections()
+async def test_list_returns_sorted(db_store: ConnectionStore[DbInfo]) -> None:
+    await db_store.save(DbInfo(key=("z", "p", "m"), dsn="sqlite://"))
+    await db_store.save(DbInfo(key=("a", "p", "m"), dsn="sqlite://"))
+    await db_store.save(DbInfo(key=("m", "p", "m"), dsn="sqlite://"))
+    listed = await db_store.list_connections()
     assert [info.key for info in listed] == [("a", "p", "m"), ("m", "p", "m"), ("z", "p", "m")]
 
 
-def test_invalid_key_part_rejected_in_model() -> None:
+async def test_invalid_key_part_rejected_in_model() -> None:
     with pytest.raises(ValueError, match="Invalid connection key part"):
         DbInfo(key=("ok", "bad name", "x"), dsn="sqlite://")
 
 
-def test_invalid_key_part_rejected_in_store(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_invalid_key_part_rejected_in_store(db_store: ConnectionStore[DbInfo]) -> None:
     with pytest.raises(InvalidConnectionKey):
-        db_store.load(("bad name", "x", "y"))
+        await db_store.load(("bad name", "x", "y"))
 
 
 def test_empty_key_rejected() -> None:
@@ -125,19 +125,19 @@ def test_default_config_dir_uses_home(monkeypatch: pytest.MonkeyPatch) -> None:
     assert default_config_dir() == expected
 
 
-def test_default_config_dir_honours_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_default_config_dir_honours_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv(ENV_CONFIG_HOME, str(tmp_path / "override"))
     assert default_config_dir() == tmp_path / "override"
 
 
-def test_save_creates_config_dir(tmp_path: Path) -> None:
+async def test_save_creates_config_dir(tmp_path: Path) -> None:
     target = tmp_path / "fresh" / "subdir"
     store: ConnectionStore[DbInfo] = ConnectionStore(target, DbInfo)
-    store.save(DbInfo(key=("a", "b", "c"), dsn="sqlite://"))
+    await store.save(DbInfo(key=("a", "b", "c"), dsn="sqlite://"))
     assert target.is_dir()
 
 
-def test_save_atomic_cleanup_on_failure(db_store: ConnectionStore[DbInfo], monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_save_atomic_cleanup_on_failure(db_store: ConnectionStore[DbInfo], monkeypatch: pytest.MonkeyPatch) -> None:
     """If chmod fails, no tempfile should be left behind."""
     info = DbInfo(key=("a", "b", "c"), dsn="sqlite://")
     real_chmod = Path.chmod
@@ -149,7 +149,7 @@ def test_save_atomic_cleanup_on_failure(db_store: ConnectionStore[DbInfo], monke
 
     monkeypatch.setattr(Path, "chmod", boom)
     with pytest.raises(OSError, match="simulated chmod failure"):
-        db_store.save(info)
+        await db_store.save(info)
     leftovers = list(db_store.config_dir.glob(".*-*.tmp"))
     assert leftovers == []
 
@@ -164,32 +164,32 @@ def test_extra_fields_rejected() -> None:
         DbInfo(key=("a", "b", "c"), dsn="sqlite://", surprise="boom")  # type: ignore[call-arg]
 
 
-def test_frozen_model_is_immutable() -> None:
+async def test_frozen_model_is_immutable() -> None:
     info = DbInfo(key=("a", "b", "c"), dsn="sqlite://")
     with pytest.raises(ValueError, match="frozen"):
         info.dsn = "other"  # type: ignore[misc]
 
 
-def test_listing_with_tuple_subclass_field(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
+async def test_listing_with_tuple_subclass_field(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
     """Cover the tuple-field coercion path on save (extra tuple field on subclass)."""
 
     class WithTuple(ConnectionInfo):
         admins: tuple[str, ...] = ()
 
     store: ConnectionStore[WithTuple] = ConnectionStore(atlassian_store.config_dir, WithTuple)
-    store.save(WithTuple(key=("x",), admins=("alice", "bob")))
-    loaded = store.load(("x",))
+    await store.save(WithTuple(key=("x",), admins=("alice", "bob")))
+    loaded = await store.load(("x",))
     assert loaded.admins == ("alice", "bob")
-    listed = store.list_connections()
+    listed = await store.list_connections()
     assert listed[0].admins == ("alice", "bob")
 
 
-def test_list_skips_dir_when_missing_after_init(tmp_path: Path) -> None:
+async def test_list_skips_dir_when_missing_after_init(tmp_path: Path) -> None:
     """list_connections returns [] when config_dir doesn't exist (defensive path)."""
     nonexistent = tmp_path / "never-created"
     store: ConnectionStore[DbInfo] = ConnectionStore(nonexistent, DbInfo)
     assert not nonexistent.exists()
-    assert store.list_connections() == []
+    assert await store.list_connections() == []
 
 
 def test_env_override_is_empty_string_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -197,13 +197,13 @@ def test_env_override_is_empty_string_falls_back(monkeypatch: pytest.MonkeyPatch
     assert default_config_dir() == Path.home() / ".config" / "a2kit" / "connections"
 
 
-def test_invalid_key_in_save_is_caught_by_model() -> None:
+async def test_invalid_key_in_save_is_caught_by_model() -> None:
     """Model-level validation runs before store-level path derivation."""
     with pytest.raises(ValueError):
         DbInfo(key=("", "b", "c"), dsn="sqlite://")  # noqa: PLC1901
 
 
-def test_resolve_token_via_model_subclass(atlassian_store: ConnectionStore[AtlassianInfo], monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_resolve_token_via_model_subclass(atlassian_store: ConnectionStore[AtlassianInfo], monkeypatch: pytest.MonkeyPatch) -> None:
     """End-to-end: subclass loads a `${ENV_VAR}` token, resolves it lazily."""
     from a2kit import resolve_token
 
@@ -214,19 +214,19 @@ def test_resolve_token_via_model_subclass(atlassian_store: ConnectionStore[Atlas
         email="dt@example.com",
         token="${MY_ATLASSIAN_TOKEN}",
     )
-    atlassian_store.save(info)
-    loaded = atlassian_store.load(("prod",))
+    await atlassian_store.save(info)
+    loaded = await atlassian_store.load(("prod",))
     assert resolve_token(loaded.token) == "real-token-value"
 
 
-def test_save_path_only_visible_to_owner(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_save_path_only_visible_to_owner(db_store: ConnectionStore[DbInfo]) -> None:
     """Sanity-check on POSIX systems: file is mode 0600 after save."""
     info = DbInfo(key=("a", "b", "c"), dsn="sqlite://")
-    path = db_store.save(info)
+    path = await db_store.save(info)
     assert os.stat(path).st_mode & 0o077 == 0
 
 
-def test_store_exposes_key_class(db_store: ConnectionStore[DbInfo]) -> None:
+async def test_store_exposes_key_class(db_store: ConnectionStore[DbInfo]) -> None:
     """v0.5: `store.key_class` exposes the NamedTuple key type."""
     from .conftest import DbKey
 
@@ -234,12 +234,12 @@ def test_store_exposes_key_class(db_store: ConnectionStore[DbInfo]) -> None:
     assert db_store.key_class._fields == ("project", "env", "db")
 
 
-def test_list_keys_returns_namedtuples(db_store: ConnectionStore[DbInfo]) -> None:
-    """v0.5: `store.list_keys()` returns typed NamedTuple instances."""
+async def test_list_keys_returns_namedtuples(db_store: ConnectionStore[DbInfo]) -> None:
+    """v0.5: `await store.list_keys()` returns typed NamedTuple instances."""
     from .conftest import DbKey
 
-    db_store.save(DbInfo(key=("acme", "prod", "main"), dsn="sqlite://"))
-    keys = db_store.list_keys()
+    await db_store.save(DbInfo(key=("acme", "prod", "main"), dsn="sqlite://"))
+    keys = await db_store.list_keys()
     assert keys == [DbKey(project="acme", env="prod", db="main")]
     # NamedTuple supports both attr-style and index-style access:
     assert keys[0].project == "acme"

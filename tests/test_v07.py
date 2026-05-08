@@ -550,7 +550,7 @@ def test_example_04_error_enricher_runs() -> None:
     _exec_example("04_error_enricher.py")
 
 
-def test_example_05_testing_patterns_runs() -> None:
+async def test_example_05_testing_patterns_runs() -> None:
     _exec_example("05_testing_patterns.py")
 
 
@@ -577,7 +577,7 @@ async def test_router_context_info_is_only_path() -> None:
     server = type("S", (), {"tools": [], "settings": type("X", (), {})()})()
 
     def _t(*_a: Any, **_k: Any) -> Any:
-        def deco(fn: Any) -> Any:
+        async def deco(fn: Any) -> Any:
             return fn
 
         return deco
@@ -585,7 +585,7 @@ async def test_router_context_info_is_only_path() -> None:
     server.tool = _t  # type: ignore[attr-defined]
 
     store = a2kit.ConnectionStore(Path(tempfile.mkdtemp()), WidgetConn)
-    store.save(WidgetConn(key=("p",), url="https://api"))
+    await store.save(WidgetConn(key=("p",), url="https://api"))
     routers = a2kit.RouterRegistry()
     routers.add(WRouter(store=store))
     routers.apply(server, store=None)

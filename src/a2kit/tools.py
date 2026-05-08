@@ -40,8 +40,8 @@ from __future__ import annotations
 
 import functools
 import inspect
-import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -79,18 +79,22 @@ F = TypeVar("F", bound=Callable[..., Any])
 # `_get_current_transport()`. Tests can call `_set_current_transport()` directly.
 # --------------------------------------------------------------------------- #
 
-_TRANSPORT_LOCAL = threading.local()
+_TRANSPORT_VAR: ContextVar[str | None] = ContextVar("a2kit_current_transport", default=None)
 _TOOL_CALL_CONTAMINATION_MARKER = "<parameter name="
 
 
 def _set_current_transport(name: str | None) -> None:
-    """Internal seam used by `MCPRunner` (and tests) to flag transport."""
-    _TRANSPORT_LOCAL.value = name
+    """Internal seam used by `MCPRunner` (and tests) to flag transport.
+
+    v0.11: backed by `ContextVar` (was `threading.local`) for consistency
+    with `_RouterContext` and correctness under multi-worker async schedulers.
+    """
+    _TRANSPORT_VAR.set(name)
 
 
 def _get_current_transport() -> str:
     """Return current transport name; defaults to `'stdio'`."""
-    return getattr(_TRANSPORT_LOCAL, "value", None) or "stdio"
+    return _TRANSPORT_VAR.get() or "stdio"
 
 
 # --------------------------------------------------------------------------- #
@@ -200,13 +204,70 @@ def _detect_info_param(fn: Any, sig: inspect.Signature) -> tuple[str, type] | No
     return matches[0]
 
 
-def _lookup_connection(
+async def _lookup_connection_async(
     key: tuple[str, ...],
     store: ConnectionStore[Any] | None,
 ) -> Any:
+    """Look up a connection from the (now async) store.
+
+    v0.11: `store.load` is `async def`. Pure async path; the sync wrapper
+    drains this coroutine via `anyio` (see `_lookup_connection_sync`).
+    """
     if store is None:
         raise ConnectionNotFound(key)
-    return store.load(key)
+    return await store.load(key)
+
+
+def _lookup_connection_sync(
+    key: tuple[str, ...],
+    store: ConnectionStore[Any] | None,
+) -> Any:
+    """Sync-context wrapper around `_lookup_connection_async`.
+
+    Used by the sync tool wrapper. Drives the async store regardless of how
+    the wrapper was invoked:
+
+    - From FastMCP's worker thread (real async-server case): hop to the host
+      loop with `anyio.from_thread.run`.
+    - From a pure-sync caller with no loop in scope: spin up a one-shot
+      loop via `anyio.run`.
+    - From the loop's own thread (e.g. an async test calling a sync tool
+      directly): spawn a worker thread and run `anyio.run` there, since you
+      cannot synchronously await a coroutine on the loop's thread.
+    """
+    if store is None:
+        raise ConnectionNotFound(key)
+    return _drain_async_to_sync(lambda: store.load(key))
+
+
+def _drain_async_to_sync(make_coro: Callable[[], Awaitable[Any]]) -> Any:
+    """Run a coroutine to completion from sync context, regardless of loop state.
+
+    Strategy:
+      1. `anyio.from_thread.run` if we're a worker thread under an async server.
+      2. Otherwise `anyio.run` — works as long as no loop is running here.
+      3. If a loop IS running on this thread (sync code reached from async via
+         a non-thread path, e.g. directly from an async test), offload to a
+         fresh worker thread and run `anyio.run` there.
+    """
+    import anyio  # noqa: PLC0415
+    import anyio.from_thread  # noqa: PLC0415
+
+    async def _run() -> Any:
+        return await make_coro()
+
+    try:
+        return anyio.from_thread.run(_run)
+    except RuntimeError:
+        pass
+    try:
+        return anyio.run(_run)
+    except RuntimeError:
+        # Loop running on this thread — escape via a fresh worker thread.
+        import concurrent.futures  # noqa: PLC0415
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            return ex.submit(anyio.run, _run).result()
 
 
 def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | None) -> ConnectionInfo:
@@ -514,7 +575,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     msg = f"Tool {resolved_tool_name!r} requires a `connection` argument (the saved connection key)."
                     raise TypeError(msg)
                 connection_key = _resolve_connection_key(raw)
-                info = _lookup_connection(connection_key, store)
+                info = _lookup_connection_sync(connection_key, store)
                 info = _resolve_info_strings(info, resolver_registry)
                 if write and getattr(info, "read_only", False):
                     raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
@@ -530,7 +591,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 if connection_param in bound.arguments:
                     raw = bound.arguments[connection_param]
                     connection_key = _resolve_connection_key(raw)
-                    info = _lookup_connection(connection_key, store)
+                    info = _lookup_connection_sync(connection_key, store)
                     info = _resolve_info_strings(info, resolver_registry)
                     if write and getattr(info, "read_only", False):
                         raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
@@ -539,6 +600,49 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
 
             # Tool-call envelope guard runs after kwargs mutation so the
             # injected info object isn't pattern-matched as contaminated text.
+            if tool_call_guard:
+                bound = sig.bind_partial(*args, **kwargs)
+                bound.apply_defaults()
+                _check_tool_call_contamination(bound, resolved_tool_name)
+
+            return args, kwargs, connection_key, ctx_token
+
+        async def _prelude_async(  # noqa: C901
+            args: tuple[Any, ...],
+            kwargs: dict[str, Any],
+        ) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
+            """Async-first prelude — mirrors `_prelude` but awaits the
+            connection lookup so the event loop stays free during TOML I/O."""
+            connection_key: tuple[str, ...] | None = None
+            ctx_token: Any = None
+
+            if needs_connection_arg:
+                raw = kwargs.pop("connection", None)
+                if raw is None:
+                    msg = f"Tool {resolved_tool_name!r} requires a `connection` argument (the saved connection key)."
+                    raise TypeError(msg)
+                connection_key = _resolve_connection_key(raw)
+                info = await _lookup_connection_async(connection_key, store)
+                info = _resolve_info_strings(info, resolver_registry)
+                if write and getattr(info, "read_only", False):
+                    raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
+                if router_context is not None:
+                    ctx_token = router_context._set(info)  # noqa: SLF001
+                if info_target is not None:
+                    kwargs[info_target[0]] = info
+            elif connection_param is not None:
+                bound = sig.bind_partial(*args, **kwargs)
+                bound.apply_defaults()
+                if connection_param in bound.arguments:
+                    raw = bound.arguments[connection_param]
+                    connection_key = _resolve_connection_key(raw)
+                    info = await _lookup_connection_async(connection_key, store)
+                    info = _resolve_info_strings(info, resolver_registry)
+                    if write and getattr(info, "read_only", False):
+                        raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
+                    if router_context is not None:
+                        ctx_token = router_context._set(info)  # noqa: SLF001
+
             if tool_call_guard:
                 bound = sig.bind_partial(*args, **kwargs)
                 bound.apply_defaults()
@@ -562,7 +666,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     else {}
                 )
                 try:
-                    args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
+                    args, kwargs, conn_key, ctx_token = await _prelude_async(args, kwargs)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
                     with span_cm:
                         result = await fn(*args, **kwargs)
@@ -581,7 +685,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 except Exception as exc:
                     if enricher is None:
                         raise
-                    raise enricher(exc, resolved_tool_name) from exc
+                    from a2kit.enrichers import apply_enricher_async  # noqa: PLC0415
+
+                    raise (await apply_enricher_async(enricher, exc, resolved_tool_name)) from exc
                 finally:
                     if ctx_token is not None and router_context is not None:
                         router_context._reset(ctx_token)  # noqa: SLF001
@@ -620,7 +726,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 except Exception as exc:
                     if enricher is None:
                         raise
-                    raise enricher(exc, resolved_tool_name) from exc
+                    from a2kit.enrichers import apply_enricher_sync  # noqa: PLC0415
+
+                    raise apply_enricher_sync(enricher, exc, resolved_tool_name) from exc
                 finally:
                     if ctx_token is not None and router_context is not None:
                         router_context._reset(ctx_token)  # noqa: SLF001
@@ -721,15 +829,24 @@ def _safe_list_connection_keys(store: object) -> list[str] | None:
     the docstring builder uses the generic phrasing instead. Note: keys are
     captured at decoration time — `login` calls made after server build do
     not refresh the docstring.
+
+    v0.11: `store.list_connections` is async; decoration time has no event
+    loop, so we drive the coroutine through `anyio.run`. If decoration ever
+    happens *inside* a running loop (rare — module imports usually predate
+    `anyio.run(main)`), `anyio.run` raises and we degrade gracefully.
     """
     from a2kit.connections import ConnectionStoreLike  # noqa: PLC0415
 
     if not isinstance(store, ConnectionStoreLike):
         return None
+    import anyio  # noqa: PLC0415
+
     try:
-        return ["-".join(info.key) for info in store.list_connections()]
-    except (OSError, AttributeError, ValueError):
-        # Decoration-time I/O / malformed entries — degrade gracefully.
+        infos = anyio.run(store.list_connections)
+        return ["-".join(info.key) for info in infos]
+    except (OSError, AttributeError, ValueError, RuntimeError):
+        # Decoration-time I/O / malformed entries / unexpected running loop —
+        # degrade gracefully so import never fails.
         return None
 
 

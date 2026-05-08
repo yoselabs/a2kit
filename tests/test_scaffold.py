@@ -193,26 +193,27 @@ def test_register_ephemeral_stops_at_non_kv_arg(db_store: ConnectionStore[DbInfo
     assert ("a", "b", "c") in out
 
 
-def test_scope_filter_returns_store_when_none(
+async def test_scope_filter_returns_store_when_none(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
     out = scope_filter(atlassian_store, None)
     assert out is atlassian_store
 
 
-def test_scope_filter_blocks_load_outside_scope(
+async def test_scope_filter_blocks_load_outside_scope(
     atlassian_store: ConnectionStore[AtlassianInfo],
 ) -> None:
     from .conftest import AtlassianInfo
 
-    atlassian_store.save(AtlassianInfo(key=("alpha",), url="https://a", email="e", token="t"))
-    atlassian_store.save(AtlassianInfo(key=("beta",), url="https://b", email="e", token="t"))
+    await atlassian_store.save(AtlassianInfo(key=("alpha",), url="https://a", email="e", token="t"))
+    await atlassian_store.save(AtlassianInfo(key=("beta",), url="https://b", email="e", token="t"))
 
     view = scope_filter(atlassian_store, "alpha")
-    assert view.load(("alpha",)).url == "https://a"
+    info = await view.load(("alpha",))
+    assert info.url == "https://a"
     with pytest.raises(ConnectionNotFound):
-        view.load(("beta",))
+        await view.load(("beta",))
 
-    listed = view.list_connections()
+    listed = await view.list_connections()
     assert {info.key for info in listed} == {("alpha",)}
     assert view.config_dir == atlassian_store.config_dir

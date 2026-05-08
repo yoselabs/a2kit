@@ -279,7 +279,7 @@ def test_response_frozen() -> None:
         r.format = "json"  # type: ignore[misc]
 
 
-def test_response_next_cursor_default_none() -> None:
+async def test_response_next_cursor_default_none() -> None:
     r = a2kit.format_response([{"a": 1}])
     assert r.next_cursor is None
 
@@ -287,9 +287,9 @@ def test_response_next_cursor_default_none() -> None:
 # ---- Connection auto-inject + typed-info DI (v0.9) -------------------------
 
 
-def test_typed_info_param_auto_inject_connection(tmp_path: Any) -> None:
+async def test_typed_info_param_auto_inject_connection(tmp_path: Any) -> None:
     store: a2kit.ConnectionStore[WConnV09] = a2kit.ConnectionStore(tmp_path / "c", WConnV09)
-    store.save(WConnV09(key=("prod",), url="https://api"))
+    await store.save(WConnV09(key=("prod",), url="https://api"))
 
     @a2kit.tool(store=store)
     def show(info: WConnV09) -> dict:
@@ -328,7 +328,7 @@ def test_multi_info_target_rejected() -> None:
 # ---- Ephemeral lift (v0.8 carry-over) --------------------------------------
 
 
-def test_ephemeral_aware_store_short_circuits() -> None:
+async def test_ephemeral_aware_store_short_circuits() -> None:
     from a2kit.scaffold import _EphemeralAwareStore
 
     class _Conn(a2kit.ConnectionInfo):
@@ -336,13 +336,14 @@ def test_ephemeral_aware_store_short_circuits() -> None:
 
     eph = {("eph",): _Conn(key=("eph",), url="https://eph")}
     proxy = _EphemeralAwareStore(None, eph)
-    assert proxy.load(("eph",)).url == "https://eph"
+    info = await proxy.load(("eph",))
+    assert info.url == "https://eph"
 
 
-def test_ephemeral_aware_store_falls_through_to_base() -> None:
+async def test_ephemeral_aware_store_falls_through_to_base() -> None:
     from a2kit.exceptions import ConnectionNotFound
     from a2kit.scaffold import _EphemeralAwareStore
 
     proxy = _EphemeralAwareStore(None, {})
     with pytest.raises(ConnectionNotFound):
-        proxy.load(("missing",))
+        await proxy.load(("missing",))

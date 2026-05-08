@@ -498,7 +498,7 @@ def test_key_validator_empty_namedtuple_raises() -> None:
             url: str
 
 
-def test_key_fields_legacy_raises_migration_required() -> None:
+async def test_key_fields_legacy_raises_migration_required() -> None:
     from typing import ClassVar
 
     from a2kit import MigrationRequired
@@ -510,7 +510,7 @@ def test_key_fields_legacy_raises_migration_required() -> None:
             url: str
 
 
-def test_load_unwraps_validation_error_for_arity(tmp_path: Path) -> None:
+async def test_load_unwraps_validation_error_for_arity(tmp_path: Path) -> None:
     """Manually corrupted TOML triggers KeyArityMismatch (unwrapped)."""
 
     class _CKey(NamedTuple):
@@ -528,7 +528,7 @@ def test_load_unwraps_validation_error_for_arity(tmp_path: Path) -> None:
     from a2kit.exceptions import KeyArityMismatch
 
     with pytest.raises(KeyArityMismatch):
-        s.load(("p", "e"))
+        await s.load(("p", "e"))
 
 
 # ---- Capability merging in tool decorator -----------------------------------
@@ -598,7 +598,7 @@ def test_tool_capabilities_router_auto_tag_off() -> None:
         _set_active(None, None)
 
 
-def test_tool_capabilities_router_phase_unknown() -> None:
+async def test_tool_capabilities_router_phase_unknown() -> None:
     """If `phase` is set to something other than 'read'/'write' the branch falls through."""
     r = Router(name="weird", default=False)
     _set_active(r, "configure")  # synthetic phase, not 'read'/'write'
@@ -618,7 +618,7 @@ def test_tool_capabilities_router_phase_unknown() -> None:
 # ---- Coverage: edge branches ------------------------------------------------
 
 
-def test_load_unwraps_validation_error_passthrough(tmp_path: Path) -> None:
+async def test_load_unwraps_validation_error_passthrough(tmp_path: Path) -> None:
     """If ValidationError doesn't carry a key-related inner, original re-raises."""
 
     class _C(ConnectionInfo):
@@ -629,7 +629,7 @@ def test_load_unwraps_validation_error_passthrough(tmp_path: Path) -> None:
     (cfg / "n.toml").write_text('key = ["n"]\n')  # missing `url` field
     s: ConnectionStore[_C] = ConnectionStore(cfg, _C)
     with pytest.raises(ValidationError):
-        s.load("n")
+        await s.load("n")
 
 
 def test_runner_select_invalid_atom_logged_silently() -> None:

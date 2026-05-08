@@ -161,7 +161,7 @@ def test_imperative_register_read_override_wins():
 # --- C. Router-level DI ----------------------------------------------------
 
 
-def test_router_di_inherits_to_tools():
+async def test_router_di_inherits_to_tools():
     class DRouter(Router):
         pass
 
@@ -171,7 +171,7 @@ def test_router_di_inherits_to_tools():
 
     server = _FakeServer()
     store = a2kit.ConnectionStore(Path(tempfile.mkdtemp()), _Conn)
-    store.save(_Conn(key=("prod",), url="https://api"))
+    await store.save(_Conn(key=("prod",), url="https://api"))
 
     routers = a2kit.RouterRegistry()
     routers.add(DRouter(store=store))
@@ -194,7 +194,7 @@ async def test_context_info_returns_typed_value():
 
     server = _FakeServer()
     store = a2kit.ConnectionStore(Path(tempfile.mkdtemp()), _Conn)
-    store.save(_Conn(key=("prod",), url="https://api"))
+    await store.save(_Conn(key=("prod",), url="https://api"))
 
     routers = a2kit.RouterRegistry()
     routers.add(ECRouter(store=store))
