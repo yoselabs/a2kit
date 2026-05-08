@@ -865,11 +865,72 @@ Locked. Done early in v0.13:
 | Sync→async drainage | `_async_bridge.py` (18 LOC) | `anyio.from_thread.run` direct | stdlib equivalent; we re-implemented |
 | OTel NoOp fallback | `_otel.py` `_NullSpan` (~150 LOC) | `opentelemetry.trace.NoOpTracer` | OTel ships this; we duplicate |
 | VCR cassettes | `_cassette.py` (~40 LOC) | `vcrpy` direct | already a dep |
-| CEL select grammar | `_select*.py` (~600 LOC) | `cel-python` direct (already dev dep!) | mature, the syntax users learn becomes real CEL |
-| ENV / op:// resolution | `tokens.py` (~60 LOC) | `pydantic-settings` (ENV) + `pyonepassword` (op://) | best-in-class for each |
+| CEL select grammar | `_select*.py` (~600 LOC) | `cel-python` direct (already dev dep!) | mature, the syntax users learn becomes real CEL — **DEFERRED in v0.13 phase 5** (see below) |
+| ENV / op:// resolution | `tokens.py` (~60 LOC) | `pydantic-settings` (ENV) + `pyonepassword` (op://) | best-in-class for each — **DEFERRED in v0.13 phase 5** (see below) |
 | DI container | `di.py` (~280 LOC) | `Annotated[T, Depends]` (~30 LOC inline) | FastAPI idiom, no new deps |
 
 Net delete: ~1100 LOC of bespoke parsers / containers / wrappers.
+
+#### `_select*.py` → `cel-python` — deferred (v0.13 phase 5)
+
+Probed the swap and stopped before touching code. Two structural blockers:
+
+1. **Grammar divergence is user-facing.** Our select uses `and` / `or` / `not`
+   keywords; CEL uses `&&` / `||` / `!`. Our atoms use `tool:foo` / `cap:foo`
+   namespacing; `:` is not a CEL operator. Atom keys with dots (`surface.mcp`)
+   read as field access in CEL. We'd need either a translation pass (which
+   replicates much of the parser we wanted to delete) or a hard breaking
+   change to user-facing syntax across docs, examples, and `default_select`
+   tomls — flagged by the plan as "don't break user-facing syntax silently."
+
+2. **`SelectExpr` is a Pydantic AST consumed beyond evaluation.** The Pydantic
+   AST is walked by `validate_atoms` (lint-time, with difflib suggestions for
+   unknown caps), by lint rules in `lint/_rules_collisions.py` and
+   `lint/static.py`, and by scaffold/runner introspection (~100 references
+   across src + tests). cel-python returns an opaque compiled program, not a
+   walkable AST in the same shape. Replacing only the *evaluator* (keeping our
+   parser+AST) saves ~70 LOC out of 600 — not worth the new dep on the runtime
+   path.
+
+   To actually capture the win, the swap needs to come bundled with: (a) a
+   user-facing CEL-grammar migration (operators + namespacing), (b) a rewrite
+   of every `validate_atoms`-style introspection pass against CEL's AST shape,
+   and (c) re-baselining the lint rules. That's a v0.14+ shaped chunk, not a
+   single library swap.
+
+   Action: stays as-is for v0.13. Re-open as a dedicated pitch when the
+   composition-root work is settled and the user-facing select grammar can
+   move with deliberate timing.
+
+#### `tokens.py` → `pydantic-settings` + `pyonepassword` — deferred (v0.13 phase 5)
+
+Probed both libraries; both are mismatched to what `tokens.py` actually does.
+
+1. **`pydantic-settings` is the wrong abstraction for `resolve_env`.** Our
+   `resolve_env` does regex `${VAR}` substitution *inside arbitrary strings*
+   (e.g. `prefix-${TOKEN}-suffix`), called lazily at API-call time on already-
+   loaded `ConnectionInfo` field values. `pydantic-settings` is a typed
+   settings-model loader: it pulls ENV into Pydantic fields at model-construct
+   time. Different shape, different lifecycle. Adopting it would require
+   reworking how `ConnectionInfo` itself is loaded, not a one-line swap.
+
+2. **`pyonepassword` saves ~15 LOC at the cost of two new deps.** Our
+   `resolve_op` is a 15-line `subprocess.run(["op", "read", value])` wrapper
+   with three typed error paths (missing binary / non-zero exit / timeout).
+   `pyonepassword` is itself a `subprocess.run` wrapper around the same `op`
+   binary, plus `python-singleton-metaclasses`. The exception surface differs
+   (we'd need to translate its errors into our `OpResolutionError`). For a
+   ~15-line save we'd be adding two transitive deps to core install.
+
+3. **`tokens.py` is not bespoke duplication.** Unlike `_NullSpan` (which OTel
+   ships verbatim) or `_async_bridge.py` (which is `anyio.from_thread.run`
+   spelled twice), `tokens.py` exposes a small but distinct primitive:
+   pluggable string-resolver registry with regex-based predicates. There's
+   no equivalent in the candidate libraries.
+
+   Action: stays as-is for v0.13. The aspirational framing in the locked
+   table didn't survive contact with the actual library APIs. Revisit if a
+   genuine "shared by all" resolver lib emerges.
 
 ### CLI rewrite: typed `RunnerOptions`
 
