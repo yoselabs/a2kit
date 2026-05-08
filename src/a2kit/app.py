@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from a2kit.di import Plugin, Provider
+    from a2kit.enrichers import EnricherFn
 
 C = TypeVar("C", bound=ConnectionInfo)
 
@@ -54,13 +55,19 @@ class App:
     Storage-agnostic: App does not create any filesystem directories itself.
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, enricher: EnricherFn | None = None) -> None:
         # Lazy: FastMCP import stays per-call so a2kit imports cleanly when
         # FastMCP isn't installed (the kit's lint/scaffold paths don't need it).
         from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
 
         self.name = name
         self.server: Any = FastMCP(name)
+
+        # v0.14: App-scope enricher fallback. Resolution order at tool-call
+        # time is `tool > router > app`; routers without an explicit
+        # `enricher` inherit the app's at apply time. Tool-level overrides
+        # remain via the verb decorator's `enricher=` kwarg.
+        self.enricher: EnricherFn | None = enricher
 
         self._stores: list[ConnectionStore[Any]] = []
         self._routers: list[Router] = []
@@ -124,9 +131,11 @@ class App:
     def _attach_overrides(self, router: Router) -> None:
         """Pin the App's `dependency_overrides` dict onto the router so its
         `_apply_bindings` can forward it to each `@a2kit.tool(...)` call.
-        Stored as a private attribute (set via object.__setattr__ to bypass
-        Pydantic's `extra='forbid'`)."""
+        Also pins the App's enricher (if any) as a fallback the router uses
+        when its own `enricher` is unset. Stored as private attributes (set
+        via `object.__setattr__` to bypass Pydantic's `extra='forbid'`)."""
         object.__setattr__(router, "_a2kit_dependency_overrides", self.dependency_overrides)
+        object.__setattr__(router, "_a2kit_app_enricher", self.enricher)
 
     def _build_runner(self) -> MCPRunner:
         """Construct the underlying MCPRunner. Idempotent — caches on first call."""

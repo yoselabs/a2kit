@@ -172,7 +172,12 @@ class Router(BaseModel, Generic[ConnT]):
 
         base_store = self.store if self.store is not None else store
         effective_store = _EphemeralAwareStore(base_store, self.ephemeral) if self.ephemeral else base_store
+        # v0.14: enricher resolution order at the router-binding layer is
+        # `router.enricher > app.enricher > auto_connection_enricher(store)`.
+        # Tool-level overrides happen later inside `_make_decorator`.
         default_enricher: Any = self.enricher
+        if default_enricher is None:
+            default_enricher = getattr(self, "_a2kit_app_enricher", None)
         if default_enricher is None and effective_store is not None and self.auto_connection_enricher:
             default_enricher = _connection_enricher(effective_store)
         for binding in self._tools:

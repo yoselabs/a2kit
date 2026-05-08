@@ -83,7 +83,7 @@ of the real MCPs this lib serves (`a2db`, `a2atlassian`, `a2web`):
 | **Fat** `@a2kit.tool(...)` (typed-info DI, connection auto-inject, list-view triad, tool-call guard, OTel, streaming) | `a2kit.tools` |
 | `Router`, `RouterRegistry`, `MCPRunner`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` |
 | `Cap`, `capabilities` (StrEnum capability registry + `--select` grammar via `sel()`) | `a2kit._capabilities`, `a2kit._select` |
-| `EnricherFn`, `chain(*fns)`, `connection_enricher(store)` (callable enricher contract) | `a2kit.enrichers` (v0.11; `a2kit.errors` is a deprecation shim → removed in v0.13) |
+| `EnricherFn`, `chain(*fns)`, `connection_enricher(store)` (callable enricher contract) | `a2kit.enrichers` |
 | `ConnectionInfoLike`, `ConnectionStoreLike` (Protocols for duck-typed stores) | `a2kit.connections` |
 | `FastMCPLike` (Protocol — minimum FastMCP server surface a2kit drives) | `a2kit.scaffold` |
 | `ToolMetadata`, `tool_metadata(fn)` (read-only view of `@a2kit.tool` stamps) | `a2kit.tools` |
