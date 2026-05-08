@@ -46,6 +46,8 @@ from a2kit.connections import (
 )
 from a2kit.di import (
     Binding,
+    Depends,
+    DependsCycleError,
     Plugin,
     PluginBase,
     Provider,
@@ -130,6 +132,8 @@ __all__ = [
     "ConnectionNotFound",
     "ConnectionStore",
     "ConnectionStoreLike",
+    "Depends",
+    "DependsCycleError",
     "EnricherFn",
     "EnvVarNotFound",
     "FastMCPLike",

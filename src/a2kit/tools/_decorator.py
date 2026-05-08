@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator, Callable, Iterable
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from a2kit._otel import otel_span as _otel_span
+from a2kit.di import _collect_annotated_deps, resolve_annotated_deps
 from a2kit.exceptions import WriteNotAllowed
 from a2kit.formatter import FormatName, ListViewMode, format_from_annotation
 from a2kit.tools._connection import (
@@ -70,6 +71,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     pagination: ListViewMode | None = None,
     router_context: Any = None,
     cli: str | None = None,
+    app_dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
 ) -> Callable[[F], F]:
     """Compose with FastMCP's `@server.tool()`. See package docstring for behaviour.
 
@@ -107,6 +109,15 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         if connection and connection_param is None:
             info_target = _detect_info_param(fn, sig)
             needs_connection_arg = info_target is not None or store is not None
+
+        # v0.13: collect `Annotated[T, Depends(factory)]` kwonly params (additive
+        # — coexists with the v0.12 connection-aware path). Sync tools with
+        # Depends params raise here: factories may be async and resolution is
+        # awaited, so DI is async-only.
+        annotated_deps = _collect_annotated_deps(fn)
+        if annotated_deps and not is_async:
+            msg = "Depends-based DI requires an async tool function"
+            raise TypeError(msg)
 
         def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:  # noqa: C901
             """Run pre-call steps. Returns args/kwargs/key and a context-reset token."""
@@ -206,7 +217,18 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     else {}
                 )
                 try:
+                    # Capture call_ctx for Annotated[Depends] factories *before*
+                    # prelude pops `connection`. Factories that declare
+                    # `connection: str` kwonly get it forwarded.
+                    depends_call_ctx = dict(kwargs) if annotated_deps else {}
                     args, kwargs, conn_key, ctx_token = await _prelude_async(args, kwargs)
+                    if annotated_deps:
+                        resolved = await resolve_annotated_deps(
+                            annotated_deps,
+                            overrides=app_dependency_overrides,
+                            call_ctx=depends_call_ctx,
+                        )
+                        kwargs.update(resolved)
                     span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
                     with span_cm:
                         result = await fn(*args, **kwargs)
@@ -287,6 +309,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             )
         injected.extend(_listview_local_params(filter_mode=filter, fields_mode=fields, pagination_mode=pagination))
         hide_names: set[str] = {info_target[0]} if info_target is not None else set()
+        hide_names |= set(annotated_deps)
         _splice_wrapper_signature(wrapper, fn, sig, injected, hide_names=hide_names)
 
         if return_anno is not None:
@@ -309,6 +332,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         setattr(wrapper, "_a2kit_capabilities", tool_caps)  # noqa: B010
         setattr(wrapper, "_a2kit_tool_name", resolved_tool_name)  # noqa: B010
         setattr(wrapper, "_a2kit_format", precomputed_format)  # noqa: B010
+        setattr(wrapper, "_a2kit_annotated_deps", annotated_deps)  # noqa: B010
         setattr(fn, "_a2kit_capabilities", tool_caps)  # noqa: B010
         setattr(fn, "_a2kit_tool_name", resolved_tool_name)  # noqa: B010
         setattr(fn, "_a2kit_format", precomputed_format)  # noqa: B010

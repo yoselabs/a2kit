@@ -34,6 +34,7 @@ from a2kit.connections import ConnectionInfo, ConnectionStore, default_config_di
 from a2kit.scaffold import MCPRunner, Router, RouterRegistry, build_cli
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     import click
@@ -62,6 +63,12 @@ class App:
         self._plugins: list[Plugin] = []
         self._providers: list[Any] = []
         self._runner: MCPRunner | None = None
+
+        # v0.13: FastAPI-idiom test override map for `Annotated[T, Depends(factory)]`.
+        # Key = the original factory callable referenced in `Depends(...)`.
+        # Value = replacement callable (sync or async) returning the same type.
+        # Mutate freely from tests: `app.dependency_overrides[get_conn] = fake_get_conn`.
+        self.dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] = {}
 
     def connect(self, conn_type: type[C], *, config_dir: Path | None = None) -> ConnectionStore[C]:
         """Register a `ConnectionStore[T]` for `conn_type`. Returns the store.
@@ -100,14 +107,24 @@ class App:
         from typing import cast as _cast  # noqa: PLC0415
 
         if isinstance(item, type) and issubclass(item, Router):
-            self._routers.append(item())
+            instance = item()
+            self._attach_overrides(instance)
+            self._routers.append(instance)
         elif isinstance(item, Router):
+            self._attach_overrides(item)
             self._routers.append(item)
         elif hasattr(item, "provides") and isinstance(item.provides, type):
             self._providers.append(_cast("Provider", item))
         else:
             # Anything else — assume Plugin.
             self._plugins.append(_cast("Plugin", item))
+
+    def _attach_overrides(self, router: Router) -> None:
+        """Pin the App's `dependency_overrides` dict onto the router so its
+        `_apply_bindings` can forward it to each `@a2kit.tool(...)` call.
+        Stored as a private attribute (set via object.__setattr__ to bypass
+        Pydantic's `extra='forbid'`)."""
+        object.__setattr__(router, "_a2kit_dependency_overrides", self.dependency_overrides)
 
     def _build_runner(self) -> MCPRunner:
         """Construct the underlying MCPRunner. Idempotent — caches on first call."""

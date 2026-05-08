@@ -184,6 +184,7 @@ class Router(BaseModel, Generic[ConnT]):
                 "enricher": default_enricher,
                 "resolver_registry": self.resolver_registry,
                 "router_context": self.__class__.context,
+                "app_dependency_overrides": getattr(self, "_a2kit_dependency_overrides", None),
             }
             if binding.mode == "tool":
                 merged["connection"] = False
