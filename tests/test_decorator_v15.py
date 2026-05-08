@@ -71,10 +71,12 @@ def test_list_verb_defaults_listview_local() -> None:
     def items() -> list[dict]:
         return [{"a": 1}, {"a": 2}]
 
-    # Calling with filter/limit should be applied locally
+    # Calling with limit should clamp to 1 row through the local listview kit;
+    # the result wraps in a `Response` whose serialised data carries one row.
     out = items(limit=1)
-    # The result is wrapped via list_view_apply / format
-    assert out is not None
+    assert isinstance(out, a2kit.Response)
+    # tsv shape: header + exactly one data row.
+    assert out.data.count("\n") == 1
 
 
 # ---------------------------------------------------------------------------- #
@@ -129,7 +131,7 @@ async def test_tool_call_guard_can_be_disabled() -> None:
         return {"text": text}
 
     out = await fmt(text='<parameter name="x">1</parameter>')
-    assert "parameter" in out["text"]
+    assert out == {"text": '<parameter name="x">1</parameter>'}
 
 
 # ---------------------------------------------------------------------------- #
@@ -177,14 +179,17 @@ def test_listview_local_filter() -> None:
     def items() -> list[dict]:
         return [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
 
-    out = items(fields="a")
-    # The format wraps the result; ensure it's serialised through the list-view kit.
-    assert out is not None
+    # The kit wraps list-shaped output into a serialised Response when all
+    # three listview concerns are Local-managed.
+    out = items(limit=1)
+    assert isinstance(out, a2kit.Response)
+    # tsv data carries exactly one row past the header.
+    assert out.data.count("\n") == 1
 
 
 def test_passthrough_filter_requires_param() -> None:
     """A Passthrough listview mode requires a matching param on the function."""
-    with pytest.raises(Exception):  # noqa: B017, PT011 — kit error type tested elsewhere
+    with pytest.raises(ValueError, match="Passthrough"):
 
         @a2kit.tool(filter=Passthrough)
         def bad() -> list[dict]:  # pragma: no cover
