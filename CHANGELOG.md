@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.19.0.dev0 — 2026-05-08
+
+**Fix-forward review pass on the v0.15 architecture.** No surface
+changes; addresses two latent bugs and sweeps documentation drift.
+
+### Latent bugs fixed
+
+- **Multi-`ConnectionConfig` Depends params are now rejected at
+  decoration time.** A tool declaring two `Annotated[T, Depends(...)]`
+  params resolving to `ConnectionConfig` subclasses previously
+  silent-picked the first one for `WriteEnforce` / OTel correlation.
+  Raises `TypeError` with a clear message.
+- **`connection=` shape now normalized through OTel / structlog.** A
+  caller passing `connection=("p","e","d")` or
+  `connection=["p","e","d"]` put the raw shape onto
+  `ctx.state[STATE_CONNECTION_KEY]`, which then serialised
+  inconsistently. Routed through `_resolve_connection_key` before
+  stash so the span / log record always sees the canonical tuple form.
+
+### Surface vestiges removed
+
+- **`store=` parameter dropped end-to-end** from
+  `Router.register_read` / `register_write`, the
+  `_RegisterableRouter` Protocol, `Router._apply_bindings`, and
+  `RouterRegistry.apply`. Routers stopped owning per-router stores in
+  v0.15; this kept threading `store` through dead code paths.
+- **`RouterRegistry.routers_with_stores(fallback_store=...)` →
+  `ephemeral_store_pairs(store)`.** Renamed to spell out the actual
+  purpose (the only consumer is the `--register` CLI path; nothing
+  Router-owned).
+- **`_CURRENT_RUNNER` ContextVar deleted** — only ever written, never
+  read.
+
+### Public API hardening
+
+- **`App.get_store(conn_type) -> ConnectionStore[T]`** is the public
+  store-lookup hook. Replaces `app._stores` private-attribute poking
+  from `contrib/connections/_factory.get_conn_factory`.
+
+### Documentation drift
+
+- Module docstrings rewritten for the v0.15+ surface
+  (`a2kit/__init__.py`, `contrib/connections/__init__.py`,
+  `contrib/connections/_helpers.py`, `tools/_connection.py`).
+- **`a2kit.contrib.connections.make()` placeholder deleted** — it
+  returned an unconsumed tuple and only existed as a syntax stub for
+  an unbuilt SubApp surface. Migration note in `todo.md`.
+
+### Tests
+
+- Coverage stays at 100% (cov-fail-under=100 enforced).
+- `tests/test_v19_latent_bugs.py` covers the two latent fixes.
+- `tests/test_decorator_v15.py` listview / Passthrough assertions
+  tightened (typed exception + Response shape).
+
 ## 0.18.0.dev0 — 2026-05-08
 
 **Structured tool logging.** Adds `a2kit.get_tool_logger(name)` — a
