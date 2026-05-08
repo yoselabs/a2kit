@@ -2,6 +2,40 @@
 
 Captured from contract / asyncio / OTel audit (2026-05-08, post v0.10.0).
 
+---
+
+## v0.18 spike — FastMCP request-id → OTel `mcp.request_id`
+
+**Outcome: blocked by FastMCP coupling. Closed 2026-05-08.**
+
+`mcp.server.fastmcp.Context.request_id` (str, from
+`request_context.request_id`) does expose the MCP JSON-RPC request ID
+to tool wrappers. FastMCP injects `Context` into a tool *only when the
+tool function declares a `Context`-annotated kwarg* — see
+`mcp.server.fastmcp.tools.base.Tool.run`, which threads `Context` via
+`{context_kwarg: context}` keyed on a precomputed `context_kwarg`.
+
+Wiring this into a2kit's OTel middleware would require:
+
+1. The kit detecting a `Context`-annotated kwarg on the wrapped fn at
+   decoration time.
+2. The middleware reading that kwarg out of `**kwargs` and calling
+   `.request_id` on it.
+
+Both steps need a2kit to import `mcp.server.fastmcp.Context` —
+contradicting the v0.11 `FastMCPLike` Protocol design (the kit does
+*not* depend on FastMCP at runtime; FastMCP is a dev dep only). Adding
+runtime FastMCP coupling for one span attribute isn't worth it.
+
+Plausible follow-up paths if this becomes important:
+
+- A `bare_request_id` shim that hosts opt into via a kwarg on
+  `@a2kit.tool(request_id_param="ctx")` — pure string lookup, no
+  FastMCP import. ~10 LOC; defer until a real consumer asks.
+- Upstream FastMCP middleware/hook surface that exposes the request ID
+  to wrapper-style libraries (currently absent — would be a FastMCP
+  feature request).
+
 Priority order for this turn: **types & consumer API first**, then async, then OTel.
 
 ---
