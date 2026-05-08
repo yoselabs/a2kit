@@ -1,7 +1,7 @@
 """Connection lookup, key coercion, and typed-info DI detection.
 
 Sync and async paths share the same store contract — `_lookup_connection_sync`
-drains the async coroutine through the shared `_async_bridge` helper.
+drives the async coroutine via anyio's 3-tier drain.
 `_safe_list_connection_keys` runs at decoration time to populate the canonical
 connection-param docstring with available keys.
 """
@@ -11,7 +11,6 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any
 
-from a2kit._async_bridge import drain_async_to_sync as _drain_async_to_sync
 from a2kit.exceptions import ConnectionNotFound
 
 if TYPE_CHECKING:
@@ -77,11 +76,32 @@ def _lookup_connection_sync(
     key: tuple[str, ...],
     store: ConnectionStore[Any] | None,
 ) -> Any:
-    """Sync-context wrapper around `_lookup_connection_async`. Drains the
-    async store through `_async_bridge`'s 3-tier strategy."""
+    """Sync-context wrapper around `_lookup_connection_async`.
+
+    3-tier drain via anyio: `from_thread.run` (worker thread under a host
+    loop) → `anyio.run` (no loop in scope) → fresh worker thread (loop on
+    this thread). Each tier mints a fresh coroutine since coroutines are
+    single-use.
+    """
     if store is None:
         raise ConnectionNotFound(key)
-    return _drain_async_to_sync(lambda: store.load(key))
+    import anyio  # noqa: PLC0415
+    import anyio.from_thread  # noqa: PLC0415
+
+    async def _run() -> Any:
+        return await store.load(key)
+
+    try:
+        return anyio.from_thread.run(_run)
+    except RuntimeError:
+        pass
+    try:
+        return anyio.run(_run)
+    except RuntimeError:
+        import concurrent.futures  # noqa: PLC0415
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            return ex.submit(anyio.run, _run).result()
 
 
 def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | None) -> ConnectionInfo:

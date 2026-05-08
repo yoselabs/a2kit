@@ -35,7 +35,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable
 from difflib import get_close_matches
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from a2kit.exceptions import ConnectionNotFound
 
@@ -100,7 +100,8 @@ def apply_enricher_sync(
     if inspect.iscoroutine(result):
         result.close()
 
-    from a2kit._async_bridge import drain_async_to_sync  # noqa: PLC0415
+    import anyio  # noqa: PLC0415
+    import anyio.from_thread  # noqa: PLC0415
 
     async def _coro() -> Exception:
         r = enricher(exc, tool_name)
@@ -108,7 +109,21 @@ def apply_enricher_sync(
             return r
         return await r
 
-    return drain_async_to_sync(_coro)
+    # 3-tier drain: from_thread.run (worker under host loop) → anyio.run
+    # (no loop) → fresh worker thread (loop on this thread). Each tier mints
+    # a fresh coroutine via `_coro` since coroutines are single-use.
+    drained: Any
+    try:
+        drained = anyio.from_thread.run(_coro)
+    except RuntimeError:
+        try:
+            drained = anyio.run(_coro)
+        except RuntimeError:
+            import concurrent.futures  # noqa: PLC0415
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                drained = ex.submit(anyio.run, _coro).result()
+    return cast("Exception", drained)
 
 
 def chain(*enrichers: EnricherFn) -> EnricherFn:
