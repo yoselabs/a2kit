@@ -1,23 +1,21 @@
 # a2kit
 
-**Status:** v0.13.0 — library-swap turn + middleware split.
-`Annotated[T, Depends(factory)]` is the recommended DI shape (FastAPI /
-FastMCP idiom; per-call cache, cycle detection, `app.dependency_overrides`
-for tests). The fat tool decorator now assembles an implicit Starlette-style
-middleware chain at decoration time (`tool_call_guard` → `capability_guard`
-→ `otel_span` always; `write_enforce` / `list_view_apply` / `enrich_errors`
-when the verb / Router / connection asks). Connection-aware helpers move
-into `a2kit.contrib.connections`; `RunnerOptions` replaces argv-string
-round-tripping in `App.cli`. Three bespoke modules retired in favour of
-`anyio.from_thread.run`, `opentelemetry.trace.NoOpTracer`, and `vcrpy`
-direct.
+**Status:** v0.16.0 — coverage refill + `ConnectionConfig` rename.
+`Annotated[T, Depends(factory)]` is the only supported DI shape:
+`a2kit.contrib.connections.get_conn_factory(app, ConnT)` returns a
+factory you wire into your tool kwonly via `Annotated[ConnT, Depends(get_conn)]`.
+The fat tool decorator assembles an implicit Starlette-style middleware
+chain at decoration time (`tool_call_guard` → `capability_guard` →
+`otel_span` always; `write_enforce` / `list_view_apply` / `enrich_errors`
+when the verb / Router / connection asks).
 
-The v0.12 surfaces (`@Router.read()` / `@Router.write()`,
-`*, info: TodoConn` auto-injection, `Router.store`, `MCPRunner.store=`)
-are still present as compat — full deletion lands in v0.14 once the test
-corpus migrates.
+`ConnectionInfo` was renamed to `ConnectionConfig` in v0.16. The old name
+is kept as a module-level alias for one cycle (removed in v0.17). All
+v0.7-v0.12 connection-DI surfaces (`connection_param=`, `*, info: ConnT`
+autodetect, `Router.store=`, `MCPRunner.store=`, `Plugin`/`PluginBase`)
+were removed in v0.15.
 
-See [CHANGELOG](CHANGELOG.md#0130--2026-05-08) for the full migration recipe.
+See [CHANGELOG](CHANGELOG.md) for the full migration recipe.
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
@@ -78,9 +76,13 @@ of the real MCPs this lib serves (`a2db`, `a2atlassian`, `a2web`):
 
 | Primitive | Module |
 |---|---|
-| `ConnectionInfo` / `ConnectionStore` (atomic save, `${ENV}`/`op://` resolution, NamedTuple keys) | `a2kit.connections` |
+| `App` (composition root: `connect()` / `use()` / `run()`) | `a2kit.app` |
+| `ConnectionConfig` / `ConnectionStore` (atomic save, `${ENV}`/`op://` resolution, NamedTuple keys) | `a2kit.connections` |
+| `Depends`, `DependsCycleError` (Annotated/Depends DI markers) | `a2kit.di` |
+| `get_conn_factory(app, ConnT)` (canonical connection-injection factory) | `a2kit.contrib.connections` |
 | `resolve_token` / `ResolverRegistry` (pluggable token resolvers, lazy at access time) | `a2kit.tokens` |
-| **Fat** `@a2kit.tool(...)` (typed-info DI, connection auto-inject, list-view triad, tool-call guard, OTel, streaming) | `a2kit.tools` |
+| **Fat** `@a2kit.tool(...)` (Annotated/Depends DI, list-view triad, tool-call guard, OTel, streaming) | `a2kit.tools` |
+| `@a2kit.read` / `@a2kit.write` / `@a2kit.list` (verb decorators) | `a2kit.tools` |
 | `Router`, `RouterRegistry`, `MCPRunner`, `build_cli`, `register_ephemeral_connections`, `scope_filter` | `a2kit.scaffold` |
 | `Cap`, `capabilities` (StrEnum capability registry + `--select` grammar via `sel()`) | `a2kit._capabilities`, `a2kit._select` |
 | `EnricherFn`, `chain(*fns)`, `connection_enricher(store)` (callable enricher contract) | `a2kit.enrichers` |
@@ -100,22 +102,23 @@ Both are lazy-imported; the minimal install runs without either.
 ### `a2kit.connections`
 
 ```python
-from a2kit import ConnectionInfo, ConnectionStore, resolve_token
+import a2kit
+from a2kit import ConnectionConfig, ConnectionStore, resolve_token
 
 # No `key=` declared → cls.Key resolves to the built-in `_DefaultKey(name: str)`.
-class AtlassianInfo(ConnectionInfo):
+class AtlassianConfig(ConnectionConfig):
     url: str
     email: str
     token: str
     read_only: bool = True
 
-store = ConnectionStore(config_dir, AtlassianInfo)
-store.save(AtlassianInfo(key=("prod",), url="...", email="...", token="${ATL}"))
+store = ConnectionStore(config_dir, AtlassianConfig)
+await store.save(AtlassianConfig(key=("prod",), url="...", email="...", token="${ATL}"))
 # Load shapes — pick the most readable for your call site:
-info = store.load("prod")              # bare-string sugar (single field)
-info = store.load(name="prod")         # kwargs
-info = store.load(("prod",))           # tuple
-real_token = resolve_token(info.token)   # raises EnvVarNotFound on missing
+info = await store.load("prod")              # bare-string sugar (single field)
+info = await store.load(name="prod")         # kwargs
+info = await store.load(("prod",))           # tuple
+real_token = resolve_token(info.token)       # raises EnvVarNotFound on missing
 ```
 
 Multi-part keys declare a NamedTuple and pass it via `key=`:
@@ -128,14 +131,14 @@ class WidgetKey(NamedTuple):
     env: Literal["dev", "staging", "prod"]   # ty rejects env="production"
     db: str
 
-class WidgetConn(ConnectionInfo, key=WidgetKey):
+class WidgetConfig(ConnectionConfig, key=WidgetKey):
     base_url: str
     api_key: str
 
-store.load(WidgetKey(project="acme", env="prod", db="main"))  # typed instance — most explicit
-store.load(project="acme", env="prod", db="main")             # kwargs
-store.load(("acme", "prod", "main"))                          # tuple
-store.load("acme", "prod", "main")                            # positional
+await store.load(WidgetKey(project="acme", env="prod", db="main"))  # typed instance — most explicit
+await store.load(project="acme", env="prod", db="main")             # kwargs
+await store.load(("acme", "prod", "main"))                          # tuple
+await store.load("acme", "prod", "main")                            # positional
 ```
 
 Atomic save (tempfile + chmod 0600 + rename), `A2KIT_CONFIG_HOME` env override,
@@ -188,6 +191,11 @@ hierarchy.
 
 ### `a2kit.scaffold`
 
+`a2kit.App` is the recommended composition root — it wires
+`ConnectionStore`, `Router`, `RouterRegistry`, `MCPRunner`, and
+`build_cli` together so you don't thread them by hand. Drop down to the
+primitives directly when you want fine-grained control:
+
 ```python
 import a2kit
 
@@ -195,14 +203,13 @@ cli = a2kit.scaffold.build_cli(store, name="a2example")
 
 @cli.command("serve")
 def serve():
-    server = make_fastmcp_server(store)
-    a2kit.scaffold.MCPRunner(server, store=store).run()
+    server = make_fastmcp_server()
+    a2kit.scaffold.MCPRunner(server, connection_store=store).run()
 ```
 
 `build_cli` returns a Click group with the standard
 `login`/`logout`/`connections list`/`connections show`/`connections delete`
-commands. The MCP author adds `serve` (or anything else) themselves; a2kit owns
-no `main()`. `MCPRunner` parses `--register`, `--scope`, `--select`, `--http`
+commands. `MCPRunner` parses `--register`, `--scope`, `--select`, `--http`
 out of argv and dispatches the right transport.
 
 ### `a2kit.testing`
@@ -239,83 +246,73 @@ via `pytest_plugins` in your `conftest.py` is one line and avoids the trap.
 
 ## How a new MCP starts here
 
-v0.9 shape: subclass `Router`, decorate tools with `@MyRouter.read/.write`,
-declare a typed `info: <ConnectionInfo>` parameter, return data. Zero
-connection plumbing.
+v0.15+ shape: build an `App`, register a `ConnectionConfig` subclass via
+`app.connect(...)`, mint a `get_conn` factory via
+`a2kit.contrib.connections.get_conn_factory(app, ConnT)`, declare each
+tool kwonly as `Annotated[ConnT, Depends(get_conn)]`. The kit injects
+`connection: str` on the agent-facing schema, the resolver looks up the
+saved key, your tool body sees the resolved `ConnectionConfig` instance.
 
 ```python
 import a2kit
-from typing import ClassVar
-from a2kit import Cap, Capability
+from typing import Annotated, ClassVar
+from a2kit import Cap, Capability, ConnectionConfig
+from a2kit.contrib.connections import get_conn_factory
+from a2kit.di import Depends
 
-class WidgetConn(a2kit.ConnectionInfo):
+
+class WidgetConfig(ConnectionConfig):
     base_url: str
     api_key: str
     read_only: bool = True
+
+
+app = a2kit.App("widgets")
+app.connect(WidgetConfig)
+get_conn = get_conn_factory(app, WidgetConfig)
+
 
 class WidgetsRouter(a2kit.Router):
     capabilities: ClassVar[set[Capability]] = {Cap.EXTERNAL}
 
-@WidgetsRouter.read()                                # zero kwargs
-async def get_widget(info: WidgetConn, widget_id: str) -> dict:
-    """Fetch a widget."""
-    return {"id": widget_id, "url": info.base_url}
 
-@WidgetsRouter.write()
-async def update_widget(info: WidgetConn, widget_id: str) -> dict:
+@WidgetsRouter.read()
+async def get_widget(
+    *,
+    conn: Annotated[WidgetConfig, Depends(get_conn)],
+    widget_id: str,
+) -> dict:
+    """Fetch a widget."""
+    return {"id": widget_id, "url": conn.base_url}
+
+
+@WidgetsRouter.write(capabilities={Cap.DESTRUCTIVE})
+async def update_widget(
+    *,
+    conn: Annotated[WidgetConfig, Depends(get_conn)],
+    widget_id: str,
+) -> dict:
     """Update a widget."""
     return {"id": widget_id, "updated": True}
+
+
+app.use(WidgetsRouter)
+
+if __name__ == "__main__":
+    app.run()
 ```
 
 The kit:
-- Injects `connection: str` into the agent-facing schema (the agent picks
+- Surfaces `connection: str` on the agent-facing schema (the agent picks
   `connection="prod"`).
-- Looks up the saved key in the store, resolves `${ENV}` tokens.
-- Enforces `read_only=True` on `.write()` tools (raises `WriteNotAllowed`).
-- Hides the typed `info` param from the agent's schema; binds the resolved
-  `ConnectionInfo` instance into the fn at call time.
+- Walks the `Depends(get_conn)` chain, looks up the saved key in the
+  registered store, resolves `${ENV}` / `op://` tokens on str fields.
+- Hides the resolver factory's kwonly from the agent's schema; binds the
+  resolved `ConnectionConfig` instance into the fn at call time.
+- Enforces `read_only=True` on `@write` tools via the `WriteEnforce`
+  middleware (raises `WriteNotAllowed`).
 
-`Router.context.info()` survives as the helper-function escape hatch (call
-sites that aren't the tool itself).
-
-```python
-# my_mcp/server.py
-import a2kit
-from a2kit import Cap, Router
-from mcp.server.fastmcp import FastMCP
-
-
-class WidgetConn(a2kit.ConnectionInfo):
-    base_url: str
-    api_key: str
-    read_only: bool = True
-
-
-class WidgetsRouter(Router):
-    pass  # name auto-derives to "widgets"
-
-
-@WidgetsRouter.read(connection_param="connection")
-async def get_widget(connection: str, widget_id: str) -> dict:
-    """Fetch a widget."""  # connection_param_doc auto-prepended
-    info = WidgetsRouter.context.info()
-    return {"id": widget_id, "url": info.base_url}
-
-
-@WidgetsRouter.write(connection_param="connection", capabilities={Cap.DESTRUCTIVE})
-async def update_widget(connection: str, widget_id: str) -> dict:
-    """Update a widget."""
-    return {"id": widget_id, "updated": True}
-
-
-store = a2kit.ConnectionStore(a2kit.default_config_dir(), WidgetConn)
-server = FastMCP("widgets")
-routers = a2kit.RouterRegistry()
-routers.add(WidgetsRouter(store=store))
-
-if __name__ == "__main__":
-    a2kit.MCPRunner(server, store=store, router_registry=routers).run()
-```
+Tests override the resolver: `app.dependency_overrides[get_conn] = fake_get_conn`.
 
 ### List-view tools (filter / fields / pagination)
 
@@ -333,7 +330,8 @@ def list_widgets() -> list[dict]:
 # Tool handles all three — for upstreams with their own query language.
 @a2kit.tool(filter=Passthrough, fields=Passthrough, pagination=Passthrough)
 async def list_issues(
-    info: JiraConn,
+    *,
+    conn: Annotated[JiraConfig, Depends(get_conn)],
     filter: str = "",        # noqa: A002 — agent-facing
     fields: list[str] | None = None,
     limit: int = 50,
@@ -344,7 +342,12 @@ async def list_issues(
 
 # Mix: upstream paginates, kit filters within the page.
 @a2kit.tool(filter=Local, pagination=Passthrough)
-async def list_threads(info: RedditConn, limit: int = 50, cursor: str | None = None) -> Page[dict]:
+async def list_threads(
+    *,
+    conn: Annotated[RedditConfig, Depends(get_conn)],
+    limit: int = 50,
+    cursor: str | None = None,
+) -> Page[dict]:
     return Page(items=await reddit.fetch(after=cursor), next_cursor=...)
 ```
 
@@ -394,22 +397,14 @@ If you need explicit FastMCP options (custom `name=`, `description=`), the
 two-decorator stack still works:
 
 ```python
-@a2kit.tool(store=store, connection_param="connection")
 @server.tool(name="get-widget-v2", description="Custom MCP-side metadata.")
+@a2kit.tool()
 async def get_widget(...): ...
 ```
 
-The CLI side stays one line:
-
-```python
-# my_mcp/cli.py
-import a2kit
-from .server import store
-
-cli = a2kit.scaffold.build_cli(store, name="a2widgets")
-if __name__ == "__main__":
-    cli()
-```
+`App.cli` is the unified Click group — `serve`, connection-management,
+and one subcommand per registered tool — so manual `build_cli(...)`
+wiring is rarely needed.
 
 ## Capabilities (v0.3.1)
 
@@ -452,7 +447,11 @@ async def export_tickets(...) -> dict: ...
 # In code:
 from a2kit import sel, Cap
 selected = sel("issues") & ~sel(Cap.DESTRUCTIVE)
-runner = a2kit.scaffold.MCPRunner(server, store=store, default_select=selected)
+runner = a2kit.scaffold.MCPRunner(
+    server,
+    connection_store=store,
+    default_select=selected,
+)
 ```
 
 ## Lint and runtime checks (v0.3.1)
@@ -485,35 +484,26 @@ list (FastMCP frictions, primitive-design traps, OTel/streaming gotchas).
    different resolution policies per MCP.
 2. **Frozen-with-update vs strict-frozen?** Pydantic `model_copy(update=...)`
    works on frozen models. Convention pending until a third consumer chooses.
-3. **`ConnectionInfo.key` shape.** Tuple-only is uniform but verbose.
+3. **`ConnectionConfig.key` shape.** Tuple-only is uniform but verbose.
    Per-class factory methods stay the consumer's call.
 4. **Snapshot harness on FastMCP internals.** `_tool_manager.list_tools()` is
    an underscore-prefixed attribute. Pinned at `mcp >= 1.0`. If FastMCP moves
    the path, `a2kit.testing._list_tools` is the single seam to update.
 
-## Migration to v0.9 from earlier versions
+## Migration
 
-**v0.8 → v0.9:**
+See [CHANGELOG](CHANGELOG.md) for the per-release migration recipes.
+Recent highlights:
 
-- `@MyRouter.read(connection_param="conn") + def fn(conn: str)` → `@MyRouter.read() + def fn(info: WidgetConn)`.
-  Drop the `connection_param=` kwarg, replace the `conn: str` arg with a typed
-  `info: <ConnectionInfo subclass>` arg. Kit injects `connection: str` for
-  the agent and binds the resolved info into your typed param.
-- `@a2kit.tool(projection=True)` → `@a2kit.tool(filter=Local, fields=Local)`
-  (Local mode = same v0.8 behaviour). For upstream-pushdown, use `Passthrough`.
-- `@a2kit.tool(cel_filter_param="filter", fields_param="fields")` →
-  `@a2kit.tool(filter=Local, fields=Local)`. The `_param=` kwargs are gone.
-- `IssuesRouter(capabilities={Cap.EXTERNAL})` → `class IssuesRouter(Router): capabilities: ClassVar[set[Capability]] = {Cap.EXTERNAL}`.
-- `EnricherRegistry()` + `.register(...)` + `ErrorEnricher` Protocol →
-  callable functions composed with `chain(*fns)`.
-- `ConnectionNotFoundEnricher(store)` → `connection_enricher(store)` (factory
-  returning a closure).
-- `Response.format == "toon"` on flat data is now `"tsv"`. Nested-cell rows
-  remain `"toon"`.
-
-**v0.7 → v0.8 (still applies):**
-
-- `xml_guard=` → `tool_call_guard=`. `ToolXMLContamination` →
-  `ToolCallContamination`. `format_response(...)["format"]` →
-  `format_response(...).format`. `@a2kit.tool(ephemeral=...)` →
-  `Router(..., ephemeral={...})`.
+- **v0.16:** `ConnectionInfo` renamed to `ConnectionConfig`. Old name
+  kept as a module-level alias for one cycle (removed in v0.17). Update
+  imports / class bases at your leisure.
+- **v0.15 (breaking):** `connection_param=`, `*, info: ConnT`
+  autodetect, `@MyRouter.read()` typed-info DI, `Router.store`,
+  `MCPRunner.store=`, `Plugin` / `PluginBase` / `Provider` are all
+  removed. Migrate to `Annotated[ConnT, Depends(get_conn)]` via
+  `a2kit.contrib.connections.get_conn_factory(app, ConnT)`.
+- **v0.13:** `Annotated[T, Depends(factory)]` introduced as the
+  preferred DI shape. Implicit middleware chain assembled at decoration
+  time (`tool_call_guard`, `capability_guard`, `otel_span` always;
+  `write_enforce`, `list_view_apply`, `enrich_errors` opt-in).
