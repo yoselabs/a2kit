@@ -12,7 +12,6 @@ Covers:
 from typing import Annotated, Any, NamedTuple
 
 import pytest
-import structlog
 from structlog.testing import LogCapture
 
 import a2kit
@@ -66,14 +65,6 @@ def test_single_connection_typed_dep_still_decorates() -> None:
 
     # Sanity — wrapper exists and is async-callable.
     assert callable(one_conn)
-
-
-@pytest.fixture
-def log_output() -> LogCapture:
-    capture = LogCapture()
-    structlog.configure(processors=[structlog.contextvars.merge_contextvars, capture])
-    yield capture
-    structlog.reset_defaults()
 
 
 async def test_tuple_connection_normalized_on_otel_attribute(log_output: LogCapture) -> None:

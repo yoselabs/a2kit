@@ -18,12 +18,30 @@ from a2kit import ConnectionConfig, ConnectionStore
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from structlog.testing import LogCapture
+
 
 @pytest.fixture
 def config_dir(tmp_path: Path) -> Path:
     d = tmp_path / "connections"
     d.mkdir()
     return d
+
+
+@pytest.fixture
+def log_output() -> Iterator[LogCapture]:
+    """Capture structlog records via ``structlog.testing.LogCapture``.
+
+    Wires the ``merge_contextvars`` processor so context bound by
+    ``a2kit.middleware._logging`` shows up on the captured events.
+    """
+    import structlog  # noqa: PLC0415
+    from structlog.testing import LogCapture  # noqa: PLC0415
+
+    capture = LogCapture()
+    structlog.configure(processors=[structlog.contextvars.merge_contextvars, capture])
+    yield capture
+    structlog.reset_defaults()
 
 
 # -- Domain models used across tests -----------------------------------------

@@ -25,17 +25,6 @@ from a2kit.middleware._chain import ToolContext, compose
 from a2kit.middleware._logging import structlog_context_factory
 
 
-@pytest.fixture
-def log_output() -> LogCapture:
-    """Capture structlog records via testing.LogCapture."""
-    capture = LogCapture()
-    structlog.configure(
-        processors=[structlog.contextvars.merge_contextvars, capture],
-    )
-    yield capture
-    structlog.reset_defaults()
-
-
 def test_get_tool_logger_returns_bound_logger() -> None:
     log = get_tool_logger("a2kit.test")
     # Should expose the standard structlog API.
