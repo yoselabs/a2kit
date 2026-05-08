@@ -169,11 +169,21 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         async def _prelude_async(  # noqa: C901
             args: tuple[Any, ...],
             kwargs: dict[str, Any],
-        ) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
+        ) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any, Any]:
             """Async-first prelude — mirrors `_prelude` but awaits the
-            connection lookup so the event loop stays free during TOML I/O."""
+            connection lookup so the event loop stays free during TOML I/O.
+
+            v0.13 phase 3: returns the loaded ConnectionInfo as the final
+            tuple element so downstream middleware (e.g. WriteEnforce in
+            `contrib.connections`) can inspect it without re-resolving.
+
+            The connection-aware logic in this prelude is kept here for v0.12
+            test compatibility; phase 6 deletes it in favour of a connection
+            middleware composed from `contrib.connections`.
+            """
             connection_key: tuple[str, ...] | None = None
             ctx_token: Any = None
+            loaded_info: Any = None
 
             if needs_connection_arg:
                 raw = kwargs.pop("connection", None)
@@ -189,6 +199,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     ctx_token = router_context._set(info)  # noqa: SLF001
                 if info_target is not None:
                     kwargs[info_target[0]] = info
+                loaded_info = info
             elif connection_param is not None:
                 bound = sig.bind_partial(*args, **kwargs)
                 bound.apply_defaults()
@@ -201,13 +212,14 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
                     if router_context is not None:
                         ctx_token = router_context._set(info)  # noqa: SLF001
+                    loaded_info = info
 
             if tool_call_guard:
                 bound = sig.bind_partial(*args, **kwargs)
                 bound.apply_defaults()
                 _check_tool_call_contamination(bound, resolved_tool_name)
 
-            return args, kwargs, connection_key, ctx_token
+            return args, kwargs, connection_key, ctx_token, loaded_info
 
         # ── Implicit middleware chain (v0.13) ──
         # Built once at decoration time and reused for every call. The chain
@@ -258,7 +270,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     # prelude pops `connection`. Factories that declare
                     # `connection: str` kwonly get it forwarded.
                     depends_call_ctx = dict(kwargs) if annotated_deps else {}
-                    args, kwargs, conn_key, ctx_token = await _prelude_async(args, kwargs)
+                    args, kwargs, conn_key, ctx_token, loaded_conn = await _prelude_async(args, kwargs)
                     if annotated_deps:
                         resolved = await resolve_annotated_deps(
                             annotated_deps,
@@ -289,6 +301,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         format_hint=precomputed_format,
                         state={
                             "connection_key": conn_key,
+                            "loaded_conn": loaded_conn,
                             "sig": sig,
                             "lv_settings": _lv_settings,
                             "lv_state": lv_state,
