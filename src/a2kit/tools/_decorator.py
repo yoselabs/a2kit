@@ -274,7 +274,10 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         if otel
                         else _NOOP_TRACER.start_as_current_span(f"a2kit.tool.{resolved_tool_name}")
                     )
-                    with span_cm:
+                    import structlog  # noqa: PLC0415 — lazy: only when a sync tool runs
+
+                    log_cm = structlog.contextvars.bound_contextvars(**{"tool.name": resolved_tool_name})
+                    with span_cm, log_cm:
                         result = fn(*args, **kwargs)
                         if has_listview:
                             return _listview_apply(

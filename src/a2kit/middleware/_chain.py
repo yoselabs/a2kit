@@ -121,6 +121,15 @@ def _build_chain(  # noqa: C901
         return []
 
     chain: list[Middleware] = []
+    # structlog contextvar binding — sits alongside the OTel span so logs
+    # emitted from any inner middleware / tool body inherit `tool.name` +
+    # `tool.connection`. Lazy-imports structlog inside the factory.
+    try:
+        from a2kit.middleware._logging import structlog_context_factory  # noqa: PLC0415
+
+        chain.append(structlog_context_factory())
+    except ImportError:  # pragma: no cover — structlog is a hard dep, defensive only
+        pass
     # Note: in v0.13 phase 2 the enricher is *also* applied at the wrapper
     # boundary so prelude exceptions (connection-load failures) get enriched
     # too. Phase 3 folds prelude into the chain and the wrapper boundary

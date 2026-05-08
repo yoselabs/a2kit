@@ -123,8 +123,8 @@ def test_build_chain_default_includes_tier1() -> None:
         tool_call_guard_on=True,
         bare=False,
     )
-    # otel + tool_call_guard + capability_guard
-    assert len(chain) == 3
+    # structlog_context + otel + tool_call_guard + capability_guard
+    assert len(chain) == 4
 
 
 def test_build_chain_listview_adds_lv() -> None:
@@ -139,8 +139,8 @@ def test_build_chain_listview_adds_lv() -> None:
         tool_call_guard_on=False,
         bare=False,
     )
-    # capability_guard + list_view
-    assert len(chain) == 2
+    # structlog_context + capability_guard + list_view
+    assert len(chain) == 3
 
 
 def test_build_chain_listview_non_list_verb_still_adds() -> None:
@@ -155,7 +155,8 @@ def test_build_chain_listview_non_list_verb_still_adds() -> None:
         tool_call_guard_on=False,
         bare=False,
     )
-    assert len(chain) == 2
+    # structlog_context + capability_guard + list_view
+    assert len(chain) == 3
 
 
 def test_build_chain_extra_middleware_appended() -> None:
@@ -175,8 +176,8 @@ def test_build_chain_extra_middleware_appended() -> None:
         extra_pre=[x],
         extra_post=[x],
     )
-    # capability_guard + extra_pre + router + app + extra_post = 5
-    assert len(chain) == 5
+    # structlog_context + capability_guard + extra_pre + router + app + extra_post = 6
+    assert len(chain) == 6
 
 
 # ── individual middleware ──

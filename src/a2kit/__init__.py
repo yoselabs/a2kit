@@ -78,6 +78,7 @@ from a2kit.formatter import (
     Response,
     format_response,
 )
+from a2kit.logging import get_tool_logger
 from a2kit.scaffold import (
     FastMCPLike,
     MCPRunner,
@@ -165,6 +166,7 @@ __all__ = [
     "enrichers",
     "format_response",
     "formatter",
+    "get_tool_logger",
     "get_tracer",
     "lint",
     "list",
