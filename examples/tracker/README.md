@@ -7,7 +7,7 @@ What it demonstrates, in the order each idea shows up:
 
 | File              | Surface demonstrated                                        |
 |-------------------|-------------------------------------------------------------|
-| `connection.py`   | `ConnectionInfo` subclass, token resolution (`${ENV}`)      |
+| `connection.py`   | `ConnectionConfig` subclass, token resolution (`${ENV}`)      |
 | `models.py`       | Pydantic return models → auto-detected output format        |
 | `storage.py`      | The connection's `db_path` IS the resource handle           |
 | `enrichers.py`    | `(exc, tool_name) -> exc` rewrites for agent-readability    |

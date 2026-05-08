@@ -50,14 +50,14 @@ def function_has_param(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str) ->
 
 
 def local_pydantic_classes(tree: ast.AST) -> set[str]:
-    """Top-level class names whose base is `BaseModel` or `ConnectionConfig` (or its `ConnectionInfo` alias)."""
+    """Top-level class names whose base is `BaseModel` or `ConnectionConfig`."""
     found: set[str] = set()
     for node in tree.body if isinstance(tree, ast.Module) else []:
         if not isinstance(node, ast.ClassDef):
             continue
         for base in node.bases:
             base_name = base.attr if isinstance(base, ast.Attribute) else (base.id if isinstance(base, ast.Name) else None)
-            if base_name in {"BaseModel", "ConnectionInfo", "ConnectionConfig"}:
+            if base_name in {"BaseModel", "ConnectionConfig"}:
                 found.add(node.name)
                 break
     return found

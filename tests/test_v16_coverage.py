@@ -19,7 +19,7 @@ from click.testing import CliRunner
 from pydantic import BaseModel
 
 import a2kit
-from a2kit import ConnectionInfo, ConnectionStore, _otel, formatter, projection
+from a2kit import ConnectionConfig, ConnectionStore, _otel, formatter, projection
 from a2kit._capabilities import capabilities
 from a2kit._select_eval import _atom_matches, sel, validate_atoms
 from a2kit._select_parse import (
@@ -461,7 +461,7 @@ class _MyKey(NamedTuple):
     b: str
 
 
-class _MyConn(ConnectionInfo, key=_MyKey):
+class _MyConn(ConnectionConfig, key=_MyKey):
     val: str = ""
 
 
@@ -841,7 +841,7 @@ def f4(): ...
 def f5(): ...
 
 class MyConn(BaseModel): ...
-class Other(ConnectionInfo): ...
+class Other(ConnectionConfig): ...
 class NotPydantic: ...
 """
 
@@ -1253,7 +1253,7 @@ class _AppKey(NamedTuple):
     name: str
 
 
-class _AppConn(ConnectionInfo, key=_AppKey):
+class _AppConn(ConnectionConfig, key=_AppKey):
     val: str = "v"
 
 
@@ -1267,7 +1267,7 @@ class _OtherKey(NamedTuple):
     name: str
 
 
-class _OtherConn(ConnectionInfo, key=_OtherKey):
+class _OtherConn(ConnectionConfig, key=_OtherKey):
     val: str = "v"
 
 
@@ -2109,7 +2109,7 @@ async def test_connection_store_save_and_load(tmp_path: Path) -> None:
 def test_connection_info_subclass_invalid_key_not_namedtuple() -> None:
     with pytest.raises(TypeError, match="NamedTuple"):
 
-        class _Bad(ConnectionInfo, key=tuple):  # not a NamedTuple
+        class _Bad(ConnectionConfig, key=tuple):  # not a NamedTuple
             val: str = ""
 
 
@@ -2119,7 +2119,7 @@ def test_connection_info_subclass_empty_namedtuple_fields() -> None:
 
     with pytest.raises(ValueError, match="at least one field"):
 
-        class _Bad(ConnectionInfo, key=_EmptyKey):
+        class _Bad(ConnectionConfig, key=_EmptyKey):
             val: str = ""
 
 
@@ -2129,7 +2129,7 @@ def test_connection_info_subclass_legacy_key_fields_rejected() -> None:
     subclass declaration fails."""
     with pytest.raises(Exception):  # noqa: B017
 
-        class _Old(ConnectionInfo):
+        class _Old(ConnectionConfig):
             KEY_FIELDS = ("a", "b")
             val: str = ""
 
@@ -2628,7 +2628,7 @@ def test_resolve_info_strings_no_str_fields(tmp_path: Path) -> None:
     class _Key2(NamedTuple):
         name: str
 
-    class _NoStr(ConnectionInfo, key=_Key2):
+    class _NoStr(ConnectionConfig, key=_Key2):
         n: int = 0  # no str fields except `key` which is excluded
 
     info = _NoStr(key=("a",), n=5)

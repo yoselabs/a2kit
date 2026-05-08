@@ -112,7 +112,7 @@ async def test_dependency_overrides_replaces_factory(tmp_path) -> None:  # type:
     """Setting `app.dependency_overrides[factory] = replacement` causes the
     replacement to be invoked instead at tool-call time."""
 
-    class _Conn(a2kit.ConnectionInfo):
+    class _Conn(a2kit.ConnectionConfig):
         url: str = "real"
 
     class FooRouter(a2kit.Router):

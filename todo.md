@@ -25,18 +25,16 @@ Bonus:
 
 ## P1 — formatter robustness
 
-- [ ] **Fix `format_from_annotation` decision-tree gaps** (`formatter.py:128-167`):
-  - Bare `dict`, `Mapping[...]`, `TypedDict` → return `"json"`.
-  - Unwrap `Awaitable[T]` / `Coroutine[..., T]` before classifying — async tools currently lose precomputation.
-- [ ] **`Page[Union[A, B]]`** falls to runtime silently. Add test + log.
-- [ ] **`_dump_items` silently drops non-dict/non-BaseModel** (`formatter.py:186-198`). `[1, 2, 3]` → `[]`. Raise instead.
-- [ ] **`_flat_pydantic_fields` Union-stripping** handles `Optional[T]` only with one non-None arm. `Optional[Union[A, B]]` falls through.
+- [x] **Fix `format_from_annotation` decision-tree gaps** — landed v0.17. Bare `dict` / `Mapping[...]` / `TypedDict` → `"json"`. `Awaitable[T]` / `Coroutine[Y, S, T]` unwrapped before classification.
+- ~~**`Page[Union[A, B]]`** falls to runtime silently. Add test + log.~~ — partially-landed v0.17: multi-arm Union handling in `_flat_pydantic_fields` covers the same root cause; `Page[Union[A, B]]` itself is exotic enough that runtime fallback is acceptable. Reopen if a real consumer hits it.
+- [x] **`_dump_items` silently drops non-dict/non-BaseModel** — landed v0.17. Raises `TypeError` with index. `format_response` gates the call so heterogeneous lists fall through to JSON.
+- [x] **`_flat_pydantic_fields` Union-stripping** — landed v0.17. Multi-arm `Optional[Union[A, B]]` examined per-arm via new `_classify_arm` helper.
 - ~~**Drop runtime `_is_uniform_row_list` cross-check** when `_a2kit_format` is set. Trust decoration; let tool bugs surface.~~ — STALE: `_a2kit_format` stamping replaced by middleware-resolved format hint in v0.13; `_encode` already trusts the hint when shape-compatible.
 
 ## P1 — verification (Hypothesis)
 
-- [ ] **Property test**: `format_from_annotation(T)` precompute ↔ `toon_or_json(model_dump(instance))` runtime agree for any Pydantic model.
-- [ ] **Property test**: `truncate(x)` is structural identity except str clipping; never mutates input.
+- [x] **Property test**: `format_from_annotation(T)` precompute ↔ `toon_or_json(model_dump(instance))` runtime agree for any Pydantic model. — landed v0.17 in `tests/test_v17.py`.
+- [x] **Property test**: `truncate(x)` is structural identity except str clipping; never mutates input. — landed v0.17 in `tests/test_v17.py`.
 - ~~**Property test**: `_coerce_key` accepts {kwargs, tuple, list, NamedTuple, single-string-when-arity-1}; rejects everything else with typed error.~~ — STALE: `_coerce_key` no longer exists; key resolution moved into `contrib.connections._helpers` and is exercised by `test_connections.py` shape tests.
 
 ## P2 — asyncio-first
@@ -51,7 +49,7 @@ Bonus:
 
 - [x] **Record exceptions on the span** — landed via OTel default. `start_as_current_span` ships `record_exception=True, set_status_on_exception=True` by default; the v0.13 middleware refactor moved the `try/except` outside the span CM (the middleware re-raises through the span). Verified in `middleware/_otel.py`.
 - ~~**`a2kit.get_tool_logger(name)`** — `LoggerAdapter` injecting `tool.name` + `connection.key`.~~ — DEFERRED to v0.18: structlog adoption is a 200+ LOC rabbit hole (contextvars binding + plugin docs + test migration); not justified standalone.
-- [ ] **`tool.result.count` span attribute** when result is list/`Page` (cardinality only — PII safe).
+- [x] **`tool.result.count` span attribute** when result is list/`Page` (cardinality only — PII safe). — landed v0.17 in `middleware/_otel.py`.
 - [x] **Provider-class string check is fragile** (`_otel.py:64`). — accepted as-is. `_resolve_tracer` (`_otel.py:50`) checks both `ProxyTracerProvider` and `NoOpTracerProvider` by class name; the `isinstance` form would still need the `try/import` fallback. Coverage exercises this path.
 - ~~**Spike**: does FastMCP expose MCP JSON-RPC request ID?~~ — DEFERRED to v0.18: speculative, no consumer asking.
 

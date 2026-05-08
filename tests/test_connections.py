@@ -9,7 +9,7 @@ import pytest
 
 from a2kit import (
     ENV_CONFIG_HOME,
-    ConnectionInfo,
+    ConnectionConfig,
     ConnectionNotFound,
     ConnectionStore,
     InvalidConnectionKey,
@@ -111,7 +111,7 @@ def test_arity_mismatch_rejected() -> None:
 def test_default_key_fields_single_name() -> None:
     """Subclass without KEY_FIELDS gets the default `("name",)` shape."""
 
-    class Flexible(ConnectionInfo):
+    class Flexible(ConnectionConfig):
         value: str
 
     assert Flexible(key=("a",), value="x").filename == "a.toml"
@@ -173,7 +173,7 @@ async def test_frozen_model_is_immutable() -> None:
 async def test_listing_with_tuple_subclass_field(atlassian_store: ConnectionStore[AtlassianInfo]) -> None:
     """Cover the tuple-field coercion path on save (extra tuple field on subclass)."""
 
-    class WithTuple(ConnectionInfo):
+    class WithTuple(ConnectionConfig):
         admins: tuple[str, ...] = ()
 
     store: ConnectionStore[WithTuple] = ConnectionStore(atlassian_store.config_dir, WithTuple)

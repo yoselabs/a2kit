@@ -17,7 +17,7 @@ from a2kit.di import Depends
 from a2kit.exceptions import ConnectionNotFound
 
 
-class _Conn(a2kit.ConnectionInfo):
+class _Conn(a2kit.ConnectionConfig):
     url: str = "https://example.com"
 
 
@@ -55,7 +55,7 @@ async def test_get_conn_factory_unregistered_type_raises(tmp_path) -> None:  # t
     app = a2kit.App("test-unreg")
     # Different conn type registered.
 
-    class _Other(a2kit.ConnectionInfo):
+    class _Other(a2kit.ConnectionConfig):
         x: str = "y"
 
     app.connect(_Other, config_dir=tmp_path)

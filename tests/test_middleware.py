@@ -254,9 +254,9 @@ def test_contrib_lookup_connection_async_raises_without_store() -> None:
 
 
 def test_contrib_resolve_info_strings_no_resolvers() -> None:
-    from a2kit.connections import ConnectionInfo
+    from a2kit.connections import ConnectionConfig
 
-    class C(ConnectionInfo):
+    class C(ConnectionConfig):
         host: str = "example.com"
 
     info = C(key=("a",))

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
-from a2kit import ConnectionInfo, ConnectionStore
+from a2kit import ConnectionConfig, ConnectionStore
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -35,13 +35,13 @@ class DbKey(NamedTuple):
     db: str
 
 
-class DbInfo(ConnectionInfo, key=DbKey):
+class DbInfo(ConnectionConfig, key=DbKey):
     """Multi-field-key style record: 3-part key + DSN."""
 
     dsn: str
 
 
-class AtlassianInfo(ConnectionInfo):
+class AtlassianInfo(ConnectionConfig):
     """Flat-key style record: default `_DefaultKey(name)` + URL/email/token + read_only."""
 
     url: str

@@ -14,7 +14,7 @@ from a2kit.contrib.connections import get_conn_factory
 from a2kit.di import Depends
 
 
-class _AppConn(a2kit.ConnectionInfo):
+class _AppConn(a2kit.ConnectionConfig):
     url: str = "https://example.com"
     read_only: bool = False
 

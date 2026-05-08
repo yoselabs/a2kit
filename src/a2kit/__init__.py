@@ -39,7 +39,6 @@ from a2kit.app import App
 from a2kit.connections import (
     ENV_CONFIG_HOME,
     ConnectionConfig,
-    ConnectionInfo,
     ConnectionInfoLike,
     ConnectionStore,
     ConnectionStoreLike,
@@ -119,7 +118,6 @@ __all__ = [
     "Capability",
     "CapabilityRecord",
     "ConnectionConfig",
-    "ConnectionInfo",
     "ConnectionInfoLike",
     "ConnectionNotFound",
     "ConnectionStore",

@@ -14,7 +14,7 @@ from __future__ import annotations
 import a2kit
 
 
-class TrackerConn(a2kit.ConnectionInfo):
+class TrackerConn(a2kit.ConnectionConfig):
     """One saved tracker endpoint.
 
     Each saved connection points at its own JSONL file, so different

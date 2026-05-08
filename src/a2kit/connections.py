@@ -362,9 +362,3 @@ class ConnectionStore(Generic[C]):
         `NamedTuple` supports indexing.
         """
         return [self.model.Key(*info.key) for info in await self.list_connections()]  # type: ignore[misc]
-
-
-# Deprecated: `ConnectionInfo` was renamed to `ConnectionConfig` in v0.16. The
-# alias is kept for one cycle (delete in v0.17). New code should subclass
-# `ConnectionConfig` directly.
-ConnectionInfo = ConnectionConfig

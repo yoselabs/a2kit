@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from a2kit import ConnectionInfo, ConnectionStore, Router
+from a2kit import ConnectionConfig, ConnectionStore, Router
 from a2kit.scaffold import MCPRunner, RouterRegistry
 
 
@@ -34,7 +34,7 @@ class _FakeServer:
         self.run_calls.append(transport)
 
 
-class WConn(ConnectionInfo):
+class WConn(ConnectionConfig):
     url: str
 
 
