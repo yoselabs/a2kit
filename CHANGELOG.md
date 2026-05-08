@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.18.0.dev0 — 2026-05-08
+
+**Structured tool logging.** Adds `a2kit.get_tool_logger(name)` — a
+structlog `BoundLogger` that auto-correlates with the OTel span by
+reading `tool.name` and `tool.connection` from `structlog.contextvars`.
+A new logging middleware binds those keys for the duration of each
+tool call (both async-chain and sync `@tool` paths), so any log
+emitted from the tool body, plugin code, or downstream middleware
+inherits the same labels the span carries. Concurrent tool calls stay
+isolated (per-task contextvars).
+
+The kit ships **no** structlog *configuration* — hosts pick their own
+processors, formatter, and handler. structlog imports are lazy.
+
+`structlog>=24` added to runtime dependencies.
+
+### FastMCP request-id spike — closed
+
+Investigation: `Context.request_id` exists on FastMCP's Context but is
+only injected when the tool declares a `Context`-typed kwarg.
+Stamping it as `mcp.request_id` on the span would force a2kit to
+import `mcp.server.fastmcp.Context` at runtime — contradicting the
+v0.11 `FastMCPLike` Protocol design. Closed; finding + follow-up paths
+captured in `todo.md`.
+
 ## 0.17.0.dev0 — 2026-05-08
 
 **Hygiene.** v0.17 audits the pre-v0.13 P1/P2/P3 backlog (most items
