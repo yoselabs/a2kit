@@ -14,18 +14,10 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from opentelemetry import trace as _trace
 
 from a2kit._otel import otel_span as _otel_span
+from a2kit.connections import ConnectionInfo
 from a2kit.di import _collect_annotated_deps, _factory_non_depends_kwonly, resolve_annotated_deps
-from a2kit.exceptions import WriteNotAllowed
 from a2kit.formatter import FormatName, ListViewMode, format_from_annotation
 from a2kit.middleware._chain import Middleware, ToolContext, _build_chain, compose
-from a2kit.tools._connection import (
-    _detect_info_param,
-    _lookup_connection_async,
-    _lookup_connection_sync,
-    _resolve_connection_key,
-    _resolve_info_strings,
-    _safe_list_connection_keys,
-)
 from a2kit.tools._metadata import (
     _compute_tool_capabilities,
     _inject_param_docs,
@@ -49,9 +41,7 @@ _NOOP_TRACER = _trace.NoOpTracer()
 
 if TYPE_CHECKING:
     from a2kit._capabilities import Capability
-    from a2kit.connections import ConnectionStore
     from a2kit.enrichers import EnricherFn
-    from a2kit.tokens import ResolverRegistry
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -59,8 +49,6 @@ F = TypeVar("F", bound=Callable[..., Any])
 def tool(  # noqa: C901, PLR0915 — fat decorator by design
     *,
     enricher: EnricherFn | None = None,
-    store: ConnectionStore[Any] | None = None,
-    connection: bool = True,
     write: bool = False,
     streaming: bool = False,
     tool_call_guard: bool = True,
@@ -70,13 +58,11 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     router_middleware: list[Middleware] | None = None,
     app_middleware: list[Middleware] | None = None,
     tool_name: str | None = None,
-    resolver_registry: ResolverRegistry | None = None,
     server: Any = None,
     capabilities: Iterable[Capability] = (),
     filter: ListViewMode | None = None,  # noqa: A002
     fields: ListViewMode | None = None,
     pagination: ListViewMode | None = None,
-    router_context: Any = None,
     cli: str | None = None,
     app_dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
 ) -> Callable[[F], F]:
@@ -107,92 +93,37 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         )
         has_listview = filter is not None or fields is not None or pagination is not None
 
-        # Connection handling — two modes:
-        #   1) connection=False         → no connection (utility tool)
-        #   2) connection=True (default) → typed-info DI (v0.9 idiom)
-        info_target: tuple[str, type] | None = None
-        needs_connection_arg = False
-        if connection:
-            info_target = _detect_info_param(fn, sig)
-            needs_connection_arg = info_target is not None or store is not None
-
-        # v0.13: collect `Annotated[T, Depends(factory)]` kwonly params (additive
-        # — coexists with the v0.12 connection-aware path). Sync tools with
-        # Depends params raise here: factories may be async and resolution is
-        # awaited, so DI is async-only.
+        # v0.15: Annotated[T, Depends(factory)] is the only DI path.
+        # Sync tools with Depends params raise here: factories may be async
+        # and resolution is awaited, so DI is async-only.
         annotated_deps = _collect_annotated_deps(fn)
         if annotated_deps and not is_async:
             msg = "Depends-based DI requires an async tool function"
             raise TypeError(msg)
 
-        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
-            """Run pre-call steps. Returns args/kwargs/key and a context-reset token."""
-            connection_key: tuple[str, ...] | None = None
-            ctx_token: Any = None
-
-            if needs_connection_arg:
-                raw = kwargs.pop("connection", None)
-                if raw is None:
-                    msg = f"Tool {resolved_tool_name!r} requires a `connection` argument (the saved connection key)."
-                    raise TypeError(msg)
-                connection_key = _resolve_connection_key(raw)
-                info = _lookup_connection_sync(connection_key, store)
-                info = _resolve_info_strings(info, resolver_registry)
-                if write and getattr(info, "read_only", False):
-                    raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
-                if router_context is not None:
-                    ctx_token = router_context._set(info)  # noqa: SLF001
-                if info_target is not None:
-                    kwargs[info_target[0]] = info
-
+        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
+            """Sync-tool prelude — only runs tool_call_guard."""
             if tool_call_guard:
                 bound = sig.bind_partial(*args, **kwargs)
                 bound.apply_defaults()
                 _check_tool_call_contamination(bound, resolved_tool_name)
-
-            return args, kwargs, connection_key, ctx_token
+            return args, kwargs
 
         async def _prelude_async(
             args: tuple[Any, ...],
             kwargs: dict[str, Any],
-        ) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any, Any]:
-            """Async-first prelude — mirrors `_prelude` but awaits the
-            connection lookup so the event loop stays free during TOML I/O.
+        ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+            """Async-tool prelude — only runs tool_call_guard.
 
-            v0.13 phase 3: returns the loaded ConnectionInfo as the final
-            tuple element so downstream middleware (e.g. WriteEnforce in
-            `contrib.connections`) can inspect it without re-resolving.
-
-            The connection-aware logic in this prelude is kept here for v0.12
-            test compatibility; phase 6 deletes it in favour of a connection
-            middleware composed from `contrib.connections`.
+            Connection loading and ConnectionInfo lifting are the job of
+            `Annotated[T, Depends(factory)]` resolution downstream; the
+            decorator no longer owns connection vocabulary.
             """
-            connection_key: tuple[str, ...] | None = None
-            ctx_token: Any = None
-            loaded_info: Any = None
-
-            if needs_connection_arg:
-                raw = kwargs.pop("connection", None)
-                if raw is None:
-                    msg = f"Tool {resolved_tool_name!r} requires a `connection` argument (the saved connection key)."
-                    raise TypeError(msg)
-                connection_key = _resolve_connection_key(raw)
-                info = await _lookup_connection_async(connection_key, store)
-                info = _resolve_info_strings(info, resolver_registry)
-                if write and getattr(info, "read_only", False):
-                    raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
-                if router_context is not None:
-                    ctx_token = router_context._set(info)  # noqa: SLF001
-                if info_target is not None:
-                    kwargs[info_target[0]] = info
-                loaded_info = info
-
             if tool_call_guard:
                 bound = sig.bind_partial(*args, **kwargs)
                 bound.apply_defaults()
                 _check_tool_call_contamination(bound, resolved_tool_name)
-
-            return args, kwargs, connection_key, ctx_token, loaded_info
+            return args, kwargs
 
         # ── Implicit middleware chain (v0.13) ──
         # Built once at decoration time and reused for every call. The chain
@@ -223,8 +154,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         if is_async:
 
             @functools.wraps(fn)
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                ctx_token: Any = None
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: C901
                 try:
                     # Extract listview kwargs *before* anything else so the
                     # chain (esp. tool_call_guard's bind_partial) never sees
@@ -240,16 +170,16 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         else {}
                     )
                     # Capture call_ctx for Annotated[Depends] factories *before*
-                    # prelude pops `connection`. Factories that declare
+                    # we pop `connection` from kwargs. Factories that declare
                     # `connection: str` kwonly get it forwarded.
                     depends_call_ctx = dict(kwargs) if annotated_deps else {}
-                    # v0.15 prep: pop `connection` before prelude when only
-                    # the Depends path needs it (legacy connection-load is off).
-                    # Otherwise tool_call_guard's bind_partial sees a kwarg the
+                    # Pop `connection` before prelude — tool_call_guard's
+                    # bind_partial would otherwise complain about a kwarg the
                     # inner fn never declared.
-                    if deps_need_connection and not needs_connection_arg:
+                    if deps_need_connection:
                         kwargs.pop("connection", None)
-                    args, kwargs, conn_key, ctx_token, loaded_conn = await _prelude_async(args, kwargs)
+                    args, kwargs = await _prelude_async(args, kwargs)
+                    loaded_conn: Any = None
                     if annotated_deps:
                         resolved = await resolve_annotated_deps(
                             annotated_deps,
@@ -257,6 +187,14 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                             call_ctx=depends_call_ctx,
                         )
                         kwargs.update(resolved)
+                        # Lift the first ConnectionInfo-typed resolved value
+                        # into ctx.state for downstream middleware
+                        # (e.g. WriteEnforce). Cheap: dict iteration.
+                        for v in resolved.values():
+                            if isinstance(v, ConnectionInfo):
+                                loaded_conn = v
+                                break
+                    conn_key = depends_call_ctx.get("connection") if loaded_conn is not None else None
 
                     # Bind positional args into kwargs so the chain (kwargs-only)
                     # forwards them through. Skip injected listview / connection
@@ -305,24 +243,20 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     return result
                 except Exception as exc:
                     # Prelude exceptions land here (the chain's enrich middleware
-                    # only sees post-prelude exceptions). Mirror v0.12 behaviour:
-                    # apply the enricher to *any* exception so connection-load
-                    # failures still get enriched.
+                    # only sees post-prelude exceptions). Apply the enricher to
+                    # *any* exception so Depends-factory failures still get
+                    # enriched.
                     if enricher is None or bare:
                         raise
                     from a2kit.enrichers import apply_enricher_async  # noqa: PLC0415
 
                     raise (await apply_enricher_async(enricher, exc, resolved_tool_name)) from exc
-                finally:
-                    if ctx_token is not None and router_context is not None:
-                        router_context._reset(ctx_token)  # noqa: SLF001
 
             wrapper: Callable[..., Any] = async_wrapper
         else:
 
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                ctx_token: Any = None
                 lv_state = (
                     _listview_extract_local(
                         kwargs,
@@ -334,9 +268,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     else {}
                 )
                 try:
-                    args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
+                    args, kwargs = _prelude(args, kwargs)
                     span_cm = (
-                        _otel_span(resolved_tool_name, conn_key, write)
+                        _otel_span(resolved_tool_name, None, write)
                         if otel
                         else _NOOP_TRACER.start_as_current_span(f"a2kit.tool.{resolved_tool_name}")
                     )
@@ -358,19 +292,16 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     from a2kit.enrichers import apply_enricher_sync  # noqa: PLC0415
 
                     raise apply_enricher_sync(enricher, exc, resolved_tool_name) from exc
-                finally:
-                    if ctx_token is not None and router_context is not None:
-                        router_context._reset(ctx_token)  # noqa: SLF001
 
             wrapper = sync_wrapper
 
         injected: list[inspect.Parameter] = []
-        # v0.15 prep: when Annotated[..., Depends(factory)] params declare a
+        # When Annotated[..., Depends(factory)] params declare a
         # `connection: str` kwonly on the factory side, expose `connection`
         # as a wrapper kwarg so callers (FastMCP, Click subcommands, direct
         # invocation) can pass it. The resolver forwards it as call_ctx.
         deps_need_connection = any("connection" in _factory_non_depends_kwonly(d.dependency) for d in annotated_deps.values())
-        if needs_connection_arg or deps_need_connection:
+        if deps_need_connection:
             injected.append(
                 inspect.Parameter(
                     "connection",
@@ -380,22 +311,21 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 )
             )
         injected.extend(_listview_local_params(filter_mode=filter, fields_mode=fields, pagination_mode=pagination))
-        hide_names: set[str] = {info_target[0]} if info_target is not None else set()
-        hide_names |= set(annotated_deps)
+        hide_names: set[str] = set(annotated_deps)
         _splice_wrapper_signature(wrapper, fn, sig, injected, hide_names=hide_names)
 
         if return_anno is not None:
             wrapper.__annotations__ = {**wrapper.__annotations__, "return": return_anno}
             fn.__annotations__ = {**fn.__annotations__, "return": return_anno}
 
-        doc_connection_param = "connection" if needs_connection_arg else None
+        doc_connection_param = "connection" if deps_need_connection else None
         _inject_param_docs(
             wrapper,
             fn,
             sig,
             connection_param=doc_connection_param,
             cli=cli,
-            available_connections=_safe_list_connection_keys(store),
+            available_connections=None,
         )
 
         # `setattr` (rather than `wrapper._a2kit_capabilities = ...`) keeps ty

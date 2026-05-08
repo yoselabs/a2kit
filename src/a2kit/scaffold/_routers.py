@@ -27,7 +27,6 @@ from a2kit._router_decorators import _make_decorator, _ToolBinding
 from a2kit._router_state import _set_active
 from a2kit.connections import ConnectionInfo, ConnectionStoreLike
 from a2kit.enrichers import EnricherFn
-from a2kit.scaffold._stores import _EphemeralAwareStore
 from a2kit.tokens import ResolverRegistry
 
 if TYPE_CHECKING:
@@ -164,35 +163,25 @@ class Router(BaseModel, Generic[ConnT]):
         """Walk `cls._tools` (mode='write') and register on `server`."""
         self._apply_bindings(server, store, mode_filter={"write"})
 
-    def _apply_bindings(self, server: Any, store: Any, *, mode_filter: set[str]) -> None:
+    def _apply_bindings(self, server: Any, store: Any, *, mode_filter: set[str]) -> None:  # noqa: ARG002
         """Iterate `cls._tools`, call `@a2kit.tool(...)` with merged kwargs."""
-        from a2kit.enrichers import connection_enricher as _connection_enricher  # noqa: PLC0415
         from a2kit.formatter import Local  # noqa: PLC0415
         from a2kit.tools import tool as _tool_decorator  # noqa: PLC0415
 
-        base_store = self.store if self.store is not None else store
-        effective_store = _EphemeralAwareStore(base_store, self.ephemeral) if self.ephemeral else base_store
-        # v0.14: enricher resolution order at the router-binding layer is
-        # `router.enricher > app.enricher > auto_connection_enricher(store)`.
-        # Tool-level overrides happen later inside `_make_decorator`.
+        # v0.15: enricher resolution at the router-binding layer is
+        # `router.enricher > app.enricher`. Tool-level overrides happen
+        # later inside `_make_decorator`.
         default_enricher: Any = self.enricher
         if default_enricher is None:
             default_enricher = getattr(self, "_a2kit_app_enricher", None)
-        if default_enricher is None and effective_store is not None and self.auto_connection_enricher:
-            default_enricher = _connection_enricher(effective_store)
         for binding in self._tools:
             if binding.mode not in mode_filter:
                 continue
             merged: dict[str, Any] = {
                 "server": server,
-                "store": effective_store,
                 "enricher": default_enricher,
-                "resolver_registry": self.resolver_registry,
-                "router_context": self.__class__.context,
                 "app_dependency_overrides": getattr(self, "_a2kit_dependency_overrides", None),
             }
-            if binding.mode == "tool":
-                merged["connection"] = False
             merged.update(binding.decorator_kwargs)
             extra_caps: set[Capability] = set(binding.capabilities)
             if binding.mode == "read":
