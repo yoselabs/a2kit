@@ -12,8 +12,10 @@ just find `--register` runs and delegate each block's parsing to
 
 from __future__ import annotations
 
+import shlex
 from typing import Any, TypeVar
 
+import anyio
 import click
 
 from a2kit.connections import ConnectionInfo, ConnectionStore
@@ -56,8 +58,6 @@ class RegisterBlock(click.ParamType):
     name = "register"
 
     def convert(self, value: Any, param: Any = None, ctx: Any = None) -> tuple[str | None, tuple[str, ...], dict[str, str]]:
-        import shlex  # noqa: PLC0415
-
         tokens: list[str]
         if isinstance(value, str):
             tokens = shlex.split(value)
@@ -191,7 +191,6 @@ def build_cli(
     one async call site with `anyio.run(...)` — the rest of the command body
     stays sync.
     """
-    import anyio  # noqa: PLC0415
 
     @click.group(name=name, invoke_without_command=True)
     @click.pass_context

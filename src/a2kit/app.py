@@ -28,7 +28,12 @@ the convention doesn't fit.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar
+import asyncio
+import inspect
+import json
+from typing import TYPE_CHECKING, Any, TypeVar, cast
+
+import click
 
 from a2kit.connections import ConnectionInfo, ConnectionStore, default_config_dir
 from a2kit.scaffold import MCPRunner, Router, RouterRegistry, RunnerOptions, build_cli
@@ -36,8 +41,6 @@ from a2kit.scaffold import MCPRunner, Router, RouterRegistry, RunnerOptions, bui
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
-
-    import click
 
     from a2kit.di import Plugin, Provider
 
@@ -52,7 +55,8 @@ class App:
     """
 
     def __init__(self, name: str) -> None:
-        # Lazy import — keeps a2kit importable when FastMCP isn't installed.
+        # Lazy: FastMCP import stays per-call so a2kit imports cleanly when
+        # FastMCP isn't installed (the kit's lint/scaffold paths don't need it).
         from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
 
         self.name = name
@@ -104,8 +108,6 @@ class App:
         - Anything else is treated as a Plugin (legacy v0.12 shape — gets
           deleted in v0.13 per the Composition Root pivot).
         """
-        from typing import cast as _cast  # noqa: PLC0415
-
         if isinstance(item, type) and issubclass(item, Router):
             instance = item()
             self._attach_overrides(instance)
@@ -114,10 +116,10 @@ class App:
             self._attach_overrides(item)
             self._routers.append(item)
         elif hasattr(item, "provides") and isinstance(item.provides, type):
-            self._providers.append(_cast("Provider", item))
+            self._providers.append(cast("Provider", item))
         else:
             # Anything else — assume Plugin.
-            self._plugins.append(_cast("Plugin", item))
+            self._plugins.append(cast("Plugin", item))
 
     def _attach_overrides(self, router: Router) -> None:
         """Pin the App's `dependency_overrides` dict onto the router so its
@@ -172,23 +174,21 @@ class App:
 
     def _build_cli(self) -> click.Group:
         """Build the unified Click group. See `App.cli` for usage."""
-        import click as _click  # noqa: PLC0415
-
         # Start from the connection-management group when we have a store —
         # gives us `login`, `logout`, `connections list/show/delete` for free.
         if self._stores:
             group = build_cli(self._stores[0], name=self.name)
         else:
-            group = _click.Group(name=self.name)
+            group = click.Group(name=self.name)
 
         # `serve` — start the MCP server. Argv flags (`--http`, `--select`,
         # `--register`) live on this subcommand so they don't pollute the
         # parent group's namespace.
         @group.command("serve", help="Start the MCP server.")
-        @_click.option("--http", default=None, help="HTTP transport [host[:port]]; omit for stdio.")
-        @_click.option("--select", "select_expr", default=None, help="Router/tool select expression.")
-        @_click.option("--scope", default=None, help="Scope filter for connections.")
-        @_click.option(
+        @click.option("--http", default=None, help="HTTP transport [host[:port]]; omit for stdio.")
+        @click.option("--select", "select_expr", default=None, help="Router/tool select expression.")
+        @click.option("--scope", default=None, help="Scope filter for connections.")
+        @click.option(
             "--register",
             "registers",
             multiple=True,
@@ -232,8 +232,6 @@ class App:
         only applied when the subcommand is actually invoked, so building
         the CLI doesn't pre-register tools with FastMCP.
         """
-        import click as _click  # noqa: PLC0415
-
         # Pull the docstring once for `--help` text.
         binding = self._find_binding_for_tool(tool_name)
         help_text = ""
@@ -241,12 +239,12 @@ class App:
             help_text = binding.fn.__doc__.splitlines()[0].strip()
 
         @group.command(tool_name, help=help_text or f"Invoke the {tool_name} tool.")
-        @_click.argument("kwargs", nargs=-1)
+        @click.argument("kwargs", nargs=-1)
         def _cmd(kwargs: tuple[str, ...], _name: str = tool_name) -> None:
             parsed: dict[str, Any] = {}
             for raw in kwargs:
                 if "=" not in raw:
-                    raise _click.BadParameter(f"expected key=value, got {raw!r}")
+                    raise click.BadParameter(f"expected key=value, got {raw!r}")
                 k, v = raw.split("=", 1)
                 parsed[k] = v
             self._invoke_tool(_name, parsed)
@@ -286,12 +284,6 @@ class App:
 
     def _invoke_tool(self, tool_name: str, kwargs: dict[str, Any]) -> None:
         """Look up the tool wrapper and invoke it with `kwargs`. Prints result."""
-        import asyncio  # noqa: PLC0415
-        import inspect  # noqa: PLC0415
-        import json  # noqa: PLC0415
-
-        import click as _click  # noqa: PLC0415
-
         # Apply routers so the tool wrapper exists on the server's tool manager.
         self._ensure_routers_applied()
         try:
@@ -302,7 +294,7 @@ class App:
         target = next((t for t in tools if t.name == tool_name), None)
         if target is None:
             available = ", ".join(t.name for t in tools)
-            raise _click.ClickException(f"unknown tool {tool_name!r}. Available: {available}")
+            raise click.ClickException(f"unknown tool {tool_name!r}. Available: {available}")
 
         fn = target.fn
         if inspect.iscoroutinefunction(fn):
@@ -313,13 +305,13 @@ class App:
         # Best-effort serialisation: Pydantic models, dataclasses, plain dicts.
         try:
             if hasattr(result, "model_dump"):
-                _click.echo(json.dumps(result.model_dump(), indent=2, default=str))
+                click.echo(json.dumps(result.model_dump(), indent=2, default=str))
             elif isinstance(result, list) and result and hasattr(result[0], "model_dump"):
-                _click.echo(json.dumps([r.model_dump() for r in result], indent=2, default=str))
+                click.echo(json.dumps([r.model_dump() for r in result], indent=2, default=str))
             else:
-                _click.echo(json.dumps(result, indent=2, default=str))
+                click.echo(json.dumps(result, indent=2, default=str))
         except (TypeError, ValueError):
-            _click.echo(repr(result))
+            click.echo(repr(result))
 
     def run_server(
         self,

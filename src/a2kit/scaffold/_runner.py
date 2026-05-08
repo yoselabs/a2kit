@@ -8,6 +8,7 @@ declared capabilities so `default_select` can resolve them.
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import sys
 import tomllib
@@ -299,8 +300,6 @@ class MCPRunner:
         if self.router_registry is None:
             return expr
         wanted = self._wanted_routers(expr)
-        import contextlib  # noqa: PLC0415
-
         with contextlib.suppress(Exception):
             validate_atoms(expr, known_routers=set(self.router_registry.names()), known_tools=set())
         include_writes = _expr_mentions(expr, "write") or _expr_mentions(expr, "destructive")

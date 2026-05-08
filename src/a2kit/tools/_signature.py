@@ -16,6 +16,7 @@ Call-time helpers:
 
 from __future__ import annotations
 
+import base64
 import inspect
 from typing import TYPE_CHECKING, Any
 
@@ -169,8 +170,6 @@ def _splice_wrapper_signature(
 
 def _encode_cursor(offset: int) -> str:
     """Opaque base64 string from an integer offset."""
-    import base64  # noqa: PLC0415
-
     return base64.urlsafe_b64encode(str(offset).encode()).decode().rstrip("=")
 
 
@@ -178,8 +177,6 @@ def _decode_cursor(cursor: str | None) -> int:
     """Reverse `_encode_cursor`. Invalid input → 0 (start of list)."""
     if not cursor:
         return 0
-    import base64  # noqa: PLC0415
-
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         return max(0, int(base64.urlsafe_b64decode(padded.encode()).decode()))

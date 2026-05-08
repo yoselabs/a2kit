@@ -32,10 +32,14 @@ plain function — no class to subclass.
 
 from __future__ import annotations
 
+import concurrent.futures
 import inspect
 from collections.abc import Awaitable, Callable
 from difflib import get_close_matches
 from typing import TYPE_CHECKING, Any, cast
+
+import anyio
+import anyio.from_thread
 
 from a2kit.exceptions import ConnectionNotFound
 
@@ -100,9 +104,6 @@ def apply_enricher_sync(
     if inspect.iscoroutine(result):
         result.close()
 
-    import anyio  # noqa: PLC0415
-    import anyio.from_thread  # noqa: PLC0415
-
     async def _coro() -> Exception:
         r = enricher(exc, tool_name)
         if isinstance(r, Exception):
@@ -119,8 +120,6 @@ def apply_enricher_sync(
         try:
             drained = anyio.run(_coro)
         except RuntimeError:
-            import concurrent.futures  # noqa: PLC0415
-
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                 drained = ex.submit(anyio.run, _coro).result()
     return cast("Exception", drained)

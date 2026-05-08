@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import ast
 import difflib
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from a2kit._select import parse_select
 from a2kit.lint._common import (
     A2K008,
     A2K010,
@@ -131,8 +133,6 @@ def collect_select_strings_from_source(tree: ast.AST) -> list[tuple[ast.AST, str
 def _select_atoms(expr_str: str) -> list[tuple[str | None, str]] | None:
     """Tokenise a select expression into (namespace, name) atoms. None on parse error."""
     try:
-        from a2kit._select import parse_select  # noqa: PLC0415
-
         ast_node = parse_select(expr_str)
     except (ValueError, Exception):  # noqa: BLE001
         return None
@@ -155,8 +155,6 @@ def _select_atoms(expr_str: str) -> list[tuple[str | None, str]] | None:
 
 def scan_pyproject_select(start: Path) -> str | None:
     """Read `[tool.a2kit.runner] default_select` from the nearest pyproject.toml."""
-    import tomllib  # noqa: PLC0415
-
     cur = start.resolve() if start.exists() else Path.cwd().resolve()
     for parent in [cur, *cur.parents]:
         candidate = parent / "pyproject.toml"

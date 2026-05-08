@@ -8,13 +8,19 @@ connection-param docstring with available keys.
 
 from __future__ import annotations
 
+import concurrent.futures
 import inspect
 from typing import TYPE_CHECKING, Any
 
+import anyio
+import anyio.from_thread
+
+from a2kit.connections import ConnectionInfo, ConnectionStoreLike
 from a2kit.exceptions import ConnectionNotFound
+from a2kit.tokens import resolve_token
 
 if TYPE_CHECKING:
-    from a2kit.connections import ConnectionInfo, ConnectionStore
+    from a2kit.connections import ConnectionStore
     from a2kit.tokens import ResolverRegistry
 
 
@@ -36,8 +42,6 @@ def _detect_info_param(fn: Any, sig: inspect.Signature) -> tuple[str, type] | No
     Returns ``(param_name, info_class)`` if exactly one such param exists;
     ``None`` if zero. Raises if more than one.
     """
-    from a2kit.connections import ConnectionInfo  # noqa: PLC0415
-
     try:
         hints = inspect.get_annotations(fn, eval_str=True)
     except (NameError, AttributeError):  # pragma: no cover — forward-ref fallback
@@ -85,8 +89,6 @@ def _lookup_connection_sync(
     """
     if store is None:
         raise ConnectionNotFound(key)
-    import anyio  # noqa: PLC0415
-    import anyio.from_thread  # noqa: PLC0415
 
     async def _run() -> Any:
         return await store.load(key)
@@ -98,8 +100,6 @@ def _lookup_connection_sync(
     try:
         return anyio.run(_run)
     except RuntimeError:
-        import concurrent.futures  # noqa: PLC0415
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
             return ex.submit(anyio.run, _run).result()
 
@@ -110,8 +110,6 @@ def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | Non
     Pydantic v2 frozen models support `.model_copy(update={...})`. We collect
     the str-typed fields, resolve each, and produce one new instance.
     """
-    from a2kit.tokens import resolve_token  # noqa: PLC0415
-
     update: dict[str, str] = {}
     for name, value in info.model_dump().items():
         if isinstance(value, str) and name != "key":
@@ -134,11 +132,8 @@ def _safe_list_connection_keys(store: object) -> list[str] | None:
     happens *inside* a running loop (rare — module imports usually predate
     `anyio.run(main)`), `anyio.run` raises and we degrade gracefully.
     """
-    from a2kit.connections import ConnectionStoreLike  # noqa: PLC0415
-
     if not isinstance(store, ConnectionStoreLike):
         return None
-    import anyio  # noqa: PLC0415
 
     try:
         infos = anyio.run(store.list_connections)
