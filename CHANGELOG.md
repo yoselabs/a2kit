@@ -3,16 +3,24 @@
 ## 0.18.0.dev0 — 2026-05-08
 
 **Structured tool logging.** Adds `a2kit.get_tool_logger(name)` — a
-structlog `BoundLogger` that auto-correlates with the OTel span by
-reading `tool.name` and `tool.connection` from `structlog.contextvars`.
-A new logging middleware binds those keys for the duration of each
-tool call (both async-chain and sync `@tool` paths), so any log
-emitted from the tool body, plugin code, or downstream middleware
-inherits the same labels the span carries. Concurrent tool calls stay
+structlog `BoundLogger` that shares the same `tool.name` /
+`tool.connection` labels the OTel span carries, by reading them from
+`structlog.contextvars`. A new logging middleware binds those keys for
+the duration of each tool call (both async-chain and sync `@tool`
+paths), so any log emitted from the tool body, plugin code, or
+downstream middleware inherits the labels. Concurrent tool calls stay
 isolated (per-task contextvars).
 
-The kit ships **no** structlog *configuration* — hosts pick their own
-processors, formatter, and handler. structlog imports are lazy.
+What's *not* in scope: trace_id/span_id injection into log records.
+The kit binds labels only — for full trace correlation, hosts bridge
+structlog→stdlib logging and enable OTel `LoggingInstrumentor`
+themselves. The kit ships **no** structlog *configuration*
+(processors, formatter, handler) for the same reason. structlog
+imports are lazy.
+
+(Plan-vs-impl note: the v0.17 ledger called the type a "structlog
+`LoggerAdapter`" — that was a stdlib/structlog conflation. structlog's
+`BoundLogger` is the actual contextvar-aware shape and is what shipped.)
 
 `structlog>=24` added to runtime dependencies.
 

@@ -203,3 +203,23 @@ def test_logging_middleware_wired_into_implicit_chain(log_output: LogCapture) ->
     assert decorated_events[0]["tool.name"] == "emit"
     # No connection bound on this tool — connection key is absent.
     assert "tool.connection" not in decorated_events[0]
+
+
+async def test_async_decorator_path_runs_chain_and_binds(log_output: LogCapture) -> None:
+    """End-to-end via the async decorator: the implicit middleware chain runs
+    `structlog_context_factory()` so logs from the async tool body inherit
+    `tool.name`. Guards against a future regression where `_build_chain`
+    stops adding the logging middleware.
+    """
+    log = get_tool_logger("async.decorator.test")
+
+    @a2kit.tool()
+    async def emit_async(x: int) -> dict:
+        log.info("async-decorated", x=x)
+        return {"x": x}
+
+    out = await emit_async(x=11)
+    assert out == {"x": 11}
+    [event] = [e for e in log_output.entries if e["event"] == "async-decorated"]
+    assert event["tool.name"] == "emit_async"
+    assert "tool.connection" not in event

@@ -124,13 +124,9 @@ def _build_chain(  # noqa: C901
     if bare:
         return []
 
-    chain: list[Middleware] = []
-    try:
-        from a2kit.middleware._logging import structlog_context_factory  # noqa: PLC0415
+    from a2kit.middleware._logging import structlog_context_factory  # noqa: PLC0415
 
-        chain.append(structlog_context_factory())
-    except ImportError:  # pragma: no cover — structlog is a hard dep, defensive only
-        pass
+    chain: list[Middleware] = [structlog_context_factory()]
     # Note: in v0.13 phase 2 the enricher is *also* applied at the wrapper
     # boundary so prelude exceptions (connection-load failures) get enriched
     # too. Phase 3 folds prelude into the chain and the wrapper boundary
