@@ -109,6 +109,10 @@ class App:
         without poking `app._stores`. Raises ``ValueError`` if no store has
         been registered for `conn_type` (call ``app.connect(conn_type)``
         first).
+
+        Match is exact-class identity, not ``isinstance`` — a subclass of a
+        registered conn type does not resolve to the parent's store. Each
+        connection class owns one store; subclass = separate store.
         """
         for store in self._stores:
             if store.connection_class is conn_type:

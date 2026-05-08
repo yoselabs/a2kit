@@ -26,6 +26,10 @@ changes; addresses two latent bugs and sweeps documentation drift.
   `_RegisterableRouter` Protocol, `Router._apply_bindings`, and
   `RouterRegistry.apply`. Routers stopped owning per-router stores in
   v0.15; this kept threading `store` through dead code paths.
+  *Migration:* anyone with a hand-rolled Router implementing the
+  structural `_RegisterableRouter` Protocol must drop the `store`
+  parameter from `register_read` / `register_write` / `register_list`
+  signatures. The framework no longer passes it.
 - **`RouterRegistry.routers_with_stores(fallback_store=...)` →
   `ephemeral_store_pairs(store)`.** Renamed to spell out the actual
   purpose (the only consumer is the `--register` CLI path; nothing
@@ -37,7 +41,12 @@ changes; addresses two latent bugs and sweeps documentation drift.
 
 - **`App.get_store(conn_type) -> ConnectionStore[T]`** is the public
   store-lookup hook. Replaces `app._stores` private-attribute poking
-  from `contrib/connections/_factory.get_conn_factory`.
+  from `contrib/connections/_factory.get_conn_factory`. Match is
+  exact-class identity, not `isinstance`.
+  *Migration:* third-party contrib factories should replace
+  ``next(s for s in app._stores if s.connection_class is T)`` with
+  ``app.get_store(T)``. Subclasses of a registered conn type don't
+  resolve to the parent's store — each class owns one store.
 
 ### Documentation drift
 

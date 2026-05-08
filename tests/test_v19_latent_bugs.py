@@ -119,3 +119,56 @@ async def test_list_connection_normalized_on_otel_attribute(log_output: LogCaptu
     await t(connection=["x", "y"])
     [event] = log_output.entries
     assert event["tool.connection"] == "x-y"
+
+
+async def test_tuple_connection_normalized_on_write_not_allowed_exception() -> None:
+    """The second consumer of `STATE_CONNECTION_KEY` — the WriteNotAllowed
+    exception raised by WriteEnforce — must also see the canonical tuple,
+    not whatever raw shape the caller passed.
+    """
+    from a2kit.exceptions import WriteNotAllowed  # noqa: PLC0415
+
+    class _RO(ConnectionConfig, key=_PED):
+        read_only: bool = True
+
+    async def _resolver(*, connection: Any) -> _RO:  # noqa: ARG001
+        return _RO(key=("p", "e", "d"), read_only=True)
+
+    @a2kit.tool(write=True)
+    async def mutate(*, conn: Annotated[_RO, Depends(_resolver)]) -> dict:  # noqa: ARG001
+        return {}
+
+    with pytest.raises(WriteNotAllowed) as exc_info:
+        await mutate(connection=("p", "e", "d"))
+    # WriteNotAllowed.connection_key (positional arg) must be the canonical tuple.
+    assert exc_info.value.connection_key == ("p", "e", "d")
+
+
+async def test_runtime_multi_conn_guard_when_decoration_check_misses() -> None:
+    """Authoritative runtime guard: factories whose return type isn't
+    statically a ConnectionConfig (e.g. typed `Any` or a base class) but
+    which return a ConnectionConfig instance at runtime must still fail.
+    """
+
+    class _A(ConnectionConfig, key=_XY):
+        pass
+
+    class _B(ConnectionConfig, key=_XY):
+        pass
+
+    async def _r_a(*, connection: Any) -> Any:  # noqa: ARG001
+        return _A(key=("x", "y"))
+
+    async def _r_b(*, connection: Any) -> Any:  # noqa: ARG001
+        return _B(key=("x", "y"))
+
+    @a2kit.tool()
+    async def t(
+        *,
+        a: Annotated[Any, Depends(_r_a)],  # noqa: ARG001
+        b: Annotated[Any, Depends(_r_b)],  # noqa: ARG001
+    ) -> dict:
+        return {}
+
+    with pytest.raises(TypeError, match="more than one ConnectionConfig"):
+        await t(connection=("x", "y"))

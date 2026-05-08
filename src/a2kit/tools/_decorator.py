@@ -67,7 +67,7 @@ def _count_connection_typed_deps(fn: Callable[..., Any], annotated_deps: dict[st
         return 0
     try:
         hints = get_type_hints(fn, include_extras=True)
-    except (NameError, AttributeError, TypeError):  # pragma: no cover — defensive
+    except NameError:  # pragma: no cover — forward-ref to undefined name; runtime guard catches it
         hints = getattr(fn, "__annotations__", {}) or {}
     count = 0
     for name in annotated_deps:
@@ -229,13 +229,19 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                             call_ctx=depends_call_ctx,
                         )
                         kwargs.update(resolved)
-                        # Lift the first ConnectionConfig-typed resolved value
-                        # into ctx.state for downstream middleware
-                        # (e.g. WriteEnforce). Cheap: dict iteration.
-                        for v in resolved.values():
-                            if isinstance(v, ConnectionConfig):
-                                loaded_conn = v
-                                break
+                        # Authoritative multi-conn guard: catches the case the
+                        # decoration-time check misses (forward-ref factories,
+                        # base-typed Depends whose runtime value is a
+                        # ConnectionConfig). One invariant, one enforcement site.
+                        conn_values = [v for v in resolved.values() if isinstance(v, ConnectionConfig)]
+                        if len(conn_values) > 1:
+                            msg = (
+                                f"Tool {resolved_tool_name!r} resolved more than one ConnectionConfig "
+                                f"dependency at runtime ({len(conn_values)}). v0.15: a tool may have at "
+                                "most one ConnectionConfig-typed dependency."
+                            )
+                            raise TypeError(msg)
+                        loaded_conn = conn_values[0] if conn_values else None
                     # v0.19: normalize the connection-key shape before
                     # stashing on ctx.state so the OTel attribute and the
                     # WriteNotAllowed exception always see canonical
