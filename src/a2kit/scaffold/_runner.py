@@ -222,7 +222,7 @@ class MCPRunner:
         with contextlib.suppress(Exception):
             validate_atoms(expr, known_routers=set(self.router_registry.names()), known_tools=set())
         include_writes = _expr_mentions(expr, "write") or _expr_mentions(expr, "destructive")
-        self.router_registry.apply(self.server, self._connection_store, enabled=wanted, include_writes=include_writes)
+        self.router_registry.apply(self.server, enabled=wanted, include_writes=include_writes)
         return expr
 
     def _wanted_routers(self, expr: SelectExpr) -> set[str]:
@@ -246,7 +246,7 @@ class MCPRunner:
         if not parsed["register_args"]:
             return {}
         if self.router_registry is not None:
-            stores_by_router = dict(self.router_registry.routers_with_stores(fallback_store=self._connection_store))
+            stores_by_router = dict(self.router_registry.ephemeral_store_pairs(self._connection_store))
             distinct_stores = {id(s) for s in stores_by_router.values()}
             if len(distinct_stores) > 1:
                 return _parse_multistore_register(parsed["register_args"], stores_by_router)

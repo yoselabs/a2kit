@@ -131,15 +131,15 @@ class Router(BaseModel):
         kwargs override the verb defaults."""
         return _make_decorator(cls, mode="list", decorator_kwargs=dict(**kwargs))
 
-    def register_read(self, server: Any, store: Any) -> None:
+    def register_read(self, server: Any) -> None:
         """Walk `cls._tools` (mode in {'read','tool','list'}) and register on `server`."""
-        self._apply_bindings(server, store, mode_filter={"read", "tool", "list"})
+        self._apply_bindings(server, mode_filter={"read", "tool", "list"})
 
-    def register_write(self, server: Any, store: Any) -> None:
+    def register_write(self, server: Any) -> None:
         """Walk `cls._tools` (mode='write') and register on `server`."""
-        self._apply_bindings(server, store, mode_filter={"write"})
+        self._apply_bindings(server, mode_filter={"write"})
 
-    def _apply_bindings(self, server: Any, store: Any, *, mode_filter: set[str]) -> None:  # noqa: ARG002
+    def _apply_bindings(self, server: Any, *, mode_filter: set[str]) -> None:
         """Iterate `cls._tools`, call `@a2kit.tool(...)` with merged kwargs."""
         from a2kit.formatter import Local  # noqa: PLC0415
         from a2kit.tools import tool as _tool_decorator  # noqa: PLC0415
@@ -185,9 +185,9 @@ class _RegisterableRouter(Protocol):
     structurally.
     """
 
-    def register_read(self, server: Any, store: Any) -> None: ...
+    def register_read(self, server: Any) -> None: ...
 
-    def register_write(self, server: Any, store: Any) -> None: ...
+    def register_write(self, server: Any) -> None: ...
 
 
 class _RouterEntry(NamedTuple):
@@ -222,16 +222,17 @@ class RouterRegistry:
         """Return ordered router names."""
         return [entry.name for entry in self._routers]
 
-    def routers_with_stores(self, fallback_store: Any = None) -> list[tuple[str, Any]]:
-        """Return [(router_name, fallback_store)] for every router.
+    def ephemeral_store_pairs(self, store: Any) -> list[tuple[str, Any]]:
+        """Pair each router with `store` for ephemeral-connection registration.
 
-        v0.15: routers no longer own a per-router store; the App-level store
-        applies uniformly. Kept for the `--register` ephemeral-connection path,
-        which still iterates over `(router_name, store)` pairs.
+        v0.19: renamed from ``routers_with_stores(fallback_store=...)`` to
+        spell out the actual purpose. Routers no longer own per-router stores
+        (since v0.15), so this is a flat 1:1 fan-out used only by the
+        ``--register`` CLI path. Returns ``[]`` when ``store`` is ``None``.
         """
-        if fallback_store is None:
+        if store is None:
             return []
-        return [(entry.name, fallback_store) for entry in self._routers]
+        return [(entry.name, store) for entry in self._routers]
 
     def defaults(self) -> set[str]:
         """Return the set of names enabled-by-default."""
@@ -240,7 +241,6 @@ class RouterRegistry:
     def apply(
         self,
         server: Any,
-        store: Any,
         *,
         enabled: Iterable[str] | None = None,
         include_writes: bool = False,
@@ -249,6 +249,11 @@ class RouterRegistry:
 
         Sets the active-router thread-local before calling each register hook
         so the fat decorator can auto-tag.
+
+        v0.19: dropped the `store` parameter — Routers no longer own a store,
+        and the call sites that needed one have been migrated to
+        `App.get_store(conn_type)` (contrib factories) or to the App-level
+        single-store seam (ephemeral connections).
         """
         wanted = set(enabled) if enabled is not None else self.defaults()
         unknown = wanted - {entry.name for entry in self._routers}
@@ -265,11 +270,11 @@ class RouterRegistry:
                 if router_obj is not None:
                     _set_active(router_obj, "read")
                 if hasattr(item, "register_read"):
-                    item.register_read(server, store)
+                    item.register_read(server)
                 if include_writes and hasattr(item, "register_write"):
                     if router_obj is not None:
                         _set_active(router_obj, "write")
-                    item.register_write(server, store)
+                    item.register_write(server)
             finally:
                 _set_active(None, None)
             applied.append(entry.name)

@@ -53,23 +53,23 @@ def test_router_registry_defaults_and_apply() -> None:
     @reg.router("issues", default=True)
     class Issues:
         @staticmethod
-        def register_read(s: Any, _store: Any) -> None:
+        def register_read(s: Any) -> None:
             s.tools.append("issues.read")
 
         @staticmethod
-        def register_write(s: Any, _store: Any) -> None:
+        def register_write(s: Any) -> None:
             s.tools.append("issues.write")
 
     @reg.router("sprints", default=False)
     class Sprints:
         @staticmethod
-        def register_read(s: Any, _store: Any) -> None:
+        def register_read(s: Any) -> None:
             s.tools.append("sprints.read")
 
     assert reg.names() == ["issues", "sprints"]
     assert reg.defaults() == {"issues"}
 
-    applied = reg.apply(server, None)
+    applied = reg.apply(server)
     assert applied == ["issues"]
     assert server.tools == ["issues.read"]
 
@@ -81,21 +81,21 @@ def test_router_registry_explicit_enable_includes_writes() -> None:
     @reg.router("a")
     class A:
         @staticmethod
-        def register_read(s: Any, _store: Any) -> None:
+        def register_read(s: Any) -> None:
             s.tools.append("a.read")
 
         @staticmethod
-        def register_write(s: Any, _store: Any) -> None:
+        def register_write(s: Any) -> None:
             s.tools.append("a.write")
 
-    reg.apply(server, None, enabled=["a"], include_writes=True)
+    reg.apply(server, enabled=["a"], include_writes=True)
     assert server.tools == ["a.read", "a.write"]
 
 
 def test_router_registry_unknown_raises() -> None:
     reg = RouterRegistry()
     with pytest.raises(ValueError, match="Unknown router"):
-        reg.apply(_FakeServer(), None, enabled=["does-not-exist"])
+        reg.apply(_FakeServer(), enabled=["does-not-exist"])
 
 
 def test_router_no_register_methods_skipped() -> None:
@@ -106,7 +106,7 @@ def test_router_no_register_methods_skipped() -> None:
         pass
 
     server = _FakeServer()
-    reg.apply(server, None)  # should not raise
+    reg.apply(server)  # should not raise
     assert server.tools == []
 
 
@@ -174,13 +174,13 @@ def test_runner_no_enable_excludes_default_via_select() -> None:
     @reg.router("a", default=True)
     class A:
         @staticmethod
-        def register_read(s: Any, _store: Any) -> None:
+        def register_read(s: Any) -> None:
             s.tools.append("a")
 
     @reg.router("b", default=True)
     class B:
         @staticmethod
-        def register_read(s: Any, _store: Any) -> None:
+        def register_read(s: Any) -> None:
             s.tools.append("b")
 
     MCPRunner(server, router_registry=reg).run(argv=["--select", "default and not router:b"])
@@ -207,7 +207,7 @@ def test_runner_routers_applied(store: ConnectionStore[WConn]) -> None:
     @reg.router("a")
     class A:
         @staticmethod
-        def register_read(s: Any, _store: Any) -> None:
+        def register_read(s: Any) -> None:
             s.tools.append("a.read")
 
     MCPRunner(server, connection_store=store, router_registry=reg).run(argv=["--select", "router:a"])
@@ -275,10 +275,10 @@ def test_runner_includes_writes_when_select_mentions_write() -> None:
     visited: list[str] = []
 
     class A(Router):
-        def register_read(self, s: Any, _: Any) -> None:
+        def register_read(self, s: Any) -> None:
             visited.append("read")
 
-        def register_write(self, s: Any, _: Any) -> None:
+        def register_write(self, s: Any) -> None:
             visited.append("write")
 
     reg.add(A(name="a", default=True))

@@ -2337,7 +2337,7 @@ def test_router_class_decorator_via_registry() -> None:
     assert reg.defaults() == set()
 
 
-def test_router_registry_routers_with_stores_fallback() -> None:
+def test_router_registry_ephemeral_store_pairs() -> None:
     from a2kit.scaffold import Router, RouterRegistry
 
     class R1(Router):
@@ -2346,11 +2346,11 @@ def test_router_registry_routers_with_stores_fallback() -> None:
     reg = RouterRegistry()
     reg.add(R1())
     fake_store = object()
-    out = reg.routers_with_stores(fallback_store=fake_store)
+    out = reg.ephemeral_store_pairs(fake_store)
     assert out == [("r1", fake_store)]
 
 
-def test_router_registry_routers_with_stores_no_fallback() -> None:
+def test_router_registry_ephemeral_store_pairs_none() -> None:
     from a2kit.scaffold import Router, RouterRegistry
 
     class R(Router):
@@ -2358,7 +2358,7 @@ def test_router_registry_routers_with_stores_no_fallback() -> None:
 
     reg = RouterRegistry()
     reg.add(R())
-    assert reg.routers_with_stores(fallback_store=None) == []
+    assert reg.ephemeral_store_pairs(None) == []
 
 
 def test_lint_a2k008_collision() -> None:
