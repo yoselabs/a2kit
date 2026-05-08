@@ -71,7 +71,8 @@ async def test_connection_enricher_passes_through_other_exceptions(
 
 
 async def test_connection_enricher_adds_available_list_and_suggestion(
-    atlassian_store: ConnectionStore[AtlassianInfo], config_dir: Path,
+    atlassian_store: ConnectionStore[AtlassianInfo],
+    config_dir: Path,
 ) -> None:
     from .conftest import AtlassianInfo
 

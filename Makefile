@@ -9,6 +9,8 @@ test:
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run ty check src/
+	uv run a2kit lint src/ tests/ examples/
 
 format:
 	uv run ruff format .
@@ -32,8 +34,4 @@ coverage-diff:
 check: lint a2kit-lint typecheck test
 
 examples:
-	uv run python examples/01_minimal_mcp.py
-	uv run python examples/02_multi_router_mcp.py --select default
-	uv run python examples/03_list_view.py
-	uv run python examples/04_error_enricher.py
-	uv run python examples/05_testing_patterns.py
+	uv run python -m examples.tracker.server --help

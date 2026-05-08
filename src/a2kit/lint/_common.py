@@ -3,6 +3,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import ast
+
+# Rule codes — declared here so each rule module can import its own.
+A2K001 = "A2K001"
+A2K002 = "A2K002"
+A2K003 = "A2K003"
+A2K004 = "A2K004"
+A2K005 = "A2K005"
+A2K006 = "A2K006"
+A2K008 = "A2K008"
+A2K009 = "A2K009"
+A2K010 = "A2K010"
+A2K011 = "A2K011"
+A2K012 = "A2K012"
+A2K013 = "A2K013"
+A2K014 = "A2K014"
+
+ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012, A2K013, A2K014)
+
+# Default file-size budget for A2K014. Override via `[tool.a2kit.lint] max_lines`.
+DEFAULT_MAX_LINES = 500
+
+BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
+_FIXTURE_PATH_TOKENS = ("tests/", "tests\\", "examples/", "examples\\")
+
+
+def is_fixture_path(filename: str) -> bool:
+    """True if `filename` is under tests/ or examples/ (lint exempts these)."""
+    return any(token in filename for token in _FIXTURE_PATH_TOKENS)
 
 
 @dataclass(frozen=True)
@@ -44,3 +76,14 @@ def suppressed(noqa_map: dict[int, set[str]], rule: str, line: int) -> bool:
     if not codes:
         return False
     return "*" in codes or rule in codes
+
+
+def msg(rule: str, filename: str, node: ast.AST, text: str) -> LintMessage:
+    """Build a LintMessage anchored at `node`'s position."""
+    return LintMessage(
+        rule=rule,
+        filename=filename,
+        line=getattr(node, "lineno", 1),
+        col=getattr(node, "col_offset", 0),
+        message=text,
+    )

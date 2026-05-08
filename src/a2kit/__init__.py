@@ -24,11 +24,6 @@ v0.7 highlights (idiomatic Python pass):
 from __future__ import annotations
 
 from a2kit import docs, enrichers, formatter, lint, projection, scaffold, testing, tools
-
-# `a2kit.errors` is the v0.11 deprecation shim — left out of the eager import
-# above so plain `import a2kit` doesn't fire the rename DeprecationWarning.
-# Users who still `from a2kit import errors` (or `import a2kit.errors`) get
-# the warning at their import site, which is the point.
 from a2kit._capabilities import (
     Cap,
     Capability,
@@ -37,8 +32,10 @@ from a2kit._capabilities import (
     capabilities,
 )
 from a2kit._configs import BudgetConfig, RunnerConfig
+from a2kit._otel import get_tracer, plugin_span
 from a2kit._select import SelectAtom, SelectExpr, parse_select, sel
 from a2kit._tool_kwargs import ToolKwargs
+from a2kit.app import App
 from a2kit.connections import (
     ENV_CONFIG_HOME,
     ConnectionInfo,
@@ -46,6 +43,17 @@ from a2kit.connections import (
     ConnectionStore,
     ConnectionStoreLike,
     default_config_dir,
+)
+from a2kit.di import (
+    Binding,
+    Plugin,
+    PluginBase,
+    Provider,
+    ProviderCollisionError,
+    ProviderCycleError,
+    ToolPlan,
+    UnknownProviderDepError,
+    UnknownProviderTypeError,
 )
 from a2kit.enrichers import (
     EnricherFn,
@@ -95,12 +103,24 @@ from a2kit.tokens import (
     resolve_token,
 )
 from a2kit.tools import ToolMetadata, tool, tool_metadata
+from a2kit.tools._verbs import list as list_tool
+from a2kit.tools._verbs import read as read_tool
+from a2kit.tools._verbs import write as write_tool
+
+# v0.12: surface verbs as `a2kit.list / a2kit.read / a2kit.write`. We bind the
+# module attributes directly (rather than `from ... import list`) so the
+# imported `list` doesn't shadow the builtin within this module.
+list = list_tool  # noqa: A001 — intentional: external callers use `a2kit.list`
+read = read_tool
+write = write_tool
 
 __version__ = "0.11.0.dev0"
 
 __all__ = [
     "ENV_CONFIG_HOME",
     "A2KitError",
+    "App",
+    "Binding",
     "BudgetConfig",
     "Cap",
     "Capability",
@@ -125,7 +145,12 @@ __all__ = [
     "OpResolutionError",
     "Page",
     "Passthrough",
+    "Plugin",
+    "PluginBase",
     "ProjectionUnavailable",
+    "Provider",
+    "ProviderCollisionError",
+    "ProviderCycleError",
     "ResolverRegistry",
     "Response",
     "Router",
@@ -138,7 +163,10 @@ __all__ = [
     "ToolCallContamination",
     "ToolKwargs",
     "ToolMetadata",
+    "ToolPlan",
     "UnknownCapability",
+    "UnknownProviderDepError",
+    "UnknownProviderTypeError",
     "WriteNotAllowed",
     "__version__",
     "build_cli",
@@ -151,9 +179,13 @@ __all__ = [
     "enrichers",
     "format_response",
     "formatter",
+    "get_tracer",
     "lint",
+    "list",
     "parse_select",
+    "plugin_span",
     "projection",
+    "read",
     "register_ephemeral_connections",
     "resolve_env",
     "resolve_literal",
@@ -166,6 +198,7 @@ __all__ = [
     "tool",
     "tool_metadata",
     "tools",
+    "write",
 ]
 
 

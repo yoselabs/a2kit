@@ -58,8 +58,7 @@ class ConnectionInfoLike(Protocol):
 
     The minimum shape consumers (e.g. `connection_enricher`) need from a listed
     connection. Both `ConnectionInfo` subclasses and bespoke records satisfy
-    this structurally. Lives here next to `ConnectionStore`; re-exported from
-    `a2kit.enrichers` for backward compatibility through one cycle.
+    this structurally.
     """
 
     key: tuple[str, ...]

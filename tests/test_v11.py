@@ -6,8 +6,7 @@ Covers:
   than the private attrs.
 - `FastMCPLike` re-exported as a public Protocol.
 - `ConnectionInfoLike` / `ConnectionStoreLike` re-exported from `a2kit` and
-  `a2kit.connections` (their new home), still reachable via the old
-  `a2kit.errors` import for one cycle.
+  `a2kit.connections` (their new home).
 """
 
 from __future__ import annotations
@@ -124,18 +123,6 @@ def test_protocols_canonical_home_is_connections() -> None:
     assert conns.ConnectionStoreLike is ConnectionStoreLike
 
 
-def test_protocols_still_importable_from_errors_for_one_cycle() -> None:
-    """Backward compatibility — `a2kit.errors` still re-exports for one cycle."""
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        from a2kit import errors
-
-    assert errors.ConnectionInfoLike is ConnectionInfoLike
-    assert errors.ConnectionStoreLike is ConnectionStoreLike
-
-
 # --- enrichers module rename --------------------------------------------------
 
 
@@ -149,25 +136,13 @@ def test_enrichers_is_canonical_module() -> None:
     assert a2kit.EnricherFn is enrichers.EnricherFn
 
 
-def test_errors_module_is_deprecation_shim() -> None:
-    """`a2kit.errors` still works for one cycle (until v0.13) but warns on import."""
-    import importlib
+def test_errors_module_is_gone() -> None:
+    """v0.13: `a2kit.errors` deprecation shim has been removed. Import fails."""
     import sys
-    import warnings
 
-    # Force a re-import so the module-level warning fires fresh.
     sys.modules.pop("a2kit.errors", None)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", DeprecationWarning)
-        errors = importlib.import_module("a2kit.errors")
-
-    deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert any("a2kit.enrichers" in str(w.message) for w in deprecations)
-    # And the re-exports themselves still resolve to the canonical objects.
-    from a2kit import enrichers
-
-    assert errors.chain is enrichers.chain
-    assert errors.connection_enricher is enrichers.connection_enricher
+    with pytest.raises(ModuleNotFoundError):
+        import a2kit.errors  # noqa: F401, PLC0415
 
 
 def test_a2kit_config_home_alias_removed_with_hint() -> None:
@@ -384,14 +359,28 @@ def test_async_enricher_drained_for_sync_tool() -> None:
 
 
 def test_a2k014_flags_oversized_file(tmp_path: Any) -> None:
-    """A file over the limit is flagged at line 1."""
+    """A file over the SLOC limit is flagged at line 1."""
     from a2kit.lint.static import run_static_rules
 
     big = tmp_path / "src" / "big.py"
     big.parent.mkdir(parents=True)
-    big.write_text("# pad\n" * 600)
+    # 600 code-bearing lines (blank + comment-only lines wouldn't count).
+    big.write_text("x = 1\n" * 600)
     findings = run_static_rules([big])
-    assert any(f.rule == "A2K014" and "600 lines" in f.message for f in findings)
+    assert any(f.rule == "A2K014" and "600 SLOC" in f.message for f in findings)
+
+
+def test_a2k014_ignores_blank_and_comment_lines(tmp_path: Any) -> None:
+    """1000 raw lines but only 100 SLOC (blanks + comments) — should NOT flag."""
+    from a2kit.lint.static import run_static_rules
+
+    f = tmp_path / "src" / "sparse.py"
+    f.parent.mkdir(parents=True)
+    # Block of 100 SLOC + 900 padding lines (alternating blank / comment).
+    body = "x = 1\n" * 100 + ("# pad\n\n" * 450)
+    f.write_text(body)
+    findings = run_static_rules([f])
+    assert not any(finding.rule == "A2K014" for finding in findings)
 
 
 def test_a2k014_passes_under_limit(tmp_path: Any) -> None:
@@ -410,18 +399,18 @@ def test_a2k014_skips_test_fixtures(tmp_path: Any) -> None:
 
     big = tmp_path / "tests" / "test_big.py"
     big.parent.mkdir(parents=True)
-    big.write_text("# pad\n" * 1000)
+    big.write_text("x = 1\n" * 1000)
     findings = run_static_rules([big])
     assert not any(f.rule == "A2K014" for f in findings)
 
 
 def test_a2k014_respects_noqa(tmp_path: Any) -> None:
-    """Top-of-file `# noqa: A2K014` opt-out for legitimately-large modules."""
+    """Top-of-file noqa-A2K014 opt-out for legitimately-large modules."""
     from a2kit.lint.static import run_static_rules
 
     big = tmp_path / "src" / "vendored.py"
     big.parent.mkdir(parents=True)
-    big.write_text("# noqa: A2K014\n" + ("# pad\n" * 600))
+    big.write_text("x = 1  # noqa: A2K014\n" + ("y = 1\n" * 600))
     findings = run_static_rules([big])
     assert not any(f.rule == "A2K014" for f in findings)
 

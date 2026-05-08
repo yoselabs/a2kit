@@ -36,13 +36,13 @@ class _ToolBinding(BaseModel):
     fn: Any
     decorator_kwargs: dict[str, Any]
     capabilities: set[str]
-    mode: Literal["read", "write", "tool"]
+    mode: Literal["read", "write", "tool", "list"]
 
 
 def _make_decorator(
     router_cls: type,
     *,
-    mode: Literal["read", "write", "tool"],
+    mode: Literal["read", "write", "tool", "list"],
     decorator_kwargs: dict[str, Any],
 ) -> Callable[[Any], Any]:
     """Build a decorator that records a `_ToolBinding` on `router_cls`."""

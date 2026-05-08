@@ -1,805 +1,80 @@
-"""Static (AST-only) lint rules: A2K001..A2K011.
+"""Static (AST-only) lint rules orchestrator.
 
-Each rule yields `LintMessage`s. No imports are executed during analysis.
+Each rule lives in a `_rules_*.py` module:
+
+- `_rules_returns.py`      — A2K002, A2K003, A2K011  (return-annotation shape)
+- `_rules_signatures.py`   — A2K001, A2K004, A2K005  (param signatures + key arity)
+- `_rules_capabilities.py` — A2K009, A2K012          (raw cap strings)
+- `_rules_docs.py`         — A2K006, A2K013          (docstring patterns)
+- `_rules_collisions.py`   — A2K008, A2K010          (cross-file collisions)
+- `_rules_size.py`         — A2K014                  (file-size budget)
+
+This module wires them together. No imports are executed during analysis.
 Cross-tool / cross-file rules walk multiple files in `run_static_rules`.
 """
 
 from __future__ import annotations
 
 import ast
-import difflib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from a2kit.lint._ast_helpers import (
-    connection_info_key_class,
-    connection_info_subclasses,
-    decorator_kwargs,
-    function_has_param,
-    is_a2kit_tool_decorator,
-    is_tool_function,
-    key_fields_value,
-    local_pydantic_classes,
-    namedtuple_field_count,
-    resolve_through_reexports,
+from a2kit.lint._common import (
+    A2K001,
+    A2K002,
+    A2K003,
+    A2K004,
+    A2K005,
+    A2K006,
+    A2K008,
+    A2K009,
+    A2K010,
+    A2K011,
+    A2K012,
+    A2K013,
+    A2K014,
+    ALL_RULES,
+    is_fixture_path,
 )
-from a2kit.lint._common import LintMessage, parse_noqa, suppressed
+from a2kit.lint._rules_capabilities import rule_a2k009, rule_a2k012
+from a2kit.lint._rules_collisions import (
+    collect_router_names,
+    collect_select_strings_from_source,
+    collect_tool_names,
+    resolve_known_atoms_from_files,
+    rule_a2k008_cross,
+    rule_a2k010,
+    scan_pyproject_select,
+    scan_shell_select_strings,
+)
+from a2kit.lint._rules_docs import collect_param_descriptions, rule_a2k006_cross, rule_a2k013
+from a2kit.lint._rules_returns import rule_a2k002, rule_a2k003, rule_a2k011
+from a2kit.lint._rules_signatures import rule_a2k001, rule_a2k004, rule_a2k005
+from a2kit.lint._rules_size import rule_a2k014
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-A2K001 = "A2K001"
-A2K002 = "A2K002"
-A2K003 = "A2K003"
-A2K004 = "A2K004"
-A2K005 = "A2K005"
-A2K006 = "A2K006"
-A2K008 = "A2K008"
-A2K009 = "A2K009"
-A2K010 = "A2K010"
-A2K011 = "A2K011"
-A2K012 = "A2K012"
-A2K013 = "A2K013"
-A2K014 = "A2K014"
-
-ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012, A2K013, A2K014)
-
-# Default file-size budget for A2K014. Override via `[tool.a2kit.lint] max_lines`.
-_DEFAULT_MAX_LINES = 500
-
-_BUILTIN_CAPS = {"read", "write", "destructive", "expensive", "pii", "external"}
-_FIXTURE_PATH_TOKENS = ("tests/", "tests\\", "examples/", "examples\\")
-
-
-def _is_fixture_path(filename: str) -> bool:
-    return any(token in filename for token in _FIXTURE_PATH_TOKENS)
-
-
-def _msg(rule: str, filename: str, node: ast.AST, text: str) -> LintMessage:
-    return LintMessage(
-        rule=rule,
-        filename=filename,
-        line=getattr(node, "lineno", 1),
-        col=getattr(node, "col_offset", 0),
-        message=text,
-    )
-
-
-def rule_a2k001(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K001 — `@a2kit.tool(connection_param='X')` requires param X on the function."""
-    noqa = parse_noqa(source)
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for dec in node.decorator_list:
-            if not is_a2kit_tool_decorator(dec):
-                continue
-            cp = decorator_kwargs(dec).get("connection_param")
-            if not isinstance(cp, ast.Constant) or not isinstance(cp.value, str):
-                continue
-            if not function_has_param(node, cp.value) and not suppressed(noqa, A2K001, node.lineno):
-                yield _msg(A2K001, filename, node, f"function {node.name!r} missing connection_param {cp.value!r}")
-
-
-def rule_a2k002(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K002 — Tools must not declare `-> str` return."""
-    noqa = parse_noqa(source)
-    for node in ast.walk(tree):
-        if not is_tool_function(node) or node.returns is None:
-            continue
-        ret = node.returns
-        is_str = (isinstance(ret, ast.Name) and ret.id == "str") or (isinstance(ret, ast.Constant) and ret.value == "str")
-        if is_str and not suppressed(noqa, A2K002, node.lineno):
-            yield _msg(A2K002, filename, node, f"tool {node.name!r} declares `-> str`; FastMCP double-serialises")
-
-
-def rule_a2k003(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K003 — Tools should not return locally-defined Pydantic models."""
-    if _is_fixture_path(filename):
-        return
-    noqa = parse_noqa(source)
-    locals_ = local_pydantic_classes(tree)
-    if not locals_:
-        return
-    for node in ast.walk(tree):
-        if not is_tool_function(node) or node.returns is None:
-            continue
-        ret_name = node.returns.id if isinstance(node.returns, ast.Name) else None
-        if ret_name in locals_ and not suppressed(noqa, A2K003, node.lineno):
-            yield _msg(A2K003, filename, node, f"tool {node.name!r} returns module-local Pydantic model {ret_name!r}")
-
-
-def rule_a2k004(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K004 — Tools with `connection` param should reference the canonical helper."""
-    if _is_fixture_path(filename):
-        return
-    noqa = parse_noqa(source)
-    if "connection_param_doc" in source:
-        return
-    for node in ast.walk(tree):
-        if not is_tool_function(node) or not function_has_param(node, "connection"):
-            continue
-        if suppressed(noqa, A2K004, node.lineno):
-            continue
-        yield _msg(
-            A2K004,
-            filename,
-            node,
-            f"tool {node.name!r} has `connection` param but no a2kit.docs.connection_param_doc reference",
-        )
-
-
-# --------------------------------------------------------------------------- #
-# A2K005 — leftover KEY_FIELDS detection + NamedTuple key arity compat (v0.5).
-# --------------------------------------------------------------------------- #
-
-
-def _check_legacy_key_fields(cls: ast.ClassDef, filename: str, noqa: dict) -> Iterable[LintMessage]:
-    """v0.5: any leftover `KEY_FIELDS = ...` is a migration error."""
-    kf = key_fields_value(cls)
-    if kf is None:
-        return
-    if suppressed(noqa, A2K005, cls.lineno):
-        return
-    yield _msg(
-        A2K005,
-        filename,
-        cls,
-        f"{cls.name}.KEY_FIELDS is a v0.4 legacy attribute removed in v0.5; "
-        f"declare a NamedTuple and pass `class {cls.name}(ConnectionInfo, key=YourKey)` instead",
-    )
-
-
-def _store_var_to_arity(tree: ast.AST) -> dict[str, int]:
-    """Best-effort: map module-local variable name → arity of its store's `cls.Key`.
-
-    Recognises:
-        store = ConnectionStore(config_dir, WidgetConn)
-        store: ConnectionStore[WidgetConn] = ConnectionStore(config_dir, WidgetConn)
-    where `WidgetConn` is a top-level `class WidgetConn(ConnectionInfo, key=WidgetKey):`
-    and `WidgetKey` is a top-level NamedTuple in the same module.
-    """
-    arity_by_class: dict[str, int] = {}
-    for cls in connection_info_subclasses(tree):
-        key_name = connection_info_key_class(cls)
-        if key_name is None:
-            # Default `_DefaultKey` arity 1.
-            arity_by_class[cls.name] = 1
-            continue
-        count = namedtuple_field_count(tree, key_name)
-        if count is not None:
-            arity_by_class[cls.name] = count
-
-    if not arity_by_class or not isinstance(tree, ast.Module):
-        return {}
-
-    out: dict[str, int] = {}
-    for stmt in tree.body:
-        targets: list[ast.expr] = []
-        value: ast.expr | None = None
-        if isinstance(stmt, ast.Assign):
-            targets = list(stmt.targets)
-            value = stmt.value
-        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
-            targets = [stmt.target]
-            value = stmt.value
-        else:
-            continue
-        if not isinstance(value, ast.Call):
-            continue
-        callee = value.func
-        callee_name = callee.id if isinstance(callee, ast.Name) else (callee.attr if isinstance(callee, ast.Attribute) else None)
-        if callee_name != "ConnectionStore":
-            continue
-        if not value.args:  # pragma: no cover — ConnectionStore() always takes positional args
-            continue
-        cls_arg = value.args[-1]
-        cls_name = cls_arg.id if isinstance(cls_arg, ast.Name) else None
-        if cls_name is None or cls_name not in arity_by_class:  # pragma: no cover — alt forms
-            continue
-        for tgt in targets:
-            if isinstance(tgt, ast.Name):  # pragma: no branch — non-Name targets fall through
-                out[tgt.id] = arity_by_class[cls_name]
-    return out
-
-
-def _annotation_acceptable_for_arity(anno: ast.expr | None, arity: int) -> bool | None:
-    """Return True/False, or None if the annotation is unresolvable / opaque.
-
-    Acceptable for arity 1: `str`.
-    Acceptable for arity > 1: `tuple[...]`, BaseModel-named types, `dict[...]`.
-    """
-    if anno is None:
-        return None
-    if arity == 1:
-        # `str` is the canonical single-field shape.
-        if isinstance(anno, ast.Name) and anno.id == "str":
-            return True
-        # Anything else (tuple, model, dict) is also acceptable; we only flag
-        # the known-bad case (`str` for arity > 1).
-        return True
-    # arity > 1
-    if isinstance(anno, ast.Name):
-        if anno.id == "str":
-            return False
-        # Bare-name model class (e.g. WidgetKey) — assume acceptable.
-        return True
-    if isinstance(anno, ast.Subscript):
-        base = anno.value
-        base_name = base.id if isinstance(base, ast.Name) else (base.attr if isinstance(base, ast.Attribute) else None)
-        if base_name in {"tuple", "Tuple", "dict", "Dict"}:
-            return True
-        return True  # pragma: no cover — other Subscript bases also accepted
-    return None  # pragma: no cover — opaque annotation
-
-
-def _scan_a2k005_tool_calls(tree: ast.AST, filename: str, source: str, store_arity: dict[str, int]) -> Iterable[LintMessage]:
-    """Walk @a2kit.tool decorations for connection_param arity mismatches."""
-    noqa = parse_noqa(source)
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for dec in node.decorator_list:
-            if not is_a2kit_tool_decorator(dec):
-                continue
-            kw = decorator_kwargs(dec)
-            store_arg = kw.get("store")
-            cp = kw.get("connection_param")
-            if not isinstance(store_arg, ast.Name) or not isinstance(cp, ast.Constant) or not isinstance(cp.value, str):
-                continue
-            arity = store_arity.get(store_arg.id)
-            if arity is None:
-                # Unresolvable store — emit advisory only (no automatic noqa).
-                if not suppressed(noqa, A2K005, node.lineno):
-                    yield _msg(
-                        A2K005,
-                        filename,
-                        node,
-                        f"could not resolve store {store_arg.id!r}; check `{cp.value}` arity manually",
-                    )
-                continue
-            param_anno = _find_param_annotation(node, cp.value)
-            verdict = _annotation_acceptable_for_arity(param_anno, arity)
-            if verdict is False and not suppressed(noqa, A2K005, node.lineno):
-                yield _msg(
-                    A2K005,
-                    filename,
-                    node,
-                    f"tool {node.name!r}: {cp.value}: str is insufficient for cls.Key arity {arity}; "
-                    "use the NamedTuple key class, tuple[str, ...], or dict[str, str]",
-                )
-
-
-def _find_param_annotation(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> ast.expr | None:
-    args = list(fn.args.args) + list(fn.args.kwonlyargs) + list(fn.args.posonlyargs)
-    for a in args:
-        if a.arg == name:
-            return a.annotation
-    return None  # pragma: no cover — A2K001 catches the missing-param case
-
-
-def rule_a2k005(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K005 — leftover `KEY_FIELDS` migration aid + tool-param compat against `cls.Key` arity (v0.5)."""
-    noqa = parse_noqa(source)
-    for cls in connection_info_subclasses(tree):
-        yield from _check_legacy_key_fields(cls, filename, noqa)
-    if _is_fixture_path(filename):
-        return
-    store_arity = _store_var_to_arity(tree)
-    yield from _scan_a2k005_tool_calls(tree, filename, source, store_arity)
-
-
-def _collect_param_descriptions(tree: ast.AST) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for node in ast.walk(tree):
-        if not is_tool_function(node):
-            continue
-        doc = ast.get_docstring(node) or ""
-        for raw in doc.splitlines():
-            line = raw.strip()
-            if ":" not in line:
-                continue
-            name, _, text = line.partition(":")
-            name = name.strip()
-            text = text.strip()
-            if not name.isidentifier() or len(text) < 20:
-                continue
-            out.setdefault(name, []).append(text)
-    return out
-
-
-def _rule_a2k006_cross(per_file: dict[str, dict[str, list[str]]]) -> Iterable[LintMessage]:
-    flat: dict[tuple[str, str], list[str]] = {}
-    for filename, mapping in per_file.items():
-        for name, texts in mapping.items():
-            for t in texts:
-                flat.setdefault((name, t), []).append(filename)
-    for (name, _t), files in flat.items():
-        if len(files) >= 3:
-            yield LintMessage(
-                rule=A2K006,
-                filename=files[0],
-                line=1,
-                col=0,
-                message=(f"param {name!r} has the same description in {len(files)} tools; consider a2kit.docs.register_param_doc"),
-            )
-
-
-def rule_a2k009(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K009 — Raw built-in capability string (`'write'` instead of `Cap.WRITE`)."""
-    if _is_fixture_path(filename):
-        return
-    noqa = parse_noqa(source)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        for kw in node.keywords:
-            if kw.arg != "capabilities":
-                continue
-            for raw in _iter_string_literals(kw.value):
-                value = raw.value
-                if not isinstance(value, str):  # pragma: no cover — _iter_string_literals filters
-                    continue
-                if value in _BUILTIN_CAPS and not suppressed(noqa, A2K009, raw.lineno):
-                    suggestion = f"Cap.{value.upper()}"
-                    yield _msg(
-                        A2K009,
-                        filename,
-                        raw,
-                        f"raw built-in capability string {value!r}; prefer {suggestion}",
-                    )
-
-
-def _collect_imported_names(tree: ast.AST) -> set[str]:
-    """Return the set of names brought into the module via `from x import a, b`."""
-    out: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                out.add(alias.asname or alias.name)
-    return out
-
-
-def _collect_import_sources(tree: ast.AST) -> dict[str, tuple[str, str]]:
-    """Map local-name -> (module, original-attr) for each `from MODULE import NAME [as LOCAL]`.
-
-    Used by A2K012 v0.7 re-export resolution.
-    """
-    out: dict[str, tuple[str, str]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module is not None:
-            for alias in node.names:
-                local = alias.asname or alias.name
-                out[local] = (node.module, alias.name)
-    return out
-
-
-def _find_project_root(filename: str) -> Path | None:
-    """Walk up from `filename` to find the nearest pyproject.toml's parent."""
-    cur = Path(filename).resolve().parent
-    for parent in [cur, *cur.parents]:
-        if (parent / "pyproject.toml").is_file():
-            return parent
-        # Heuristic for ad-hoc test trees: stop at filesystem root.
-    return None
-
-
-def _collect_local_final_str_names(tree: ast.AST) -> set[str]:
-    """Return module-level names annotated as `Final[str]`."""
-    out: set[str] = set()
-    if not isinstance(tree, ast.Module):  # pragma: no cover — driver always passes Module
-        return out
-    for stmt in tree.body:
-        if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
-            continue
-        anno = stmt.annotation
-        is_final_str = False
-        if isinstance(anno, ast.Subscript):
-            base = anno.value
-            base_name = base.id if isinstance(base, ast.Name) else (base.attr if isinstance(base, ast.Attribute) else None)
-            if base_name == "Final":
-                slice_node = anno.slice
-                if isinstance(slice_node, ast.Name) and slice_node.id == "str":
-                    is_final_str = True
-        if is_final_str:
-            out.add(stmt.target.id)
-    return out
-
-
-def rule_a2k012(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K012 — Custom capability used as raw string.
-
-    Advisory: a literal string in `capabilities={...}` that is NOT a built-in
-    Cap.* constant AND NOT a referenced `Final[str]` constant should be lifted
-    into a constants module for type safety.
-    """
-    if _is_fixture_path(filename):
-        return
-    noqa = parse_noqa(source)
-    # Names that the file imports — assume they may be Final[str] constants.
-    imported = _collect_imported_names(tree)
-    import_sources = _collect_import_sources(tree)
-    local_finals = _collect_local_final_str_names(tree)
-    project_root = _find_project_root(filename)
-    safe_names = local_finals.copy()
-    # v0.7: walk re-export chains for imported names to confirm Final[str] terminus.
-    # Names whose chain dead-ends without a Final[str] are NOT considered safe.
-    for name in imported:
-        if name in safe_names:  # pragma: no cover — local_finals + ImportFrom rarely overlap
-            continue
-        module, attr = import_sources[name]
-        if project_root is not None and resolve_through_reexports(module, attr, project_root):
-            safe_names.add(name)
-        elif project_root is None:
-            # No project anchor (ad-hoc test fixture tree) → keep legacy permissive
-            # behaviour so existing imports stay opaque-safe.
-            safe_names.add(name)
-        # else: project_root is set but the chain doesn't end in Final[str] → unsafe.
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        for kw in node.keywords:
-            if kw.arg != "capabilities":
-                continue
-            container = kw.value
-            if not isinstance(container, (ast.Set, ast.List, ast.Tuple)):
-                continue
-            for elt in container.elts:
-                if isinstance(elt, ast.Name) and elt.id in safe_names:
-                    continue
-                if not isinstance(elt, ast.Constant) or not isinstance(elt.value, str):
-                    continue
-                value = elt.value
-                if value in _BUILTIN_CAPS:
-                    continue  # A2K009 covers built-ins.
-                if suppressed(noqa, A2K012, elt.lineno):
-                    continue
-                yield _msg(
-                    A2K012,
-                    filename,
-                    elt,
-                    f"raw custom capability {value!r}; define as `Final[str]` constant for type safety",
-                )
-
-
-_A2K013_MARKERS = ("a2kit.docs.connection_param_doc(", "a2kit.docs.param_doc(")
-
-
-def rule_a2k013(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K013 — Manual param-doc f-string in a tool docstring.
-
-    Auto-injection (v0.7) prepends canonical text at decoration time. A docstring
-    that still calls `a2kit.docs.connection_param_doc(...)` / `a2kit.docs.param_doc(...)`
-    via f-string is redundant. The check walks the first body statement for an
-    f-string (`JoinedStr`) and scans both literal docstrings and f-string parts.
-    """
-    if _is_fixture_path(filename):
-        return
-    noqa = parse_noqa(source)
-    for node in ast.walk(tree):
-        if not is_tool_function(node):
-            continue
-        text = _first_doc_text(node)
-        if not any(m in text for m in _A2K013_MARKERS):
-            continue
-        if suppressed(noqa, A2K013, node.lineno):
-            continue
-        yield _msg(
-            A2K013,
-            filename,
-            node,
-            f"tool {node.name!r}: docstring calls a2kit.docs.connection_param_doc/param_doc; auto-injection (v0.7) covers it.",
-        )
-
-
-def _first_doc_text(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
-    """Return raw text of the first body stmt if it's a string-or-f-string expression."""
-    if not fn.body:
-        return ""  # pragma: no cover — fn body always present in well-formed AST
-    first = fn.body[0]
-    if not isinstance(first, ast.Expr):
-        return ""
-    val = first.value
-    if isinstance(val, ast.Constant) and isinstance(val.value, str):
-        return val.value
-    if isinstance(val, ast.JoinedStr):
-        # Reconstruct a textual form by stitching literal parts + raw of FormattedValue source.
-        out: list[str] = []
-        for piece in val.values:
-            if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
-                out.append(piece.value)
-            elif isinstance(piece, ast.FormattedValue):  # pragma: no branch — JoinedStr only contains these two
-                out.append(ast.unparse(piece.value))
-        return "".join(out)
-    return ""  # pragma: no cover — first stmt is non-string expression
-
-
-def rule_a2k011(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    """A2K011 — advisory: tool returns raw `dict`/`Mapping` instead of a Pydantic model.
-
-    Skipped under tests/ and examples/ (intentional fixtures).
-    """
-    if _is_fixture_path(filename):
-        return
-    noqa = parse_noqa(source)
-    for node in ast.walk(tree):
-        if not is_tool_function(node) or node.returns is None:
-            continue
-        ret = node.returns
-        is_raw = (isinstance(ret, ast.Name) and ret.id in {"dict", "Dict", "Mapping"}) or (
-            isinstance(ret, ast.Subscript) and isinstance(ret.value, ast.Name) and ret.value.id in {"dict", "Dict", "Mapping"}
-        )
-        if is_raw and not suppressed(noqa, A2K011, node.lineno):
-            yield _msg(
-                A2K011,
-                filename,
-                node,
-                f"tool {node.name!r} returns raw dict/Mapping; prefer a Pydantic BaseModel for richer schema snapshots",
-            )
-
-
-def _iter_string_literals(node: ast.expr) -> Iterable[ast.Constant]:
-    if isinstance(node, (ast.Set, ast.List, ast.Tuple)):
-        for elt in node.elts:
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                yield elt
-
-
-def _collect_router_names(tree: ast.AST) -> set[str]:
-    """Pull names from `Router(name='...')` calls and class-level `name = '...'` assignments."""
-    out: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            for kw in node.keywords:
-                if kw.arg == "name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                    out.add(kw.value.value)
-        if isinstance(node, ast.ClassDef):
-            for stmt in node.body:
-                if isinstance(stmt, ast.Assign):
-                    for tgt in stmt.targets:
-                        if (
-                            isinstance(tgt, ast.Name)
-                            and tgt.id == "name"
-                            and isinstance(stmt.value, ast.Constant)
-                            and isinstance(stmt.value.value, str)
-                        ):
-                            out.add(stmt.value.value)
-    return out
-
-
-def _collect_tool_names(tree: ast.AST) -> set[str]:
-    out: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for dec in node.decorator_list:
-            if not isinstance(dec, ast.Call):
-                continue
-            for kw in dec.keywords:
-                if kw.arg == "tool_name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                    out.add(kw.value.value)
-                    break
-            out.add(node.name)
-            break
-    return out
-
-
-def _rule_a2k008_cross(per_file: dict[str, tuple[set[str], set[str]]]) -> Iterable[LintMessage]:
-    all_routers: set[str] = set()
-    all_tools: set[str] = set()
-    first_seen: dict[str, str] = {}
-    for filename, (routers, tools) in per_file.items():
-        for r in routers:
-            first_seen.setdefault(r, filename)
-        for t in tools:
-            first_seen.setdefault(t, filename)
-        all_routers.update(routers)
-        all_tools.update(tools)
-    collisions = (all_routers & all_tools) | (all_routers & _BUILTIN_CAPS) | (all_tools & _BUILTIN_CAPS)
-    for name in sorted(collisions):
-        filename = first_seen.get(name, "<unknown>")
-        yield LintMessage(
-            rule=A2K008,
-            filename=filename,
-            line=1,
-            col=0,
-            message=f"name {name!r} collides across router/tool/capability namespaces",
-        )
-
-
-# --------------------------------------------------------------------------- #
-# A2K010 — unknown atom in `--select` strings (project-wide).
-# --------------------------------------------------------------------------- #
-
-
-_SELECT_ATTRS = ("select", "default_select")
-
-
-def _collect_select_strings_from_source(tree: ast.AST) -> list[tuple[ast.AST, str]]:
-    """Pull `--select "<expr>"` and `default_select=...` literals from a file."""
-    out: list[tuple[ast.AST, str]] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            for kw in node.keywords:
-                if kw.arg in _SELECT_ATTRS and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                    out.append((kw.value, kw.value.value))
-            # Heuristic: a list/tuple containing "--select" "<value>"
-            for arg in node.args:
-                if isinstance(arg, (ast.List, ast.Tuple)):
-                    elts = arg.elts
-                    for i, elt in enumerate(elts[:-1]):
-                        nxt = elts[i + 1]
-                        if (
-                            isinstance(elt, ast.Constant)
-                            and elt.value == "--select"
-                            and isinstance(nxt, ast.Constant)
-                            and isinstance(nxt.value, str)
-                        ):
-                            out.append((nxt, nxt.value))
-        # Direct call: parse_select("...")
-        if isinstance(node, ast.Call):
-            callee = node.func
-            cname = callee.id if isinstance(callee, ast.Name) else (callee.attr if isinstance(callee, ast.Attribute) else None)
-            if cname == "parse_select" and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                out.append((node.args[0], node.args[0].value))
-    return out
-
-
-def _select_atoms(expr_str: str) -> list[tuple[str | None, str]] | None:
-    """Tokenise a select expression into (namespace, name) atoms. Returns None on parse error."""
-    try:
-        from a2kit._select import parse_select  # noqa: PLC0415
-
-        ast_node = parse_select(expr_str)
-    except (ValueError, Exception):  # noqa: BLE001
-        return None
-    out: list[tuple[str | None, str]] = []
-
-    def walk(node: object) -> None:
-        op = getattr(node, "op", None)
-        if op == "atom":
-            atom = getattr(node, "atom", None)
-            if atom is None:  # pragma: no cover — well-formed atoms always carry .atom
-                return
-            out.append((atom.namespace, atom.name))
-            return
-        for c in getattr(node, "children", []):
-            walk(c)
-
-    walk(ast_node)
-    return out
-
-
-def _scan_pyproject_select(start: Path) -> str | None:
-    """Read `[tool.a2kit.runner] default_select` from the nearest pyproject.toml."""
-    import tomllib  # noqa: PLC0415
-
-    cur = start.resolve() if start.exists() else Path.cwd().resolve()
-    for parent in [cur, *cur.parents]:
-        candidate = parent / "pyproject.toml"
-        if candidate.is_file():
-            try:
-                data = tomllib.loads(candidate.read_text(encoding="utf-8"))
-            except (OSError, tomllib.TOMLDecodeError):  # pragma: no cover — defensive
-                return None
-            return data.get("tool", {}).get("a2kit", {}).get("runner", {}).get("default_select")
-    return None
-
-
-def _scan_shell_select_strings(paths: list[Path]) -> list[tuple[Path, int, str]]:
-    """Grep `.sh` files and Makefiles for `--select "<expr>"` literals."""
-    out: list[tuple[Path, int, str]] = []
-    for path in paths:
-        if path.suffix not in {".sh"} and path.name != "Makefile":
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:  # pragma: no cover — defensive
-            continue
-        for lineno, raw in enumerate(text.splitlines(), start=1):
-            stripped = raw.strip()
-            idx = stripped.find("--select")
-            if idx == -1:
-                continue
-            tail = stripped[idx + len("--select") :].lstrip()
-            if not tail:  # pragma: no cover — `--select` always followed by something usable
-                continue
-            quote = tail[0]
-            if quote not in {'"', "'"}:  # pragma: no cover — supported forms only
-                continue
-            end = tail.find(quote, 1)
-            if end == -1:  # pragma: no cover — malformed quoting
-                continue
-            out.append((path, lineno, tail[1:end]))
-    return out
-
-
-def _resolve_known_atoms_from_files(per_file: dict[str, tuple[set[str], set[str]]]) -> set[str]:
-    """Union of router + tool names across the linted file set."""
-    routers: set[str] = set()
-    tools: set[str] = set()
-    for r, t in per_file.values():
-        routers |= r
-        tools |= t
-    return routers | tools | _BUILTIN_CAPS | {"default"}
-
-
-def _rule_a2k010(
-    pyproject_select: str | None,
-    source_findings: list[tuple[Path, ast.AST, str]],
-    shell_findings: list[tuple[Path, int, str]],
-    known_atoms: set[str],
-    *,
-    pyproject_path: Path | None = None,
-) -> Iterable[LintMessage]:
-    """Validate `--select` atoms against `known_atoms`. Unknown → A2K010."""
-    pools = sorted(known_atoms)
-
-    def check(atoms: list[tuple[str | None, str]] | None, filename: str, line: int, col: int) -> Iterable[LintMessage]:
-        if atoms is None:
-            return
-        for ns, name in atoms:
-            # Routers/tools live in the unified pool; namespaced cap atoms must be caps.
-            target_pool = known_atoms if ns is None else known_atoms
-            if name in target_pool:
-                continue
-            hits = difflib.get_close_matches(name, pools, n=2)
-            suggestion = f" Did you mean: {', '.join(hits)}?" if hits else ""
-            yield LintMessage(
-                rule=A2K010,
-                filename=filename,
-                line=line,
-                col=col,
-                message=f"unknown --select atom {name!r}.{suggestion}",
-            )
-
-    if pyproject_select is not None:
-        atoms = _select_atoms(pyproject_select)
-        target = str(pyproject_path) if pyproject_path else "pyproject.toml"
-        yield from check(atoms, target, 1, 0)
-
-    for path, node, value in source_findings:
-        atoms = _select_atoms(value)
-        yield from check(atoms, str(path), getattr(node, "lineno", 1), getattr(node, "col_offset", 0))
-
-    for path, lineno, value in shell_findings:
-        atoms = _select_atoms(value)
-        yield from check(atoms, str(path), lineno, 0)
-
-
-# --------------------------------------------------------------------------- #
-# Driver.
-# --------------------------------------------------------------------------- #
-
-
-def rule_a2k014(_tree: ast.AST, filename: str, source: str, *, max_lines: int = _DEFAULT_MAX_LINES) -> Iterable[LintMessage]:
-    """A2K014 — file too long.
-
-    Modules over `max_lines` (default 500) are hard to navigate, hard to
-    reason about, and a smell that the file is doing too many things.
-    Threshold is configurable via `[tool.a2kit.lint] max_lines` in pyproject.
-
-    The rule is fixture-aware: tests / examples are exempt because long test
-    suites are normal (and not user code).
-    """
-    if _is_fixture_path(filename):
-        return
-    line_count = source.count("\n") + (0 if source.endswith("\n") else 1)
-    if line_count <= max_lines:
-        return
-    # Surface at line 1 — the whole file's the problem.
-    fake = ast.Module(body=[], type_ignores=[])
-    fake.lineno = 1
-    fake.col_offset = 0
-    # Respect a top-of-file noqa marker for A2K014.
-    if suppressed(parse_noqa(source), A2K014, 1):
-        return
-    yield _msg(
-        A2K014,
-        filename,
-        fake,
-        f"File is {line_count} lines long (limit: {max_lines}). Consider splitting.",
-    )
+    from a2kit.lint._common import LintMessage
+
+
+__all__ = [
+    "A2K001",
+    "A2K002",
+    "A2K003",
+    "A2K004",
+    "A2K005",
+    "A2K006",
+    "A2K008",
+    "A2K009",
+    "A2K010",
+    "A2K011",
+    "A2K012",
+    "A2K013",
+    "A2K014",
+    "ALL_RULES",
+    "run_static_rules",
+]
 
 
 _RULES_PER_FILE = (
@@ -816,6 +91,71 @@ _RULES_PER_FILE = (
 )
 
 
+def _read_and_parse(path: Path) -> tuple[str, ast.AST] | None:
+    """Read+parse a Python source file. Return None on read/parse error."""
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError:
+        return None
+    return source, tree
+
+
+def _run_per_file_rules(
+    tree: ast.AST,
+    path_str: str,
+    source: str,
+    disabled_set: set[str],
+) -> Iterable[LintMessage]:
+    """Run every per-file static rule that isn't disabled."""
+    for code, rule in _RULES_PER_FILE:
+        if code in disabled_set:
+            continue
+        yield from rule(tree, path_str, source)
+
+
+def _accumulate_cross_file_state(
+    path: Path,
+    tree: ast.AST,
+    disabled_set: set[str],
+    per_file_a2k006: dict[str, dict[str, list[str]]],
+    per_file_a2k008: dict[str, tuple[set[str], set[str]]],
+    select_findings: list[tuple[Path, ast.AST, str]],
+) -> None:
+    """Collect cross-file inputs (A2K006/A2K008/A2K010) for one source tree."""
+    path_str = str(path)
+    if A2K006 not in disabled_set:
+        per_file_a2k006[path_str] = collect_param_descriptions(tree)
+    if A2K008 not in disabled_set and not is_fixture_path(path_str):
+        per_file_a2k008[path_str] = (collect_router_names(tree), collect_tool_names(tree))
+    if A2K010 not in disabled_set and not is_fixture_path(path_str):
+        for n, value in collect_select_strings_from_source(tree):
+            select_findings.append((path, n, value))
+
+
+def _run_cross_file_rules(
+    paths_list: list[Path],
+    disabled_set: set[str],
+    per_file_a2k006: dict[str, dict[str, list[str]]],
+    per_file_a2k008: dict[str, tuple[set[str], set[str]]],
+    select_findings: list[tuple[Path, ast.AST, str]],
+    shell_findings: list[tuple[Path, int, str]],
+) -> Iterable[LintMessage]:
+    """Emit findings for the cross-file rules (A2K006, A2K008, A2K010)."""
+    if A2K006 not in disabled_set:
+        yield from rule_a2k006_cross(per_file_a2k006)
+    if A2K008 not in disabled_set:
+        yield from rule_a2k008_cross(per_file_a2k008)
+    if A2K010 not in disabled_set:
+        known_atoms = resolve_known_atoms_from_files(per_file_a2k008)
+        anchor = paths_list[0] if paths_list else Path.cwd()
+        pyproject_select = scan_pyproject_select(anchor if anchor.is_dir() else anchor.parent)
+        yield from rule_a2k010(pyproject_select, select_findings, shell_findings, known_atoms)
+
+
 def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> list[LintMessage]:
     """Run all static rules on `paths`. Returns concatenated findings."""
     disabled_set = set(disabled)
@@ -824,40 +164,26 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
     per_file_a2k006: dict[str, dict[str, list[str]]] = {}
     per_file_a2k008: dict[str, tuple[set[str], set[str]]] = {}
     select_findings: list[tuple[Path, ast.AST, str]] = []
-    shell_findings = _scan_shell_select_strings(paths_list)
+    shell_findings = scan_shell_select_strings(paths_list)
 
     for path in paths_list:
         if path.suffix != ".py":
             continue
-        try:
-            source = path.read_text(encoding="utf-8")
-        except OSError:
+        parsed = _read_and_parse(path)
+        if parsed is None:
             continue
-        try:
-            tree = ast.parse(source, filename=str(path))
-        except SyntaxError:
-            continue
-        for code, rule in _RULES_PER_FILE:
-            if code in disabled_set:
-                continue
-            results.extend(rule(tree, str(path), source))
-        if A2K006 not in disabled_set:
-            per_file_a2k006[str(path)] = _collect_param_descriptions(tree)
-        if A2K008 not in disabled_set and not _is_fixture_path(str(path)):
-            per_file_a2k008[str(path)] = (_collect_router_names(tree), _collect_tool_names(tree))
-        if A2K010 not in disabled_set and not _is_fixture_path(str(path)):
-            for n, value in _collect_select_strings_from_source(tree):
-                select_findings.append((path, n, value))
+        source, tree = parsed
+        results.extend(_run_per_file_rules(tree, str(path), source, disabled_set))
+        _accumulate_cross_file_state(path, tree, disabled_set, per_file_a2k006, per_file_a2k008, select_findings)
 
-    if A2K006 not in disabled_set:
-        results.extend(_rule_a2k006_cross(per_file_a2k006))
-    if A2K008 not in disabled_set:
-        results.extend(_rule_a2k008_cross(per_file_a2k008))
-    if A2K010 not in disabled_set:
-        # Resolve known atoms from the union of linted files.
-        known_atoms = _resolve_known_atoms_from_files(per_file_a2k008)
-        # pyproject default_select: lint-time check.
-        anchor = paths_list[0] if paths_list else Path.cwd()
-        pyproject_select = _scan_pyproject_select(anchor if anchor.is_dir() else anchor.parent)
-        results.extend(_rule_a2k010(pyproject_select, select_findings, shell_findings, known_atoms))
+    results.extend(
+        _run_cross_file_rules(
+            paths_list,
+            disabled_set,
+            per_file_a2k006,
+            per_file_a2k008,
+            select_findings,
+            shell_findings,
+        ),
+    )
     return results

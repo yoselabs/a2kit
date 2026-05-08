@@ -530,28 +530,13 @@ def test_a2k013_skipped_under_fixture_paths(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------- #
 
 
-def _exec_example(filename: str) -> None:
-    import importlib.util
+def test_tracker_demo_imports_cleanly() -> None:
+    """Smoke-import the canonical demo so example regressions surface in test runs."""
+    import importlib
 
-    mod_path = Path(__file__).parent.parent / "examples" / filename
-    spec = importlib.util.spec_from_file_location(f"ex_{filename}", mod_path)
-    assert spec is not None
-    assert spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    mod.main()
-
-
-def test_example_03_list_view_runs() -> None:
-    _exec_example("03_list_view.py")
-
-
-def test_example_04_error_enricher_runs() -> None:
-    _exec_example("04_error_enricher.py")
-
-
-async def test_example_05_testing_patterns_runs() -> None:
-    _exec_example("05_testing_patterns.py")
+    importlib.import_module("examples.tracker.server")
+    importlib.import_module("examples.tracker.routers")
+    importlib.import_module("examples.tracker.connection")
 
 
 # ---------------------------------------------------------------------------- #

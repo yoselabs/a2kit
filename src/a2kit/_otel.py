@@ -1,12 +1,17 @@
-"""OTel span helper for the fat `@a2kit.tool` decorator.
+"""OTel span helpers — for the @tool wrapper and for plugin authors.
 
 Lazy-imported so consumers without the `[otel]` extra don't pay the import.
 Detects a real (non-default) tracer provider; if none, returns a no-op span.
 
 Public surface:
 
-- `otel_span(tool_name, connection_key, write)` — returns a context manager.
-  Always safe to call; falls back to `_NullSpan` when OTel is unavailable.
+- `otel_span(tool_name, connection_key, write)` — context manager used by
+  the @tool decorator. Falls back to `_NullSpan` if OTel unavailable.
+- `get_tracer()` (v0.12) — cached, returns the a2kit tracer. Plugins call
+  this instead of `from opentelemetry import trace; trace.get_tracer(...)`.
+- `plugin_span(name, **attrs)` (v0.12) — context manager that opens
+  `a2kit.plugin.{name}` as a child of the current span. Falls back to
+  `_NullSpan` if no real provider is configured.
 """
 
 from __future__ import annotations
@@ -69,4 +74,85 @@ def otel_span(tool_name: str, connection_key: tuple[str, ...] | None, write: boo
     return _OTelWrapper(span_cm, tool_name, connection_key, write)
 
 
-__all__ = ["otel_span"]
+_TRACER_CACHE: dict[str, Any] = {}
+
+
+def get_tracer() -> Any:
+    """Return the a2kit OTel tracer (or a no-op tracer if OTel isn't installed).
+
+    Cached after first call. Plugins use this to open child spans without
+    importing `opentelemetry` themselves. Always safe to call.
+    """
+    if "tracer" in _TRACER_CACHE:
+        return _TRACER_CACHE["tracer"]
+    try:
+        from opentelemetry import trace  # noqa: PLC0415
+
+        tracer = trace.get_tracer("a2kit")
+    except ImportError:
+        tracer = _NoOpTracer()
+    _TRACER_CACHE["tracer"] = tracer
+    return tracer
+
+
+def plugin_span(name: str, **attrs: Any) -> Any:
+    """Open `a2kit.plugin.{name}` as a child of the current span.
+
+    Sets `a2kit.plugin.name = {name}` plus any caller-supplied attrs.
+    Returns a `_NullSpan` if no real OTel provider is configured (so plugin
+    authors can sprinkle `with plugin_span("connections.load", key=key):`
+    without conditional checks).
+
+    Usage:
+        async def get(self, key: tuple[str, ...]) -> JiraConn:
+            with a2kit.plugin_span("connections.load", connection_key="-".join(key)):
+                return await self._load_from_disk(key)
+    """
+    try:
+        from opentelemetry import trace  # noqa: PLC0415
+    except ImportError:
+        return _NullSpan()
+
+    provider = trace.get_tracer_provider()
+    if provider.__class__.__name__ in {"ProxyTracerProvider", "NoOpTracerProvider"}:
+        return _NullSpan()
+
+    tracer = get_tracer()
+    span_cm = tracer.start_as_current_span(f"a2kit.plugin.{name}")
+    return _PluginSpanWrapper(span_cm, name, attrs)
+
+
+class _PluginSpanWrapper:
+    """Adapter that stamps `a2kit.plugin.name` + caller attrs on entry."""
+
+    def __init__(self, cm: Any, name: str, attrs: dict[str, Any]) -> None:
+        self._cm = cm
+        self._span: Any = None
+        self._name = name
+        self._attrs = attrs
+
+    def __enter__(self) -> _PluginSpanWrapper:
+        self._span = self._cm.__enter__()
+        if self._span is not None and hasattr(self._span, "set_attribute"):
+            self._span.set_attribute("a2kit.plugin.name", self._name)
+            for key, value in self._attrs.items():
+                self._span.set_attribute(key, value)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._cm.__exit__(*exc)
+
+
+class _NoOpTracer:
+    """Stand-in for `opentelemetry.trace.Tracer` when OTel isn't installed.
+
+    Provides `start_as_current_span` returning a `_NullSpan`. Plugins that
+    cache the tracer at startup don't have to special-case the OTel-missing
+    branch — the cached object is duck-compatible.
+    """
+
+    def start_as_current_span(self, _name: str, *_args: Any, **_kwargs: Any) -> Any:
+        return _NullSpan()
+
+
+__all__ = ["get_tracer", "otel_span", "plugin_span"]

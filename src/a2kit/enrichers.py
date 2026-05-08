@@ -1,9 +1,8 @@
 """Error enrichment — turn cryptic exceptions into agent-actionable ones.
 
-v0.11: this module replaces `a2kit.errors` (which now exists only as a
-deprecation shim re-exporting from here). The rename clarifies the library's
-vocabulary: `a2kit.exceptions` holds exception *classes*, `a2kit.enrichers`
-holds the enrichment *functions* that wrap them.
+This module replaces the v0.10 `a2kit.errors` (removed in v0.13). The split
+clarifies the library's vocabulary: `a2kit.exceptions` holds exception
+*classes*, `a2kit.enrichers` holds the enrichment *functions* that wrap them.
 
 An *enricher* is a function: it takes an exception and an optional tool name,
 returns either the same exception (no change) or a new one with more context.
@@ -36,14 +35,14 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable
 from difflib import get_close_matches
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from a2kit.exceptions import ConnectionNotFound
 
 if TYPE_CHECKING:
     from a2kit.connections import ConnectionStoreLike
 
-EnricherFn = Callable[[Exception, "str | None"], "Exception | Awaitable[Exception]"]
+EnricherFn = Callable[[Exception, str | None], Exception | Awaitable[Exception]]
 """Type alias: an enricher is `(exc, tool_name) -> exc | Awaitable[exc]`.
 
 v0.11 broadened the contract — enrichers may now return a coroutine. The
@@ -67,10 +66,10 @@ async def apply_enricher_async(
     Calls `enricher`, awaits it if the result is a coroutine, returns the
     enriched exception (or the original — first-transforms-wins applies).
     """
-    result = enricher(exc, tool_name)
-    if inspect.isawaitable(result):
-        result = await result
-    return result  # type: ignore[return-value]
+    result: Exception | Awaitable[Exception] = enricher(exc, tool_name)
+    if isinstance(result, Exception):
+        return result
+    return await result
 
 
 def apply_enricher_sync(
@@ -90,40 +89,26 @@ def apply_enricher_sync(
     - Outside any async runtime (CLI / test scripts) → `anyio.run` spins up
       a one-shot loop.
     """
-    result = enricher(exc, tool_name)
-    if inspect.isawaitable(result):
-        return _drain_coro_sync(result)
-    return result  # type: ignore[return-value]
+    result: Exception | Awaitable[Exception] = enricher(exc, tool_name)
+    if isinstance(result, Exception):
+        return result
 
+    # The enricher returned an awaitable; close *this* one (we won't drive it)
+    # and mint fresh ones inside the thunk — `drain_async_to_sync` may call
+    # the thunk more than once across its 3 tiers, and a coroutine is single-
+    # use.
+    if inspect.iscoroutine(result):
+        result.close()
 
-def _drain_coro_sync(coro: Any) -> Exception:
-    """Run an enricher coroutine to completion from a sync context.
+    from a2kit._async_bridge import drain_async_to_sync  # noqa: PLC0415
 
-    Tries `anyio.from_thread.run` first (valid when the sync caller is in
-    a worker thread under an async server, e.g. FastMCP's stdio loop).
-    Falls back to `anyio.run` (valid when there's no loop in scope at all,
-    e.g. a CLI script or a unit test calling the wrapper directly).
-    Last-resort: a fresh worker thread + `anyio.run` (valid when a loop is
-    already running on the calling thread — e.g. an async test that
-    invokes a sync tool directly).
-    """
-    import anyio  # noqa: PLC0415
-    import anyio.from_thread  # noqa: PLC0415
+    async def _coro() -> Exception:
+        r = enricher(exc, tool_name)
+        if isinstance(r, Exception):
+            return r
+        return await r
 
-    async def _run() -> Any:
-        return await coro
-
-    try:
-        return anyio.from_thread.run(_run)  # type: ignore[no-any-return]
-    except RuntimeError:
-        pass
-    try:
-        return anyio.run(_run)  # type: ignore[no-any-return]
-    except RuntimeError:
-        import concurrent.futures  # noqa: PLC0415
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            return ex.submit(anyio.run, _run).result()  # type: ignore[no-any-return]
+    return drain_async_to_sync(_coro)
 
 
 def chain(*enrichers: EnricherFn) -> EnricherFn:
