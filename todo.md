@@ -29,46 +29,43 @@ Bonus:
   - Bare `dict`, `Mapping[...]`, `TypedDict` → return `"json"`.
   - Unwrap `Awaitable[T]` / `Coroutine[..., T]` before classifying — async tools currently lose precomputation.
 - [ ] **`Page[Union[A, B]]`** falls to runtime silently. Add test + log.
-- [ ] **`_dump_items` silently drops non-dict/non-BaseModel** (`formatter.py:186-198`).
-  - `[1, 2, 3]` → `[]`. Raise instead.
+- [ ] **`_dump_items` silently drops non-dict/non-BaseModel** (`formatter.py:186-198`). `[1, 2, 3]` → `[]`. Raise instead.
 - [ ] **`_flat_pydantic_fields` Union-stripping** handles `Optional[T]` only with one non-None arm. `Optional[Union[A, B]]` falls through.
-- [ ] **Drop runtime `_is_uniform_row_list` cross-check** when `_a2kit_format` is set. Trust decoration; let tool bugs surface.
+- ~~**Drop runtime `_is_uniform_row_list` cross-check** when `_a2kit_format` is set. Trust decoration; let tool bugs surface.~~ — STALE: `_a2kit_format` stamping replaced by middleware-resolved format hint in v0.13; `_encode` already trusts the hint when shape-compatible.
 
 ## P1 — verification (Hypothesis)
 
 - [ ] **Property test**: `format_from_annotation(T)` precompute ↔ `toon_or_json(model_dump(instance))` runtime agree for any Pydantic model.
 - [ ] **Property test**: `truncate(x)` is structural identity except str clipping; never mutates input.
-- [ ] **Property test**: `_coerce_key` accepts {kwargs, tuple, list, NamedTuple, single-string-when-arity-1}; rejects everything else with typed error.
+- ~~**Property test**: `_coerce_key` accepts {kwargs, tuple, list, NamedTuple, single-string-when-arity-1}; rejects everything else with typed error.~~ — STALE: `_coerce_key` no longer exists; key resolution moved into `contrib.connections._helpers` and is exercised by `test_connections.py` shape tests.
 
 ## P2 — asyncio-first
 
-- [ ] **Async connection-store API** (`connections.py:288-315`)
-  - Add `load_async`, `save_async`, `list_connections_async` via `anyio.to_thread.run_sync`.
-  - Keep sync API intact (sync tools still work).
-- [ ] **Switch `_lookup_connection`** (`tools.py:202-208`) to await async variant from `async_wrapper`.
-- [ ] **`MCPRunner.run_async()`** for embedding into existing event loop.
-- [ ] **`_TRANSPORT_LOCAL` → ContextVar** (`tools.py:81-92`) for consistency with `_RouterContext`.
-- [ ] **`EnricherFn` accepts async**: `Callable[..., Exception | Awaitable[Exception]]`. Lets enrichers do async lookups (SSO, etc.).
+- [x] **Async connection-store API** (`connections.py:288-315`) — landed v0.11. `ConnectionStore.load`/`save`/`list_connections`/`list_keys` are all `async def`; sync callers drain via `anyio`.
+- ~~**Switch `_lookup_connection`** (`tools.py:202-208`) to await async variant from `async_wrapper`.~~ — STALE: `tools.py` is gone; `_lookup_connection_async` lives in `tools/_connection.py` and is the canonical async path. Sync wrapper drains it via `anyio.from_thread.run`.
+- [x] **`MCPRunner.run_async()`** for embedding into existing event loop. — landed; `App.run_async` and `MCPRunner.run_async` are both implemented (`scaffold/_runner.py:354`, `app.py:328`).
+- ~~**`_TRANSPORT_LOCAL` → ContextVar** (`tools.py:81-92`) for consistency with `_RouterContext`.~~ — STALE: `_TRANSPORT_LOCAL` and `_RouterContext` are both gone; transport plumbing collapsed into `RunnerOptions` in v0.13 phase 4.
+- [x] **`EnricherFn` accepts async**: `Callable[..., Exception | Awaitable[Exception]]`. — landed v0.11. Type alias in `enrichers.py:49` already broadened; sync wrapper drains via `anyio` 3-tier fallback.
 
 ## P2 — OTel / observability
 
-- [ ] **Record exceptions on the span** — biggest hole. Move `except Exception as exc:` (`tools.py:580, 619`) inside `with span_cm:`, call `span.record_exception(exc)` + `set_status(ERROR)` before enricher runs.
-- [ ] **`a2kit.get_tool_logger(name)`** — `LoggerAdapter` injecting `tool.name` + `connection.key`. Auto-correlates with span under OTel `LoggingInstrumentor`.
+- [x] **Record exceptions on the span** — landed via OTel default. `start_as_current_span` ships `record_exception=True, set_status_on_exception=True` by default; the v0.13 middleware refactor moved the `try/except` outside the span CM (the middleware re-raises through the span). Verified in `middleware/_otel.py`.
+- ~~**`a2kit.get_tool_logger(name)`** — `LoggerAdapter` injecting `tool.name` + `connection.key`.~~ — DEFERRED to v0.18: structlog adoption is a 200+ LOC rabbit hole (contextvars binding + plugin docs + test migration); not justified standalone.
 - [ ] **`tool.result.count` span attribute** when result is list/`Page` (cardinality only — PII safe).
-- [ ] **Provider-class string check is fragile** (`_otel.py:64`). Use `isinstance(provider, trace.ProxyTracerProvider)` with `ImportError` fallback.
-- [ ] **Spike**: does FastMCP expose MCP JSON-RPC request ID? If yes, stamp as `mcp.request_id` span attribute.
+- [x] **Provider-class string check is fragile** (`_otel.py:64`). — accepted as-is. `_resolve_tracer` (`_otel.py:50`) checks both `ProxyTracerProvider` and `NoOpTracerProvider` by class name; the `isinstance` form would still need the `try/import` fallback. Coverage exercises this path.
+- ~~**Spike**: does FastMCP expose MCP JSON-RPC request ID?~~ — DEFERRED to v0.18: speculative, no consumer asking.
 
 ## P3 — internal cleanup (deferred from review)
 
-- [ ] Move `_check_tool_call_contamination` str-typed param set to decoration time (`tools.py:541-544`).
-- [ ] `_auto_inject_enabled` cache → `functools.cache`-wrapped fn (`tools.py:790`).
-- [ ] `_resolve_store(self, fallback)` helper to dedupe 3x two-tier fallback in scaffold.
-- [ ] Tighten `Iterable[ConnectionInfoLike]` → `Sequence` on Protocol (or materialize internally).
-- [ ] Document `chain(*enrichers)` first-transforms-wins semantics + lock with short-circuit test.
-- [ ] Deprecate tuple/list arms of `_resolve_connection_key` (`tools.py:155-164`); v0.12 delete.
-- [ ] MAX_DISPLAYED_CONNECTIONS module constant in `docs.py` (was deferred from v0.10 review).
-- [ ] Schema-staleness doc note on `connection_enricher` (decoration-time keys).
-- [ ] Lint rules A2K001-A2K013 update for v0.10 patterns.
+- ~~Move `_check_tool_call_contamination` str-typed param set to decoration time (`tools.py:541-544`).~~ — STALE: `tools.py` is gone; check is now a `tool_call_guard` middleware (`middleware/_guards.py`) computing the param set fresh per call (small overhead, simpler).
+- ~~`_auto_inject_enabled` cache → `functools.cache`-wrapped fn (`tools.py:790`).~~ — STALE: `_auto_inject_enabled` deleted with the v0.15 typed-info DI removal.
+- ~~`_resolve_store(self, fallback)` helper to dedupe 3x two-tier fallback in scaffold.~~ — STALE: `MCPRunner.store=` and `Router.store` were deleted in v0.15; no two-tier fallback remains.
+- ~~Tighten `Iterable[ConnectionInfoLike]` → `Sequence` on Protocol (or materialize internally).~~ — STALE: already `Sequence[ConnectionInfoLike]` in `connections.py:79` (landed v0.11 bonus).
+- ~~Document `chain(*enrichers)` first-transforms-wins semantics + lock with short-circuit test.~~ — STALE: documented in `enrichers.py` module docstring + `chain` docstring; `test_enrichers.py` covers short-circuit semantics.
+- ~~Deprecate tuple/list arms of `_resolve_connection_key` (`tools.py:155-164`); v0.12 delete.~~ — STALE: function moved to `contrib/connections/_helpers.py` and the legacy arms were trimmed.
+- ~~MAX_DISPLAYED_CONNECTIONS module constant in `docs.py` (was deferred from v0.10 review).~~ — STALE: `docs.py` was reshaped post-v0.13; constant no longer relevant.
+- ~~Schema-staleness doc note on `connection_enricher` (decoration-time keys).~~ — STALE: `connection_enricher` is now async and reads keys at *call* time via `await store.list_connections()` — the staleness premise is gone.
+- ~~Lint rules A2K001-A2K013 update for v0.10 patterns.~~ — STALE: lint suite was rebaselined in v0.13/v0.14; A2K005 deleted, A2K015/A2K016 added; rules track current surface.
 
 ---
 
