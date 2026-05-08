@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from opentelemetry import trace as _trace
 
 from a2kit._otel import otel_span as _otel_span
-from a2kit.di import _collect_annotated_deps, resolve_annotated_deps
+from a2kit.di import _collect_annotated_deps, _factory_non_depends_kwonly, resolve_annotated_deps
 from a2kit.exceptions import WriteNotAllowed
 from a2kit.formatter import FormatName, ListViewMode, format_from_annotation
 from a2kit.middleware._chain import Middleware, ToolContext, _build_chain, compose
@@ -270,6 +270,12 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     # prelude pops `connection`. Factories that declare
                     # `connection: str` kwonly get it forwarded.
                     depends_call_ctx = dict(kwargs) if annotated_deps else {}
+                    # v0.15 prep: pop `connection` before prelude when only
+                    # the Depends path needs it (legacy connection-load is off).
+                    # Otherwise tool_call_guard's bind_partial sees a kwarg the
+                    # inner fn never declared.
+                    if deps_need_connection and not needs_connection_arg:
+                        kwargs.pop("connection", None)
                     args, kwargs, conn_key, ctx_token, loaded_conn = await _prelude_async(args, kwargs)
                     if annotated_deps:
                         resolved = await resolve_annotated_deps(
@@ -386,7 +392,12 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             wrapper = sync_wrapper
 
         injected: list[inspect.Parameter] = []
-        if needs_connection_arg:
+        # v0.15 prep: when Annotated[..., Depends(factory)] params declare a
+        # `connection: str` kwonly on the factory side, expose `connection`
+        # as a wrapper kwarg so callers (FastMCP, Click subcommands, direct
+        # invocation) can pass it. The resolver forwards it as call_ctx.
+        deps_need_connection = any("connection" in _factory_non_depends_kwonly(d.dependency) for d in annotated_deps.values())
+        if needs_connection_arg or deps_need_connection:
             injected.append(
                 inspect.Parameter(
                     "connection",

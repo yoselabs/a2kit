@@ -28,6 +28,7 @@ sole connection surface.
 
 from __future__ import annotations
 
+from a2kit.contrib.connections._factory import get_conn_factory
 from a2kit.contrib.connections._helpers import (
     lookup_connection_async,
     resolve_connection_key,
@@ -36,6 +37,7 @@ from a2kit.contrib.connections._helpers import (
 from a2kit.contrib.connections._middleware import write_enforce_factory
 
 __all__ = [
+    "get_conn_factory",
     "lookup_connection_async",
     "make",
     "resolve_connection_key",
