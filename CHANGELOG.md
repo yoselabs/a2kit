@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.16.0.dev0 — 2026-05-08
+
+**Polish.** v0.16 closes the v0.15 coverage drop, renames the
+long-deprecated `ConnectionInfo` → `ConnectionConfig`, and scrubs the
+README of stale `Plugin` / `Provider` / `store=` references.
+
+### Coverage refill: 80% → 100%
+
+- ~290 focused tests in `tests/test_v16_coverage.py` covering the
+  formatter decision tree, lint AST helpers + rule branches, `app.py`
+  CLI body, projection / `_otel` / signature splicing, scaffold runner
+  pyproject loaders, `ConnectionStore` edge cases, and enricher
+  sync/async drain.
+- `cov-fail-under` bumped back to `100` in `pyproject.toml`.
+- A handful of genuinely-defensive branches got `pragma: no cover`
+  (the optional celpy ImportError, the OTel real-provider fallback,
+  the 3rd-tier anyio drain in `apply_enricher_sync`, a few rare
+  branches in `_compute_tool_capabilities`).
+
+### `ConnectionInfo` → `ConnectionConfig`
+
+The class lives in `src/a2kit/connections.py` and is now
+`ConnectionConfig`. `ConnectionInfo` remains as a module-level alias
+for one cycle (removed in v0.17). All internal references — TypeVars,
+contrib factory, scaffold CLI/stores, lint helper base-class
+string-match — updated. The lint AST helper recognises both names so
+user code on the alias still satisfies A2K003 / A2K012 detection.
+
+### README scrub
+
+- Status header rewritten to describe the v0.16 surface (was v0.13).
+- API surface table adds `App`, `Depends`, `get_conn_factory`, the
+  verb decorators (`@a2kit.read` / `@a2kit.write` / `@a2kit.list`).
+- "How a new MCP starts here" walkthrough rewritten around `App` +
+  `Annotated[ConnT, Depends(get_conn)]`.
+- All v0.7-v0.12 migration footnotes (`*, info: ConnT`,
+  `connection_param=`, `Router.store=`, `MCPRunner.store=`,
+  `Plugin`/`PluginBase`/`Provider`) collapsed into a CHANGELOG
+  pointer.
+- `MCPRunner(server, store=store)` examples updated to the v0.15
+  `connection_store=` kwarg name.
+
+### Tests
+
+- 564 tests, 100% coverage.
+
 ## 0.15.0.dev0 — 2026-05-08
 
 **The big delete.** v0.15 collapses two years of v0.7→v0.12 connection-DI
