@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar, cast
 
-from a2kit.connections import ConnectionInfo
+from a2kit.connections import ConnectionConfig
 from a2kit.contrib.connections._helpers import (
     lookup_connection_async,
     resolve_connection_key,
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
     from a2kit.app import App
 
-C = TypeVar("C", bound=ConnectionInfo)
+C = TypeVar("C", bound=ConnectionConfig)
 
 
 def get_conn_factory(app: App, conn_type: type[C]) -> Callable[..., Awaitable[C]]:

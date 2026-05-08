@@ -3,13 +3,13 @@
 The v0.12 tool decorator enforced `WriteNotAllowed` inline inside the
 prelude. v0.13 lifts that into a middleware so:
 
-  * the core decorator doesn't reach into ConnectionInfo to read
+  * the core decorator doesn't reach into ConnectionConfig to read
     `read_only`,
   * authors writing custom routers can add their own write gates by
     composing different middleware,
   * the connection-aware path lives entirely in `contrib.connections`.
 
-The middleware reads the loaded ConnectionInfo from
+The middleware reads the loaded ConnectionConfig from
 `ctx.state["loaded_conn"]` (set by the connection-load step). When
 `ctx.write` is True and the connection is read-only, it raises
 `WriteNotAllowed` *before* `call_next` runs.

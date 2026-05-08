@@ -18,10 +18,10 @@ from typing import Any, TypeVar
 import anyio
 import click
 
-from a2kit.connections import ConnectionInfo, ConnectionStore
+from a2kit.connections import ConnectionConfig, ConnectionStore
 from a2kit.exceptions import ConnectionNotFound
 
-C = TypeVar("C", bound=ConnectionInfo)
+C = TypeVar("C", bound=ConnectionConfig)
 
 
 def _parse_kv_pair(item: str) -> tuple[str, str]:

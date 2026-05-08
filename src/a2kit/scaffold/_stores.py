@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from a2kit.connections import ConnectionInfo, ConnectionStore
+from a2kit.connections import ConnectionConfig, ConnectionStore
 from a2kit.exceptions import ConnectionNotFound
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-C = TypeVar("C", bound=ConnectionInfo)
+C = TypeVar("C", bound=ConnectionConfig)
 
 
 class _EphemeralAwareStore:

@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 import click
 
-from a2kit.connections import ConnectionInfo, ConnectionStore, default_config_dir
+from a2kit.connections import ConnectionConfig, ConnectionStore, default_config_dir
 from a2kit.scaffold import MCPRunner, Router, RouterRegistry, RunnerOptions, build_cli
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
     from a2kit.enrichers import EnricherFn
 
-C = TypeVar("C", bound=ConnectionInfo)
+C = TypeVar("C", bound=ConnectionConfig)
 
 
 class App:

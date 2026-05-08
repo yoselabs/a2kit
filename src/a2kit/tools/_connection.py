@@ -16,7 +16,7 @@ from a2kit.exceptions import ConnectionNotFound
 from a2kit.tokens import resolve_token
 
 if TYPE_CHECKING:
-    from a2kit.connections import ConnectionInfo, ConnectionStore
+    from a2kit.connections import ConnectionConfig, ConnectionStore
     from a2kit.tokens import ResolverRegistry
 
 
@@ -70,7 +70,7 @@ def _lookup_connection_sync(
             return ex.submit(anyio.run, _run).result()
 
 
-def _resolve_info_strings(info: ConnectionInfo, registry: ResolverRegistry | None) -> ConnectionInfo:
+def _resolve_info_strings(info: ConnectionConfig, registry: ResolverRegistry | None) -> ConnectionConfig:
     """Return a copy of `info` with every str field resolved through `registry`.
 
     Pydantic v2 frozen models support `.model_copy(update={...})`. We collect

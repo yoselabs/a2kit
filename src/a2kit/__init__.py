@@ -38,6 +38,7 @@ from a2kit._tool_kwargs import ToolKwargs
 from a2kit.app import App
 from a2kit.connections import (
     ENV_CONFIG_HOME,
+    ConnectionConfig,
     ConnectionInfo,
     ConnectionInfoLike,
     ConnectionStore,
@@ -117,6 +118,7 @@ __all__ = [
     "Cap",
     "Capability",
     "CapabilityRecord",
+    "ConnectionConfig",
     "ConnectionInfo",
     "ConnectionInfoLike",
     "ConnectionNotFound",

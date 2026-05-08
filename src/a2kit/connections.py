@@ -7,7 +7,7 @@ v0.5: keys are **NamedTuple instances** declared via `key=` on the subclass:
         env: Literal["dev", "staging", "prod"]
         db: str
 
-    class WidgetConn(a2kit.ConnectionInfo, key=WidgetKey):
+    class WidgetConn(a2kit.ConnectionConfig, key=WidgetKey):
         base_url: str
         api_key: str
 
@@ -57,7 +57,7 @@ class ConnectionInfoLike(Protocol):
     """Anything with a `.key: tuple[str, ...]` attribute.
 
     The minimum shape consumers (e.g. `connection_enricher`) need from a listed
-    connection. Both `ConnectionInfo` subclasses and bespoke records satisfy
+    connection. Both `ConnectionConfig` subclasses and bespoke records satisfy
     this structurally.
     """
 
@@ -70,7 +70,7 @@ class ConnectionStoreLike(Protocol):
 
     Both `ConnectionStore` and the internal `_EphemeralAwareStore` proxy
     satisfy this. Used by `connection_enricher` and the schema-hint helper to
-    avoid pulling in the full `ConnectionStore[ConnectionInfo]` generic.
+    avoid pulling in the full `ConnectionStore[ConnectionConfig]` generic.
 
     v0.11: `list_connections()` is `async def`. Sync callers wrap with
     `anyio.run(store.list_connections())`.
@@ -120,7 +120,7 @@ def default_config_dir() -> Path:
     return Path.home() / DEFAULT_CONFIG_SUBDIR
 
 
-class ConnectionInfo(BaseModel):
+class ConnectionConfig(BaseModel):
     """Base frozen connection record. Subclass and add domain fields.
 
     Declare a NamedTuple via `key=`; on-disk filename is `"-".join(values) + ".toml"`.
@@ -190,7 +190,7 @@ class ConnectionInfo(BaseModel):
         return "-".join(self.key) + ".toml"
 
 
-C = TypeVar("C", bound=ConnectionInfo)
+C = TypeVar("C", bound=ConnectionConfig)
 K = TypeVar("K", bound=tuple[Any, ...])
 
 
@@ -249,9 +249,9 @@ def _coerce_key(  # noqa: C901, PLR0912
 
 
 class ConnectionStore(Generic[C]):
-    """Manages connection TOML files for a single `ConnectionInfo` subclass.
+    """Manages connection TOML files for a single `ConnectionConfig` subclass.
 
-    Generic on the `ConnectionInfo` subclass; the key NamedTuple is derived from
+    Generic on the `ConnectionConfig` subclass; the key NamedTuple is derived from
     `model.Key` (same class is exposed as `store.key_class`).
     """
 
@@ -261,7 +261,7 @@ class ConnectionStore(Generic[C]):
 
     @property
     def connection_class(self) -> type[C]:
-        """The `ConnectionInfo` subclass this store is bound to."""
+        """The `ConnectionConfig` subclass this store is bound to."""
         return self.model
 
     @property
@@ -362,3 +362,9 @@ class ConnectionStore(Generic[C]):
         `NamedTuple` supports indexing.
         """
         return [self.model.Key(*info.key) for info in await self.list_connections()]  # type: ignore[misc]
+
+
+# Deprecated: `ConnectionInfo` was renamed to `ConnectionConfig` in v0.16. The
+# alias is kept for one cycle (delete in v0.17). New code should subclass
+# `ConnectionConfig` directly.
+ConnectionInfo = ConnectionConfig

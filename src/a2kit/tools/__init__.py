@@ -13,7 +13,7 @@ Behaviour order, before the wrapped function runs:
    available names if missing. Ephemeral connections are merged into `store` at
    the Router level (v0.8); the decorator no longer takes an `ephemeral=` kwarg.
 2. Token resolution — recursively resolves `${ENV}` / `op://` / literals on every
-   string field of the loaded `ConnectionInfo`. The resolved info is exposed via
+   string field of the loaded `ConnectionConfig`. The resolved info is exposed via
    `Router.context.info()` (or a hand-built `_RouterContext`); the v0.6
    `info=` kwarg-injection path was removed in v0.7.
 3. Read-only enforcement — if `write=True` and `info.read_only` is True, raises

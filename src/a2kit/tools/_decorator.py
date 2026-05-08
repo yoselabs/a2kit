@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from opentelemetry import trace as _trace
 
 from a2kit._otel import otel_span as _otel_span
-from a2kit.connections import ConnectionInfo
+from a2kit.connections import ConnectionConfig
 from a2kit.di import _collect_annotated_deps, _factory_non_depends_kwonly, resolve_annotated_deps
 from a2kit.formatter import FormatName, ListViewMode, format_from_annotation
 from a2kit.middleware._chain import Middleware, ToolContext, _build_chain, compose
@@ -115,7 +115,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         ) -> tuple[tuple[Any, ...], dict[str, Any]]:
             """Async-tool prelude — only runs tool_call_guard.
 
-            Connection loading and ConnectionInfo lifting are the job of
+            Connection loading and ConnectionConfig lifting are the job of
             `Annotated[T, Depends(factory)]` resolution downstream; the
             decorator no longer owns connection vocabulary.
             """
@@ -187,11 +187,11 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                             call_ctx=depends_call_ctx,
                         )
                         kwargs.update(resolved)
-                        # Lift the first ConnectionInfo-typed resolved value
+                        # Lift the first ConnectionConfig-typed resolved value
                         # into ctx.state for downstream middleware
                         # (e.g. WriteEnforce). Cheap: dict iteration.
                         for v in resolved.values():
-                            if isinstance(v, ConnectionInfo):
+                            if isinstance(v, ConnectionConfig):
                                 loaded_conn = v
                                 break
                     conn_key = depends_call_ctx.get("connection") if loaded_conn is not None else None

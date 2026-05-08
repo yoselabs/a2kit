@@ -57,12 +57,12 @@ class KeyArityMismatch(A2KitError, ValueError):  # noqa: N818
 
 
 class MigrationRequired(A2KitError, TypeError):  # noqa: N818
-    """Raised at class-creation when a v0.4 `KEY_FIELDS = (...)` is found on a `ConnectionInfo` subclass.
+    """Raised at class-creation when a v0.4 `KEY_FIELDS = (...)` is found on a `ConnectionConfig` subclass.
 
     v0.5 replaced `KEY_FIELDS` with a NamedTuple-based `Key` class. Migration:
 
         # before:
-        class WidgetConn(a2kit.ConnectionInfo):
+        class WidgetConn(a2kit.ConnectionConfig):
             KEY_FIELDS = ("project", "env", "db")
 
         # after:
@@ -71,7 +71,7 @@ class MigrationRequired(A2KitError, TypeError):  # noqa: N818
             env: str
             db: str
 
-        class WidgetConn(a2kit.ConnectionInfo, key=WidgetKey):
+        class WidgetConn(a2kit.ConnectionConfig, key=WidgetKey):
             ...
     """
 
@@ -84,7 +84,7 @@ class MigrationRequired(A2KitError, TypeError):  # noqa: N818
             f"Migrate to:\n\n"
             f"    class {cls_name}Key(NamedTuple):\n"
             f"        {fields_repr.replace(', ', chr(10) + '        ')}\n\n"
-            f"    class {cls_name}(a2kit.ConnectionInfo, key={cls_name}Key):\n"
+            f"    class {cls_name}(a2kit.ConnectionConfig, key={cls_name}Key):\n"
             f"        ..."
         )
 
@@ -143,7 +143,7 @@ class WriteNotAllowed(A2KitError, PermissionError):  # noqa: N818
     """Raised when a write-marked tool runs against a read-only connection.
 
     The fat `@a2kit.tool(write=True)` decorator enforces this once the resolved
-    `ConnectionInfo.read_only` is `True`. Domain MCPs typically catch this and
+    `ConnectionConfig.read_only` is `True`. Domain MCPs typically catch this and
     surface a re-login hint (mirrors the `check_writable` pattern used by an
     HTTP-wrapping MCP).
     """
