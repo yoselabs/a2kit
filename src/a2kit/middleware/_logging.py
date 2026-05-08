@@ -31,6 +31,9 @@ def structlog_context_factory() -> Middleware:
     """
     import structlog  # noqa: PLC0415 — lazy import keeps cold-start cheap.
 
+    from a2kit.logging import build_tool_bindings  # noqa: PLC0415
+    from a2kit.middleware._chain import STATE_CONNECTION_KEY  # noqa: PLC0415
+
     bound_contextvars = structlog.contextvars.bound_contextvars
 
     async def _logging_mw(
@@ -39,10 +42,7 @@ def structlog_context_factory() -> Middleware:
         /,
         **kwargs: Any,
     ) -> Any:
-        conn_key = ctx.state.get("connection_key")
-        bindings: dict[str, Any] = {"tool.name": ctx.tool_name}
-        if conn_key is not None:
-            bindings["tool.connection"] = "-".join(conn_key)
+        bindings = build_tool_bindings(ctx.tool_name, ctx.state.get(STATE_CONNECTION_KEY))
         with bound_contextvars(**bindings):
             return await call_next(**kwargs)
 

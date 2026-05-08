@@ -17,7 +17,14 @@ from a2kit._otel import otel_span as _otel_span
 from a2kit.connections import ConnectionConfig
 from a2kit.di import _collect_annotated_deps, _factory_non_depends_kwonly, resolve_annotated_deps
 from a2kit.formatter import FormatName, ListViewMode, format_from_annotation
-from a2kit.middleware._chain import Middleware, ToolContext, _build_chain, compose
+from a2kit.middleware._chain import (
+    STATE_CONNECTION_KEY,
+    STATE_LOADED_CONN,
+    Middleware,
+    ToolContext,
+    _build_chain,
+    compose,
+)
 from a2kit.tools._metadata import (
     _compute_tool_capabilities,
     _inject_param_docs,
@@ -217,8 +224,8 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                         capabilities=_tool_caps_frozen,
                         format_hint=precomputed_format,
                         state={
-                            "connection_key": conn_key,
-                            "loaded_conn": loaded_conn,
+                            STATE_CONNECTION_KEY: conn_key,
+                            STATE_LOADED_CONN: loaded_conn,
                             "sig": sig,
                             "lv_settings": _lv_settings,
                             "lv_state": lv_state,
@@ -276,7 +283,9 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     )
                     import structlog  # noqa: PLC0415 — lazy: only when a sync tool runs
 
-                    log_cm = structlog.contextvars.bound_contextvars(**{"tool.name": resolved_tool_name})
+                    from a2kit.logging import build_tool_bindings  # noqa: PLC0415
+
+                    log_cm = structlog.contextvars.bound_contextvars(**build_tool_bindings(resolved_tool_name, None))
                     with span_cm, log_cm:
                         result = fn(*args, **kwargs)
                         if has_listview:

@@ -27,6 +27,10 @@ if TYPE_CHECKING:
 
 Verb = Literal["read", "write", "list", "tool"]
 
+# Well-known keys for `ToolContext.state`. Middleware coordinates via these.
+STATE_CONNECTION_KEY = "connection_key"
+STATE_LOADED_CONN = "loaded_conn"
+
 
 @dataclass(frozen=True)
 class ToolContext:
@@ -121,9 +125,6 @@ def _build_chain(  # noqa: C901
         return []
 
     chain: list[Middleware] = []
-    # structlog contextvar binding — sits alongside the OTel span so logs
-    # emitted from any inner middleware / tool body inherit `tool.name` +
-    # `tool.connection`. Lazy-imports structlog inside the factory.
     try:
         from a2kit.middleware._logging import structlog_context_factory  # noqa: PLC0415
 

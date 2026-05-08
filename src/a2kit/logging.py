@@ -40,6 +40,18 @@ def get_tool_logger(name: str) -> structlog.stdlib.BoundLogger:
     return structlog.get_logger(name)
 
 
+def build_tool_bindings(tool_name: str, connection_key: tuple[str, ...] | None) -> dict[str, Any]:
+    """Build the structlog/OTel binding dict for a tool call.
+
+    Same shape used by ``bind_tool_context``, the logging middleware, and the
+    sync tool wrapper — single source of truth for the key spelling.
+    """
+    bindings: dict[str, Any] = {"tool.name": tool_name}
+    if connection_key is not None:
+        bindings["tool.connection"] = "-".join(connection_key)
+    return bindings
+
+
 def bind_tool_context(tool_name: str, connection_key: tuple[str, ...] | None) -> Any:
     """Bind ``tool.name`` (+ ``tool.connection``) into ``structlog.contextvars``.
 
@@ -51,10 +63,7 @@ def bind_tool_context(tool_name: str, connection_key: tuple[str, ...] | None) ->
     """
     import structlog  # noqa: PLC0415
 
-    bindings: dict[str, Any] = {"tool.name": tool_name}
-    if connection_key is not None:
-        bindings["tool.connection"] = "-".join(connection_key)
-    return structlog.contextvars.bind_contextvars(**bindings)
+    return structlog.contextvars.bind_contextvars(**build_tool_bindings(tool_name, connection_key))
 
 
-__all__ = ["bind_tool_context", "get_tool_logger"]
+__all__ = ["bind_tool_context", "build_tool_bindings", "get_tool_logger"]

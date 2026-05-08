@@ -12,6 +12,7 @@ from opentelemetry import trace as _trace
 
 from a2kit._otel import otel_span as _otel_span
 from a2kit.formatter import Page as _Page
+from a2kit.middleware._chain import STATE_CONNECTION_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -57,7 +58,7 @@ def otel_span_factory() -> Middleware:
         /,
         **kwargs: Any,
     ) -> Any:
-        conn_key = ctx.state.get("connection_key")
+        conn_key = ctx.state.get(STATE_CONNECTION_KEY)
         span_cm = _otel_span(ctx.tool_name, conn_key, ctx.write)
         with span_cm as span_wrapper:
             result = await call_next(**kwargs)

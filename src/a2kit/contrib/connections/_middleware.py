@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from a2kit.exceptions import WriteNotAllowed
+from a2kit.middleware._chain import STATE_CONNECTION_KEY, STATE_LOADED_CONN
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -41,9 +42,9 @@ def write_enforce_factory() -> Middleware:
         **kwargs: Any,
     ) -> Any:
         if ctx.write:
-            info = ctx.state.get("loaded_conn")
+            info = ctx.state.get(STATE_LOADED_CONN)
             if info is not None and getattr(info, "read_only", False):
-                conn_key = ctx.state.get("connection_key") or ()
+                conn_key = ctx.state.get(STATE_CONNECTION_KEY) or ()
                 raise WriteNotAllowed(conn_key, tool_name=ctx.tool_name)
         return await call_next(**kwargs)
 
