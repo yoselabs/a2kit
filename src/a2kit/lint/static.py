@@ -40,8 +40,12 @@ A2K010 = "A2K010"
 A2K011 = "A2K011"
 A2K012 = "A2K012"
 A2K013 = "A2K013"
+A2K014 = "A2K014"
 
-ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012, A2K013)
+ALL_RULES = (A2K001, A2K002, A2K003, A2K004, A2K005, A2K006, A2K008, A2K009, A2K010, A2K011, A2K012, A2K013, A2K014)
+
+# Default file-size budget for A2K014. Override via `[tool.a2kit.lint] max_lines`.
+_DEFAULT_MAX_LINES = 500
 
 _BUILTIN_CAPS = {"read", "write", "destructive", "expensive", "pii", "external"}
 _FIXTURE_PATH_TOKENS = ("tests/", "tests\\", "examples/", "examples\\")
@@ -768,6 +772,36 @@ def _rule_a2k010(
 # --------------------------------------------------------------------------- #
 
 
+def rule_a2k014(_tree: ast.AST, filename: str, source: str, *, max_lines: int = _DEFAULT_MAX_LINES) -> Iterable[LintMessage]:
+    """A2K014 — file too long.
+
+    Modules over `max_lines` (default 500) are hard to navigate, hard to
+    reason about, and a smell that the file is doing too many things.
+    Threshold is configurable via `[tool.a2kit.lint] max_lines` in pyproject.
+
+    The rule is fixture-aware: tests / examples are exempt because long test
+    suites are normal (and not user code).
+    """
+    if _is_fixture_path(filename):
+        return
+    line_count = source.count("\n") + (0 if source.endswith("\n") else 1)
+    if line_count <= max_lines:
+        return
+    # Surface at line 1 — the whole file's the problem.
+    fake = ast.Module(body=[], type_ignores=[])
+    fake.lineno = 1
+    fake.col_offset = 0
+    # Respect a top-of-file noqa marker for A2K014.
+    if suppressed(parse_noqa(source), A2K014, 1):
+        return
+    yield _msg(
+        A2K014,
+        filename,
+        fake,
+        f"File is {line_count} lines long (limit: {max_lines}). Consider splitting.",
+    )
+
+
 _RULES_PER_FILE = (
     (A2K001, rule_a2k001),
     (A2K002, rule_a2k002),
@@ -778,6 +812,7 @@ _RULES_PER_FILE = (
     (A2K011, rule_a2k011),
     (A2K012, rule_a2k012),
     (A2K013, rule_a2k013),
+    (A2K014, rule_a2k014),
 )
 
 

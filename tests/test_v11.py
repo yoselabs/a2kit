@@ -380,6 +380,52 @@ def test_async_enricher_drained_for_sync_tool() -> None:
         boom()
 
 
+# --- A2K014: file size lint rule --------------------------------------------
+
+
+def test_a2k014_flags_oversized_file(tmp_path: Any) -> None:
+    """A file over the limit is flagged at line 1."""
+    from a2kit.lint.static import run_static_rules
+
+    big = tmp_path / "src" / "big.py"
+    big.parent.mkdir(parents=True)
+    big.write_text("# pad\n" * 600)
+    findings = run_static_rules([big])
+    assert any(f.rule == "A2K014" and "600 lines" in f.message for f in findings)
+
+
+def test_a2k014_passes_under_limit(tmp_path: Any) -> None:
+    from a2kit.lint.static import run_static_rules
+
+    small = tmp_path / "src" / "small.py"
+    small.parent.mkdir(parents=True)
+    small.write_text("x = 1\n" * 50)
+    findings = run_static_rules([small])
+    assert not any(f.rule == "A2K014" for f in findings)
+
+
+def test_a2k014_skips_test_fixtures(tmp_path: Any) -> None:
+    """Tests / examples are exempt — long suites are normal."""
+    from a2kit.lint.static import run_static_rules
+
+    big = tmp_path / "tests" / "test_big.py"
+    big.parent.mkdir(parents=True)
+    big.write_text("# pad\n" * 1000)
+    findings = run_static_rules([big])
+    assert not any(f.rule == "A2K014" for f in findings)
+
+
+def test_a2k014_respects_noqa(tmp_path: Any) -> None:
+    """Top-of-file `# noqa: A2K014` opt-out for legitimately-large modules."""
+    from a2kit.lint.static import run_static_rules
+
+    big = tmp_path / "src" / "vendored.py"
+    big.parent.mkdir(parents=True)
+    big.write_text("# noqa: A2K014\n" + ("# pad\n" * 600))
+    findings = run_static_rules([big])
+    assert not any(f.rule == "A2K014" for f in findings)
+
+
 async def test_async_enricher_drained_for_sync_tool_called_from_async_test() -> None:
     """Last-resort drainage path: async test → sync tool → async enricher.
     A loop is already running on this thread, so `anyio.run` raises and we
