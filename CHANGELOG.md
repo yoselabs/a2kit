@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.13.0 — 2026-05-08
+
+**Library-swap turn + middleware split.** Replaces three bespoke modules
+with their stdlib / OTel / vcrpy equivalents, introduces `Annotated[T,
+Depends]` DI alongside the v0.12 `provides=` path, splits the fat tool
+decorator into a middleware chain, and lifts connection-aware logic into
+`a2kit.contrib.connections` so the core decorator no longer knows what a
+ConnectionInfo is.
+
+### New surface
+
+- **`Annotated[T, Depends(factory)]` DI** — FastAPI/FastMCP idiom for
+  per-tool typed dependencies. `*, store: Annotated[TodoStore,
+  Depends(get_todo_store)]` resolves at call time with per-call caching
+  and cycle detection, validated at decoration.
+  `app.dependency_overrides[get_conn] = fake` swaps factories in tests.
+- **`Depends(factory)`** — frozen dataclass marker re-exported from the
+  top-level `a2kit` namespace. Lives next to the v0.12 `Provider`
+  Protocol; pick the shape that fits the call site.
+- **Implicit middleware chain** (`a2kit.middleware`) — the tool decorator
+  now assembles a Starlette-style chain at decoration time:
+  `tool_call_guard` → `capability_guard` → `otel_span` (always); plus
+  `write_enforce`, `list_view_apply`, and `enrich_errors` only when the
+  verb / Router / connection asks for them. Authors keep writing
+  `@MyRouter.write()` — the chain is implicit. Hooks for
+  `@MyRouter.write(middleware=[mw])`, `Router.middleware = [...]`, and
+  `App.middleware = [...]` exist for the rare tier-3 case.
+- **`a2kit.contrib.connections`** — connection-aware helpers
+  (`lookup_connection_async`, `resolve_connection_key`,
+  `resolve_info_strings`, `write_enforce_factory`) live in their own
+  contrib package. The v0.13 plan ("pull connections out of core") is
+  partially landed — re-exports keep v0.12 paths working; v0.14 deletes
+  the legacy paths and finishes the SubApp / `connections register`
+  CLI subcommand work.
+- **`RunnerOptions`** — typed dataclass for `MCPRunner.run(options=...)`.
+  Replaces argv-string round-tripping in `App.cli`'s `serve` subcommand;
+  `argv=` stays as a v0.12 compat layer.
+
+### Library swaps
+
+| Concern | Before | After |
+|---|---|---|
+| Sync→async drainage | `a2kit._async_bridge` (18 LOC) | `anyio.from_thread.run` direct |
+| OTel NoOp fallback | `_otel.py._NullSpan` (~150 LOC) | `opentelemetry.trace.NoOpTracer` |
+| VCR cassettes | `_cassette.py._make_async_ctx` (~40 LOC) | `vcrpy` direct |
+
+Net delete: ~200 LOC of bespoke wrappers that re-implemented stdlib /
+upstream-library shapes.
+
+### Deferred to v0.14
+
+- **`_select*.py` → `cel-python`.** Probed; structural blockers in
+  user-facing grammar (`and`/`or` vs `&&`/`||`, atom keys with dots)
+  and the `SelectExpr` AST consumed by lint rules and scaffold
+  introspection (~100 references). Re-open as a dedicated pitch.
+- **`tokens.py` → `pydantic-settings` + `pyonepassword`.** Mismatched
+  abstractions (`resolve_env` substitutes inside arbitrary strings;
+  `pydantic-settings` is a typed settings-model loader); zero-LOC
+  savings on the op:// side.
+- **Core deletes that touched 30+ test sites.** `Router.store`,
+  `MCPRunner.store=`, `connection_param=`, the `_prelude_async`
+  connection branch, `_detect_info_param` / `info_target` plumbing,
+  `Router(BaseModel, Generic[ConnT])`, and the `Plugin` / `PluginBase`
+  Protocols all stay as v0.12-compat surfaces. v0.14 will migrate the
+  test corpus to `Annotated[Conn, Depends(get_conn)]` then delete the
+  compat code in one pass.
+- **`PLC0415` removal from `tests/**`.** The audit halved the noqas in
+  `src/` (49 → 25); the remaining 25 are genuine optional-dep / circular
+  / verb-decorator factory cases. The test corpus has 123 PLC0415 hits —
+  non-trivial migration deferred.
+
+### Coverage
+
+Restored to **100%** (`cov-fail-under=100`). The two v0.12 holes
+(`enrichers.py:108`, `tools/_signature.py:113`) plus three drive-by
+gaps from the middleware split now have direct tests.
+
 ## 0.11.0 — 2026-05-08 (in progress)
 
 **Contract-clarity turn.** Tightens the public vocabulary, restores type

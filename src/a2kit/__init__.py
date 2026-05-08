@@ -116,7 +116,7 @@ list = list_tool  # noqa: A001 — intentional: external callers use `a2kit.list
 read = read_tool
 write = write_tool
 
-__version__ = "0.11.0.dev0"
+__version__ = "0.13.0.dev0"
 
 __all__ = [
     "ENV_CONFIG_HOME",

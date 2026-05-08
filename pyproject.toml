@@ -1,6 +1,6 @@
 [project]
 name = "a2kit"
-version = "0.11.0.dev0"
+version = "0.13.0.dev0"
 description = "Thin library on top of FastMCP — additive primitives for connection management, tool decoration, schema snapshots, router-module registration, lint, capabilities + select grammar, and HTTP cassette testing."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]

@@ -1038,3 +1038,50 @@ commit boundary.
 Hard break. v0.13 is a major surface change. Migration guide in CHANGELOG;
 no compat shims (the user's "remove all deprecated/back-compat stuff"
 preference applies here too).
+
+## v0.13 — final ledger (2026-05-08)
+
+Released as `0.13.0.dev0`. The v0.13 plan above intended a hard break;
+the actual release kept v0.12 surfaces alive as compat to keep the
+test-corpus blast radius bounded. Items deferred to v0.14:
+
+- **Hard delete `Router.store`, `MCPRunner.store=`, `connection_param=`,
+  `_detect_info_param` / `info_target`, the `_prelude_async` connection
+  branch, `Router(BaseModel, Generic[ConnT])`, `Plugin` / `PluginBase`
+  Protocols.** Each touches 30–80 test sites that need migration to
+  `Annotated[Conn, Depends(get_conn)]` + `app.dependency_overrides`. v0.14
+  picks this up as one coordinated migration.
+- **`SubApp` / `app.mount(connections.make(...))` shape.** Today's
+  `connections.make()` returns a placeholder tuple and authors keep using
+  `app.connect(conn_type)`. The proper sub-app + `connections register`
+  CLI subcommand is v0.14 work.
+- **`_select*.py` → `cel-python`.** Probed; deferred (see "DEFERRED in
+  v0.13 phase 5" notes above).
+- **`tokens.py` → `pydantic-settings` + `pyonepassword`.** Probed;
+  deferred (see notes above).
+- **Drop `PLC0415` from `tests/**` per-file ignore.** 123 ruff hits in
+  the test corpus today; non-trivial migration. (Source-side audit
+  landed: 49 → 25 noqas in `src/`, all genuinely circular / optional-
+  dep / verb-decorator factory.)
+- **A2K005, `ConnectionInfo` rename to `ConnectionConfig`,
+  README/CHANGELOG soft-deprecation footnote sweep** — listed in the
+  v0.13 also-cleanup section above; carried over to v0.14.
+- **`enricher` at router/app scope.** v0.13 plan listed it as
+  "also-add"; not implemented (would entangle with the deletes above).
+
+What v0.13 *did* land:
+
+- Phase 1: `Annotated[T, Depends(factory)]` resolver + `app.dependency_overrides`.
+- Phase 2: implicit middleware chain (`a2kit.middleware`).
+- Phase 3 (partial): `a2kit.contrib.connections` package with helpers and
+  `WriteEnforce` middleware factory. Re-exports keep v0.12 import paths
+  alive.
+- Phase 4: `RunnerOptions` typed dataclass; `App.cli` skips argv
+  round-tripping.
+- Phase 5 (partial): `_async_bridge` → `anyio.from_thread.run`, `_NullSpan`
+  → `opentelemetry.trace.NoOpTracer`, `_cassette` async-CM → `vcrpy`
+  direct. (`_select*` and `tokens.py` swaps deferred.)
+- Phase 6: 100% coverage restored (`cov-fail-under=100`); PLC0415 audit
+  in `src/` (49 → 25); README + CHANGELOG refreshed; version bump.
+
+Final state: 737 tests, 100% coverage, lint clean.

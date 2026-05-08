@@ -1,16 +1,23 @@
 # a2kit
 
-**Status:** v0.9.0 — ergonomic overhaul. `@Router.read()` / `@Router.write()`
-auto-inject `connection: str` into the agent-facing schema; the resolved
-`ConnectionInfo` is bound to a typed parameter via DI (`info: WidgetConn`);
-list-view tools use three orthogonal flags (`filter`/`fields`/`pagination`)
-each routable to `Local` (kit handles) or `Passthrough` (tool handles); errors
-simplify to plain callables (`EnricherFn`) plus a `chain(*fns)` helper;
-`Router.capabilities` moves to `ClassVar`; output formats split honestly into
-TSV (flat rows) and TOON (nested cells encoded as JSON). `connection_param=`
-is soft-deprecated for one version.
+**Status:** v0.13.0 — library-swap turn + middleware split.
+`Annotated[T, Depends(factory)]` is the recommended DI shape (FastAPI /
+FastMCP idiom; per-call cache, cycle detection, `app.dependency_overrides`
+for tests). The fat tool decorator now assembles an implicit Starlette-style
+middleware chain at decoration time (`tool_call_guard` → `capability_guard`
+→ `otel_span` always; `write_enforce` / `list_view_apply` / `enrich_errors`
+when the verb / Router / connection asks). Connection-aware helpers move
+into `a2kit.contrib.connections`; `RunnerOptions` replaces argv-string
+round-tripping in `App.cli`. Three bespoke modules retired in favour of
+`anyio.from_thread.run`, `opentelemetry.trace.NoOpTracer`, and `vcrpy`
+direct.
 
-See [CHANGELOG](CHANGELOG.md#090--2026-05-07) for the full migration recipe.
+The v0.12 surfaces (`@Router.read()` / `@Router.write()`,
+`*, info: TodoConn` auto-injection, `Router.store`, `MCPRunner.store=`)
+are still present as compat — full deletion lands in v0.14 once the test
+corpus migrates.
+
+See [CHANGELOG](CHANGELOG.md#0130--2026-05-08) for the full migration recipe.
 
 A thin library on top of FastMCP. Ships the primitives that recur across every
 production MCP we've shipped: a `ConnectionStore`, lazy `${ENV_VAR}` / `op://`
