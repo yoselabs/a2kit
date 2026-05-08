@@ -38,7 +38,7 @@ or non-decorated use.
 v0.11: split from a single `tools.py` into a package. Public surface is
 unchanged. Internal modules:
 
-- `_runtime.py`    — transport seam, _NullSpan, contamination guard, async-iter
+- `_runtime.py`    — transport seam, contamination guard, async-iter
 - `_signature.py`  — annotation resolution, listview, signature splicing
 - `_connection.py` — connection lookup, key coercion, info DI
 - `_metadata.py`   — capability compute, doc injection, ToolMetadata, register
@@ -67,7 +67,6 @@ from a2kit.tools._runtime import (
     _check_tool_call_contamination,
     _consume_or_passthrough_async,
     _get_current_transport,
-    _NullSpan,
     _set_current_transport,
     assert_clean_string,
 )
@@ -89,7 +88,6 @@ from a2kit.tools._verbs import write as write_tool
 
 __all__ = [
     "ToolMetadata",
-    "_NullSpan",
     "_auto_inject_enabled",
     "_check_return_annotation",
     "_check_tool_call_contamination",

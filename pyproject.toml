@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "anyio>=4",
     "click>=8",
+    "opentelemetry-api>=1.20",
     "pydantic>=2,<3",
     "tomli-w>=1",
 ]
@@ -33,9 +34,6 @@ Issues = "https://github.com/yoselabs/a2kit/issues"
 Changelog = "https://github.com/yoselabs/a2kit/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-otel = [
-    "opentelemetry-api>=1.20",
-]
 testing = [
     "vcrpy>=6",
 ]

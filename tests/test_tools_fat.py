@@ -339,7 +339,7 @@ async def test_streaming_off_returns_value_directly() -> None:
 
 
 async def test_otel_noop_when_no_provider() -> None:
-    # Default ProxyTracerProvider → _NullSpan; tool just runs.
+    # Default ProxyTracerProvider → OTel NoOpTracer; tool just runs.
     @a2kit.tool(otel=True)
     async def f() -> dict:
         return {"ok": True}
@@ -460,24 +460,8 @@ async def test_otel_span_without_set_attribute(monkeypatch: pytest.MonkeyPatch) 
     assert await f() == {"ok": True}
 
 
-async def test_otel_import_missing_falls_back_to_null(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Simulate opentelemetry not installed."""
-    import builtins
-
-    real_import = builtins.__import__
-
-    def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
-        if name == "opentelemetry" or name.startswith("opentelemetry."):
-            raise ImportError(name)
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-
-    @a2kit.tool(otel=True)
-    async def f() -> dict:
-        return {"ok": True}
-
-    assert await f() == {"ok": True}
+# `test_otel_import_missing_falls_back_to_null` deleted in v0.13: OTel is now
+# a hard core dep, no missing-import branch left.
 
 
 # -- sync path with fat features --------------------------------------------

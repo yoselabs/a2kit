@@ -11,6 +11,8 @@ import inspect
 from collections.abc import AsyncIterator, Callable, Iterable
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from opentelemetry import trace as _trace
+
 from a2kit._otel import otel_span as _otel_span
 from a2kit.di import _collect_annotated_deps, resolve_annotated_deps
 from a2kit.exceptions import WriteNotAllowed
@@ -31,7 +33,6 @@ from a2kit.tools._metadata import (
 from a2kit.tools._runtime import (
     _check_tool_call_contamination,
     _consume_or_passthrough_async,
-    _NullSpan,
 )
 from a2kit.tools._signature import (
     _check_return_annotation,
@@ -42,6 +43,8 @@ from a2kit.tools._signature import (
     _splice_wrapper_signature,
     _verify_passthrough_params,
 )
+
+_NOOP_TRACER = _trace.NoOpTracer()
 
 if TYPE_CHECKING:
     from a2kit._capabilities import Capability
@@ -229,7 +232,11 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                             call_ctx=depends_call_ctx,
                         )
                         kwargs.update(resolved)
-                    span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
+                    span_cm = (
+                        _otel_span(resolved_tool_name, conn_key, write)
+                        if otel
+                        else _NOOP_TRACER.start_as_current_span(f"a2kit.tool.{resolved_tool_name}")
+                    )
                     with span_cm:
                         result = await fn(*args, **kwargs)
                         if streaming and isinstance(result, AsyncIterator):
@@ -272,7 +279,11 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 )
                 try:
                     args, kwargs, conn_key, ctx_token = _prelude(args, kwargs)
-                    span_cm = _otel_span(resolved_tool_name, conn_key, write) if otel else _NullSpan()
+                    span_cm = (
+                        _otel_span(resolved_tool_name, conn_key, write)
+                        if otel
+                        else _NOOP_TRACER.start_as_current_span(f"a2kit.tool.{resolved_tool_name}")
+                    )
                     with span_cm:
                         result = fn(*args, **kwargs)
                         if has_listview:

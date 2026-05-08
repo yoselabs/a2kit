@@ -1,4 +1,4 @@
-"""Runtime context bits: transport seam, OTel null-span, contamination guard,
+"""Runtime context bits: transport seam, contamination guard,
 async-iterator passthrough.
 
 These are the pieces the @tool wrapper needs *during* a call (vs. signature
@@ -18,16 +18,6 @@ if TYPE_CHECKING:
 
 _TRANSPORT_VAR: ContextVar[str | None] = ContextVar("a2kit_current_transport", default=None)
 _TOOL_CALL_CONTAMINATION_MARKER = "<parameter name="
-
-
-class _NullSpan:
-    """Local no-op CM used when `otel=False` is passed to the decorator."""
-
-    def __enter__(self) -> _NullSpan:
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        return None
 
 
 def _set_current_transport(name: str | None) -> None:
@@ -69,7 +59,6 @@ async def _consume_or_passthrough_async(async_iter: AsyncIterator[Any]) -> Any:
 
 __all__ = [
     "_TOOL_CALL_CONTAMINATION_MARKER",
-    "_NullSpan",
     "_check_tool_call_contamination",
     "_consume_or_passthrough_async",
     "_get_current_transport",

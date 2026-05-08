@@ -272,53 +272,9 @@ def test_plugin_span_skips_attrs_when_span_lacks_set_attribute(monkeypatch: pyte
     _otel._TRACER_CACHE.clear()
 
 
-def test_no_op_tracer_returns_null_span() -> None:
-    """`_NoOpTracer.start_as_current_span` returns the package's `_NullSpan`."""
-    from a2kit._otel import _NoOpTracer, _NullSpan
-
-    cm = _NoOpTracer().start_as_current_span("anything")
-    assert isinstance(cm, _NullSpan)
-    # CM contract: enter/exit don't blow up.
-    with cm:
-        pass
-
-
-def test_get_tracer_falls_back_to_noop_when_otel_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Simulate OTel not being installed — `get_tracer()` returns a `_NoOpTracer`."""
-    import builtins
-
-    from a2kit import _otel
-
-    _otel._TRACER_CACHE.clear()
-    real_import = builtins.__import__
-
-    def fake_import(name: str, *args: object, **kwargs: object) -> object:
-        if name == "opentelemetry":
-            raise ImportError("simulated missing OTel")
-        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-    tracer = a2kit.get_tracer()
-    assert isinstance(tracer, _otel._NoOpTracer)
-    _otel._TRACER_CACHE.clear()
-
-
-def test_plugin_span_falls_back_to_null_when_otel_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Simulate OTel not being installed — `plugin_span()` returns `_NullSpan`."""
-    import builtins
-
-    from a2kit._otel import _NullSpan
-
-    real_import = builtins.__import__
-
-    def fake_import(name: str, *args: object, **kwargs: object) -> object:
-        if name == "opentelemetry":
-            raise ImportError("simulated missing OTel")
-        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-    cm = a2kit.plugin_span("any.thing")
-    assert isinstance(cm, _NullSpan)
+# OTel-missing fallbacks deleted in v0.13: `opentelemetry-api` is now a hard
+# core dep. The kit relies on OTel's own `NoOpTracer` when no real provider is
+# configured, so there is no "OTel missing" branch left to test.
 
 
 # ---- MCPRunner — provides= / plugins= / lookup_provider --------------------- #
