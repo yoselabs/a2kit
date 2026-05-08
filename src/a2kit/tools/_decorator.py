@@ -296,11 +296,21 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             wrapper = sync_wrapper
 
         injected: list[inspect.Parameter] = []
+
         # When Annotated[..., Depends(factory)] params declare a
         # `connection: str` kwonly on the factory side, expose `connection`
         # as a wrapper kwarg so callers (FastMCP, Click subcommands, direct
         # invocation) can pass it. The resolver forwards it as call_ctx.
-        deps_need_connection = any("connection" in _factory_non_depends_kwonly(d.dependency) for d in annotated_deps.values())
+        def _walk_factory_needs_connection(factory: Any, seen: set[Any]) -> bool:
+            """Walk transitively: does this factory (or any of its Depends factories) declare `connection`?"""
+            if factory in seen:
+                return False
+            seen.add(factory)
+            if "connection" in _factory_non_depends_kwonly(factory):
+                return True
+            return any(_walk_factory_needs_connection(d.dependency, seen) for d in _collect_annotated_deps(factory).values())
+
+        deps_need_connection = any(_walk_factory_needs_connection(d.dependency, set()) for d in annotated_deps.values())
         if deps_need_connection:
             injected.append(
                 inspect.Parameter(

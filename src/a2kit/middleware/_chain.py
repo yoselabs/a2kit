@@ -83,7 +83,7 @@ def compose(
     return handler
 
 
-def _build_chain(
+def _build_chain(  # noqa: C901
     *,
     verb: Verb,
     write: bool,
@@ -133,6 +133,12 @@ def _build_chain(
     if tool_call_guard_on:
         chain.append(tool_call_guard)
     chain.append(capability_guard)
+    if write:
+        # Tier-2 implicit: write tools get the WriteEnforce gate so a
+        # read-only connection raises before the tool body runs.
+        from a2kit.contrib.connections._middleware import write_enforce_factory  # noqa: PLC0415
+
+        chain.append(write_enforce_factory())
     if extra_pre:
         chain.extend(extra_pre)
     if has_listview and verb == "list":
