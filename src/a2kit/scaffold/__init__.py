@@ -31,6 +31,7 @@ from a2kit.scaffold._routers import (
 from a2kit.scaffold._runner import (
     FastMCPLike,
     MCPRunner,
+    RunnerOptions,
     _atom_polarity,
     _expr_mentions,
     _find_pyproject,
@@ -49,6 +50,7 @@ __all__ = [
     "RegisterBlock",
     "Router",
     "RouterRegistry",
+    "RunnerOptions",
     "_EphemeralAwareStore",
     "_FilteredStore",
     "_RegisterableRouter",

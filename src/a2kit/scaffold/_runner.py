@@ -12,8 +12,9 @@ import contextvars
 import sys
 import tomllib
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 from a2kit._capabilities import UnknownCapability, capabilities
 from a2kit._select import (
@@ -80,6 +81,25 @@ def _register_pyproject_capabilities(a2kit_table: dict[str, Any]) -> None:
             description=body.get("description", ""),
             aliases=list(body.get("aliases", []) or []),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class RunnerOptions:
+    """Typed options for `MCPRunner.run(options=...)` — replaces argv-string
+    round-tripping (v0.13).
+
+    The Click `serve` subcommand constructs `RunnerOptions` directly from
+    parsed flags, so MCP authors never round-trip through argv strings.
+
+    `argv=` on `run()` / `run_async()` is kept as a compat layer for the
+    v0.12 surface; new code should use `options=`.
+    """
+
+    http: str | None = None
+    select_expr: str | None = None
+    scope: str | None = None
+    transport: Literal["stdio", "http"] | None = None
+    registers: tuple[str, ...] = ()
 
 
 @runtime_checkable
@@ -328,7 +348,35 @@ class MCPRunner:
                 host = raw
         return host, port
 
-    def _prepare(self, argv: list[str] | None, transport: str | None) -> tuple[dict[str, Any], str]:
+    def _options_to_parsed(self, options: RunnerOptions) -> dict[str, Any]:
+        """Convert typed `RunnerOptions` into the `_parse` dict shape.
+
+        Bypasses argv round-tripping. Mirrors `_parse`'s output keys exactly
+        so the rest of `_prepare` doesn't need to know which input shape was
+        used.
+        """
+        register_args: list[str] = []
+        for reg in options.registers:
+            register_args.append("--register")
+            # Each `--register` value is a string `"router:key field=val ..."`;
+            # `_parse_multistore_register` / `register_ephemeral_connections`
+            # tokenise on whitespace. Pre-split here so the downstream parser
+            # sees the same token stream it would have received via argv.
+            register_args.extend(reg.split())
+        return {
+            "scope": options.scope,
+            "select": options.select_expr,
+            "http": options.http,
+            "register_args": register_args,
+        }
+
+    def _prepare(
+        self,
+        argv: list[str] | None,
+        transport: str | None,
+        *,
+        options: RunnerOptions | None = None,
+    ) -> tuple[dict[str, Any], str]:
         """Parse argv, register routers, decide transport. Pure-sync orchestration —
         shared by `run` (sync entry) and `run_async` (embedded entry).
 
@@ -343,8 +391,13 @@ class MCPRunner:
         # for chained-DI param resolution. Idempotent — last-prepare wins.
         _CURRENT_RUNNER.set(self)
 
-        argv = list(sys.argv[1:]) if argv is None else list(argv)
-        parsed = self._parse(argv)
+        if options is not None:
+            parsed = self._options_to_parsed(options)
+            if transport is None and options.transport is not None:
+                transport = options.transport
+        else:
+            argv = list(sys.argv[1:]) if argv is None else list(argv)
+            parsed = self._parse(argv)
         ephemeral = self._ephemeral(parsed)
         parsed["ephemeral"] = ephemeral
         parsed["effective_select"] = self._apply_routers(parsed)
@@ -359,11 +412,21 @@ class MCPRunner:
             self.server.settings.port = port
         return parsed, chosen
 
-    def run(self, argv: list[str] | None = None, *, transport: str | None = None) -> dict[str, Any]:
-        """Parse argv, register routers, set transport seam, run the server."""
+    def run(
+        self,
+        argv: list[str] | None = None,
+        *,
+        transport: str | None = None,
+        options: RunnerOptions | None = None,
+    ) -> dict[str, Any]:
+        """Parse argv, register routers, set transport seam, run the server.
+
+        Pass `options=RunnerOptions(...)` (v0.13) to skip argv round-tripping;
+        `argv=` stays as a compat layer.
+        """
         from a2kit.tools import _set_current_transport  # noqa: PLC0415
 
-        parsed, chosen = self._prepare(argv, transport)
+        parsed, chosen = self._prepare(argv, transport, options=options)
         _set_current_transport(chosen)
         try:
             if chosen == "http":
@@ -374,7 +437,13 @@ class MCPRunner:
             _set_current_transport(None)
         return parsed
 
-    async def run_async(self, argv: list[str] | None = None, *, transport: str | None = None) -> dict[str, Any]:
+    async def run_async(
+        self,
+        argv: list[str] | None = None,
+        *,
+        transport: str | None = None,
+        options: RunnerOptions | None = None,
+    ) -> dict[str, Any]:
         """Async entry — for embedding a2kit inside a host that already runs an event loop.
 
         Awaits `server.run_async(...)` when the FastMCP server exposes it.
@@ -393,7 +462,7 @@ class MCPRunner:
             )
             raise RuntimeError(msg)
 
-        parsed, chosen = self._prepare(argv, transport)
+        parsed, chosen = self._prepare(argv, transport, options=options)
         _set_current_transport(chosen)
         try:
             if chosen == "http":
@@ -431,6 +500,7 @@ __all__ = [
     "_CURRENT_RUNNER",
     "FastMCPLike",
     "MCPRunner",
+    "RunnerOptions",
     "_atom_polarity",
     "_expr_mentions",
     "_find_pyproject",

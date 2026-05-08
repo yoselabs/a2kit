@@ -405,3 +405,58 @@ def test_runner_no_enable_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _FakeServer()
     parsed = MCPRunner(server).run(argv=["--enable", "a,b"])
     assert "enable" not in parsed
+
+
+# ── v0.13 RunnerOptions ────────────────────────────────────────────────
+
+
+def test_runner_options_basic() -> None:
+    """`RunnerOptions(...)` skips argv round-tripping and produces the same
+    parsed shape as the argv path."""
+    from a2kit.scaffold import RunnerOptions
+
+    server = _FakeServer()
+    options = RunnerOptions(select_expr="default and not write", scope="prod")
+    parsed = MCPRunner(server).run(options=options)
+    assert parsed["scope"] == "prod"
+    assert parsed["effective_select"] is not None
+
+
+def test_runner_options_http_no_value() -> None:
+    """`RunnerOptions(http="")` triggers HTTP transport with default host:port."""
+    from a2kit.scaffold import RunnerOptions
+
+    server = _FakeServer()
+    MCPRunner(server).run(options=RunnerOptions(http=""))
+    assert server.settings.host == "127.0.0.1"
+    assert server.settings.port == 8080
+
+
+def test_runner_options_http_host_port() -> None:
+    """`RunnerOptions(http="0.0.0.0:9000")` parses host + port."""
+    from a2kit.scaffold import RunnerOptions
+
+    server = _FakeServer()
+    MCPRunner(server).run(options=RunnerOptions(http="0.0.0.0:9000"))  # noqa: S104
+    assert server.settings.host == "0.0.0.0"  # noqa: S104
+    assert server.settings.port == 9000
+
+
+def test_runner_options_transport_override() -> None:
+    """`options.transport` is honoured when `transport=` kwarg is None."""
+    from a2kit.scaffold import RunnerOptions
+
+    server = _FakeServer()
+    parsed = MCPRunner(server).run(options=RunnerOptions(transport="stdio"))
+    # No HTTP options set + explicit stdio transport → host/port untouched.
+    assert "http" in parsed
+
+
+def test_runner_options_register(tmp_path: Path) -> None:
+    """`RunnerOptions(registers=...)` reaches `register_args` like argv `--register`."""
+    from a2kit.scaffold import RunnerOptions
+
+    server = _FakeServer()
+    store: ConnectionStore[WConn] = ConnectionStore(tmp_path / "c", WConn)
+    parsed = MCPRunner(server, store=store).run(options=RunnerOptions(registers=("ep url=https://x",)))
+    assert parsed["ephemeral"]

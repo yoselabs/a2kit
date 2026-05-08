@@ -743,7 +743,7 @@ def test_app_run_server_delegates_to_runner(tmp_path, monkeypatch) -> None:  # t
     app.connect(_AppConn, config_dir=tmp_path)
     captured: dict[str, object] = {}
 
-    def fake_run(self, argv=None, *, transport=None):  # type: ignore[no-untyped-def]
+    def fake_run(self, argv=None, *, transport=None, options=None):  # type: ignore[no-untyped-def]
         captured["argv"] = argv
         captured["transport"] = transport
         return {"ok": True}
@@ -763,7 +763,7 @@ def test_app_cli_serve_subcommand_starts_server(tmp_path, monkeypatch) -> None: 
 
     captured: dict[str, object] = {}
 
-    def fake_run(self, argv=None, *, transport=None):  # type: ignore[no-untyped-def]
+    def fake_run(self, argv=None, *, transport=None, options=None):  # type: ignore[no-untyped-def]
         captured["argv"] = argv
         return {}
 
@@ -1006,7 +1006,7 @@ async def test_app_run_async_delegates_to_runner(tmp_path, monkeypatch) -> None:
     app.connect(_AppConn, config_dir=tmp_path)
     captured: dict[str, object] = {}
 
-    async def fake_run_async(self, argv=None, *, transport=None):  # type: ignore[no-untyped-def]
+    async def fake_run_async(self, argv=None, *, transport=None, options=None):  # type: ignore[no-untyped-def]
         captured["argv"] = argv
         return {"ok": True}
 

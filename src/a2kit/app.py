@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from a2kit.connections import ConnectionInfo, ConnectionStore, default_config_dir
-from a2kit.scaffold import MCPRunner, Router, RouterRegistry, build_cli
+from a2kit.scaffold import MCPRunner, Router, RouterRegistry, RunnerOptions, build_cli
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -195,16 +195,17 @@ class App:
             help='Register an ephemeral connection. Form: "router:key field=val ...".',
         )
         def serve(http: str | None, select_expr: str | None, scope: str | None, registers: tuple[str, ...]) -> None:
-            runner_argv: list[str] = []
-            if select_expr is not None:
-                runner_argv += ["--select", select_expr]
-            if scope is not None:
-                runner_argv += ["--scope", scope]
-            if http is not None:
-                runner_argv += ["--http", http] if http else ["--http"]
-            for reg in registers:
-                runner_argv += ["--register", reg]
-            self.run_server(argv=runner_argv)
+            # v0.13: typed options skip argv round-tripping. Click's default
+            # for `--http` (no value) collapses to "" — kept as `""` so the
+            # runner's HTTP-without-host case still triggers (vs `None` =
+            # stdio).
+            options = RunnerOptions(
+                http=http,
+                select_expr=select_expr,
+                scope=scope,
+                registers=tuple(registers),
+            )
+            self.run_server(options=options)
 
         # Each registered tool becomes a top-level subcommand: `app <tool-name>`.
         # `--help` lists them alongside built-ins; no `tools list/call` ceremony.
@@ -320,12 +321,21 @@ class App:
         except (TypeError, ValueError):
             _click.echo(repr(result))
 
-    def run_server(self, argv: list[str] | None = None, *, transport: str | None = None) -> dict[str, Any]:
+    def run_server(
+        self,
+        argv: list[str] | None = None,
+        *,
+        transport: str | None = None,
+        options: RunnerOptions | None = None,
+    ) -> dict[str, Any]:
         """Start the MCP server directly. Equivalent to `app run serve --...`
         but bypasses Click — useful when embedding the kit in a host program
         that already owns the CLI.
+
+        Pass `options=RunnerOptions(...)` (v0.13) to skip argv round-tripping;
+        `argv=` stays as a compat layer.
         """
-        return self._build_runner().run(argv=argv, transport=transport)
+        return self._build_runner().run(argv=argv, transport=transport, options=options)
 
     def run(self, argv: list[str] | None = None) -> Any:
         """Build the CLI group and dispatch. Author entry point.
