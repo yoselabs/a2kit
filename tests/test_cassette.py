@@ -77,6 +77,15 @@ def test_cassette_re_export_from_testing(tmp_path: Path, fake_vcr: _FakeVcr) -> 
     assert isinstance(obj, _FakeCassetteCtx)
 
 
+def test_import_vcr_returns_module_when_installed() -> None:
+    """v0.13 coverage: the success path of `_import_vcr` returns the real
+    module. Most other tests monkeypatch the helper, leaving the success path
+    uncovered.
+    """
+    vcr_mod = _cassette._import_vcr()  # noqa: SLF001
+    assert hasattr(vcr_mod, "use_cassette")
+
+
 def test_cassette_missing_vcr_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     real_import = builtins.__import__
 

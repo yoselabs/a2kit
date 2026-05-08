@@ -161,6 +161,15 @@ def test_passthrough_pagination_missing_both_params_rejected() -> None:
             return []
 
 
+def test_passthrough_fields_missing_param_rejected() -> None:
+    """v0.13 coverage: `fields=Passthrough` requires `fields` in signature."""
+    with pytest.raises(ValueError, match="fields"):
+
+        @a2kit.tool(fields=Passthrough)
+        def f() -> list[dict]:
+            return []
+
+
 # ---- Mixed modes ------------------------------------------------------------
 
 

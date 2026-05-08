@@ -112,3 +112,39 @@ def test_preserve_return_annotation_idempotent() -> None:
 
     preserve_return_annotation(fn)
     assert fn.__annotations__["return"] in (dict, "dict")
+
+
+def test_sync_enricher_async_path_returns_exception_in_thunk() -> None:
+    """v0.13 coverage hole: `apply_enricher_sync._coro` line where the enricher
+    returns an Exception sync inside the thunk (after returning an awaitable on
+    the outer call).
+
+    Also exercises the `iscoroutine == False` branch (100→103) by making the
+    first call return a non-coroutine awaitable.
+    """
+    calls = {"n": 0}
+
+    class _NonCoroAwaitable:
+        """Awaitable that's not a coroutine (so `inspect.iscoroutine` False).
+
+        First call returns this; the outer `apply_enricher_sync` skips the
+        coroutine-close branch (line 100→103). The thunk re-invokes the
+        enricher (call #2) which returns an Exception synchronously, hitting
+        the `return r` short-circuit inside `_coro` (line 109).
+        """
+
+        def __await__(self):
+            return iter(())
+
+    def enrich(exc: Exception, tool_name: str | None = None) -> Exception:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _NonCoroAwaitable()  # type: ignore[return-value]
+        return RuntimeError(f"enriched:{tool_name}:{exc}")
+
+    def my_tool(x: int) -> dict:
+        raise ValueError("boom")
+
+    wrapped = tool(enricher=enrich)(my_tool)
+    with pytest.raises(RuntimeError, match="enriched:my_tool:boom"):
+        wrapped(1)

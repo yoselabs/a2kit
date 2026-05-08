@@ -124,11 +124,10 @@ runtime-evaluated-base-classes = ["a2kit.ConnectionInfo"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# cov-fail-under=99: two edge-case lines left uncovered after the v0.12 ty/lint
-# refactors (sync-enricher-wrapping-async coro close in enrichers.py:108;
-# Passthrough pagination missing-param check in tools/_signature.py:113).
-# Tracked in todo.md "v0.13 also-cleanup". Restore to 100 when those land.
-addopts = "-v --strict-markers --cov --cov-report=term-missing --cov-fail-under=99"
+# cov-fail-under=100: v0.13 restored full coverage by closing the v0.12
+# holes (enrichers.py:108, tools/_signature.py:113) plus a few drive-by
+# gaps surfaced by the middleware refactor.
+addopts = "-v --strict-markers --cov --cov-report=term-missing --cov-fail-under=100"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 

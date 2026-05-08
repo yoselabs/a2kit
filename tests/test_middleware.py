@@ -323,3 +323,41 @@ def test_make_factory_returns_tuple() -> None:
 
     out = connections.make(Conn)
     assert out == (Conn, None)
+
+
+def test_otel_noop_span_factory_returns_passing_middleware() -> None:
+    """v0.13 coverage: `otel_noop_span_factory()` returns a working middleware.
+
+    Currently unused by the implicit chain (the chain simply omits the OTel
+    step on `otel=False`), kept for symmetry / future explicit chains.
+    """
+    from a2kit.middleware._chain import ToolContext
+    from a2kit.middleware._otel import otel_noop_span_factory
+
+    mw = otel_noop_span_factory()
+
+    async def _call_next(**kwargs: Any) -> str:
+        return f"called:{kwargs.get('x')}"
+
+    ctx = ToolContext(
+        tool_name="t",
+        verb="tool",
+        write=False,
+        capabilities=frozenset(),
+        format_hint=None,
+        state={},
+    )
+    out = asyncio.run(mw(_call_next, ctx, x=42))
+    assert out == "called:42"
+
+
+def test_extract_depends_returns_none_when_no_marker() -> None:
+    """v0.13 coverage: `_extract_depends` returns None when Annotated metadata
+    contains no `Depends` marker (e.g. `Annotated[int, "doc"]`).
+    """
+    from typing import Annotated
+
+    from a2kit.di import _extract_depends
+
+    assert _extract_depends(Annotated[int, "no-depends-here"]) is None
+    assert _extract_depends(int) is None
