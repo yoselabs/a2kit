@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.14.0.dev0 — 2026-05-08
+
+**Polish turn (in progress).** v0.14 picks up the v0.13 deferred backlog;
+this dev cut lands two cleanup commits and adds App-scope enricher
+plumbing. The big v0.12 connection-surface deletion (`Router.store`,
+`MCPRunner.store=`, `connection_param=`, `_detect_info_param`,
+`Plugin`/`PluginBase` Protocols, `Router(BaseModel, Generic[ConnT])`)
+remains carried over and is the next shaping target — see `todo.md` for
+the v0.14 ledger.
+
+### New surface
+
+- **`App(name, enricher=...)`** — App-scope enricher fallback. Resolution
+  order at the binding layer is `tool > router > app`, with the existing
+  `auto_connection_enricher(store)` as the implicit floor. Routers
+  without their own `enricher=` inherit the app's at apply time.
+
+### Removed
+
+- **A2K005** lint rule (`KEY_FIELDS` migration aid + `cls.Key` arity
+  cross-check). Carried since v0.5; the legacy `KEY_FIELDS` syntax is
+  long gone. Drops `key_fields_value`, `connection_info_key_class`,
+  `namedtuple_field_count`, `connection_info_subclasses` AST helpers
+  alongside it. ~800 lines net deletion (src + tests + docs).
+
+### Deferred to v0.15
+
+- **`ConnectionInfo` → `ConnectionConfig` rename** — Pydantic schema
+  name + error-message ripple across the test corpus exceeded session
+  budget; documented for next cycle.
+- **Hard delete of the v0.12 connection surface** (the headliner). All
+  nine items (`Router.store`, `MCPRunner.store=`, `connection_param=`,
+  `_detect_info_param`/`info_target`, `_prelude_async` connection
+  branch, `Router(BaseModel, Generic[ConnT])` TypeVar, `Plugin` /
+  `PluginBase` Protocols, `Provider` Protocol, `App.use()`'s Plugin
+  arm) are interlocked with ~117 `connection_param=` test sites and
+  31 `Plugin`/`PluginBase` references; doing them as one coordinated
+  migration is its own multi-session pitch.
+- **`SubApp` / `app.mount(...)` shape + `connections.make()` real
+  SubApp.** Parked behind the surface deletion above.
+- **`PLC0415` per-file ignore in `tests/**`.** 123 hits across the
+  test corpus; non-trivial migration left for a focused commit.
+
 ## 0.13.0 — 2026-05-08
 
 **Library-swap turn + middleware split.** Replaces three bespoke modules
