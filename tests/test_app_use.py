@@ -28,6 +28,23 @@ def test_app_connect_returns_store(tmp_path) -> None:  # type: ignore[no-untyped
     assert store.connection_class is _AppConn
 
 
+def test_app_get_store_returns_registered(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    app = a2kit.App("test")
+    store = app.connect(_AppConn, config_dir=tmp_path)
+    assert app.get_store(_AppConn) is store
+
+
+def test_app_get_store_unknown_raises(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    app = a2kit.App("test")
+    app.connect(_AppConn, config_dir=tmp_path)
+
+    class _Other(a2kit.ConnectionConfig):
+        pass
+
+    with pytest.raises(ValueError, match="no ConnectionStore for _Other"):
+        app.get_store(_Other)
+
+
 def test_app_connect_rejects_double_register(tmp_path) -> None:  # type: ignore[no-untyped-def]
     app = a2kit.App("test")
     app.connect(_AppConn, config_dir=tmp_path)

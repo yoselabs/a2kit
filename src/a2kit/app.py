@@ -102,6 +102,20 @@ class App:
         self._stores.append(store)
         return store
 
+    def get_store(self, conn_type: type[C]) -> ConnectionStore[C]:
+        """Return the registered `ConnectionStore[T]` for `conn_type`.
+
+        Public hook for contrib factories that need to look up an App's store
+        without poking `app._stores`. Raises ``ValueError`` if no store has
+        been registered for `conn_type` (call ``app.connect(conn_type)``
+        first).
+        """
+        for store in self._stores:
+            if store.connection_class is conn_type:
+                return store
+        msg = f"App has no ConnectionStore for {conn_type.__name__}. Call `app.connect({conn_type.__name__})` first."
+        raise ValueError(msg)
+
     def use(self, item: type[Router] | Router) -> None:
         """Register a Router (instance or class) on the App.
 

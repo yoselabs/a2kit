@@ -52,10 +52,7 @@ def get_conn_factory(app: App, conn_type: type[C]) -> Callable[..., Awaitable[C]
     registered on the App. Raises ``ConnectionNotFound`` at call time if
     the resolved key has no saved connection.
     """
-    store = next((s for s in app._stores if s.connection_class is conn_type), None)  # noqa: SLF001 — App composition root, contrib helper
-    if store is None:
-        msg = f"App has no ConnectionStore for {conn_type.__name__}. Call `app.connect({conn_type.__name__})` first."
-        raise ValueError(msg)
+    store = app.get_store(conn_type)
 
     async def get_conn(*, connection: str | tuple[str, ...] | list[str]) -> C:
         key = resolve_connection_key(connection)
