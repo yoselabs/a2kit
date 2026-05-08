@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.17.0.dev0 — 2026-05-08
+
+**Hygiene.** v0.17 audits the pre-v0.13 P1/P2/P3 backlog (most items
+turned out stale or already-landed), executes the surviving real items
+(formatter robustness + Hypothesis property tests + OTel
+`tool.result.count`), and deletes the v0.16 `ConnectionInfo` alias.
+
+### Backlog audit
+
+`todo.md` P1/P2/P3 sections (lines 26-72, captured pre-v0.13) honest
+again — every item is checked, struck stale, or surviving-and-current.
+The v0.13–v0.15 surface deletes invalidated most P3 items
+(`tools.py`, `_RouterContext`, `MCPRunner.store=`, `_auto_inject_enabled`,
+typed-info DI all gone). The async store API, `MCPRunner.run_async`,
+`EnricherFn` async support, and OTel `record_exception` already landed
+in v0.11–v0.13.
+
+### Formatter robustness (P1)
+
+- **`_dump_items` raises on non-row items** instead of silently dropping
+  them. Pre-v0.17 behaviour turned `[1, 2, 3]` into `[]`, masking
+  row-shape bugs. `format_response` gates the call to only normalize
+  when `data[0]` is a `dict` / `BaseModel`; heterogeneous lists now
+  fall through to the JSON path.
+- **`format_from_annotation` unwraps `Awaitable[T]` / `Coroutine[Y, S, T]`**
+  before classifying — async tools no longer lose precomputation.
+- **Bare `dict`, `Mapping[K, V]`, `TypedDict` subclasses** classify as
+  `"json"` (previously fell through to `None`).
+- **`_flat_pydantic_fields` handles multi-arm `Optional[Union[A, B]]`**.
+  Previously only single-arm Optional was unwrapped; multi-arm fell
+  through. New `_classify_arm` helper inspects each non-None arm.
+
+### OTel observability (P2)
+
+- **`tool.result.count` span attribute** — stamped by the OTel
+  middleware when the tool returns `list` / `tuple` / `Page[T]`.
+  Cardinality only — PII-safe and stamped after success only
+  (meaningless on error).
+
+### Property tests (Hypothesis)
+
+- `truncate(value)` is structural identity at high `max_chars` and
+  never mutates input — verified against a recursive value strategy
+  (atoms / lists / dicts up to depth 4).
+- `format_from_annotation(list[FlatModel])` precompute agrees with
+  `toon_or_json` runtime classification.
+- `hypothesis>=6` added to dev deps; 25 new tests in
+  `tests/test_v17.py`.
+
+### Deleted: `ConnectionInfo` alias
+
+v0.16 added `ConnectionInfo = ConnectionConfig` as a one-cycle alias
+with an explicit "delete in v0.17" plan. Done.
+`src/a2kit/lint/_ast_helpers.py` no longer recognises the old name;
+all tests + the tracker example use `ConnectionConfig` directly.
+`ConnectionInfoLike` Protocol stays — it's a structural type and the
+rename pressure doesn't apply.
+
+### Tests
+
+- 589 tests (564 → 589), 100% coverage.
+- `make lint && uv run pytest -q && make examples` green.
+
 ## 0.16.0.dev0 — 2026-05-08
 
 **Polish.** v0.16 closes the v0.15 coverage drop, renames the
