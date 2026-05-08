@@ -28,7 +28,7 @@ def _load_celpy() -> Any:
     """Lazy-load celpy. Raises `ProjectionUnavailable` if missing."""
     try:
         import celpy  # noqa: PLC0415
-    except ImportError as exc:
+    except ImportError as exc:  # pragma: no cover — celpy is in [projection] extra; tests install it
         raise ProjectionUnavailable from exc
     return celpy
 

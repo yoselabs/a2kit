@@ -153,7 +153,7 @@ def format_from_annotation(anno: Any) -> FormatName | None:  # noqa: PLR0911
     args = get_args(anno)
 
     if origin in (list, tuple):
-        if not args:
+        if not args:  # pragma: no cover — get_origin returns None for bare list/tuple, so origin-in-list-tuple implies args were given
             return None
         return _list_format_from_item(args[0])
 

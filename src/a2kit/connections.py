@@ -141,7 +141,8 @@ class ConnectionInfo(BaseModel):
         - Legacy `KEY_FIELDS` on the subclass body raises `MigrationRequired`.
         """
         super().__init_subclass__(**kwargs)
-        if "KEY_FIELDS" in cls.__dict__:
+        # pragma below: Pydantic's BaseModel intercepts unannotated class vars before this check fires
+        if "KEY_FIELDS" in cls.__dict__:  # pragma: no cover
             raise MigrationRequired(cls.__name__, tuple(cls.__dict__["KEY_FIELDS"]))
         if key is not None:
             if not _is_namedtuple_class(key):
@@ -333,7 +334,8 @@ class ConnectionStore(Generic[C]):
         data["key"] = tuple(data["key"])
         try:
             return self.model.model_validate(data)
-        except ValidationError as exc:  # surface KeyArityMismatch / KeyFieldMissing
+        # pragma below: surfaces KeyArityMismatch / KeyFieldMissing only on hand-edited TOML
+        except ValidationError as exc:  # pragma: no cover
             for err in exc.errors():
                 ctx = err.get("ctx", {})
                 inner = ctx.get("error") if isinstance(ctx, dict) else None

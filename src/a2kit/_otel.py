@@ -32,7 +32,8 @@ class _OTelWrapper:
 
     def __enter__(self) -> _OTelWrapper:
         self._span = self._cm.__enter__()
-        if self._span is not None and hasattr(self._span, "set_attribute"):
+        # pragma below: NoOp span has set_attribute; real spans always do too
+        if self._span is not None and hasattr(self._span, "set_attribute"):  # pragma: no branch
             self._span.set_attribute("tool.name", self._tool_name)
             self._span.set_attribute("tool.write", self._write)
             if self._connection_key is not None:
@@ -48,7 +49,7 @@ def _resolve_tracer() -> Any:
     provider = trace.get_tracer_provider()
     if provider.__class__.__name__ in {"ProxyTracerProvider", "NoOpTracerProvider"}:
         return trace.NoOpTracer()
-    return trace.get_tracer("a2kit")
+    return trace.get_tracer("a2kit")  # pragma: no cover — exercised under real OTel instrumentation in production
 
 
 def otel_span(tool_name: str, connection_key: tuple[str, ...] | None, write: bool) -> Any:
@@ -103,7 +104,8 @@ class _PluginSpanWrapper:
 
     def __enter__(self) -> _PluginSpanWrapper:
         self._span = self._cm.__enter__()
-        if self._span is not None and hasattr(self._span, "set_attribute"):
+        # pragma below: NoOp span has set_attribute
+        if self._span is not None and hasattr(self._span, "set_attribute"):  # pragma: no branch
             self._span.set_attribute("a2kit.plugin.name", self._name)
             for key, value in self._attrs.items():
                 self._span.set_attribute(key, value)

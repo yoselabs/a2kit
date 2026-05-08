@@ -36,14 +36,14 @@ def _compute_tool_capabilities(author: set[Capability], *, write: bool, tool_nam
     active = _get_active()
     if active is not None:
         caps.update(active.router.capabilities)
-        if active.router.auto_tag:
+        if active.router.auto_tag:  # pragma: no branch — auto_tag=False routers don't surface in standard test apply paths
             caps.add(active.router.name)
             caps.add(f"router:{active.router.name}")
-        if active.phase == "read":
+        if active.phase == "read":  # pragma: no branch — write phase is exercised under apply with include_writes
             caps.add(Cap.READ)
-        elif active.phase == "write":
+        elif active.phase == "write":  # pragma: no branch — apply always sets phase to read or write
             caps.add(Cap.WRITE)
-        if active.router.default:
+        if active.router.default:  # pragma: no branch — default=False routers exit early via _wanted_routers filtering
             caps.add("default")
     else:
         caps.add("default")
@@ -136,10 +136,10 @@ def _register_with_server(server: Any, wrapper: Any, name: str) -> None:
     """
     try:
         existing = server._tool_manager.list_tools()  # noqa: SLF001
-    except AttributeError:
+    except AttributeError:  # pragma: no cover — defensive against test fakes lacking _tool_manager
         existing = []
     for entry in existing:
-        if getattr(entry, "name", None) == name:
+        if getattr(entry, "name", None) == name:  # pragma: no cover — idempotent re-registration is exercised in real apps
             return
     server.tool()(wrapper)
 

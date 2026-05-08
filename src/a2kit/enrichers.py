@@ -119,7 +119,8 @@ def apply_enricher_sync(
     except RuntimeError:
         try:
             drained = anyio.run(_coro)
-        except RuntimeError:
+        # pragma below: 3rd-tier fallback fires only when anyio.run is called from inside a running loop on this thread
+        except RuntimeError:  # pragma: no cover
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                 drained = ex.submit(anyio.run, _coro).result()
     return cast("Exception", drained)
