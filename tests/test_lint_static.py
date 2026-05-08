@@ -11,13 +11,11 @@ from a2kit.lint.static import (
     A2K002,
     A2K003,
     A2K004,
-    A2K005,
     A2K006,
     rule_a2k001,
     rule_a2k002,
     rule_a2k003,
     rule_a2k004,
-    rule_a2k005,
     run_static_rules,
 )
 
@@ -232,64 +230,6 @@ def f(connection: str) -> dict:
 '''
     tree, src = _parse(code)
     assert list(rule_a2k004(tree, "f.py", src)) == []
-
-
-def test_a2k005_flags_legacy_key_fields() -> None:
-    """v0.5: any leftover `KEY_FIELDS = ...` becomes a migration error."""
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):
-    KEY_FIELDS = ("project", "env", "db")
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k005(tree, "f.py", src))
-    assert any(m.rule == A2K005 and "legacy" in m.message for m in msgs)
-
-
-def test_a2k005_flags_legacy_ann_assign() -> None:
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):
-    KEY_FIELDS: tuple[str, ...] = ("project", "env")
-"""
-    tree, src = _parse(code)
-    msgs = list(rule_a2k005(tree, "f.py", src))
-    assert any(m.rule == A2K005 and "legacy" in m.message for m in msgs)
-
-
-def test_a2k005_passes_namedtuple_key() -> None:
-    code = """
-from typing import NamedTuple
-import a2kit
-class WidgetKey(NamedTuple):
-    project: str
-    env: str
-    db: str
-class Conn(a2kit.ConnectionInfo, key=WidgetKey):
-    pass
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k005(tree, "f.py", src)) == []
-
-
-def test_a2k005_skips_classes_without_key_fields() -> None:
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):
-    pass
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k005(tree, "f.py", src)) == []
-
-
-def test_a2k005_noqa_suppresses() -> None:
-    code = """
-import a2kit
-class Conn(a2kit.ConnectionInfo):  # noqa: A2K005
-    KEY_FIELDS = ("Bad",)
-"""
-    tree, src = _parse(code)
-    assert list(rule_a2k005(tree, "f.py", src)) == []
 
 
 def test_a2k006_cross_file_dedup(tmp_path: Path) -> None:

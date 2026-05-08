@@ -3,7 +3,7 @@
 Each rule lives in a `_rules_*.py` module:
 
 - `_rules_returns.py`      — A2K002, A2K003, A2K011  (return-annotation shape)
-- `_rules_signatures.py`   — A2K001, A2K004, A2K005  (param signatures + key arity)
+- `_rules_signatures.py`   — A2K001, A2K004           (param signatures)
 - `_rules_capabilities.py` — A2K009, A2K012          (raw cap strings)
 - `_rules_docs.py`         — A2K006, A2K013          (docstring patterns)
 - `_rules_collisions.py`   — A2K008, A2K010          (cross-file collisions)
@@ -24,7 +24,6 @@ from a2kit.lint._common import (
     A2K002,
     A2K003,
     A2K004,
-    A2K005,
     A2K006,
     A2K008,
     A2K009,
@@ -49,7 +48,7 @@ from a2kit.lint._rules_collisions import (
 )
 from a2kit.lint._rules_docs import collect_param_descriptions, rule_a2k006_cross, rule_a2k013
 from a2kit.lint._rules_returns import rule_a2k002, rule_a2k003, rule_a2k011
-from a2kit.lint._rules_signatures import rule_a2k001, rule_a2k004, rule_a2k005
+from a2kit.lint._rules_signatures import rule_a2k001, rule_a2k004
 from a2kit.lint._rules_size import rule_a2k014
 
 if TYPE_CHECKING:
@@ -63,7 +62,6 @@ __all__ = [
     "A2K002",
     "A2K003",
     "A2K004",
-    "A2K005",
     "A2K006",
     "A2K008",
     "A2K009",
@@ -82,7 +80,6 @@ _RULES_PER_FILE = (
     (A2K002, rule_a2k002),
     (A2K003, rule_a2k003),
     (A2K004, rule_a2k004),
-    (A2K005, rule_a2k005),
     (A2K009, rule_a2k009),
     (A2K011, rule_a2k011),
     (A2K012, rule_a2k012),

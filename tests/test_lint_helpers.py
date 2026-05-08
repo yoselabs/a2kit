@@ -5,15 +5,11 @@ from __future__ import annotations
 import ast
 
 from a2kit.lint._ast_helpers import (
-    connection_info_key_class,
-    connection_info_subclasses,
     decorator_kwargs,
     is_a2kit_tool_decorator,
     is_server_tool_decorator,
     is_tool_function,
-    key_fields_value,
     local_pydantic_classes,
-    namedtuple_field_count,
 )
 
 
@@ -53,41 +49,6 @@ def test_is_tool_function_skips_non_function() -> None:
     assert is_tool_function(tree.body[0]) is False
 
 
-def test_connection_info_subclasses_attribute_base() -> None:
-    code = "class C(a2kit.ConnectionInfo): pass\n"
-    tree = ast.parse(code)
-    classes = list(connection_info_subclasses(tree))
-    assert len(classes) == 1
-
-
-def test_connection_info_subclasses_skips_non_class() -> None:
-    code = "x = 1\nclass D: pass\n"
-    tree = ast.parse(code)
-    assert list(connection_info_subclasses(tree)) == []
-
-
-def test_connection_info_subclasses_non_module() -> None:
-    """Helper handles non-Module input gracefully."""
-    expr = ast.parse("x", mode="eval")
-    assert list(connection_info_subclasses(expr)) == []
-
-
-def test_key_fields_value_returns_none_when_absent() -> None:
-    cls = ast.parse("class C: pass\n").body[0]
-    assert key_fields_value(cls) is None
-
-
-def test_key_fields_value_skips_non_name_target() -> None:
-    """Tuple-targeted assignment shouldn't match KEY_FIELDS."""
-    cls = ast.parse("class C:\n    a, KEY_FIELDS = 1, ('x',)\n").body[0]
-    # The `Name` 'KEY_FIELDS' inside a Tuple target IS still a Name; verify the
-    # helper doesn't mis-match on the outer Tuple wrapper.
-    val = key_fields_value(cls)
-    # We accept either: helper currently iterates `targets` directly, so for
-    # `a, KEY_FIELDS = ...` the target is a Tuple — `t.id == "KEY_FIELDS"` is False.
-    assert val is None
-
-
 def test_local_pydantic_classes_attribute_base() -> None:
     code = "class C(pydantic.BaseModel): pass\n"
     tree = ast.parse(code)
@@ -107,99 +68,9 @@ def test_is_a2kit_tool_decorator_other_name() -> None:
     assert is_a2kit_tool_decorator(func.decorator_list[0]) is False
 
 
-def test_connection_info_subclasses_via_name() -> None:
-    """`class C(ConnectionInfo)` (bare Name base) is recognised."""
-    code = "class C(ConnectionInfo): pass\n"
-    tree = ast.parse(code)
-    classes = list(connection_info_subclasses(tree))
-    assert len(classes) == 1
-
-
-def test_connection_info_subclasses_unrelated_base() -> None:
-    code = "class C(object): pass\n"
-    tree = ast.parse(code)
-    assert list(connection_info_subclasses(tree)) == []
-
-
-def test_connection_info_subclasses_with_subscript_base() -> None:
-    """Generic-style base like `Foo[Bar]` (a Subscript) is neither Attribute nor Name."""
-    code = "class C(Generic[X], ConnectionInfo): pass\n"
-    tree = ast.parse(code)
-    classes = list(connection_info_subclasses(tree))
-    assert len(classes) == 1
-
-
 def test_is_a2kit_tool_decorator_subscript_target_falls_through() -> None:
     """Decorator whose call.func is a Subscript (neither Attribute nor Name) returns False."""
-    # `@deco[0]()` — odd but valid AST; covers the `return False` line.
     code = "@deco[0]()\ndef f(): pass\n"
     tree = ast.parse(code)
     func = tree.body[0]
     assert is_a2kit_tool_decorator(func.decorator_list[0]) is False
-
-
-# ---- v0.5 helpers ----------------------------------------------------------
-
-
-def test_connection_info_key_class_present() -> None:
-    code = "class C(ConnectionInfo, key=WidgetKey): pass\n"
-    cls = ast.parse(code).body[0]
-    assert connection_info_key_class(cls) == "WidgetKey"
-
-
-def test_connection_info_key_class_absent() -> None:
-    code = "class C(ConnectionInfo): pass\n"
-    cls = ast.parse(code).body[0]
-    assert connection_info_key_class(cls) is None
-
-
-def test_connection_info_key_class_non_name_value() -> None:
-    """`key=some.attr` (Attribute, not Name) returns None — opaque."""
-    code = "class C(ConnectionInfo, key=mod.WidgetKey): pass\n"
-    cls = ast.parse(code).body[0]
-    assert connection_info_key_class(cls) is None
-
-
-def test_namedtuple_field_count_basic() -> None:
-    code = "from typing import NamedTuple\nclass K(NamedTuple):\n    a: str\n    b: str\n"
-    tree = ast.parse(code)
-    assert namedtuple_field_count(tree, "K") == 2
-
-
-def test_namedtuple_field_count_missing() -> None:
-    tree = ast.parse("x = 1\n")
-    assert namedtuple_field_count(tree, "K") is None
-
-
-def test_namedtuple_field_count_non_module() -> None:
-    """A non-Module AST short-circuits to None."""
-    expr = ast.parse("1 + 2", mode="eval")
-    assert namedtuple_field_count(expr, "K") is None
-
-
-def test_namedtuple_field_count_not_namedtuple_base() -> None:
-    """Class not subclassing NamedTuple → None."""
-    code = "class K:\n    a: str\n"
-    tree = ast.parse(code)
-    assert namedtuple_field_count(tree, "K") is None
-
-
-def test_namedtuple_field_count_attribute_base() -> None:
-    """`class K(typing.NamedTuple)` (Attribute base) is also recognised."""
-    code = "class K(typing.NamedTuple):\n    a: str\n    b: str\n"
-    tree = ast.parse(code)
-    assert namedtuple_field_count(tree, "K") == 2
-
-
-def test_namedtuple_field_count_skips_methods() -> None:
-    """Function defs inside the body shouldn't count toward field count."""
-    code = "from typing import NamedTuple\nclass K(NamedTuple):\n    a: str\n    def method(self): pass\n"
-    tree = ast.parse(code)
-    assert namedtuple_field_count(tree, "K") == 1
-
-
-def test_namedtuple_field_count_multi_base() -> None:
-    """Multiple bases — only NamedTuple is matched, others iterated past."""
-    code = "from typing import NamedTuple\nclass Mixin: pass\nclass K(Mixin, NamedTuple):\n    a: str\n"
-    tree = ast.parse(code)
-    assert namedtuple_field_count(tree, "K") == 1
