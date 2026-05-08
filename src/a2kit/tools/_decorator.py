@@ -61,7 +61,6 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
     enricher: EnricherFn | None = None,
     store: ConnectionStore[Any] | None = None,
     connection: bool = True,
-    connection_param: str | None = None,  # v0.9: deprecated, kept as soft alias; drops in v0.10
     write: bool = False,
     streaming: bool = False,
     tool_call_guard: bool = True,
@@ -108,13 +107,12 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         )
         has_listview = filter is not None or fields is not None or pagination is not None
 
-        # Connection handling — three modes:
+        # Connection handling — two modes:
         #   1) connection=False         → no connection (utility tool)
-        #   2) connection_param=<name>  → legacy v0.8 path (deprecated, drops v0.10)
-        #   3) connection=True (default) → typed-info DI (v0.9 idiom)
+        #   2) connection=True (default) → typed-info DI (v0.9 idiom)
         info_target: tuple[str, type] | None = None
         needs_connection_arg = False
-        if connection and connection_param is None:
+        if connection:
             info_target = _detect_info_param(fn, sig)
             needs_connection_arg = info_target is not None or store is not None
 
@@ -127,7 +125,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             msg = "Depends-based DI requires an async tool function"
             raise TypeError(msg)
 
-        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:  # noqa: C901
+        def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any]:
             """Run pre-call steps. Returns args/kwargs/key and a context-reset token."""
             connection_key: tuple[str, ...] | None = None
             ctx_token: Any = None
@@ -146,18 +144,6 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                     ctx_token = router_context._set(info)  # noqa: SLF001
                 if info_target is not None:
                     kwargs[info_target[0]] = info
-            elif connection_param is not None:
-                bound = sig.bind_partial(*args, **kwargs)
-                bound.apply_defaults()
-                if connection_param in bound.arguments:
-                    raw = bound.arguments[connection_param]
-                    connection_key = _resolve_connection_key(raw)
-                    info = _lookup_connection_sync(connection_key, store)
-                    info = _resolve_info_strings(info, resolver_registry)
-                    if write and getattr(info, "read_only", False):
-                        raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
-                    if router_context is not None:
-                        ctx_token = router_context._set(info)  # noqa: SLF001
 
             if tool_call_guard:
                 bound = sig.bind_partial(*args, **kwargs)
@@ -166,7 +152,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
 
             return args, kwargs, connection_key, ctx_token
 
-        async def _prelude_async(  # noqa: C901
+        async def _prelude_async(
             args: tuple[Any, ...],
             kwargs: dict[str, Any],
         ) -> tuple[tuple[Any, ...], dict[str, Any], tuple[str, ...] | None, Any, Any]:
@@ -200,19 +186,6 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                 if info_target is not None:
                     kwargs[info_target[0]] = info
                 loaded_info = info
-            elif connection_param is not None:
-                bound = sig.bind_partial(*args, **kwargs)
-                bound.apply_defaults()
-                if connection_param in bound.arguments:
-                    raw = bound.arguments[connection_param]
-                    connection_key = _resolve_connection_key(raw)
-                    info = await _lookup_connection_async(connection_key, store)
-                    info = _resolve_info_strings(info, resolver_registry)
-                    if write and getattr(info, "read_only", False):
-                        raise WriteNotAllowed(connection_key, tool_name=resolved_tool_name)
-                    if router_context is not None:
-                        ctx_token = router_context._set(info)  # noqa: SLF001
-                    loaded_info = info
 
             if tool_call_guard:
                 bound = sig.bind_partial(*args, **kwargs)
@@ -415,7 +388,7 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
             wrapper.__annotations__ = {**wrapper.__annotations__, "return": return_anno}
             fn.__annotations__ = {**fn.__annotations__, "return": return_anno}
 
-        doc_connection_param = "connection" if needs_connection_arg else connection_param
+        doc_connection_param = "connection" if needs_connection_arg else None
         _inject_param_docs(
             wrapper,
             fn,

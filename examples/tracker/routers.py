@@ -8,26 +8,30 @@ Verb decorator semantics:
 - `@MyRouter.read()`  — single result, no list-view, Cap.READ
 - `@MyRouter.write()` — mutation, Cap.WRITE, refuses on read-only connections
 
-Each tool body declares its connection dependency via a typed kwonly param:
-`*, conn: TrackerConn`. The kit dispatches by type — name doesn't matter.
-The tool then constructs a `TrackerStore(conn)` per call. A future a2kit
-release auto-injects the store via chained-DI providers (`*, store: TrackerStore`);
-until then the manual construction is the idiomatic shape.
+Each tool body declares its connection dependency via the v0.15
+Annotated/Depends idiom: `*, conn: Annotated[TrackerConn, Depends(get_conn)]`.
+The kit injects a `connection: str` kwarg on the published tool signature
+(consumed by FastMCP / CLI), forwards it to `get_conn`, and passes the
+resolved `TrackerConn` to the tool body.
 
 The `enricher=` field is set ONCE on each Router class. Every tool inherits
 it; no per-tool repetition. A tool that needs a different enricher can still
 pass `enricher=` on its own decorator and that wins.
 
 Note: this module deliberately does NOT use `from __future__ import annotations`.
-FastMCP introspects tool return types to build Pydantic schemas, and PEP 563
-stringification breaks forward-ref resolution for tool-defining modules.
+The DI resolver inspects runtime annotations via
+`typing.get_type_hints(include_extras=True)`; PEP 593 metadata (`Depends(...)`)
+only survives that round-trip when annotations evaluate at runtime.
 """
 
 import uuid
+from typing import Annotated
 
 import a2kit
+from a2kit.di import Depends
 
 from .connection import TrackerConn
+from .deps import get_conn
 from .enrichers import tracker_404_enricher
 from .models import Project, Task
 from .storage import TrackerStore
@@ -49,14 +53,14 @@ class TasksRouter(a2kit.Router):
 
 
 @ProjectsRouter.list()
-async def list_projects(*, conn: TrackerConn) -> list[Project]:
+async def list_projects(*, conn: Annotated[TrackerConn, Depends(get_conn)]) -> list[Project]:
     """List every project. Filter / fields / cursor are auto-injected by `@list()`."""
     projects, _ = TrackerStore(conn).load_state()
     return projects
 
 
 @ProjectsRouter.read()
-async def get_project(*, conn: TrackerConn, project_id: str) -> Project:
+async def get_project(*, conn: Annotated[TrackerConn, Depends(get_conn)], project_id: str) -> Project:
     """Fetch one project by id."""
     projects, _ = TrackerStore(conn).load_state()
     for p in projects:
@@ -67,7 +71,7 @@ async def get_project(*, conn: TrackerConn, project_id: str) -> Project:
 
 
 @ProjectsRouter.write()
-async def create_project(*, conn: TrackerConn, name: str) -> Project:
+async def create_project(*, conn: Annotated[TrackerConn, Depends(get_conn)], name: str) -> Project:
     """Create a new project with `name`. Returns the created record."""
     store = TrackerStore(conn)
     projects, tasks = store.load_state()
@@ -78,7 +82,7 @@ async def create_project(*, conn: TrackerConn, name: str) -> Project:
 
 
 @ProjectsRouter.write()
-async def archive_project(*, conn: TrackerConn, project_id: str) -> Project:
+async def archive_project(*, conn: Annotated[TrackerConn, Depends(get_conn)], project_id: str) -> Project:
     """Mark a project archived. Idempotent — archiving twice is a no-op."""
     store = TrackerStore(conn)
     projects, tasks = store.load_state()
@@ -95,7 +99,7 @@ async def archive_project(*, conn: TrackerConn, project_id: str) -> Project:
 
 
 @TasksRouter.list()
-async def list_tasks(*, conn: TrackerConn, project_id: str | None = None) -> list[Task]:
+async def list_tasks(*, conn: Annotated[TrackerConn, Depends(get_conn)], project_id: str | None = None) -> list[Task]:
     """List tasks, optionally narrowed to one project.
 
     `project_id` is a *passthrough* param — it reaches the agent. The
@@ -109,7 +113,7 @@ async def list_tasks(*, conn: TrackerConn, project_id: str | None = None) -> lis
 
 
 @TasksRouter.read()
-async def get_task(*, conn: TrackerConn, task_id: str) -> Task:
+async def get_task(*, conn: Annotated[TrackerConn, Depends(get_conn)], task_id: str) -> Task:
     """Fetch one task by id."""
     _, tasks = TrackerStore(conn).load_state()
     for t in tasks:
@@ -120,7 +124,7 @@ async def get_task(*, conn: TrackerConn, task_id: str) -> Task:
 
 
 @TasksRouter.write()
-async def create_task(*, conn: TrackerConn, project_id: str, title: str) -> Task:
+async def create_task(*, conn: Annotated[TrackerConn, Depends(get_conn)], project_id: str, title: str) -> Task:
     """Create a task under `project_id`. Validates the project exists first."""
     store = TrackerStore(conn)
     projects, tasks = store.load_state()
@@ -134,7 +138,7 @@ async def create_task(*, conn: TrackerConn, project_id: str, title: str) -> Task
 
 
 @TasksRouter.write()
-async def complete_task(*, conn: TrackerConn, task_id: str) -> Task:
+async def complete_task(*, conn: Annotated[TrackerConn, Depends(get_conn)], task_id: str) -> Task:
     """Mark a task done. Idempotent."""
     store = TrackerStore(conn)
     projects, tasks = store.load_state()

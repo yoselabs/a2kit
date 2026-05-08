@@ -8,9 +8,8 @@ merged into store via _EphemeralAwareStore)
 and the per-Router ContextVar accessor.
 
 # Author seam:
-# - `@MyRouter.read(connection_param="conn", capabilities={...})` — read-mode
-#   sugar; effective caps = router.capabilities | router.read_capabilities |
-#   binding.capabilities.
+# - `@MyRouter.read(capabilities={...})` — read-mode sugar; effective caps =
+#   router.capabilities | router.read_capabilities | binding.capabilities.
 # - `@MyRouter.write(...)` — same, with `write_capabilities` + `write=True`.
 # - `@MyRouter.tool(...)` — primitive; no read/write sugar.
 """
