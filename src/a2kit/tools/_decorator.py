@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 import inspect
 from collections.abc import AsyncIterator, Callable, Iterable
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Any, TypeVar, cast, get_args, get_origin, get_type_hints
 
 from opentelemetry import trace as _trace
 
@@ -25,6 +25,7 @@ from a2kit.middleware._chain import (
     _build_chain,
     compose,
 )
+from a2kit.tools._connection import _resolve_connection_key
 from a2kit.tools._metadata import (
     _compute_tool_capabilities,
     _inject_param_docs,
@@ -51,6 +52,32 @@ if TYPE_CHECKING:
     from a2kit.enrichers import EnricherFn
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def _count_connection_typed_deps(fn: Callable[..., Any], annotated_deps: dict[str, Any]) -> int:
+    """Count `Annotated[T, Depends(...)]` kwonly params on `fn` whose `T` is
+    a `ConnectionConfig` subclass.
+
+    Used at decoration time to flag tools declaring two or more connection
+    dependencies — a shape the v0.15 middleware chain can't express
+    unambiguously (WriteEnforce / OTel correlation key would silently pick
+    one). Raises early instead.
+    """
+    if not annotated_deps:
+        return 0
+    try:
+        hints = get_type_hints(fn, include_extras=True)
+    except (NameError, AttributeError, TypeError):  # pragma: no cover — defensive
+        hints = getattr(fn, "__annotations__", {}) or {}
+    count = 0
+    for name in annotated_deps:
+        anno = hints.get(name)
+        if anno is None or get_origin(anno) is not Annotated:
+            continue
+        inner = get_args(anno)[0]
+        if isinstance(inner, type) and issubclass(inner, ConnectionConfig):
+            count += 1
+    return count
 
 
 def tool(  # noqa: C901, PLR0915 — fat decorator by design
@@ -106,6 +133,14 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
         annotated_deps = _collect_annotated_deps(fn)
         if annotated_deps and not is_async:
             msg = "Depends-based DI requires an async tool function"
+            raise TypeError(msg)
+
+        # v0.19: at most one ConnectionConfig-typed Depends param. Two
+        # would cause WriteEnforce / OTel correlation to silently lock
+        # onto whichever resolved first. Detect at decoration time.
+        _conn_dep_count = _count_connection_typed_deps(fn, annotated_deps)
+        if _conn_dep_count > 1:
+            msg = "v0.15: a tool may have at most one ConnectionConfig-typed dependency"
             raise TypeError(msg)
 
         def _prelude(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
@@ -201,7 +236,15 @@ def tool(  # noqa: C901, PLR0915 — fat decorator by design
                             if isinstance(v, ConnectionConfig):
                                 loaded_conn = v
                                 break
-                    conn_key = depends_call_ctx.get("connection") if loaded_conn is not None else None
+                    # v0.19: normalize the connection-key shape before
+                    # stashing on ctx.state so the OTel attribute and the
+                    # WriteNotAllowed exception always see canonical
+                    # tuple-keys regardless of input shape (str/tuple/list).
+                    conn_key: Any = None
+                    if loaded_conn is not None:
+                        raw_conn = depends_call_ctx.get("connection")
+                        if raw_conn is not None:
+                            conn_key = _resolve_connection_key(raw_conn)
 
                     # Bind positional args into kwargs so the chain (kwargs-only)
                     # forwards them through. Skip injected listview / connection
