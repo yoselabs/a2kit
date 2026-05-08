@@ -9,7 +9,6 @@ declared capabilities so `default_select` can resolve them.
 from __future__ import annotations
 
 import contextlib
-import contextvars
 import sys
 import tomllib
 import warnings
@@ -29,13 +28,6 @@ from a2kit.scaffold._cli import _parse_multistore_register, register_ephemeral_c
 if TYPE_CHECKING:
     from a2kit.connections import ConnectionStore
     from a2kit.scaffold._routers import RouterRegistry
-
-
-# Set by `MCPRunner._prepare` so the tool wrapper can resolve provider-bound
-# kwonly params at call time without an explicit handle. The tool decorator
-# checks this contextvar; when None, chained-DI auto-injection is silently
-# skipped (the existing v0.11 connection injection still runs).
-_CURRENT_RUNNER: contextvars.ContextVar[Any | None] = contextvars.ContextVar("a2kit_current_runner", default=None)
 
 
 def _find_pyproject(start: Path | None = None) -> Path | None:
@@ -301,10 +293,6 @@ class MCPRunner:
         v0.15: provider/plugin DI is gone; resolution flows through
         Annotated[T, Depends(factory)] markers on tool kwonly params.
         """
-        # Publish the runner so callers can find it during prepare(). Kept
-        # for parity with the v0.12 contextvar; no auto-injection now.
-        _CURRENT_RUNNER.set(self)
-
         if options is not None:
             parsed = self._options_to_parsed(options)
             if transport is None and options.transport is not None:
@@ -411,7 +399,6 @@ def _atom_polarity(expr: SelectExpr, _negated: bool = False) -> dict[tuple[str, 
 
 
 __all__ = [
-    "_CURRENT_RUNNER",
     "FastMCPLike",
     "MCPRunner",
     "RunnerOptions",

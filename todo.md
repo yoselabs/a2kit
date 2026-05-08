@@ -4,6 +4,17 @@ Captured from contract / asyncio / OTel audit (2026-05-08, post v0.10.0).
 
 ---
 
+## Deferred: SubApp / connection-as-plugin (was v0.13's `connections.make`)
+
+The v0.13-era `connections.make(TodoConn)` placeholder factory in
+`a2kit.contrib.connections` was deleted in v0.19 — it returned an
+unconsumed tuple and only existed as a syntax stub for an unbuilt
+SubApp surface. If/when SubApp / mount-style plugin composition
+lands, introduce the new shape directly; authors keep using
+`app.connect(conn_type)` until then.
+
+---
+
 ## v0.18 spike — FastMCP request-id → OTel `mcp.request_id`
 
 **Outcome: blocked by FastMCP coupling. Closed 2026-05-08.**

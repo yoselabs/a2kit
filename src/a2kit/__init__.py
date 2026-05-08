@@ -1,24 +1,27 @@
-"""a2kit — thin library for FastMCP-based MCPs (v0.10.0).
+"""a2kit — thin library for FastMCP-based MCPs.
 
-Composes with FastMCP. Does NOT replace it. Every primitive is opt-in; drop down
-to FastMCP at any boundary stays clean. See README for the full rundown.
+Composes with FastMCP. Does NOT replace it. Every primitive is opt-in;
+drop-down to FastMCP at any boundary stays clean. See README for the full
+rundown.
 
-v0.7 highlights (idiomatic Python pass):
+v0.15+ surface highlights:
 
-- **`Cap` is now `StrEnum`**. `Cap.WRITE == "write"` is True; `list(Cap)` works;
-  `Cap("write")` parses raw strings.
-- **`*, info: ConnT | None = None` kwarg pattern is removed.** Use
-  `MyRouter.context.info()` (the only API now).
-- **Auto-injected param docs.** A function with `connection_param="conn"` no
-  longer needs `f"... {connection_param_doc()}"` in its docstring; the decorator
-  prepends it at decoration time. New `A2K013` lint rule flags leftover f-string
-  helpers as advisory.
-- **`ToolKwargs` is public.** Use `Unpack[ToolKwargs]` for higher-order Router
-  classmethod factories.
-- **FQN-based `_RouterContext` naming.** Two same-named Router classes in
-  different modules no longer share state.
-- **`A2K012` re-export resolution.** A `Final[str]` constant re-exported via
-  `pkg/__init__.py` is now recognised (cap depth 3).
+- **Annotated/Depends DI.** Tools declare dependencies via
+  ``*, conn: Annotated[T, Depends(factory)]``. The decorator collects
+  Depends markers at decoration time and resolves them per call. Test
+  fakes via ``app.dependency_overrides[factory] = fake``.
+- **`a2kit.App`.** Composition root for FastMCP + ConnectionStore +
+  RouterRegistry + MCPRunner. Authors call ``app.connect(T)`` /
+  ``app.use(Router)`` / ``app.run()``; `app.get_store(T)` is the public
+  store-lookup hook.
+- **`a2kit.contrib.connections`.** Owns the connection vocabulary —
+  `get_conn_factory(app, T)` returns the canonical Depends factory,
+  `write_enforce_factory()` ships the WriteNotAllowed middleware.
+- **Implicit middleware chain.** `_build_chain` composes
+  enricher / OTel / structlog / WriteEnforce / listview around the inner
+  fn. `Router(middleware=...)` and `App`-level middleware extend it.
+- **`Router` class.** Pydantic-modeled; `@MyRouter.read/.write/.list/.tool`
+  classmethod decorators bind tools. Auto-tagged onto each tool's caps.
 """
 
 from __future__ import annotations

@@ -1,7 +1,10 @@
 """Connection lookup + key coercion.
 
-Sync and async paths share the same store contract — `_lookup_connection_sync`
+Sync and async paths share the same store contract: `_lookup_connection_sync`
 drives the async coroutine via anyio's 3-tier drain.
+
+These are the implementations re-exported as the public API from
+`a2kit.contrib.connections._helpers`.
 """
 
 from __future__ import annotations

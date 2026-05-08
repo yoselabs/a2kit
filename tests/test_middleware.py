@@ -316,16 +316,6 @@ def test_write_enforce_skipped_when_not_write() -> None:
     assert out == {}
 
 
-def test_make_factory_returns_tuple() -> None:
-    from a2kit.contrib import connections
-
-    class Conn:
-        pass
-
-    out = connections.make(Conn)
-    assert out == (Conn, None)
-
-
 def test_otel_noop_span_factory_returns_passing_middleware() -> None:
     """v0.13 coverage: `otel_noop_span_factory()` returns a working middleware.
 
