@@ -1085,3 +1085,76 @@ What v0.13 *did* land:
   in `src/` (49 → 25); README + CHANGELOG refreshed; version bump.
 
 Final state: 737 tests, 100% coverage, lint clean.
+
+## v0.15 — in-progress ledger (2026-05-08)
+
+v0.15 is the breaking-compat release that hard-deletes the v0.12
+connection surface listed at the top of the v0.13 final ledger. Scope is
+genuinely large — ~117 `connection_param=` test sites, 43 `Plugin`/
+`PluginBase` references across 11 test files, plus interlocked source
+deletes in `_decorator.py`, `_router_state.py`, `app.py`, `di.py`. The
+session that opened v0.15 landed *foundation only*: future work picks
+up here.
+
+### What v0.15 has shipped so far
+
+- **`a2kit.contrib.connections.get_conn_factory(app, ConnT)`** — the
+  Annotated/Depends idiom for connection injection. Pairs with
+  `app.connect(ConnT)`; tests override via
+  `app.dependency_overrides[get_conn] = fake_get_conn`. Replaces the
+  v0.12 `*, info: ConnT` autodetect path.
+- **Tool decorator now exposes `connection` for Depends factories.**
+  When any `Annotated[..., Depends(factory)]` kwonly's factory declares
+  `connection: str` as a non-Depends kwonly, the wrapper injects
+  `connection` as a kwarg and forwards it as call_ctx to the resolver.
+  Pops it before the inner fn's signature guard runs.
+- 4 new tests in `tests/test_v15_get_conn_factory.py` cover the factory
+  + override path. 704 tests, 100% coverage, lint clean.
+
+### What v0.15 still owes (to be continued in a follow-up session)
+
+These are interlocked — the deletes are mechanical *once the test corpus
+has migrated*. Suggested order:
+
+1. **Migrate the example.** `examples/tracker/routers.py` is the canonical
+   reference; switch to `get_conn = get_conn_factory(app, TrackerConn)`
+   + `*, conn: Annotated[TrackerConn, Depends(get_conn)]`. Wire in
+   `examples/tracker/server.py`.
+2. **Add a shared `app` fixture in `tests/conftest.py`** that yields a
+   real `a2kit.App` with `dependency_overrides` ready to populate. Goal:
+   replace `_FakeStore` / `_FakeProvider*` with a uniform pattern.
+3. **Migrate tests by category** (commit per file or small batch):
+   - `connection_param=` (~54 hits across `test_v06.py`, `test_v07.py`,
+     `test_v10.py`, `test_v11.py`, `test_v12.py`, `test_runner.py`,
+     `test_tools_fat.py`, `test_v08.py`).
+   - `*, info: ConnT` autodetect (varies; check via decorator-arg lookup).
+   - `Plugin`/`PluginBase` Protocols (43 hits — likely many tests are
+     pure Plugin-arm exercises and can be deleted, not migrated).
+4. **Then delete source surface** — order matters:
+   1. `connection_param=` from `@a2kit.tool` signature + `_prelude_async`
+      branch.
+   2. `_detect_info_param` / `info_target` plumbing.
+   3. `Router.store` field + `MCPRunner.store=` kwarg.
+   4. `Generic[ConnT]` from Router (plain Pydantic model).
+   5. `Plugin` / `PluginBase` Protocols in `di.py` + Plugin arm of
+      `App.use()`.
+   6. (Optional) `Provider` Protocol if grep shows no live callers.
+5. **Re-verify**: `_prelude_async` should drop from 55 LOC to ~20.
+   `grep -r 'connection_param\|_detect_info_param\|info_target\|
+   Router.store\|MCPRunner.store\|PluginBase\|Plugin Protocol' src/
+   tests/` returns zero hits.
+6. **CHANGELOG entry, version bump to `0.15.0.dev0`.**
+
+### Known interlocks / sequencing risks
+
+- `App._build_runner` still passes `store=self._stores[0]` to MCPRunner.
+  Deleting `MCPRunner.store=` requires App to stop threading the store
+  through; the connection store stays accessible via `app._stores` (or a
+  public property) for `get_conn_factory` to read.
+- `examples/tracker/` and the connection-management CLI (`build_cli`)
+  still need a `ConnectionStore` reference for `login`/`logout`. The
+  store doesn't disappear — only the tool-decorator coupling does.
+- `_prelude_async` keeps the `connection_param` and `info_target`
+  branches today as v0.12 compat. Deleting them is the headline LOC
+  reduction; do it after the test corpus is fully migrated.
+
