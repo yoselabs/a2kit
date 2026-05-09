@@ -1,0 +1,16 @@
+from __future__ import annotations
+
+from typing import Any, Protocol, runtime_checkable
+
+
+@runtime_checkable
+class ToolContext(Protocol):
+    def info(self, msg: str, **fields: Any) -> None: ...
+    def warning(self, msg: str, **fields: Any) -> None: ...
+    def error(self, msg: str, **fields: Any) -> None: ...
+    def debug(self, msg: str, **fields: Any) -> None: ...
+    async def report_progress(
+        self,
+        current: int | float,
+        total: int | float | None = None,
+    ) -> None: ...

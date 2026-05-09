@@ -1,353 +1,62 @@
-"""`a2kit.App` — composition class that absorbs the FastMCP + store + registry +
-runner wiring. Author writes:
-
-    app = a2kit.App("my-mcp")
-    todos = app.connect(TodoConn)
-    app.use(TodoRouter)
-    app.use(MyPlugin())
-    app.run()
-
-instead of constructing FastMCP, ConnectionStore, RouterRegistry, and MCPRunner
-by hand and threading them through a `build_app()` helper.
-
-Storage-agnostic: App itself doesn't touch the filesystem. The FS-backed
-`ConnectionStore` (used by the built-in connection plugin) handles its own
-directory creation lazily on first save. Users wanting a custom path pass
-`app.connect(T, config_dir=Path("/custom"))`. Users wanting a non-FS backend
-in v0.13+ will pass a custom Provider directly to App.
-
-Escape hatches kept:
-    app.server   — the underlying FastMCP instance
-    app.runner   — the MCPRunner driving argv/transport/select
-    app.cli      — a `click.Group` aggregating connection-management +
-                   plugin-contributed commands.
-
-Drop down to `app.server.tool()(fn)` or `app.runner.run(argv=...)` whenever
-the convention doesn't fit.
-"""
-
 from __future__ import annotations
 
-import asyncio
-import inspect
-import json
 from typing import TYPE_CHECKING, Any, TypeVar
 
-import click
-
-from a2kit.connections import ConnectionConfig, ConnectionStore, default_config_dir
-from a2kit.scaffold import MCPRunner, Router, RouterRegistry, RunnerOptions, build_cli
+from a2kit.packages.connections.config import ConnectionConfig
+from a2kit.routers import Router, RouterRegistry
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
-    from a2kit.enrichers import EnricherFn
-
-C = TypeVar("C", bound=ConnectionConfig)
+ConnT = TypeVar("ConnT", bound=ConnectionConfig)
 
 
 class App:
-    """High-level composition. Wraps FastMCP + ConnectionStore(s) + RouterRegistry
-    + MCPRunner. Author surface = `connect()` / `use()` / `run()`.
-
-    Storage-agnostic: App does not create any filesystem directories itself.
-    """
-
-    def __init__(self, name: str, *, enricher: EnricherFn | None = None) -> None:
-        # Lazy: FastMCP import stays per-call so a2kit imports cleanly when
-        # FastMCP isn't installed (the kit's lint/scaffold paths don't need it).
-        from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
-
+    def __init__(self, name: str) -> None:
         self.name = name
-        self.server: Any = FastMCP(name)
+        self._routers = RouterRegistry()
+        self._connection_types: list[type] = []
+        self._stores: dict[type, Any] = {}
+        self._factories: dict[Callable[..., Any], Callable[..., Any]] = {}
 
-        # v0.14: App-scope enricher fallback. Resolution order at tool-call
-        # time is `tool > router > app`; routers without an explicit
-        # `enricher` inherit the app's at apply time. Tool-level overrides
-        # remain via the verb decorator's `enricher=` kwarg.
-        self.enricher: EnricherFn | None = enricher
+    def use_factory(self, factory: Callable[..., Any], *, as_: Callable[..., Any]) -> App:
+        """Bind ``factory`` under the stable callable identity ``as_``.
 
-        self._stores: list[ConnectionStore[Any]] = []
-        self._routers: list[Router] = []
-        self._runner: MCPRunner | None = None
-
-        # v0.13: FastAPI-idiom test override map for `Annotated[T, Depends(factory)]`.
-        # Key = the original factory callable referenced in `Depends(...)`.
-        # Value = replacement callable (sync or async) returning the same type.
-        # Mutate freely from tests: `app.dependency_overrides[get_conn] = fake_get_conn`.
-        self.dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] = {}
-
-    def connect(self, conn_type: type[C], *, config_dir: Path | None = None) -> ConnectionStore[C]:
-        """Register a `ConnectionStore[T]` for `conn_type`. Returns the store.
-
-        `config_dir` defaults to `default_config_dir()` (which honors
-        `A2KIT_CONFIG_HOME`, else `~/.config/a2kit/connections/`). The store
-        creates the directory lazily on first save — App itself never touches
-        the filesystem.
-
-        Raises `ValueError` if the same `conn_type` is registered twice —
-        in v0.12 each connection type maps to exactly one store. Need parallel
-        stores? Subclass the type (`class StagingTodoConn(TodoConn): ...`).
+        Tools declaring ``Depends(as_)`` resolve through ``factory`` at
+        invocation. Replaces the legacy "module-level mutable slot" pattern.
         """
-        for existing in self._stores:
-            if existing.connection_class is conn_type:
-                msg = (
-                    f"App already has a ConnectionStore for {conn_type.__name__}. "
-                    "v0.12: one type → one store. Subclass the type for parallel instances."
-                )
-                raise ValueError(msg)
-        cd = config_dir if config_dir is not None else default_config_dir()
-        store: ConnectionStore[C] = ConnectionStore(cd, conn_type)
-        self._stores.append(store)
-        return store
+        self._factories[as_] = factory
+        return self
 
-    def get_store(self, conn_type: type[C]) -> ConnectionStore[C]:
-        """Return the registered `ConnectionStore[T]` for `conn_type`.
+    def factories(self) -> dict[Callable[..., Any], Callable[..., Any]]:
+        return dict(self._factories)
 
-        Public hook for contrib factories that need to look up an App's store
-        without poking `app._stores`. Raises ``ValueError`` if no store has
-        been registered for `conn_type` (call ``app.connect(conn_type)``
-        first).
+    def use(self, router: Router) -> App:
+        self._routers.add(router)
+        return self
 
-        Match is exact-class identity, not ``isinstance`` — a subclass of a
-        registered conn type does not resolve to the parent's store. Each
-        connection class owns one store; subclass = separate store.
-        """
-        for store in self._stores:
-            if store.connection_class is conn_type:
-                return store
-        msg = f"App has no ConnectionStore for {conn_type.__name__}. Call `app.connect({conn_type.__name__})` first."
-        raise ValueError(msg)
+    def connect(self, conn_type: type[ConnT]) -> App:
+        if conn_type not in self._connection_types:
+            self._connection_types.append(conn_type)
+        return self
 
-    def use(self, item: type[Router] | Router) -> None:
-        """Register a Router (instance or class) on the App.
+    def get_store(self, conn_type: type[ConnT]) -> Any:
+        if conn_type not in self._stores:
+            from a2kit.packages.connections import ConnectionStore
 
-        v0.15: only Router (or Router subclass) is accepted. The v0.12-era
-        `Provider` / `Plugin` arms are gone — DI is fully Annotated/Depends
-        now. Connection wiring lives in `contrib.connections.get_conn_factory`.
-        """
-        if isinstance(item, type) and issubclass(item, Router):
-            instance = item()
-            self._attach_overrides(instance)
-            self._routers.append(instance)
-        elif isinstance(item, Router):
-            self._attach_overrides(item)
-            self._routers.append(item)
-        else:
-            msg = f"App.use only accepts Router (or Router subclass); got {type(item).__name__}"
-            raise TypeError(msg)
+            self._stores[conn_type] = ConnectionStore(conn_type)
+        return self._stores[conn_type]
 
-    def _attach_overrides(self, router: Router) -> None:
-        """Pin the App's `dependency_overrides` dict onto the router so its
-        `_apply_bindings` can forward it to each `@a2kit.tool(...)` call.
-        Also pins the App's enricher (if any) as a fallback the router uses
-        when its own `enricher` is unset. Stored as private attributes (set
-        via `object.__setattr__` to bypass Pydantic's `extra='forbid'`)."""
-        object.__setattr__(router, "_a2kit_dependency_overrides", self.dependency_overrides)
-        object.__setattr__(router, "_a2kit_app_enricher", self.enricher)
+    def routers(self) -> list[Router]:
+        return self._routers.all()
 
-    def _build_runner(self) -> MCPRunner:
-        """Construct the underlying MCPRunner. Idempotent — caches on first call."""
-        if self._runner is not None:
-            return self._runner
-        registry = RouterRegistry()
-        for r in self._routers:
-            registry.add(r)
-        self._runner = MCPRunner(
-            self.server,
-            connection_store=self._stores[0] if self._stores else None,
-            router_registry=registry,
-        )
-        return self._runner
+    def tools(self) -> list[Callable[..., Any]]:
+        from a2kit.signature import rebuild_with_factories
 
-    @property
-    def runner(self) -> MCPRunner:
-        """Return (and lazily build) the underlying MCPRunner."""
-        return self._build_runner()
+        raw = self._routers.tools()
+        if not self._factories:
+            return raw
+        return [rebuild_with_factories(fn, self._factories) for fn in raw]
 
-    @property
-    def cli(self) -> click.Group:
-        """Return the unified Click group: `serve` + connection commands +
-        `tools list/call` + plugin commands.
-
-        v0.12: this is what `app.run()` invokes. Authors who want to embed
-        the kit's CLI into their own bigger Click app can also access this
-        property and add it as a subgroup.
-        """
-        return self._build_cli()
-
-    # Built-in subcommand names — tool names colliding with these are rejected
-    # at CLI build time (lint A2K-future will flag preventatively).
-    _RESERVED_SUBCOMMANDS = frozenset({"serve", "login", "logout", "connections"})
-
-    def _build_cli(self) -> click.Group:
-        """Build the unified Click group. See `App.cli` for usage."""
-        # Start from the connection-management group when we have a store —
-        # gives us `login`, `logout`, `connections list/show/delete` for free.
-        if self._stores:
-            group = build_cli(self._stores[0], name=self.name)
-        else:
-            group = click.Group(name=self.name)
-
-        # `serve` — start the MCP server. Argv flags (`--http`, `--select`,
-        # `--register`) live on this subcommand so they don't pollute the
-        # parent group's namespace.
-        @group.command("serve", help="Start the MCP server.")
-        @click.option("--http", default=None, help="HTTP transport [host[:port]]; omit for stdio.")
-        @click.option("--select", "select_expr", default=None, help="Router/tool select expression.")
-        @click.option("--scope", default=None, help="Scope filter for connections.")
-        @click.option(
-            "--register",
-            "registers",
-            multiple=True,
-            help='Register an ephemeral connection. Form: "router:key field=val ...".',
-        )
-        def serve(http: str | None, select_expr: str | None, scope: str | None, registers: tuple[str, ...]) -> None:
-            # v0.13: typed options skip argv round-tripping. Click's default
-            # for `--http` (no value) collapses to "" — kept as `""` so the
-            # runner's HTTP-without-host case still triggers (vs `None` =
-            # stdio).
-            options = RunnerOptions(
-                http=http,
-                select_expr=select_expr,
-                scope=scope,
-                registers=tuple(registers),
-            )
-            self.run_server(options=options)
-
-        # Each registered tool becomes a top-level subcommand: `app <tool-name>`.
-        # `--help` lists them alongside built-ins; no `tools list/call` ceremony.
-        for tool_name in sorted(self._enumerate_tool_names()):
-            if tool_name in self._RESERVED_SUBCOMMANDS:
-                msg = (
-                    f"Tool name {tool_name!r} collides with a built-in subcommand. "
-                    f"Reserved: {sorted(self._RESERVED_SUBCOMMANDS)}. Rename via "
-                    "`tool_name=` on the verb decorator."
-                )
-                raise ValueError(msg)
-            self._add_tool_subcommand(group, tool_name)
-
-        return group
-
-    def _add_tool_subcommand(self, group: Any, tool_name: str) -> None:
-        """Wire a tool as a top-level Click subcommand.
-
-        UX: `app <tool-name> key=value [key=value ...]`. Lazy: routers are
-        only applied when the subcommand is actually invoked, so building
-        the CLI doesn't pre-register tools with FastMCP.
-        """
-        # Pull the docstring once for `--help` text.
-        binding = self._find_binding_for_tool(tool_name)
-        help_text = ""
-        if binding is not None and binding.fn.__doc__:
-            help_text = binding.fn.__doc__.splitlines()[0].strip()
-
-        @group.command(tool_name, help=help_text or f"Invoke the {tool_name} tool.")
-        @click.argument("kwargs", nargs=-1)
-        def _cmd(kwargs: tuple[str, ...], _name: str = tool_name) -> None:
-            parsed: dict[str, Any] = {}
-            for raw in kwargs:
-                if "=" not in raw:
-                    raise click.BadParameter(f"expected key=value, got {raw!r}")
-                k, v = raw.split("=", 1)
-                parsed[k] = v
-            self._invoke_tool(_name, parsed)
-
-    def _enumerate_tool_names(self) -> list[str]:
-        """Walk all registered routers' bindings; return tool names.
-
-        Pre-decoration enumeration — does not apply routers (so it doesn't
-        register tools with FastMCP). Used at CLI build time to know which
-        subcommands to add.
-        """
-        names: list[str] = []
-        for router in self._routers:
-            for binding in router._tools:
-                tool_name = binding.decorator_kwargs.get("tool_name") or binding.fn.__name__
-                names.append(tool_name)
-        return names
-
-    def _find_binding_for_tool(self, tool_name: str) -> Any:
-        """Find the `_ToolBinding` matching `tool_name` across all routers.
-
-        Callers always pass names enumerated from `_enumerate_tool_names`, so
-        the not-found path is unreachable in practice — we still return None
-        defensively. Single comprehension keeps the branch graph trivial.
-        """
-        candidates = [
-            (binding.decorator_kwargs.get("tool_name") or binding.fn.__name__, binding)
-            for router in self._routers
-            for binding in router._tools
-        ]
-        return next((b for n, b in candidates if n == tool_name), None)
-
-    def _ensure_routers_applied(self) -> None:
-        """Apply router registrations to the FastMCP server (idempotent)."""
-        runner = self._build_runner()
-        runner._prepare(argv=[], transport="stdio")
-
-    def _invoke_tool(self, tool_name: str, kwargs: dict[str, Any]) -> None:
-        """Look up the tool wrapper and invoke it with `kwargs`. Prints result."""
-        # Apply routers so the tool wrapper exists on the server's tool manager.
-        self._ensure_routers_applied()
-        try:
-            tools = self.server._tool_manager.list_tools()
-        except AttributeError:  # pragma: no cover — defensive
-            tools = []
-
-        target = next((t for t in tools if t.name == tool_name), None)
-        if target is None:
-            available = ", ".join(t.name for t in tools)
-            raise click.ClickException(f"unknown tool {tool_name!r}. Available: {available}")
-
-        fn = target.fn
-        if inspect.iscoroutinefunction(fn):
-            result = asyncio.run(fn(**kwargs))
-        else:
-            result = fn(**kwargs)
-
-        # Best-effort serialisation: Pydantic models, dataclasses, plain dicts.
-        try:
-            if hasattr(result, "model_dump"):
-                click.echo(json.dumps(result.model_dump(), indent=2, default=str))
-            elif isinstance(result, list) and result and hasattr(result[0], "model_dump"):
-                click.echo(json.dumps([r.model_dump() for r in result], indent=2, default=str))
-            else:
-                click.echo(json.dumps(result, indent=2, default=str))
-        except (TypeError, ValueError):
-            click.echo(repr(result))
-
-    def run_server(
-        self,
-        argv: list[str] | None = None,
-        *,
-        transport: str | None = None,
-        options: RunnerOptions | None = None,
-    ) -> dict[str, Any]:
-        """Start the MCP server directly. Equivalent to `app run serve --...`
-        but bypasses Click — useful when embedding the kit in a host program
-        that already owns the CLI.
-
-        Pass `options=RunnerOptions(...)` (v0.13) to skip argv round-tripping;
-        `argv=` stays as a compat layer.
-        """
-        return self._build_runner().run(argv=argv, transport=transport, options=options)
-
-    def run(self, argv: list[str] | None = None) -> Any:
-        """Build the CLI group and dispatch. Author entry point.
-
-        With no args → prints help. With `serve` subcommand → runs the MCP
-        server. Other subcommands → connection management, `tools list/call`,
-        plugin commands.
-        """
-        return self.cli.main(args=argv, standalone_mode=False)
-
-    async def run_async(self, argv: list[str] | None = None, *, transport: str | None = None) -> dict[str, Any]:
-        """Async-mode equivalent of `run_server` — for embedding the MCP
-        inside a host event loop. Awaits FastMCP's `server.run_async(...)`.
-        """
-        return await self._build_runner().run_async(argv=argv, transport=transport)
-
-
-__all__ = ["App"]
+    def connection_types(self) -> list[type]:
+        return list(self._connection_types)

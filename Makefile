@@ -10,17 +10,17 @@ lint:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run ty check src/
-	uv run a2kit lint src/ tests/ examples/
+	uv run a2kit lint static src/ tests/ examples/
 
 format:
 	uv run ruff format .
 	uv run ruff check --fix .
 
 a2kit-lint:
-	uv run a2kit lint src/ tests/ examples/
+	uv run a2kit lint static src/ tests/ examples/
 
 a2kit-check:
-	@echo "a2kit check requires --import path:server. Override per project."
+	@echo "a2kit lint runtime requires --import path:server. Override per project."
 
 typecheck:
 	uv run ty check src/
@@ -31,7 +31,8 @@ typecheck-strict:
 coverage-diff:
 	@uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=95 2>/dev/null || echo "⚠ no coverage.xml — run 'make test' first"
 
-check: lint a2kit-lint typecheck test
+check: lint test
 
 examples:
 	uv run python -m examples.tracker.server --help
+	uv run python -m examples.streaming_logger.server --help

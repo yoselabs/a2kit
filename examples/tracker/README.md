@@ -5,14 +5,15 @@ when `a2kit` evolves, this folder evolves with it.
 
 What it demonstrates, in the order each idea shows up:
 
-| File              | Surface demonstrated                                        |
-|-------------------|-------------------------------------------------------------|
-| `connection.py`   | `ConnectionConfig` subclass, token resolution (`${ENV}`)      |
-| `models.py`       | Pydantic return models → auto-detected output format        |
-| `storage.py`      | The connection's `db_path` IS the resource handle           |
-| `enrichers.py`    | `(exc, tool_name) -> exc` rewrites for agent-readability    |
-| `routers.py`      | `Router` subclasses, verb decorators, typed connection DI   |
-| `server.py`       | Six-line composition root via `a2kit.App`                   |
+| File              | Surface demonstrated                                              |
+|-------------------|-------------------------------------------------------------------|
+| `connection.py`   | `ConnectionConfig` subclass (`a2kit.packages.connections`); eager `${ENV}` / `op://` resolution |
+| `models.py`       | Pydantic return models → auto-detected output format              |
+| `storage.py`      | The connection's `db_path` IS the resource handle                 |
+| `enrichers.py`    | `(exc, tool_name) -> exc` rewrites for agent-readability          |
+| `deps.py`         | Stable `get_conn` identity for `Depends(get_conn)` references     |
+| `routers.py`      | `Router` subclasses, verb decorators, parameter-default `Depends` |
+| `server.py`       | Composition root: `a2kit.App` + `a2kit.run(app)` entrypoint       |
 
 ## The author surface
 
@@ -20,124 +21,133 @@ What it demonstrates, in the order each idea shows up:
 
 ```python
 import a2kit
+from a2kit.packages.connections import get_conn_factory
+
 from .connection import TrackerConn
+from .deps import get_conn
 from .routers import ProjectsRouter, TasksRouter
+
+app = a2kit.App("tracker-mcp")
+app.connect(TrackerConn)
+app.use_factory(get_conn_factory(app, TrackerConn), as_=get_conn)
+app.use(ProjectsRouter())
+app.use(TasksRouter())
 
 
 def main() -> None:
-    app = a2kit.App("tracker-mcp")
-    app.connect(TrackerConn)
-    app.use(ProjectsRouter)
-    app.use(TasksRouter)
-    app.run()
+    a2kit.run(app)
 ```
 
 `routers.py` per-tool surface (one shape, repeated for every verb):
 
 ```python
-class ProjectsRouter(a2kit.Router): ...
+from uncalled_for import Depends
 
-@ProjectsRouter.list()
-async def list_projects(*, conn: TrackerConn) -> list[Project]: ...
+from .deps import get_conn
 
-@ProjectsRouter.read()
-async def get_project(*, conn: TrackerConn, project_id: str) -> Project: ...
+class ProjectsRouter(a2kit.Router):
+    enricher = staticmethod(tracker_404_enricher)
 
-@ProjectsRouter.write(enricher=tracker_404_enricher)
-async def create_project(*, conn: TrackerConn, name: str) -> Project: ...
+    @a2kit.list_()
+    async def list_projects(self, *, conn: TrackerConn = Depends(get_conn)) -> list[Project]: ...
+
+    @a2kit.read()
+    async def get_project(self, *, conn: TrackerConn = Depends(get_conn), project_id: str) -> Project: ...
+
+    @a2kit.write()
+    async def create_project(self, *, conn: TrackerConn = Depends(get_conn), name: str) -> Project: ...
 ```
 
 That's it. No `@a2kit.tool(server=server, store=store, capabilities={Cap.READ}, ...)`
-ceremony. The verb decorator picks the right capability set, the kit
-auto-injects the connection, the list-view kit (filter/fields/cursor) is
-on by default for `@list()` and off for `@read()` / `@write()`.
+ceremony. The verb decorator picks the right `ToolAnnotations` + tag set,
+`Depends(get_conn)` resolves the connection, and the per-Router `enricher`
+wraps every tool's exception path.
 
 ## What the kit does for you
 
-| Feature                       | What you wrote                                | Without the kit                                                 |
-|-------------------------------|-----------------------------------------------|------------------------------------------------------------------|
-| Connection lookup             | `*, conn: TrackerConn`                        | parse arg, load file, resolve env vars, check read-only         |
-| Capability tagging            | nothing — verb implies them                   | `capabilities={Cap.READ}` per tool, manually                    |
-| List-view kit                 | `@TasksRouter.list()`                         | implement `filter` / `fields` / `cursor` per tool               |
-| OTel spans                    | nothing — verbs enable them                   | `with tracer.start_as_current_span(...)` per call               |
-| Write enforcement             | nothing — verb implies it                     | check `read_only` flag, raise `WriteNotAllowed`                 |
-| Token resolution              | nothing — connection load handles it          | scan fields, dispatch on `${...}` / `op://`, call resolver      |
-| Error enrichment              | `enricher=tracker_404_enricher`               | wrap every tool body in try/except                              |
-| CLI commands                  | nothing — `app.run()` builds them             | hand-roll Click group with login/logout/connections/serve       |
-| Output format                 | annotate `-> list[Project]`                   | choose JSON/TOON/TSV, encode, set MIME type                     |
+| Feature                 | What you wrote                                       | Without the kit                                              |
+|-------------------------|------------------------------------------------------|--------------------------------------------------------------|
+| Connection lookup       | `*, conn: TrackerConn = Depends(get_conn)`           | parse arg, load file, resolve env vars, check read-only      |
+| Tag-based capabilities  | nothing — verb sets the tag                          | `tags={"read","write"}` per tool, manually                   |
+| OTel-friendly surface   | nothing — `tags` flow through fastmcp                | per-tool span management                                     |
+| Write enforcement       | `@a2kit.write()` + `read_only` field                 | check `read_only`, raise `WriteNotAllowed`                   |
+| Token resolution        | `db_path: str` / `token: str` on `ConnectionConfig`  | scan fields, dispatch on `${...}` / `op://`, call resolver   |
+| Error enrichment        | `enricher = staticmethod(tracker_404_enricher)`      | wrap every tool body in try/except                           |
+| CLI commands            | nothing — `a2kit.run(app)` builds them               | hand-roll Click group with login/logout/connections/serve    |
+| Output format           | annotate `-> list[Project]`                          | choose JSON/TOON, encode, set MIME type                      |
 
 ## Try it
 
 ```bash
-# Help — lists subcommands (serve, login, logout, connections, plus each tool)
-uv run python -m examples.tracker.server
+# Help — lists routers, connections, schema, serve
+uv run python -m examples.tracker.server --help
 
 # Save a connection (the JSONL file is created lazily on first write)
-uv run python -m examples.tracker.server login default db_path=/tmp/tracker.jsonl
+uv run python -m examples.tracker.server connections login tracker --field db_path=/tmp/tracker.jsonl
 
 # Invoke tools directly from the CLI — no MCP client needed
-uv run python -m examples.tracker.server create_project connection=default name="ship v0.12"
-uv run python -m examples.tracker.server list_projects connection=default
-uv run python -m examples.tracker.server create_task connection=default project_id=<id> title="finish DI"
+uv run python -m examples.tracker.server projects create-project --name "ship v1.0"
+uv run python -m examples.tracker.server projects list-projects
+uv run python -m examples.tracker.server tasks create-task --project-id <id> --title "finish DI"
 
-# Run as MCP server — stdio (default)
+# Per-tool schema dump (TOON by default; --format=json for JSON Schema tooling)
+uv run python -m examples.tracker.server schema list_tasks
+uv run python -m examples.tracker.server schema list_tasks --format=json
+
+# Run as MCP server — stdio (default; only this loads fastmcp)
 uv run python -m examples.tracker.server serve
 
 # Or HTTP transport
-uv run python -m examples.tracker.server serve --http :8080
-
-# Default-select drops writes; opt in with --select
-uv run python -m examples.tracker.server serve --select "default and tasks"
-uv run python -m examples.tracker.server serve --select "default or write"
+uv run python -m examples.tracker.server serve --transport=http --port 8080
 ```
 
-## Token resolution
+## Token resolution (eager)
 
 The `token` field on `TrackerConn` accepts:
 
 - A plain string — passes through unchanged.
-- `${ENV_VAR}` — looked up in `os.environ` before the tool body runs.
-- `op://<vault>/<item>/<field>` — resolved via 1Password CLI when available.
+- `${ENV_VAR}` — looked up in `os.environ` at `store.load(...)` time.
+- `op://<vault>/<item>/<field>` — resolved via the 1Password CLI at load time.
 
-Save once, the kit handles substitution on every call:
+Eager resolution means missing env vars / unreachable secrets fail fast at
+load — not on first tool call. Round-trip preserves placeholders:
+`store.save(cfg)` writes the original `${ENV_VAR}`, never the resolved
+value.
 
 ```bash
-uv run python -m examples.tracker.server login prod \
-    db_path=/tmp/tracker-prod.jsonl \
-    token='${TRACKER_TOKEN}'
+uv run python -m examples.tracker.server connections login tracker \
+    --field db_path=/tmp/tracker-prod.jsonl \
+    --field 'token=${TRACKER_TOKEN}'
 ```
 
 ## Read-only mode
 
 ```bash
-uv run python -m examples.tracker.server login readonly db_path=/tmp/r.jsonl read_only=true
+uv run python -m examples.tracker.server connections login readonly \
+    --field db_path=/tmp/r.jsonl --field read_only=true
 ```
 
 Calls to `create_project` / `complete_task` / `archive_project` against
 the `readonly` connection raise `WriteNotAllowed` before the tool body
-runs. No code in the example handles this — the kit does, because the
-verbs are tagged `write=True`.
+runs.
 
-## Multiple routers
+## Test override pattern
 
-`ProjectsRouter` and `TasksRouter` are independent. `--select` controls
-which ones serve:
+```python
+from a2kit.packages.testing import make_test_app
 
-```bash
-# Only project tools (tasks router excluded)
-uv run python -m examples.tracker.server serve --select "projects"
+from examples.tracker.deps import get_conn
+from examples.tracker.routers import TasksRouter
 
-# Both, but no destructive ops
-uv run python -m examples.tracker.server serve --select "default and not destructive"
+def fake_get_conn(*, connection: str):
+    async def _factory(*, connection):
+        return TrackerConn(db_path="/tmp/test.jsonl")
+    return _factory
+
+def test_create_task():
+    app = make_test_app([TasksRouter()], overrides={get_conn: fake_get_conn})
+    # ... invoke through app.tools()
 ```
 
-## What's NOT in this example
-
-- Custom DI providers — the connection is the only injected type today.
-  Future a2kit versions add chained-provider DI (`*, store: TrackerStore`
-  resolved from `TrackerConn` via a registered factory). When that lands,
-  this example grows a `providers.py` module.
-- Cassette-based testing — see `tests/test_cassettes.py` in the kit
-  itself for how to record/replay HTTP without a real backend.
-- Schema snapshots — flip `snapshot_dir=Path(...)` on either Router to
-  freeze response shapes against drift.
+There is no `app.dependency_overrides` map — `make_test_app` rebuilds the
+tool fns with `Depends(fake)` patched in via `uncalled_for` primitives.

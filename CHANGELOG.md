@@ -1,5 +1,90 @@
 # Changelog
 
+## 1.0.0 — protocol-agnostic core — 2026-05-09
+
+Clean break. ~7.9K LOC → ~2.7K LOC. Protocol-agnostic core (~1K) +
+opt-in plugin packages under `a2kit.packages.*` (~1.7K). FastMCP is
+now a hard dependency, isolated to `a2kit.packages.mcp`. Single-entry
+`a2kit.run(app)` dispatches all CLI / serve / schema / connections
+modes from one console script.
+
+### v1-cleanup-debt follow-ups (consolidated under v1.0)
+
+- **`App.use_factory(factory, *, as_=stub)`** binds a factory under a
+  stable callable identity. Replaces the legacy "module-level mutable
+  slot" pattern in examples (`set_get_conn(...)` → `app.use_factory(...)`).
+- **`compute_schema` canonical home** is `a2kit.packages.cli.schemas`.
+  `a2kit.packages.testing.snapshots` re-exports it for the syrupy
+  `TOONSnapshotExtension`.
+- **`_APP_CTX`** lives in `a2kit.packages.cli.app_ctx`. Both adapters
+  (`mcp.cli.serve_command`, `cli.builder.build_full_cli`) read from there.
+- **`a2kit.packages.lint.static`** split — 1227 → 244 SLOC. Per-family
+  rule modules under `a2kit.packages.lint.rules/`. **A2K010** (legacy
+  unknown-atom rule) retired entirely.
+- **CLI option synthesis** maps nullable primitives natively:
+  `Optional[int]` / `int | None` → `INTEGER` (default `None`,
+  `required=False`); same for `float`, `str`, `bool`. Non-primitive
+  nullable types still JSON-decode.
+- **Schema dump truncation**: `<app> schema [TOOL]` output now passes
+  through `formatter.truncate(...)` (default 50,000-char cap).
+- **ty (Astral)** is a hard `make lint` gate. `uv run ty check src/`
+  exits 0 with zero `# ty: ignore` comments.
+- **`opentelemetry` is lazy** — `import a2kit.packages.otel` does not
+  pull `opentelemetry` into `sys.modules`; only `install(server)`
+  triggers the load.
+- **Test layout uniformity**: `tests/packages/select/` now has
+  `__init__.py`; `pyproject.toml` sets `--import-mode=importlib` so
+  test packages whose names shadow stdlib modules don't collide via
+  `sys.modules`.
+
+### New opt-in package
+
+- `a2kit.packages.otel` — opt-in via `pip install 'a2kit[otel]'`. Adds
+  an OTel-compatible `Middleware` that wraps every FastMCP tool call in
+  a span (`mcp.tool.{tool_name}`) with attributes pulled from
+  `A2KitMeta` (`a2kit.tool_name`, `a2kit.verb`, `a2kit.router`,
+  `a2kit.tags`) plus the FastMCP request id, and increments an
+  `a2kit.tool.calls{tool, verb, status}` counter. Wire with
+  `from a2kit.packages.otel import install; install(server)`. a2kit
+  core stays OTel-free; OpenTelemetry is lazy-imported.
+
+### Migration recipes (populated as work lands)
+
+- **CEL translation table** — legacy atom forms → CEL syntax (filled
+  during Phase 2 `packages/select/`).
+- **Import-path migrations** —
+  - `from a2kit.di import Depends` → `from uncalled_for import Depends`
+  - `from a2kit.contrib.connections import …` → `from a2kit.packages.connections import …`
+  - `from a2kit.scaffold import Router` → `from a2kit import Router`
+  - `from a2kit.testing import …` → `from a2kit.packages.testing import …`
+  - `from a2kit.formatter import …` → `from a2kit.packages.formatter import …`
+- **DI form** — `Annotated[T, Depends(g)]` → `T = Depends(g)`
+  (parameter-default form via `uncalled_for`).
+- **Connection contract** — `${VAR}` and `op://…` are now resolved
+  **eagerly at `store.load(...)`**, not lazily at first tool call.
+  Round-trip through `store.save(cfg)` preserves placeholders via the
+  `_raw` shadow.
+- **Override pattern** — `app.dependency_overrides[fn] = fake` →
+  `make_test_app(routers, overrides={fn: fake})` from
+  `a2kit.packages.testing`.
+- **CLI entry** — `app.run()` → `a2kit.run(app)` (delegates to
+  `a2kit.packages.cli.build_full_cli`).
+
+### Install note
+
+`toon-format` 1.0 has not yet shipped; v1.0 pins the working pre-release
+exactly. If you bypass the pin (e.g. fresh resolve), pass `--pre`:
+
+```
+uv pip install --pre 'toon-format>=0.9.0b1'
+```
+
+### Risk-radius note
+
+`uncalled-for` is pinned tightly (`>=0.3,<0.4`). It is pre-1.0 and
+underpins every tool fn signature. If upstream introduces breaking
+changes, expect a coordinated migration in the next a2kit release.
+
 ## 0.19.0.dev0 — 2026-05-08
 
 **Fix-forward review pass on the v0.15 architecture.** No surface
