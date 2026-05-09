@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import click
 import pytest
@@ -59,67 +59,53 @@ def test_lint_runtime_runs_on_minimal_server(tmp_path: Path, monkeypatch: pytest
 
 def test_connections_show_unknown_conn_type() -> None:
     """`show` on an unregistered conn_type → exit 1, "Unknown" message."""
-    import a2kit.packages.connections.cli as cli_mod
+    from a2kit.packages.connections import connections_cli
 
+    group = connections_cli()
     runner = CliRunner()
-    with patch.object(cli_mod, "_get_app", lambda: None):
-        r = runner.invoke(cli_mod.connections_group, ["show", "Nope", "--key=p"])
+    r = runner.invoke(group, ["show", "Nope", "--key=p"])
     assert r.exit_code == 1
     assert "Unknown connection type" in r.output
 
 
 def test_connections_show_missing_key_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`show` for a known conn_type but no saved record → ConnectionNotFound output."""
-    from a2kit.app import App
     from tests.packages.connections.conftest import WidgetConfig
-    import a2kit.packages.connections.cli as cli_mod
 
-    from a2kit.packages.connections import Connections
+    from a2kit.packages.connections import connections_cli
 
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(tmp_path / "conn"))
-    app = App("t").use(Connections()).use(WidgetConfig)
-    monkeypatch.setattr(cli_mod, "_get_app", lambda: app)
+    group = connections_cli(WidgetConfig)
     runner = CliRunner()
-    r = runner.invoke(cli_mod.connections_group, ["show", "WidgetConfig", "--key=missing"])
+    r = runner.invoke(group, ["show", "WidgetConfig", "--key=missing"])
     assert r.exit_code == 1
     assert "not found" in r.output.lower()
 
 
 def test_connections_list_unknown_conn_type(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from a2kit.app import App
     from tests.packages.connections.conftest import WidgetConfig
-    import a2kit.packages.connections.cli as cli_mod
 
-    from a2kit.packages.connections import Connections
+    from a2kit.packages.connections import connections_cli
 
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(tmp_path / "conn"))
-    app = App("t").use(Connections()).use(WidgetConfig)
-    monkeypatch.setattr(cli_mod, "_get_app", lambda: app)
+    group = connections_cli(WidgetConfig)
     runner = CliRunner()
-    r = runner.invoke(cli_mod.connections_group, ["list", "Nope"])
+    r = runner.invoke(group, ["list", "Nope"])
     assert r.exit_code == 1
     assert "Unknown connection type" in r.output
 
 
 def test_connections_list_no_app_no_config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No app context AND no config dir → silent (early return)."""
-    import a2kit.packages.connections.cli as cli_mod
+    """No conn types AND no config dir → silent (early return)."""
+    from a2kit.packages.connections import connections_cli
 
     cfg_home = tmp_path / "missing-cfg"
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(cfg_home))
-    monkeypatch.setattr(cli_mod, "_get_app", lambda: None)
+    group = connections_cli()
     runner = CliRunner()
-    r = runner.invoke(cli_mod.connections_group, ["list"])
+    r = runner.invoke(group, ["list"])
     assert r.exit_code == 0
     assert r.output.strip() == ""
-
-
-def test_connections_get_app_returns_none_when_ctx_unset() -> None:
-    """`_get_app()` returns None when no app is on the ContextVar."""
-    from a2kit.packages.connections.cli import _get_app
-
-    # No `_APP_CTX.set` happened in this test → LookupError → return None.
-    assert _get_app() is None
 
 
 def test_connections_parse_field_overrides_bad_format() -> None:
@@ -394,32 +380,28 @@ def test_connections_list_with_one_registered_type(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`list` (no conn_type) iterates registered types — covers lines 153-158."""
-    from a2kit.app import App
+    """`list` (no conn_type) iterates registered types."""
     from tests.packages.connections.conftest import WidgetConfig
-    import a2kit.packages.connections.cli as cli_mod
 
-    from a2kit.packages.connections import Connections
+    from a2kit.packages.connections import connections_cli
 
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(tmp_path / "conn"))
-    app = App("t").use(Connections()).use(WidgetConfig)
-    monkeypatch.setattr(cli_mod, "_get_app", lambda: app)
-
+    group = connections_cli(WidgetConfig)
     runner = CliRunner()
-    runner.invoke(cli_mod.connections_group, ["login", "WidgetConfig", "--key=prod", "--field=token=t"])
-    r = runner.invoke(cli_mod.connections_group, ["list"])
+    runner.invoke(group, ["login", "WidgetConfig", "--key=prod", "--field=token=t"])
+    r = runner.invoke(group, ["list"])
     assert r.exit_code == 0, r.output
     assert "WidgetConfig" in r.output
     assert "prod" in r.output
 
 
-def test_connections_logout_unknown_conn_type(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`logout` on unregistered conn_type → exits 1 via `_delete_impl`."""
-    import a2kit.packages.connections.cli as cli_mod
+def test_connections_logout_unknown_conn_type() -> None:
+    """`logout` on unregistered conn_type → exits 1."""
+    from a2kit.packages.connections import connections_cli
 
-    monkeypatch.setattr(cli_mod, "_get_app", lambda: None)
+    group = connections_cli()
     runner = CliRunner()
-    r = runner.invoke(cli_mod.connections_group, ["logout", "Nope", "--key=x"])
+    r = runner.invoke(group, ["logout", "Nope", "--key=x"])
     assert r.exit_code == 1
     assert "Unknown" in r.output
 
@@ -435,7 +417,6 @@ def test_a2kit_main_help_runs() -> None:
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
     assert "lint" in result.output
-    assert "connections" in result.output
     assert isinstance(main, click.Group)
 
 

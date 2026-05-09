@@ -1,6 +1,79 @@
 # Changelog
 
-## Next — pluggable core architecture
+## Next — de-magic (2026-05-09)
+
+Cut the framework, keep the decorator. The four `v1-thin-core` commits
+accumulated abstractions faster than the problem warranted; this change
+removes the mechanisms that read as AI slop to a senior reviewer.
+
+### Removed
+
+- `Depends(...)` in **all** forms — class-as-key (`Depends(TrackerConn)`)
+  AND callable form (`Depends(get_conn)`). Constructor injection is the
+  only DI shape now.
+- `uncalled_for` is no longer a runtime dependency.
+- `app.use(...)` polymorphic dispatch. Three named verbs replace it:
+  `app.add_router(r)`, `app.add_cli(group)`, `app.add_mcp_middleware(m)`.
+- `app.connect(C)` — connections are plain classes; nothing to claim.
+- `app.use_factory(real, as_=stub)` — pass factories to router constructors.
+- `a2kit.Plugin`, `a2kit.DependsResolver`, `a2kit.ToolWrapper` Protocols.
+- `a2kit.packages.connections.Connections` plugin class.
+- `a2kit.Store[ConnT]` Generic marker — stores are plain classes.
+- `bind_class_dependencies` outer wrapper + class-Depends signature
+  rewriting in core.
+- `make_test_app(routers, overrides=...)` — tests construct an `App`
+  directly with the same composition verbs as production code.
+- `class R(a2kit.Router, enricher=fn):` PEP 487 class kwarg — per-tool
+  `@a2kit.read(enricher=fn)` is the only attachment form.
+- `Router(enricher=fn)` constructor kwarg + `self.enricher` instance scan.
+- `A2K-CORE-PURITY` lint rule — there's no plugin boundary worth policing.
+- `A2K-DI-ANNOTATED`, `A2K-DI-IMPORT-LEGACY`, `A2K-DI-IMPORT-SLOW`,
+  `A2K-DI-KWONLY`, `A2K-DI-PYDANTIC-VALIDATE` lint rules — they polished a
+  sentinel that no longer exists.
+- `ConnectionKwargMissing`, `ConnectionNotRegistered`,
+  `StoreConnectionTypeUnknown` exceptions — no path can raise them now.
+- `get_conn_factory(app, ConnT)` — users write a 3-line factory directly.
+- `a2kit connections ...` subcommand on the developer CLI — `a2kit` ships
+  only `a2kit lint`. App-level `connections` subgroup is wired by users
+  via `app.add_cli(connections_cli(*types))`.
+
+### Changed
+
+- `a2kit.packages.connections` exports: `ConnectionConfig`,
+  `ConnectionStore`, `connections_cli(*types)`, plus token / key
+  exception types. The package no longer carries a plugin or DI module.
+- `connections_cli(*types)` is a Click-group factory; users wire it via
+  `app.add_cli(connections_cli(TrackerConn))`.
+- Tracker example rewritten to constructor injection. Total LOC across
+  `server.py + store.py + routers.py` shrank substantially; reading any
+  one file is now a 30-second exercise.
+
+### Migration recipe
+
+| Before (post-`pluggable-core-architecture`) | After (`de-magic`) |
+|---|---|
+| `app.use(Connections())` | (delete) |
+| `app.use(TrackerConn)` | (delete; conn config is just a class) |
+| `app.use(TasksRouter())` | `app.add_router(TasksRouter(get_store))` |
+| `Depends(TrackerConn)` parameter default | constructor-injected `self.get_conn` |
+| `Depends(TrackerStore)` parameter default | constructor-injected `self.get_store` |
+| `Depends(get_conn)` callable form | constructor-injected callable on `self` |
+| `class TrackerStore(a2kit.Store[TrackerConn]):` | `class TrackerStore:` |
+| `app.connect(TrackerConn)` | (delete) |
+| `app.use_factory(real, as_=stub)` | pass factory to router constructor |
+| `class R(a2kit.Router, enricher=fn):` | `@a2kit.read(enricher=fn)` per tool |
+| `make_test_app(routers, overrides={...})` | `App() + add_router(R(fake))` |
+| `from uncalled_for import Depends` | (delete) |
+| `from a2kit.packages.connections import Connections, Store` | (delete; only ConnectionStore + connections_cli survive) |
+
+### Cold-start
+
+`import a2kit` measured at ~13 ms (was ~62 ms with the prior plugin
+machinery). Still well under the 100 ms budget.
+
+---
+
+## Pluggable core architecture (superseded by de-magic)
 
 Core a2kit now knows nothing about connections (or any other domain).
 Connection support becomes an opt-in plugin; the boundary is enforced by

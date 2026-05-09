@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 from a2kit.packages.cli.context import StderrToolContext
 from a2kit.packages.formatter import FormatHint, format_response
-from a2kit.signature import strip_dependencies
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -31,8 +30,6 @@ async def _invoke_tool_in_process(
     applied the Router-level enricher wrap. The CLI runtime is
     enricher-agnostic.
     """
-    wrapped = strip_dependencies(fn)
-
     if ctx_param_name:
         kwargs[ctx_param_name] = StderrToolContext(
             report_type=report_type,
@@ -41,10 +38,10 @@ async def _invoke_tool_in_process(
             events_enabled=events_enabled,
         )
 
-    if inspect.iscoroutinefunction(wrapped) or inspect.iscoroutinefunction(fn):
-        raw = await wrapped(**kwargs)
+    if inspect.iscoroutinefunction(fn):
+        raw = await fn(**kwargs)
     else:
-        raw = wrapped(**kwargs)
+        raw = fn(**kwargs)
         if inspect.isawaitable(raw):
             raw = await raw
 

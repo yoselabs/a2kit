@@ -1,12 +1,12 @@
 # a2kit
 
-**Fat tool decorator on top of FastMCP — protocol-agnostic core, opt-in plugin packages.**
+**Fat tool decorator on top of FastMCP — protocol-agnostic core, plain-Python composition.**
 
 a2kit ships an `App`, verb decorators (`@a2kit.read` / `@a2kit.write` /
 `@a2kit.list_`), and a `ToolContext` Protocol — that's it for the core.
-Everything else (connections, formatter, select grammar, lint, testing
-helpers, MCP server, CLI) lives under `a2kit.packages.*` as opt-in plugin
-packages. FastMCP is a hard dependency, but it's confined to
+Connections, formatter, select grammar, lint, testing helpers, MCP server,
+and CLI live under `a2kit.packages.*` and are imported only when you
+actually use them. FastMCP is a hard dependency, but it's confined to
 `a2kit.packages.mcp` — `import a2kit` stays under 100 ms.
 
 A single console script handles every mode — tool subcommands, connection
@@ -15,15 +15,25 @@ management, schema dump, and `serve`:
 ```python
 # tracker/server.py
 import a2kit
-from a2kit.packages.connections import get_conn_factory
+from a2kit.packages.connections import ConnectionStore, connections_cli
 
-from .routers import ProjectsRouter, TasksRouter
 from .connection import TrackerConn
+from .routers import ProjectsRouter, TasksRouter
+from .store import TrackerStore
+
+_conn_store = ConnectionStore(TrackerConn)
+
+
+async def get_store(connection: str) -> TrackerStore:
+    conn = await _conn_store.load((connection,))
+    return TrackerStore(conn)
+
 
 app = a2kit.App("tracker")
-app.connect(TrackerConn)
-app.use(ProjectsRouter())
-app.use(TasksRouter())
+app.add_router(ProjectsRouter(get_store))
+app.add_router(TasksRouter(get_store))
+app.add_cli(connections_cli(TrackerConn))
+
 
 def main() -> None:
     a2kit.run(app)
@@ -37,7 +47,7 @@ tracker = "tracker.server:main"
 ```bash
 tracker --help
 tracker tasks list-tasks --project-id=abc      # in-process; no MCP roundtrip
-tracker connections login tracker --field db_path=./data.jsonl
+tracker connections login TrackerConn --key=default --field=db_path=./data.jsonl
 tracker schema list-tasks                       # TOON by default; --format=json opts in
 tracker serve --transport=stdio                 # only this loads fastmcp
 ```
@@ -57,12 +67,10 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name)` | Composition root. `app.use(thing)` (polymorphic — Plugin / Router / class), `app.use_factory(factory, as_=stub)`, `app.set_ldd(...)`. |
-| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Class kwarg: `class TasksRouter(a2kit.Router, enricher=fn):`. Router applies enrichers when collecting tools. |
-| `a2kit.Plugin` | Protocol for opt-in features. Plugins contribute CLI subcommands, MCP middleware, DI resolvers, and may claim foreign types passed to `app.use(...)`. |
-| `a2kit.DependsResolver` | Protocol for plugin-contributed `Depends(<class>)` resolvers. |
+| `a2kit.App(name)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `set_ldd(...)` for the LDD kill-switch. |
+| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Pass factories via `__init__`; the framework does no DI introspection. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
-| `@a2kit.tool / read / write / list_` | Verb decorators. Map to `mcp.types.ToolAnnotations` + tags. |
+| `@a2kit.tool / read / write / list_` | Verb decorators. Map to `mcp.types.ToolAnnotations` + tags. Optional `enricher=fn` per-tool. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). |
 | `a2kit.ToolContext` | Protocol for protocol-neutral logging + progress. Both adapters supply an implementation. |
 | `a2kit.Cap` | Built-in capability `StrEnum`. `a2kit.capabilities.register(...)` for custom tags. |
@@ -74,65 +82,40 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 |---|---|
 | `a2kit.packages.mcp` | FastMCP adapter. `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`. The ONE place fastmcp imports. |
 | `a2kit.packages.cli` | Click adapter. `build_full_cli(app)` returns the progressive-disclosure CLI. |
-| `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `get_conn_factory`. Pydantic-settings-backed; eager `${VAR}` / `op://` resolution. |
+| `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. |
 | `a2kit.packages.formatter` | TOON / JSON output normalization via `toon-format`. `format_response(raw, format_hint=...)`. |
 | `a2kit.packages.select` | `compile`, `evaluate`, `validate_atoms` over real CEL syntax. |
-| `a2kit.packages.enrichers` | Protocol-neutral `wrap(fn, enricher)` + `connection_enricher`. |
-| `a2kit.packages.testing` | Thin pytest fixtures, syrupy `TOONSnapshotExtension`, `make_test_app(routers, overrides=...)`. |
+| `a2kit.packages.enrichers` | Concrete enricher implementations (e.g. `connection_enricher`). The wrap mechanism itself lives in core. |
+| `a2kit.packages.testing` | Thin pytest fixtures, syrupy `TOONSnapshotExtension`. |
 | `a2kit.packages.lint` | Static + runtime A2K rules. `a2kit lint static <path>` / `a2kit lint runtime --import pkg:app`. |
 
-### Dependency injection — class as the key
+### Dependency injection — constructor injection
 
-Three injection shapes; pick the one that reads cleanest at the call site.
+Routers receive their dependencies through `__init__`. Tools access them via
+`self`. The framework introspects nothing.
 
 ```python
-from uncalled_for import Depends
 import a2kit
 
-# 1. Connection class — `Depends(TrackerConn)` resolves via the registered loader.
-async def get_project(
-    *,
-    conn: TrackerConn = Depends(TrackerConn),
-    connection: str,
-    project_id: str,
-) -> Project: ...
-
-# 2. Store class — runtime composes conn → store. Declare via `Store[ConnT]`.
-class TrackerStore(a2kit.Store[TrackerConn]):
-    def __init__(self, conn: TrackerConn) -> None: ...
-
-async def archive_project(
-    *,
-    store: TrackerStore = Depends(TrackerStore),
-    connection: str,
-    project_id: str,
-) -> Project: ...
-
-# 3. Stub factory — for multi-tenant or test overrides where the factory
-#    needs to be swapped at composition root. Backwards-compatible legacy path.
-async def get_conn(*, connection: str) -> TrackerConn: ...
-app.use_factory(my_factory, as_=get_conn)
-```
-
-The runtime hides class-Depends params from the tool's input schema — only
-`connection: str` (and the user kwargs) appear to the agent.
-
-a2kit re-exports zero external symbols. Users import `Depends` from
-`uncalled_for` directly:
-
-```python
-from uncalled_for import Depends
 
 class TasksRouter(a2kit.Router):
+    def __init__(self, get_store) -> None:
+        super().__init__()
+        self.get_store = get_store
+
     @a2kit.read()
-    async def get_task(
-        self, *, conn: TrackerConn = Depends(get_conn), task_id: str
-    ) -> Task: ...
+    async def get_task(self, *, connection: str, task_id: str) -> Task:
+        store = await self.get_store(connection)
+        return store.get(task_id)
+
+
+app = a2kit.App("tracker")
+app.add_router(TasksRouter(get_store))
 ```
 
-The `Annotated[T, Depends(...)]` form is **not** supported for value
-injection — use parameter-default form. The `A2K-DI-ANNOTATED` lint rule
-flags the misuse.
+That's it. No `Depends(...)`, no class-as-key, no Generic markers, no
+plugin protocol. A reader unfamiliar with a2kit can predict every line's
+behavior without reading the framework source.
 
 ### Logging + progress + events + reports (`ToolContext`)
 
@@ -150,9 +133,11 @@ caller immediately (no buffering).
 ```python
 from pydantic import BaseModel
 
+
 class BatchReport(BaseModel):
     batch: int
     accepted: int
+
 
 @a2kit.read(report=BatchReport)
 async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
@@ -187,10 +172,10 @@ option generation.
 
 `a2kit.run(app)` exposes:
 
-- `<app> --help` — top-level: one entry per Router (with progressive-disclosure hint), plus `connections`, `schema`, `serve`.
+- `<app> --help` — top-level: one entry per Router (with progressive-disclosure hint), plus `schema`, `serve`, plus any subcommand attached via `app.add_cli(...)`.
 - `<app> <router> --help` — list tools in that router.
 - `<app> <router> <tool> [--name VALUE ...] [--format=auto|toon|json] [--schema]` — invoke the tool in-process. Output flows through the formatter.
-- `<app> connections {login,logout,list,show,delete}` — manage saved connections.
+- `<app> connections {login,logout,list,show,delete}` — present iff the app wired `connections_cli(...)` via `add_cli`.
 - `<app> schema [TOOL] [--format=toon|json] [--jsonl]` — schema discovery.
 - `<app> serve [--transport=stdio|http] [--host] [--port]` — MCP server (the ONLY mode that loads fastmcp).
 
@@ -204,6 +189,7 @@ not at first tool call. Missing env vars / unreachable secrets fail fast.
 
 ```python
 from a2kit.packages.connections import ConnectionConfig
+
 
 class TrackerConn(ConnectionConfig):
     db_path: str
@@ -224,36 +210,45 @@ a2kit lint runtime --import myapp.server:app
 
 v1.0-relevant rules:
 
-- `A2K-DI-ANNOTATED` — `Annotated[T, Depends(fn)]` is not supported.
-- `A2K-DI-IMPORT-LEGACY` — `from a2kit.di import Depends`.
-- `A2K-DI-IMPORT-SLOW` — `from fastmcp.dependencies import Depends`.
-- `A2K-DI-KWONLY` — DI parameters must be keyword-only.
-- `A2K-DI-PYDANTIC-VALIDATE` — `pydantic.validate_call` on a Depends-defaulted fn leaks the sentinel.
 - `A2K-CONN-LIST-PLACEHOLDER` — `${VAR}` inside list/dict fields on `ConnectionConfig`.
 - `A2K-IMPORT-DISCIPLINE` — `fastmcp` imports outside `packages/mcp/` and the lazy-load lines in `packages/cli/builder.py`.
+- `A2K-LDD-REPORT-TYPE` — `ctx.report(...)` without `report=` on the decorator, or report type defined inside a function.
 
 ## Testing
 
-```python
-from a2kit.packages.testing import make_test_app
+Tests construct routers with fake factories and register them with a fresh
+`App` — same shape as production code:
 
-def test_get_task():
-    app = make_test_app([TasksRouter()], overrides={get_conn: fake_conn})
-    # ... invoke a tool through the test app
+```python
+import a2kit
+
+
+def test_get_task() -> None:
+    async def fake_get_store(connection: str):
+        return FakeStore()
+
+    app = a2kit.App("test")
+    app.add_router(TasksRouter(fake_get_store))
+    fn = app.tools()[0]
+    # ... invoke through the test app
 ```
 
-`make_test_app` rebuilds tools with `Depends(fake)` patched in via `uncalled_for` primitives. There is no `app.dependency_overrides` map.
+No `app.dependency_overrides` map. No `make_test_app` helper. The `app`
+pytest fixture in `a2kit.packages.testing` returns a fresh `a2kit.App("test")`.
 
 ## Migration from v0.x
 
-See [CHANGELOG.md](CHANGELOG.md) for the v1.0 break notes:
+See [CHANGELOG.md](CHANGELOG.md) for the v1.0 break notes. From the
+prior `v1-thin-core` shape:
 
-- DI form: `Annotated[T, Depends(g)]` → `T = Depends(g)` (parameter default)
-- Import paths: `a2kit.di` → `uncalled_for`, `a2kit.contrib.connections` → `a2kit.packages.connections`, `a2kit.scaffold` → `a2kit`, `a2kit.testing` → `a2kit.packages.testing`
-- Connection contract: lazy → eager substitution
-- Override pattern: `dependency_overrides` map → `make_test_app(...)`
-- CLI entry: `app.run()` → `a2kit.run(app)`
-- Filter syntax: legacy `--select` atoms → real CEL (`&&` / `||` / `!`)
+- `Depends(<class>)` and `Depends(<callable>)` → constructor injection
+- `app.use(...)` → `app.add_router(...)`, `app.add_cli(...)`, `app.add_mcp_middleware(...)`
+- `app.connect(C)` → (delete; conn config is just a class)
+- `app.use_factory(...)` → pass factory to router constructor
+- `class TrackerStore(a2kit.Store[TrackerConn]):` → `class TrackerStore:` (plain class)
+- `class R(a2kit.Router, enricher=fn):` → per-tool `@a2kit.read(enricher=fn)`
+- `make_test_app(routers, overrides=...)` → construct App + routers directly
+- `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage
 
 See [ANTIPATTERNS.md](ANTIPATTERNS.md) for a2kit-specific patterns to avoid.
 

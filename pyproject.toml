@@ -25,7 +25,6 @@ dependencies = [
     "pydantic-settings>=2.14,<3",
     "tomli-w>=1",
     "toon-format==0.9.0b1",
-    "uncalled-for>=0.3,<0.4",
 ]
 
 [project.scripts]
@@ -131,8 +130,9 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 # CLI builder synthesizes Click commands from arbitrary tool signatures —
 # inherently many branches per parameter type. PLR0915 / C901 reflect that.
 "src/a2kit/packages/cli/builder.py" = ["C901", "PLR0915", "PERF401"]
-# connections CLI inspects ConnectionConfig internals (Key NamedTuple, _path).
-"src/a2kit/packages/connections/cli.py" = ["SLF001"]
+# connections CLI inspects ConnectionConfig internals (Key NamedTuple, _path);
+# the factory builds 5 Click subcommands inline so it's structurally branchy.
+"src/a2kit/packages/connections/cli.py" = ["SLF001", "C901", "PLR0915"]
 # format heuristic dispatches by type-shape — many returns is structural.
 "src/a2kit/packages/formatter/__init__.py" = ["PLR0911"]
 # MCP context schedules log coroutines without awaiting; design D-ToolContext.

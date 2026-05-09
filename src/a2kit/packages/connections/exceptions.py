@@ -57,33 +57,3 @@ class OpResolutionError(TokenResolutionError):
         self.ref = ref
         self.hint = hint
         super().__init__(f"Failed to resolve 1Password reference {ref!r}: {hint}")
-
-
-# --- Class-based DI exceptions (moved from core in pluggable-core-architecture) --- #
-
-
-class ConnectionKwargMissing(TypeError):
-    def __init__(self, conn_type: type, tool_name: str | None = None) -> None:
-        self.conn_type = conn_type
-        self.tool_name = tool_name
-        suffix = f" (tool {tool_name!r})" if tool_name else ""
-        super().__init__(f"`Depends({conn_type.__name__})` requires a `connection: str` kwarg on the tool signature{suffix}.")
-
-
-class ConnectionNotRegistered(RuntimeError):
-    def __init__(self, conn_type: type) -> None:
-        self.conn_type = conn_type
-        super().__init__(
-            f"`Depends({conn_type.__name__})` references an unregistered connection class. "
-            f"Call `app.use(Connections())` then `app.use({conn_type.__name__})` before use."
-        )
-
-
-class StoreConnectionTypeUnknown(TypeError):
-    def __init__(self, store_type: type) -> None:
-        self.store_type = store_type
-        super().__init__(
-            f"`Depends({store_type.__name__})` cannot determine its connection type. "
-            f"Either set `{store_type.__name__}.conn_type = YourConnT` or inherit from "
-            f"`a2kit.packages.connections.Store[YourConnT]`."
-        )

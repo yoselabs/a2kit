@@ -85,7 +85,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         a2kit.read(_tool.__name__)(_tool)
         setattr(Big, _tool.__name__, _tool)
 
-    app = a2kit.App("big").use(Big())
+    app = a2kit.App("big").add_router(Big())
     token = _APP_CTX.set(app)
     try:
         result = CliRunner().invoke(schema_command, ["--format=toon"])

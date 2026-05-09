@@ -19,7 +19,6 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "tomli-w" },
     { name = "toon-format" },
-    { name = "uncalled-for" },
 ]
 
 [package.optional-dependencies]
@@ -59,7 +58,6 @@ requires-dist = [
     { name = "syrupy", marker = "extra == 'testing'", specifier = ">=4" },
     { name = "tomli-w", specifier = ">=1" },
     { name = "toon-format", specifier = "==0.9.0b1" },
-    { name = "uncalled-for", specifier = ">=0.3,<0.4" },
     { name = "vcrpy", marker = "extra == 'testing'", specifier = ">=6" },
 ]
 provides-extras = ["testing", "otel"]

@@ -18,7 +18,7 @@ class _R(a2kit.Router):
 
 
 def _build_server() -> FastMCP:
-    app = a2kit.App("demo-app").use(_R())
+    app = a2kit.App("demo-app").add_router(_R())
     return build_mcp_server(app)
 
 

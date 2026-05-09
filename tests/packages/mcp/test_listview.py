@@ -62,7 +62,7 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
         async def rows(self) -> list[dict[str, Any]]:
             return [{"id": i, "extra": "drop"} for i in range(10)]
 
-    app = a2kit.App("a").use(R())
+    app = a2kit.App("a").add_router(R())
     server = build_mcp_server(app)
 
     async def _check() -> None:

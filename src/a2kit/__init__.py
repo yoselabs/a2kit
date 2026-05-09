@@ -15,7 +15,6 @@ if TYPE_CHECKING:
         WriteNotAllowed,
     )
     from a2kit.metadata import A2KitMeta, ListViewSettings
-    from a2kit.plugin import DependsResolver, Plugin
     from a2kit.routers import Router, RouterRegistry
     from a2kit.runtime import ToolContext
     from a2kit.tool import list_, read, tool, write
@@ -31,8 +30,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "list_": ("a2kit.tool", "list_"),
     "Cap": ("a2kit.capabilities", "Cap"),
     "capabilities": ("a2kit.capabilities", "capabilities"),
-    "Plugin": ("a2kit.plugin", "Plugin"),
-    "DependsResolver": ("a2kit.plugin", "DependsResolver"),
     "ToolContext": ("a2kit.runtime", "ToolContext"),
     "A2KitMeta": ("a2kit.metadata", "A2KitMeta"),
     "ListViewSettings": ("a2kit.metadata", "ListViewSettings"),
@@ -72,11 +69,9 @@ __all__ = [
     "A2KitMeta",
     "App",
     "Cap",
-    "DependsResolver",
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
     "ListViewSettings",
-    "Plugin",
     "ReportTypeMismatch",
     "ReportTypeNotDeclared",
     "Router",

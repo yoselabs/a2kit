@@ -27,9 +27,8 @@ class LazyGroup(click.Group):
     cls=LazyGroup,
     lazy_subcommands={
         "lint": "a2kit.packages.lint.cli:main",
-        "connections": "a2kit.packages.connections.cli:connections_group",
     },
-    help="a2kit developer CLI — lint and manage saved connections.",
+    help="a2kit developer CLI — lint a2kit projects.",
 )
 def main() -> None:
     """a2kit developer CLI."""

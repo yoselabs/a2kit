@@ -10,29 +10,23 @@ from a2kit.packages.testing import (
     TOONSnapshotExtension,
     compute_schema,
 )
-from uncalled_for import Depends
-
-
-def get_db() -> str:
-    return "real-db"
 
 
 @a2kit.read("list_things")
-async def list_things(*, db: str = Depends(get_db), q: str = "hi", limit: int = 10) -> dict:
+async def list_things(*, q: str = "hi", limit: int = 10) -> dict:
     """List things matching ``q``."""
-    return {"q": q, "limit": limit, "db": db}
+    return {"q": q, "limit": limit}
 
 
 @a2kit.write("delete_thing")
-async def delete_thing(*, db: str = Depends(get_db), id: str) -> dict:
+async def delete_thing(*, id: str) -> dict:
     """Delete the thing with the given id."""
     return {"deleted": id}
 
 
-def test_compute_schema_strips_di_params() -> None:
+def test_compute_schema_lists_user_params() -> None:
     schema = compute_schema(list_things)
     props = schema["inputSchema"]["properties"]
-    assert "db" not in props, "DI parameters must be stripped from inputSchema"
     assert set(props.keys()) == {"q", "limit"}
     assert props["q"]["type"] == "string"
     assert props["limit"]["type"] == "integer"

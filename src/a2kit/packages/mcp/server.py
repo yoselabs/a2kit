@@ -71,7 +71,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
         )
         server.add_tool(tool)
 
-    # Built-in middleware first; plugin-contributed middlewares after.
+    # Built-in middleware first; user-attached middlewares (via add_mcp_middleware) after.
     server.add_middleware(ListViewMiddleware())
     server.add_middleware(GuardsMiddleware())
     for mw in app.mcp_middlewares():

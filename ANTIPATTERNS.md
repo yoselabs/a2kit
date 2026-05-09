@@ -187,26 +187,31 @@ through a sync return type.
 Citation: `src/a2kit/packages/mcp/server.py::build_mcp_server` (no
 streaming wrapper exists by design).
 
-## 11. v1.0 — `Annotated[T, Depends(fn)]` for value injection
+## 11. v1.0 — `Depends(...)` parameter defaults (any form)
 
-The mistake: using `Annotated[T, Depends(get_conn)]` as a tool parameter type
-in v1.0. The kit reads PEP 593 metadata only for type info; value injection
-is parameter-default form (`*, conn: T = Depends(get_conn)`) honoured by
-`uncalled_for`. The Annotated form silently leaks the type's metadata into
-the input schema and the `Depends` sentinel ends up as the parameter value.
+The mistake: writing `*, conn: T = Depends(get_conn)` or
+`Annotated[T, Depends(get_conn)]` on a tool. The `de-magic` change removed
+both forms — the framework no longer introspects parameter defaults for
+DI sentinels.
 
-What to do: parameter-default form, always:
+What to do: constructor injection on the `Router` class. Pass factories
+in via `__init__`, store on `self`, call from each tool method:
 
 ```python
-async def get_task(*, conn: TrackerConn = Depends(get_conn), task_id: str): ...
+class TasksRouter(a2kit.Router):
+    def __init__(self, get_store) -> None:
+        super().__init__()
+        self.get_store = get_store
+
+    @a2kit.read()
+    async def get_task(self, *, connection: str, task_id: str) -> Task:
+        store = await self.get_store(connection)
+        return store.get(task_id)
 ```
 
-Bind factories to stable callable identities at App construction with
-`app.use_factory(real_factory, as_=stub_get_conn)` so test overrides swap
-in cleanly.
+A senior reader can predict every line without reading the framework source.
 
-Citation: `src/a2kit/signature.py::rebuild_with_factories`,
-`src/a2kit/app.py::App.use_factory`.
+Citation: `examples/tracker/routers.py`.
 
 ## 12. v1.0 — re-exporting external library symbols from a2kit
 
@@ -287,21 +292,28 @@ of how the App was constructed, and is visible at the test's call site
 
 Citation: `src/a2kit/app.py::App.set_ldd`.
 
-## 16. Don't write a stub `get_conn` for single-conn apps
+## 16. Factories are functions, not classes
 
-The mistake: defining `async def get_conn(*, connection: str) -> TrackerConn: ...`
-as a stub identity, then wiring it via
-`app.use_factory(get_conn_factory(app, TrackerConn), as_=get_conn)`. Three
-identifiers — stub, factory, alias — for one fact: "this tool needs a
-`TrackerConn` for the requested `connection`."
+The mistake: introducing a base class (`Store[ConnT]`, `Loader[ConnT]`) so
+the framework can introspect a Generic parameter and "automatically" wire
+construction. That's clever for clever's sake — `__orig_bases__` walking
+reads as advanced-Python sleight-of-hand to a senior reviewer.
 
-What to do: use `Depends(TrackerConn)` directly. The runtime knows how to
-load a registered conn class. The stub-factory shape is still supported
-for advanced cases (multi-tenant factory swaps, per-test overrides), but
-it's not the right default.
+What to do: write a plain function.
 
-Citation: `src/a2kit/signature.py::bind_class_dependencies`,
-`src/a2kit/app.py::App.connect`.
+```python
+async def get_store(connection: str) -> TrackerStore:
+    conn = await _conn_store.load((connection,))
+    return TrackerStore(conn)
+
+
+app.add_router(TasksRouter(get_store))
+```
+
+The "store" is a plain class with a constructor. The "factory" is a plain
+function. Composition is the user's job, not the framework's.
+
+Citation: `examples/tracker/server.py`, `examples/tracker/store.py`.
 
 ## 17. Stores SHOULD be cheap to construct
 
@@ -317,36 +329,23 @@ the connection (or on the store class).
 
 Citation: `examples/tracker/store.py::TrackerStore.__init__`.
 
-## 18. Don't import from `a2kit.packages.*` in core
+## 18. Three named verbs, not one polymorphic `use`
 
-The mistake: a file under `src/a2kit/` (excluding `src/a2kit/packages/`)
-adding `from a2kit.packages.connections import ...` at module scope.
-Even if "harmless" today, it makes the connections package a hard
-dependency of the core import path — defeats the "thin core, opt-in
-packages" promise and forces every consumer to pay for connections
-import-time cost.
+The mistake: re-introducing `app.use(thing)` polymorphism — same call
+accepts a Router, a Click group, a middleware, an arbitrary class, etc.,
+with type-driven dispatch. It reads compactly at the call site, but the
+runtime walks an `isinstance` ladder, the order matters, and the next
+unfamiliar type silently miscategorises (the original `pluggable-core`
+ladder mismatched ABCMeta's `register()` against the Plugin Protocol).
 
-What to do: invert the dependency. The package contributes what it
-needs through the `Plugin` Protocol (`cli_commands`, `mcp_middleware`,
-`depends_resolvers`, etc.). Core reads from the App's flattened
-plugin contributions; plugins push, core never pulls.
+What to do: three named verbs, each takes one specific kind of thing.
 
-The `A2K-CORE-PURITY` lint rule fires on module-level package imports
-in core. Function-body and `TYPE_CHECKING` imports are exempt (lazy).
+```python
+app.add_router(TasksRouter(get_store))
+app.add_cli(connections_cli(TrackerConn))
+app.add_mcp_middleware(my_middleware)
+```
 
-Citation: `src/a2kit/packages/lint/rules/core_purity.py`,
-`src/a2kit/plugin.py`.
+The reader sees `add_router(...)`, knows it's a Router. No surprises.
 
-## 19. Don't reach into `app._plugins` from user code
-
-The mistake: writing `[p for p in app._plugins if isinstance(p, Connections)]`
-in user code or test setup. The leading underscore is the contract:
-that list is plugin-internal state, subject to change.
-
-What to do: use `app.plugins()` (returns a copy) and check
-`isinstance(p, SomePlugin)`. For the connections plugin specifically,
-`a2kit.packages.connections.find_connections(app)` returns the
-registered instance (or None).
-
-Citation: `src/a2kit/app.py::App.plugins`,
-`src/a2kit/packages/connections/plugin.py::find_connections`.
+Citation: `src/a2kit/app.py::App.add_router`.

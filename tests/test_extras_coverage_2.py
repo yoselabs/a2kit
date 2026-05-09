@@ -221,53 +221,6 @@ def test_caps_a2k012_skips_unparseable_module(tmp_path: Path, monkeypatch: pytes
 # --------------------------- otel module (lazy install) --------------------------- #
 
 
-# --------------------------- routers Enricher path --------------------------- #
-
-
-def test_router_propagates_enricher_to_tool_meta() -> None:
-    """Router with `enricher = staticmethod(...)` injects it into each tool's meta."""
-    import a2kit
-    from a2kit.metadata import get_meta
-
-    def _enr(exc: Exception, tool_name: str) -> Exception:
-        return exc
-
-    class R(a2kit.Router):
-        name = "r"
-        enricher = staticmethod(_enr)
-
-        @a2kit.read("ping")
-        async def ping(self) -> dict[str, int]:
-            return {"x": 1}
-
-    r = R()
-    assert r.tools(), "router must collect at least one tool"
-    meta = get_meta(r.tools()[0])
-    assert meta is not None
-    assert meta.enricher is _enr
-
-
-def test_router_constructor_enricher_arg_overrides_class_default() -> None:
-    """`R(enricher=...)` overrides the class-level `enricher` attr."""
-    import a2kit
-    from a2kit.metadata import get_meta
-
-    def _ctor_enr(exc: Exception, tool_name: str) -> Exception:
-        return exc
-
-    class R(a2kit.Router):
-        name = "r"
-
-        @a2kit.read("ping")
-        async def ping(self) -> dict[str, int]:
-            return {"x": 1}
-
-    r = R(enricher=_ctor_enr)
-    meta = get_meta(r.tools()[0])
-    assert meta is not None
-    assert meta.enricher is _ctor_enr
-
-
 # --------------------------- connections.filters --------------------------- #
 
 

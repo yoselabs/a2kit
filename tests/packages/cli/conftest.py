@@ -34,5 +34,5 @@ def tasks_router() -> TasksRouter:
 @pytest.fixture
 def app(tasks_router: TasksRouter) -> a2kit.App:
     a = a2kit.App("tracker")
-    a.use(tasks_router)
+    a.add_router(tasks_router)
     return a

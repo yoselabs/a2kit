@@ -302,22 +302,14 @@ def _bind_if_method(fn: Callable[..., Any], router: Router) -> Callable[..., Any
     return bound
 
 
-def _router_group(router: Router, app: App) -> click.Group:
-    """Build a Click group containing one subcommand per tool on ``router``.
-
-    Tools with ``Depends(<class>)`` defaults are wrapped via
-    :func:`bind_class_dependencies` so the class-keyed deps resolve at call
-    time using the user-supplied ``connection`` kwarg.
-    """
-    from a2kit.signature import bind_class_dependencies
-
+def _router_group(router: Router) -> click.Group:
+    """Build a Click group containing one subcommand per tool on ``router``."""
     group = click.Group(
         name=router.slug,
         help=f"Tools in router {router.slug!r}.",
     )
     for fn in router.tools():
-        bound_class_deps = bind_class_dependencies(fn, app)
-        callable_ = _bind_if_method(bound_class_deps, router)
+        callable_ = _bind_if_method(fn, router)
         group.add_command(_make_tool_command(callable_))
     return group
 
@@ -381,10 +373,9 @@ def build_full_cli(app: App) -> click.Command:
     )
 
     for router in routers:
-        group.add_command(_router_group(router, app))
-    # Plugin-contributed top-level subcommands (e.g. `connections` from the
-    # Connections plugin). Read from the App so the builder is plugin-agnostic.
-    for cmd in app.cli_commands():
+        group.add_command(_router_group(router))
+    # User-attached top-level subcommands via `app.add_cli(group)`.
+    for cmd in app.cli_extras():
         group.add_command(cmd)
     group.add_command(schema_command)
 

@@ -3,16 +3,14 @@
 This is **the** example. It always reflects current best practices —
 when `a2kit` evolves, this folder evolves with it.
 
-What it demonstrates, in the order each idea shows up:
-
-| File              | Surface demonstrated                                              |
-|-------------------|-------------------------------------------------------------------|
-| `connection.py`   | `ConnectionConfig` subclass; eager `${ENV}` / `op://` resolution  |
-| `models.py`       | Pydantic return models + `BatchReport` (typed LDD report shape)   |
-| `store.py`        | `a2kit.Store[TrackerConn]` — Generic binds the conn type          |
-| `enrichers.py`    | `(exc, tool_name) -> exc` rewrites for agent-readability          |
-| `routers.py`      | `Depends(<class>)` injection, listview kit, all four LDD channels |
-| `server.py`       | Composition root: `a2kit.App` + `a2kit.run(app)` entrypoint       |
+| File              | Surface demonstrated                                                          |
+|-------------------|-------------------------------------------------------------------------------|
+| `connection.py`   | `ConnectionConfig` subclass; eager `${ENV}` / `op://` resolution              |
+| `models.py`       | Pydantic return models + `BatchReport` (typed LDD report shape)               |
+| `store.py`        | Plain class; `__init__` takes a `TrackerConn`                                 |
+| `enrichers.py`    | `(exc, tool_name) -> exc` rewrites for agent-readability                      |
+| `routers.py`      | Constructor-injected `get_store`, listview kit, all four LDD channels         |
+| `server.py`       | Composition root: `add_router` + `add_cli`, `a2kit.run(app)` entrypoint       |
 
 ## The author surface
 
@@ -20,53 +18,60 @@ What it demonstrates, in the order each idea shows up:
 
 ```python
 import a2kit
+from a2kit.packages.connections import ConnectionStore, connections_cli
 
 from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
+from .store import TrackerStore
+
+_conn_store = ConnectionStore(TrackerConn)
+
+
+async def get_store(connection: str) -> TrackerStore:
+    conn = await _conn_store.load((connection,))
+    return TrackerStore(conn)
+
 
 app = a2kit.App("tracker-mcp")
-app.connect(TrackerConn)
-app.use(ProjectsRouter())
-app.use(TasksRouter())
+app.add_router(ProjectsRouter(get_store))
+app.add_router(TasksRouter(get_store))
+app.add_cli(connections_cli(TrackerConn))
 
 
 def main() -> None:
     a2kit.run(app)
 ```
 
-That's the whole composition root. No stub `get_conn` function. No
-`app.use_factory(...)`. The store class declares its conn binding via
-`class TrackerStore(a2kit.Store[TrackerConn]):` and the runtime composes
-conn → store at call time.
+That's the whole composition root. Three named verbs. No `Depends(...)`
+sentinel, no plugin protocol, no class-as-key.
 
-`routers.py` per-tool surface — three injection shapes, one rule:
+`routers.py` per-tool surface — constructor injection throughout:
 
 ```python
-from uncalled_for import Depends
+class ProjectsRouter(a2kit.Router):
+    def __init__(self, get_store) -> None:
+        super().__init__()
+        self.get_store = get_store
 
-class ProjectsRouter(a2kit.Router, enricher=tracker_404_enricher):
-    # Inject the conn directly.
-    @a2kit.read()
-    async def get_project(
-        self, *,
-        conn: TrackerConn = Depends(TrackerConn),
-        connection: str,
-        project_id: str,
-    ) -> Project: ...
+    @a2kit.read(enricher=tracker_404_enricher)
+    async def get_project(self, *, connection: str, project_id: str) -> Project:
+        projects, _ = (await self.get_store(connection)).load_state()
+        for p in projects:
+            if p.id == project_id:
+                return p
+        raise KeyError(project_id)
 
-    # Inject the store (composes conn → store).
-    @a2kit.write()
-    async def archive_project(
-        self, *,
-        store: TrackerStore = Depends(TrackerStore),
-        connection: str,
-        project_id: str,
-    ) -> Project:
+    @a2kit.write(enricher=tracker_404_enricher)
+    async def archive_project(self, *, connection: str, project_id: str) -> Project:
+        store = await self.get_store(connection)
         projects, tasks = store.load_state()
         ...
 ```
 
-The enricher reads as a class kwarg — no `staticmethod(...)` wrapper.
+The framework sees `connection: str` and `project_id: str` as the user
+input parameters, generates `--connection` and `--project-id` Click
+options, and exposes the same shape over MCP. No introspection of
+parameter defaults — `self.get_store` is a regular Python attribute.
 
 ## Listview kit — projection / pagination / selectable fields
 
@@ -80,15 +85,11 @@ _TASK_LIST_VIEW = ListViewSettings(
     selectable_fields=("id", "title", "status", "assignee", "priority", ...),
 )
 
-class TasksRouter(a2kit.Router, enricher=tracker_404_enricher):
-    @a2kit.list_(list_view=_TASK_LIST_VIEW)
-    async def list_tasks(
-        self, *,
-        store: TrackerStore = Depends(TrackerStore),
-        connection: str,
-        project_id: str | None = None,
-    ) -> list[Task]:
-        _, tasks = store.load_state()
+
+class TasksRouter(a2kit.Router):
+    @a2kit.list_(list_view=_TASK_LIST_VIEW, enricher=tracker_404_enricher)
+    async def list_tasks(self, *, connection: str, project_id: str | None = None) -> list[Task]:
+        _, tasks = (await self.get_store(connection)).load_state()
         if project_id is not None:
             tasks = [t for t in tasks if t.project_id == project_id]
         return tasks
@@ -100,27 +101,23 @@ Agents can override at call time:
 - `--page-size=5 --cursor=...` — paginate.
 - `--filter='priority=="high" && !done'` — narrow with CEL.
 
-The middleware applies these post-hoc. The queued `pushdown-listview`
-change will translate the same kwargs into native SQL/JQL/REST
-parameters when the underlying service supports it — without touching
-the tool body.
-
 ## LDD — narrate what's happening, mid-flight
 
 `bulk_import_tasks` exercises all four `ToolContext` channels:
 
 ```python
-@a2kit.write(report=BatchReport)
+@a2kit.write(report=BatchReport, enricher=tracker_404_enricher)
 async def bulk_import_tasks(
-    self, *,
+    self,
+    *,
     ctx: a2kit.ToolContext,
-    store: TrackerStore = Depends(TrackerStore),
     connection: str,
     project_id: str,
     titles: list[str],
     batch_size: int = 5,
 ) -> dict[str, int]:
     await ctx.event("import.started", project_id=project_id, n=len(titles))
+    store = await self.get_store(connection)
     projects, tasks = store.load_state()
     ctx.info("loaded state", projects=len(projects), tasks=len(tasks))
     for i in range(0, len(titles), batch_size):
@@ -134,36 +131,16 @@ async def bulk_import_tasks(
 CLI invocation shows the four channels interleaved on stderr:
 
 ```
-[ +0.001 event   ] import.started project_id='abc12345' n=3
-[ +0.001 INFO    ] loaded state projects=1 tasks=0
-[ +0.001 progress] current=0 total=3
-[ +0.003 report  ] BatchReport batch=0 accepted=2 rejected=0 project_id='abc12345'
-[ +0.003 progress] current=2 total=3
-[ +0.003 report  ] BatchReport batch=1 accepted=1 rejected=0 project_id='abc12345'
+[ +0.000 event   ] import.started project_id='abc12345' n=3
+[ +0.002 INFO    ] loaded state projects=1 tasks=0
+[ +0.002 progress] current=0 total=3
+[ +0.003 report  ] BatchReport batch=0 accepted=3 rejected=0 project_id='abc12345'
 [ +0.004 event   ] import.complete accepted=3 rejected=0
 {"accepted":3,"rejected":0}
 ```
 
 Top-level flags `--no-reports` / `--no-events` silence those channels;
 `A2KIT_LDD=off` env disables both process-wide.
-
-## Why no `get_conn` stub?
-
-The v1.0 baseline required:
-
-```python
-# Stub function — never called, just an identity.
-async def get_conn(*, connection: str) -> TrackerConn: ...
-
-# Composition root wires the real factory:
-app.use_factory(get_conn_factory(app, TrackerConn), as_=get_conn)
-```
-
-This change collapses three identifiers into one. `Depends(TrackerConn)`
-*is* the contract — the runtime sees a registered conn class, looks up
-the loader, reads `connection: str` from the tool kwargs, and injects.
-The legacy stub-factory shape still works (useful for multi-tenant
-factory swaps, test overrides), but the simple case no longer needs it.
 
 ## Try it
 
