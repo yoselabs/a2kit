@@ -1,0 +1,27 @@
+# tests/_test_only.txt
+#
+# Test files that have no source twin under src/a2kit/. The
+# A2K-TEST-MIRROR rule reads this list and skips inverse-direction
+# checks (test → source). Each entry is a forward-slash path relative
+# to the project root.
+#
+# Conventions:
+# - One path per line. Blank lines and `#`-prefixed lines are ignored.
+# - Document why each entry exists with an inline header comment.
+# - Keep this list small. Prefer a real source twin over a test-only file.
+
+# Pytest fixtures and conftest plumbing:
+tests/conftest.py
+tests/packages/cli/conftest.py
+tests/packages/connections/conftest.py
+
+# Cross-cutting integration / smoke tests with no single source mirror:
+tests/test_cold_start.py                       # cold-import budget across the package surface
+tests/test_type_correctness_gate.py            # `# ty: ignore` budget; project-state check
+tests/test_extras_coverage.py                  # legacy/edge-case coverage filler
+tests/test_extras_coverage_2.py                # legacy/edge-case coverage filler
+tests/packages/cli/test_e2e.py                 # end-to-end CLI roundtrip; no single source twin
+tests/packages/formatter/test_format_response.py  # cross-formatter integration
+tests/packages/otel/test_install.py            # opt-in package install probe; no source mirror
+tests/packages/select/test_select.py           # imports `a2kit.packages.select` namespace (no .py source files)
+tests/examples/streaming_logger/test_server.py  # exercises the example app, not src/

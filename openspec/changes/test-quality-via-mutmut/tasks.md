@@ -1,31 +1,31 @@
 ## 0. Prerequisites
 
-- [ ] 0.1 Confirm baseline at v0.22: builds on the v0.20–v0.22 ergonomic track. Predecessor changes (`v1-cleanup-debt`, `simplify-and-thin-core`) were archived as superseded; their open-coverage debt rolls into this change.
-- [ ] 0.2 Confirm baseline gates green: `uv run pytest -q --no-cov` → **444 passed**; `uv run ty check src/` → All checks passed; `make lint` → 0; `uv run ruff check .` → 0.
-- [ ] 0.3 Capture current test count for the proposal "before" number: `find tests -name "test_*.py" | wc -l` → **42 files**, pytest collected → **444 tests** (recorded in proposal §Why).
-- [ ] 0.4 Capture current line coverage for the "before" number: `uv run pytest --cov --cov-report=term --no-cov-on-fail | tail -2` → **90.34 %** (recorded in proposal §Why; current `--cov-fail-under` gate is 92 %).
+- [x] 0.1 Confirm baseline at v0.22: builds on the v0.20–v0.22 ergonomic track. Predecessor changes (`v1-cleanup-debt`, `simplify-and-thin-core`) were archived as superseded; their open-coverage debt rolls into this change.
+- [x] 0.2 Confirm baseline gates green: `uv run pytest -q --no-cov` → **444 passed**; `uv run ty check src/` → All checks passed; `make lint` → 0; `uv run ruff check .` → 0.
+- [x] 0.3 Capture current test count for the proposal "before" number: `find tests -name "test_*.py" | wc -l` → **42 files**, pytest collected → **444 tests** (recorded in proposal §Why).
+- [x] 0.4 Capture current line coverage for the "before" number: `uv run pytest --cov --cov-report=term --no-cov-on-fail | tail -2` → **90.34 %** (recorded in proposal §Why; current `--cov-fail-under` gate is 92 %).
 
 ## 1. Tooling — install + configure mutmut
 
-- [ ] 1.1 Add `"mutmut>=3.5"` to `pyproject.toml [dependency-groups] dev`. Run `uv sync --all-extras --dev`.
-- [ ] 1.2 Add a `[tool.mutmut]` table to `pyproject.toml` per design.md D-MUTMUT-CONFIG, validating the exact keys against the installed mutmut 3.x version. Each excluded path gets a `# why:` rationale.
-- [ ] 1.3 Add `.mutmut-cache/`, `html/`, `mutants/`, and `mutants.out/` to `.gitignore`.
-- [ ] 1.4 Add Make targets: `mutate`, `mutate-fast`, `mutate-show`, `mutate-html`, `mutate-baseline` per design.md D-MAKE-TARGETS (adapted to mutmut 3.x CLI surface — verify each target works before committing).
-- [ ] 1.5 Run `make mutate` once locally; capture the **baseline** aggregate score to `docs/MUTATION_BASELINE.md`. This is the "before" number we measure against.
+- [x] 1.1 Add `"mutmut>=3.5"` to `pyproject.toml [dependency-groups] dev`. Run `uv sync --all-extras --dev`.
+- [x] 1.2 Add a `[tool.mutmut]` table to `pyproject.toml` per design.md D-MUTMUT-CONFIG, validating the exact keys against the installed mutmut 3.x version. Each excluded path gets a `# why:` rationale.
+- [x] 1.3 Add `.mutmut-cache/`, `html/`, `mutants/`, and `mutants.out/` to `.gitignore`.
+- [x] 1.4 Add Make targets: `mutate`, `mutate-fast`, `mutate-show`, `mutate-html`, `mutate-baseline` per design.md D-MAKE-TARGETS (adapted to mutmut 3.x CLI surface — verify each target works before committing).
+- [~] 1.5 **BLOCKED** — `make mutate` ran but produced 0 killed / 0 survived (3823 segfault, 227 no tests). mutmut 3.5's trampoline scaffolding is incompatible with a2kit's `__init_subclass__`, lazy imports, and `LazyGroup`. Captured the blocker in `docs/MUTATION_BASELINE.md`. Phases 4–5 deferred until upstream fix or alternative tester.
 
 ## 2. Mirror discipline — A2K-TEST-MIRROR rule
 
-- [ ] 2.1 Create `src/a2kit/packages/lint/rules/mirror.py` implementing the A2K-TEST-MIRROR detector.
-- [ ] 2.2 Define an explicit allow-list at the top of `mirror.py` per design.md D-MIRROR-RULE: `__init__.py`, `__main__.py`, `runtime.py` (Protocol), `metadata.py` (frozen dataclass). Each entry has a `# why:` comment.
-- [ ] 2.3 Implement source → test mirror path resolution per design.md D-MIRROR-FORMULA.
-- [ ] 2.4 The rule fires when a non-exempt source file has no mirror OR the mirror exists but contains no `def test_*` function.
-- [ ] 2.5 Wire the rule into `static.py`'s `RULES` dispatch tuple.
-- [ ] 2.6 Catalog test-only files: create `tests/_test_only.txt` (or a `[tool.a2kit.test-mirror] test_only` block in `pyproject.toml`) listing `conftest.py`, `test_cold_start.py`, `test_type_correctness_gate.py`, `test_extras_coverage.py`, `test_extras_coverage_2.py`, `tests/packages/cli/test_e2e.py`, `tests/packages/formatter/test_format_response.py`, `tests/packages/select/test_select.py`, `tests/packages/otel/test_install.py`, `tests/examples/streaming_logger/test_server.py`, etc. The lint rule reads this list and skips those files.
-- [ ] 2.7 Add tests in `tests/packages/lint/rules/test_mirror.py` covering: missing-mirror fires; empty-mirror fires; allow-listed files don't fire; test-only manifest entries don't fire.
+- [x] 2.1 Create `src/a2kit/packages/lint/rules/mirror.py` implementing the A2K-TEST-MIRROR detector.
+- [x] 2.2 Define an explicit allow-list at the top of `mirror.py` per design.md D-MIRROR-RULE: `__init__.py`, `__main__.py`, `runtime.py` (Protocol), `metadata.py` (frozen dataclass). Each entry has a `# why:` comment.
+- [x] 2.3 Implement source → test mirror path resolution per design.md D-MIRROR-FORMULA.
+- [x] 2.4 The rule fires when a non-exempt source file has no mirror OR the mirror exists but contains no `def test_*` function.
+- [x] 2.5 Wire the rule into `static.py`'s `RULES` dispatch tuple.
+- [x] 2.6 Catalog test-only files: create `tests/_test_only.txt` (or a `[tool.a2kit.test-mirror] test_only` block in `pyproject.toml`) listing `conftest.py`, `test_cold_start.py`, `test_type_correctness_gate.py`, `test_extras_coverage.py`, `test_extras_coverage_2.py`, `tests/packages/cli/test_e2e.py`, `tests/packages/formatter/test_format_response.py`, `tests/packages/select/test_select.py`, `tests/packages/otel/test_install.py`, `tests/examples/streaming_logger/test_server.py`, etc. The lint rule reads this list and skips those files.
+- [x] 2.7 Add tests in `tests/packages/lint/rules/test_mirror.py` covering: missing-mirror fires; empty-mirror fires; allow-listed files don't fire; test-only manifest entries don't fire.
 
 ## 3. Mirror sweep — fill the structural gaps
 
-- [ ] 3.1 Run the new rule against the current tree. Capture the list of missing mirrors as `MIRROR_GAPS.md` (working doc; deleted at end of phase). Expected gaps include: `routers.py`, `signature.py`, `tool.py`, `exceptions.py` (top-level core); `packages/lint/cli.py`; `packages/mcp/reports.py`; `packages/otel/tracer.py`; `packages/testing/exceptions.py`, `packages/testing/fixtures.py`; the 8 `packages/lint/rules/*` modules.
+- [x] 3.1 Run the new rule against the current tree. Capture the list of missing mirrors as `MIRROR_GAPS.md` (working doc; deleted at end of phase). Expected gaps include: `routers.py`, `signature.py`, `tool.py`, `exceptions.py` (top-level core); `packages/lint/cli.py`; `packages/mcp/reports.py`; `packages/otel/tracer.py`; `packages/testing/exceptions.py`, `packages/testing/fixtures.py`; the 8 `packages/lint/rules/*` modules.
 - [ ] 3.2 For each missing mirror, follow design.md D-MIRROR-SPLIT-VS-MERGE: split if the per-file test would be ≥ 30 LOC; otherwise create a stub mirror that re-exports tests from the consolidated location.
 - [ ] 3.3 Specifically split the `tests/packages/lint/test_rules_*.py` omnibus files into per-rule mirrors:
   - `tests/packages/lint/rules/test_budget.py`
@@ -38,7 +38,7 @@
   - `tests/packages/lint/rules/test_shape.py`
 
   Source for the split: existing `test_rules_ldd.py`, `test_rules_misc.py`, `test_rules_shape.py`, `test_core_purity.py`, `test_extra_namespace.py`. Dispatch-layer tests (`test_static.py`, `test_runtime.py`) stay at `tests/packages/lint/`.
-- [ ] 3.4 Create `tests/packages/lint/rules/__init__.py` and any other missing `__init__.py` files.
+- [x] 3.4 Create `tests/packages/lint/rules/__init__.py` and any other missing `__init__.py` files.
 - [ ] 3.5 Verify `uv run a2kit lint static src/ tests/` — A2K-TEST-MIRROR fires zero findings.
 - [ ] 3.6 Verify `uv run pytest -q --no-cov` — full suite passes (no test count regression).
 - [ ] 3.7 Delete `MIRROR_GAPS.md`.

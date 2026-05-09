@@ -192,6 +192,47 @@ dev = [
     "diff-cover>=9",
     "hypothesis>=6",
     "opentelemetry-sdk>=1.20",
+    "mutmut>=3.5",
+]
+
+[tool.mutmut]
+paths_to_mutate = ["src/a2kit/"]
+tests_dir = ["tests/"]
+# also_copy: examples/ is referenced by tests/examples/streaming_logger/
+#   (`from examples.streaming_logger.server import app`). Without it, mutmut's
+#   mutants/ rootdir is missing the package and pytest collection errors out.
+also_copy = ["examples/"]
+# -x: stop on first failure (mutmut only needs "did any test fail").
+# --no-cov: running coverage on every mutation is wasteful.
+# --import-mode=importlib: matches pytest config; required because
+#   tests/packages/select/ shadows the stdlib `select` module name.
+pytest_add_cli_args = [
+    "-x",
+    "--no-cov",
+    "--import-mode=importlib",
+    # why: this test asserts a `# ty: ignore` budget by scanning src/.
+    #   Under mutmut the source tree is rewritten with trampoline scaffolding
+    #   that inflates the count past budget. Irrelevant under mutation.
+    "--deselect=tests/test_type_correctness_gate.py::test_ty_ignore_count_under_budget",
+    # why: this test re-imports a2kit and times it. mutmut's trampoline
+    #   adds startup overhead that breaches the 100ms cold-start budget.
+    "--deselect=tests/test_cold_start.py::test_import_a2kit_under_100ms_and_no_fastmcp",
+]
+do_not_mutate = [
+    # why: Protocol class — no runtime behavior to mutate.
+    "src/a2kit/runtime.py",
+    # why: frozen dataclass; construction is the only behavior.
+    "src/a2kit/metadata.py",
+    # why: pure re-export modules.
+    "src/a2kit/**/__init__.py",
+    # why: Click group entry point; no mutable behavior beyond dispatch.
+    "src/a2kit/__main__.py",
+    # why: mutmut 3.5's trampoline injects `self` references into mutated
+    #   functions, but `__init_subclass__` is implicitly a classmethod
+    #   (first arg is `cls`). Mutating this file fails collection with
+    #   `NameError: name 'self' is not defined`. File an upstream bug,
+    #   then revisit. Coverage gap acknowledged in MUTATION_BASELINE.md.
+    "src/a2kit/packages/connections/config.py",
 ]
 
 [tool.a2kit.lint]

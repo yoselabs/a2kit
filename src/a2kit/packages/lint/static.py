@@ -39,6 +39,7 @@ A2K_IMPORT_DISCIPLINE = "A2K-IMPORT-DISCIPLINE"
 A2K_LDD_REPORT_TYPE = "A2K-LDD-REPORT-TYPE"
 A2K_CORE_CLEAN = "A2K-CORE-CLEAN"
 A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
+A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
 
 ALL_RULES = (
     A2K002,
@@ -55,6 +56,7 @@ ALL_RULES = (
     A2K_LDD_REPORT_TYPE,
     A2K_CORE_CLEAN,
     A2K_EXTRA_NAMESPACE,
+    A2K_TEST_MIRROR,
 )
 
 BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
@@ -130,6 +132,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.conn import rule_conn_list_placeholder
     from a2kit.packages.lint.rules.importing import rule_import_discipline
     from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
+    from a2kit.packages.lint.rules.mirror import rule_test_mirror
     from a2kit.packages.lint.rules.purity import rule_core_clean, rule_extra_namespace
     from a2kit.packages.lint.rules.shape import rule_a2k002, rule_a2k003, rule_a2k011, rule_a2k013
 
@@ -146,6 +149,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),
         (A2K_CORE_CLEAN, rule_core_clean),
         (A2K_EXTRA_NAMESPACE, rule_extra_namespace),
+        (A2K_TEST_MIRROR, rule_test_mirror),
     )
 
 
@@ -222,6 +226,7 @@ __all__ = [
     "A2K_EXTRA_NAMESPACE",
     "A2K_IMPORT_DISCIPLINE",
     "A2K_LDD_REPORT_TYPE",
+    "A2K_TEST_MIRROR",
     "ALL_RULES",
     "BUILTIN_CAPS",
     "LintMessage",

@@ -85,14 +85,19 @@ caught it pre-merge.
 
 ### D-MUTMUT-CONFIG: `[tool.mutmut]` in `pyproject.toml`
 
-`mutmut` 3.x reads its config from `pyproject.toml [tool.mutmut]`
-(no longer requires `setup.cfg`). The relevant keys for 3.x:
+`mutmut` 3.x reads its config from `pyproject.toml [tool.mutmut]`.
+The full Config dataclass (verified against 3.5 source) has these
+keys: `also_copy`, `do_not_mutate`, `max_stack_depth`, `debug`,
+`paths_to_mutate`, `pytest_add_cli_args`, `tests_dir`,
+`mutate_only_covered_lines`, `type_check_command`. There is **no**
+`runner` key — mutmut 3.x always uses pytest and accepts extra args
+via `pytest_add_cli_args`.
 
 ```toml
 [tool.mutmut]
-paths_to_mutate = "src/a2kit/"
-tests_dir = "tests/"
-runner = "uv run pytest -x --no-cov --import-mode=importlib"
+paths_to_mutate = ["src/a2kit/"]
+tests_dir = ["tests/"]
+pytest_add_cli_args = ["-x", "--no-cov", "--import-mode=importlib"]
 do_not_mutate = [
     # Protocols and dataclasses have no testable behavior.
     "src/a2kit/runtime.py",       # ToolContext Protocol
@@ -104,19 +109,14 @@ do_not_mutate = [
 ]
 ```
 
-Note: mutmut 3.x replaced `exclude` with `do_not_mutate` and dropped
-`backup`/`swallow_output`/`simple_output` (those are now CLI flags
-or default behaviors). Implementation may need to validate the exact
-key names against the installed 3.x version during Task 1.2.
-
-`runner = "uv run pytest -x --no-cov --import-mode=importlib"`:
+`pytest_add_cli_args = ["-x", "--no-cov", "--import-mode=importlib"]`:
 
 - `-x` — stop on first failure (mutmut needs only "did any test fail",
   not "all tests").
 - `--no-cov` — coverage is a separate concern; running coverage on
   every mutation is wasteful.
 - `--import-mode=importlib` — matches the project's pytest config
-  (Phase 5 of `v1-cleanup-debt`).
+  (the test packages whose names shadow stdlib modules require it).
 
 ### D-MIRROR-RULE: A2K-TEST-MIRROR lint rule
 

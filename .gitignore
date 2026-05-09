@@ -17,6 +17,13 @@ coverage.xml
 .pytest_cache/
 .ruff_cache/
 
+# Mutation-testing artefacts (mutmut)
+.mutmut-cache/
+mutants/
+mutants.out/
+html/
+.mutmut-baseline.json
+
 # IDE / OS
 .DS_Store
 .idea/
