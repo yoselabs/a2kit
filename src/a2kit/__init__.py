@@ -9,6 +9,8 @@ if TYPE_CHECKING:
         A2KitError,
         InvalidFilterExpression,
         InvalidToolReturnTypeError,
+        ReportTypeMismatch,
+        ReportTypeNotDeclared,
         ToolCallContamination,
         WriteNotAllowed,
     )
@@ -36,6 +38,8 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "InvalidToolReturnTypeError": ("a2kit.exceptions", "InvalidToolReturnTypeError"),
     "WriteNotAllowed": ("a2kit.exceptions", "WriteNotAllowed"),
     "InvalidFilterExpression": ("a2kit.exceptions", "InvalidFilterExpression"),
+    "ReportTypeNotDeclared": ("a2kit.exceptions", "ReportTypeNotDeclared"),
+    "ReportTypeMismatch": ("a2kit.exceptions", "ReportTypeMismatch"),
 }
 
 
@@ -68,6 +72,8 @@ __all__ = [
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
     "ListViewSettings",
+    "ReportTypeMismatch",
+    "ReportTypeNotDeclared",
     "Router",
     "RouterRegistry",
     "ToolCallContamination",

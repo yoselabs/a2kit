@@ -98,29 +98,54 @@ The `Annotated[T, Depends(...)]` form is **not** supported for value
 injection — use parameter-default form. The `A2K-DI-ANNOTATED` lint rule
 flags the misuse.
 
-### Logging + progress (`ToolContext`)
+### Logging + progress + events + reports (`ToolContext`)
+
+`ToolContext` exposes **four channels** for mid-flight communication.
+Each emission carries an elapsed `+s.mmm` timestamp and reaches the
+caller immediately (no buffering).
+
+| Channel | API | When to use |
+|---|---|---|
+| Process telemetry | `ctx.info / warning / error / debug(msg, **kw)` | Free-form ambient logs |
+| Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — for progress bars |
+| **Narrative events** | `await ctx.event(name, **payload)` | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
+| **Typed reports** | `await ctx.report(payload)` (requires `report=ReportT` on decorator) | Mid-flight result chunks with a declared schema |
 
 ```python
-async def bulk_import(
-    *,
-    ctx: a2kit.ToolContext,
-    conn: TrackerConn = Depends(get_conn),
-    file: str,
-) -> dict:
-    ctx.info("starting", file=file)
+from pydantic import BaseModel
+
+class BatchReport(BaseModel):
+    batch: int
+    accepted: int
+
+@a2kit.read(report=BatchReport)
+async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
+    await ctx.event("import.started", file=file)
     items = await load(file)
     for i, item in enumerate(items):
         await ctx.report_progress(i, len(items))
-        ...
+        await ctx.report(BatchReport(batch=i, accepted=1))
+    await ctx.event("import.complete", count=len(items))
     return {"imported": len(items)}
 ```
 
-Both adapters supply an implementation:
+**Wire format.** CLI: `[ +s.mmm LEVEL] msg key=val` lines on stderr.
+MCP: `notifications/message` with `data.elapsed_ms: int` and (for events
+/ reports) a `data.a2kit_kind` discriminator. Keep messages short
+(≤ 60 char guideline) — long lines burn agent context tokens.
 
-- **MCP**: wraps `fastmcp.Context`. Logs flow over the wire as protocol notifications.
-- **CLI**: prints to stderr in compact `[LEVEL] msg key=val` text. No structlog; LLM-friendly by default.
+**Kill-switch.** Top-level CLI flags `--no-reports` / `--no-events` per
+invocation; `app.set_ldd(reports=False, events=False)` programmatically;
+env `A2KIT_LDD=off` process-wide. Most-specific layer wins. Disabled
+emissions still type-validate `report=` payloads — keeps tests
+deterministic.
 
-The `ctx` parameter is stripped from the input schema and from CLI option generation.
+**Lint rule.** `A2K-LDD-REPORT-TYPE` fires when `ctx.report(...)` is
+called without `report=` declared on the decorator, or when the declared
+type is defined inside a function (Pydantic forward-ref constraint).
+
+The `ctx` parameter is stripped from the input schema and from CLI
+option generation.
 
 ## CLI
 

@@ -6,9 +6,12 @@ import asyncio
 import inspect
 from typing import Any
 
+import pytest
+from pydantic import BaseModel
 
-from a2kit.runtime import ToolContext
+from a2kit.exceptions import ReportTypeMismatch, ReportTypeNotDeclared
 from a2kit.packages.mcp.context import FastMCPContextAdapter, bind_context
+from a2kit.runtime import ToolContext
 
 
 class _StubFastmcpCtx:
@@ -17,6 +20,7 @@ class _StubFastmcpCtx:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
         self.progress: list[tuple[float, float | None]] = []
+        self.logs: list[dict[str, Any]] = []
 
     async def info(self, message: str, logger_name: str | None = None, extra: Any = None) -> None:
         self.calls.append(("info", message, dict(extra) if extra else None))
@@ -32,6 +36,15 @@ class _StubFastmcpCtx:
 
     async def report_progress(self, progress: float, total: float | None = None) -> None:
         self.progress.append((progress, total))
+
+    async def log(
+        self,
+        message: str,
+        level: str | None = None,
+        logger_name: str | None = None,
+        extra: Any = None,
+    ) -> None:
+        self.logs.append({"message": message, "level": level, "extra": dict(extra) if extra else None})
 
 
 def test_adapter_satisfies_protocol() -> None:
@@ -56,9 +69,17 @@ def test_logging_methods_schedule_and_pass_extras() -> None:
     asyncio.run(_go())
     levels = [c[0] for c in stub.calls]
     assert levels == ["info", "warning", "error", "debug"]
-    assert stub.calls[0] == ("info", "starting", {"file": "x.csv"})
-    assert stub.calls[1] == ("warning", "retry", {"attempt": 2})
-    assert stub.calls[2] == ("error", "boom", None)
+    # Every emission carries elapsed_ms; original kwargs round-trip via extra.
+    info_call = stub.calls[0]
+    assert info_call[0] == "info"
+    assert info_call[1] == "starting"
+    assert info_call[2] is not None and info_call[2]["file"] == "x.csv"
+    assert "elapsed_ms" in info_call[2]
+    warn_call = stub.calls[1]
+    assert warn_call[2] is not None and warn_call[2]["attempt"] == 2
+    err_call = stub.calls[2]
+    # error("boom") with no fields → extra has only elapsed_ms.
+    assert err_call[2] is not None and set(err_call[2]) == {"elapsed_ms"}
 
 
 def test_report_progress_awaits() -> None:
@@ -126,3 +147,86 @@ def test_bind_context_async_tool_wraps_injected_context() -> None:
 
     assert asyncio.run(_go()) == {"n": 5}
     assert isinstance(seen["ctx"], FastMCPContextAdapter)
+
+
+# --- LDD: events --- #
+
+
+def test_event_emits_log_with_a2kit_kind() -> None:
+    stub = _StubFastmcpCtx()
+
+    async def _go() -> None:
+        adapter = FastMCPContextAdapter(stub)
+        await adapter.event("api.fetched", count=30, source="primary")
+
+    asyncio.run(_go())
+    assert len(stub.logs) == 1
+    log = stub.logs[0]
+    assert log["message"] == "api.fetched"
+    assert log["level"] == "info"
+    extra = log["extra"]
+    assert extra["a2kit_kind"] == "event"
+    assert extra["name"] == "api.fetched"
+    assert extra["payload"] == {"count": 30, "source": "primary"}
+    assert "elapsed_ms" in extra
+
+
+def test_event_disabled_emits_nothing() -> None:
+    stub = _StubFastmcpCtx()
+
+    async def _go() -> None:
+        adapter = FastMCPContextAdapter(stub, events_enabled=False)
+        await adapter.event("ignored")
+
+    asyncio.run(_go())
+    assert stub.logs == []
+
+
+# --- LDD: reports --- #
+
+
+class _BatchReport(BaseModel):
+    batch: int
+    accepted: int
+
+
+def test_report_happy_path() -> None:
+    stub = _StubFastmcpCtx()
+
+    async def _go() -> None:
+        adapter = FastMCPContextAdapter(stub, report_type=_BatchReport, tool_name="t")
+        await adapter.report(_BatchReport(batch=4, accepted=12))
+
+    asyncio.run(_go())
+    assert len(stub.logs) == 1
+    log = stub.logs[0]
+    assert log["message"] == "_BatchReport"
+    extra = log["extra"]
+    assert extra["a2kit_kind"] == "report"
+    assert extra["payload"] == {"batch": 4, "accepted": 12}
+    assert "elapsed_ms" in extra
+
+
+def test_report_without_declared_type_raises() -> None:
+    stub = _StubFastmcpCtx()
+    adapter = FastMCPContextAdapter(stub, tool_name="t")
+    with pytest.raises(ReportTypeNotDeclared):
+        asyncio.run(adapter.report({"any": "dict"}))
+
+
+def test_report_type_mismatch_raises() -> None:
+    stub = _StubFastmcpCtx()
+    adapter = FastMCPContextAdapter(stub, report_type=_BatchReport, tool_name="t")
+    with pytest.raises(ReportTypeMismatch):
+        asyncio.run(adapter.report({"wrong": "shape"}))
+
+
+def test_report_disabled_still_validates() -> None:
+    stub = _StubFastmcpCtx()
+    adapter = FastMCPContextAdapter(stub, report_type=_BatchReport, tool_name="t", reports_enabled=False)
+    # Type-correct: no emission.
+    asyncio.run(adapter.report(_BatchReport(batch=1, accepted=1)))
+    assert stub.logs == []
+    # Type-incorrect: still raises.
+    with pytest.raises(ReportTypeMismatch):
+        asyncio.run(adapter.report({"wrong": "shape"}))

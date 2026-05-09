@@ -29,6 +29,8 @@ class A2KitMeta:
     list_view: ListViewSettings | None = None
     enricher: EnricherFn | None = None
     context_param_name: str | None = None
+    report_type: type | None = None
+    report_schema: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
 

@@ -8,8 +8,8 @@ and a2kit routes those updates to whichever protocol the user is on.
 
 | Caller             | Where the stream lands                    |
 |--------------------|-------------------------------------------|
-| MCP client (agent) | Protocol notifications (`fastmcp.Context`) |
-| CLI user           | Stderr, one `[LEVEL] msg key=val` line per call |
+| MCP client (agent) | Protocol notifications (`notifications/message`) |
+| CLI user           | Stderr, one `[ +s.mmm LEVEL] msg key=val` line per call |
 
 The tool author writes the same code in both cases.
 
@@ -20,15 +20,35 @@ A tool that runs for 30 seconds and only ever prints its return value
 1,000,000 or finished and serializing. Streamed progress is the cheapest
 way to make autonomous agents (and humans) trust a slow tool.
 
-Rules of thumb:
+Rules of thumb — pick the right channel for the right purpose:
 
-- `ctx.info(...)` for milestones — "loaded rows", "processing batch", "done".
-- `ctx.warning(...)` for retryable issues — "transient failure, retrying".
-- `ctx.error(...)` for genuine errors *before* the `raise`.
-- `await ctx.report_progress(current, total)` for batch loops the agent
-  may render as a progress bar.
+| Channel | Use when... | Example |
+|---|---|---|
+| `ctx.info(msg, **kw)` | free-form telemetry, ambient process noise | `ctx.info("processing batch", start=i)` |
+| `ctx.warning(msg, **kw)` | retryable issues, recoverable anomalies | `ctx.warning("transient failure", attempt=2)` |
+| `ctx.error(msg, **kw)` | genuine errors **before** raising | `ctx.error("giving up", attempts=N)` |
+| `await ctx.report_progress(i, n)` | numeric progress an agent can show as a bar | `await ctx.report_progress(i, len(rows))` |
+| `await ctx.event(name, **kw)` | typed narrative milestones the agent can pattern-match | `await ctx.event("api.fetched", count=30)` |
+| `await ctx.report(payload)` | typed mid-flight result chunks (declared via `report=`) | `await ctx.report(BatchReport(batch=4, accepted=12))` |
 
-`ctx.debug(...)` exists for noisy detail you want suppressed by default.
+**Events vs reports.** Events are free narrative — any tool can emit, no
+declaration required, payload is documentary. Reports are typed result
+chunks — declared via `@a2kit.read(report=BatchReport)` on the
+decorator, validated at call time, schema dumped under
+`meta.a2kit.reportSchema`. Use events to say "what's happening";
+use reports to say "here's a piece of the answer."
+
+**Wire format.** Every emission carries elapsed time. CLI:
+`[ +s.mmm LEVEL] ...` (relative seconds with millisecond precision since
+the call started). MCP: `data.elapsed_ms` integer in
+`notifications/message`. Keep messages short (≤ 60 char guideline) —
+long log lines burn agent context tokens.
+
+**Kill-switch.** `--no-reports` / `--no-events` on any CLI invocation
+silences that channel for the call. Programmatic:
+`app.set_ldd(reports=False, events=False)`. Process-wide: env
+`A2KIT_LDD=off`. Disabled emissions still type-check (so test bugs are
+caught). Most-specific layer wins: flag > app > env.
 
 ## The cross-protocol contract
 
@@ -78,15 +98,15 @@ uv run python -m examples.streaming_logger.server tasks import_csv \
 You'll see something like:
 
 ```
-[INFO] starting import file='/tmp/x.csv' batch_size=2
-[INFO] loaded rows count=5
-[INFO] progress current=0 total=5
-[INFO] processing batch start=0 size=2
-[INFO] progress current=2 total=5
-[INFO] processing batch start=2 size=2
-[INFO] progress current=4 total=5
-[INFO] processing batch start=4 size=1
-[INFO] done imported=5
+[ +0.001 INFO    ] starting import file='/tmp/x.csv' batch_size=2
+[ +0.002 INFO    ] loaded rows count=5
+[ +0.003 progress] current=0 total=5
+[ +0.004 INFO    ] processing batch start=0 size=2
+[ +0.005 progress] current=2 total=5
+[ +0.005 INFO    ] processing batch start=2 size=2
+[ +0.006 progress] current=4 total=5
+[ +0.006 INFO    ] processing batch start=4 size=1
+[ +0.007 INFO    ] done imported=5
 ```
 
 …on **stderr**, while **stdout** receives the final formatted dict
@@ -110,13 +130,14 @@ frames. Agents wired to FastMCP receive them via their server-events
 channel and can render them however they like (progress bars, log
 panels, audit trails).
 
-## Three tools, three patterns
+## Four tools, four patterns
 
-| Tool          | Demonstrates                                              |
-|---------------|-----------------------------------------------------------|
-| `import_csv`  | Batched `report_progress` + per-batch `ctx.info`.         |
-| `long_running`| `ctx.warning` on retry, `ctx.error` before `raise`.       |
-| `quick_status`| Tool with no `ctx` param — LDD is opt-in.                 |
+| Tool                       | Demonstrates                                                       |
+|----------------------------|--------------------------------------------------------------------|
+| `import_csv`               | Batched `report_progress` + per-batch `ctx.info`.                  |
+| `long_running`             | `ctx.warning` on retry, `ctx.error` before `raise`.                |
+| `quick_status`             | Tool with no `ctx` param — LDD is opt-in.                          |
+| `import_csv_with_reports`  | All four channels: `ctx.event` + `ctx.report` + `info` + progress. |
 
 ## Try it
 

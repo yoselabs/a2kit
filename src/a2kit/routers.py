@@ -39,6 +39,8 @@ class Router:
                             list_view=meta.list_view,
                             enricher=eff,
                             context_param_name=meta.context_param_name,
+                            report_type=meta.report_type,
+                            report_schema=meta.report_schema,
                         ),
                     )
             else:
@@ -55,6 +57,8 @@ class Router:
                             list_view=meta.list_view,
                             enricher=meta.enricher,
                             context_param_name=meta.context_param_name,
+                            report_type=meta.report_type,
+                            report_schema=meta.report_schema,
                         ),
                     )
             self._tools.append(fn)

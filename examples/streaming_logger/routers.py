@@ -10,7 +10,21 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from pydantic import BaseModel
+
 import a2kit
+
+
+class BatchReport(BaseModel):
+    """Typed mid-flight chunk emitted via ``ctx.report``.
+
+    Distinct from ``ctx.info`` (free-form telemetry) — agents can
+    pattern-match on the type and consume rows incrementally.
+    """
+
+    batch: int
+    accepted: int
+    rejected: int
 
 
 def _load_csv(path: str) -> list[dict[str, str]]:
@@ -92,6 +106,36 @@ class TasksRouter(a2kit.Router):
             return {"attempts": attempt, "ok": 1}
         # Unreachable in practice; included so type checkers see a return.
         return {"attempts": attempts, "ok": 0}
+
+    @a2kit.read(report=BatchReport)
+    async def import_csv_with_reports(
+        self,
+        *,
+        ctx: a2kit.ToolContext,
+        file: str,
+        batch_size: int = 100,
+    ) -> dict[str, int]:
+        """LDD with the four channels at once.
+
+        - ``ctx.event(name, ...)`` for narrative milestones (``import.started``,
+          ``import.complete``).
+        - ``ctx.report(BatchReport(...))`` for typed mid-flight result chunks.
+        - ``ctx.info(...)`` for free-form telemetry.
+        - ``ctx.report_progress(i, total)`` for numeric progress.
+        """
+        await ctx.event("import.started", file=file, batch_size=batch_size)
+        rows = _load_csv(file)
+        ctx.info("loaded rows", count=len(rows))
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i : i + batch_size]
+            await ctx.report_progress(i, len(rows))
+            await _persist(batch)
+            await ctx.report(BatchReport(batch=i // batch_size, accepted=len(batch), rejected=0))
+        await ctx.event("import.complete", imported=len(rows))
+        return {
+            "imported": len(rows),
+            "batches": (len(rows) + batch_size - 1) // batch_size if rows else 0,
+        }
 
     @a2kit.read()
     async def quick_status(self) -> dict[str, str]:

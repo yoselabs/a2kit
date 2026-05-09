@@ -1,5 +1,53 @@
 # Changelog
 
+## Next — LDD streaming reports + narrative events
+
+### New ToolContext channels
+
+- **`ctx.event(name, **payload)`** — typed narrative events. Free
+  channel; any tool can emit. Wire format: MCP `notifications/message`
+  with `data.a2kit_kind="event"`, `data.name`, `data.payload`,
+  `data.elapsed_ms`. CLI: `[ +s.mmm event   ] name key=val`.
+- **`ctx.report(payload)`** — typed mid-flight result chunks. Requires
+  the verb decorator to declare `report=ReportT` (Pydantic model or
+  TypedDict). Validated at call time — raises `ReportTypeMismatch` /
+  `ReportTypeNotDeclared`. Wire: `data.a2kit_kind="report"`,
+  `data.type`, `data.payload`, `data.elapsed_ms`. CLI:
+  `[ +s.mmm report  ] TypeName key=val`.
+
+### Wire format
+
+- All CLI emissions (info / warning / error / debug / progress / event /
+  report) now use `[ +s.mmm LEVEL] ...` format with relative elapsed
+  timestamps from tool-call start.
+- All MCP emissions carry `data.elapsed_ms: int` for client-side rendering.
+
+### Kill-switch
+
+- **CLI flags** `--no-reports` / `--no-events` at the top level —
+  silence each channel for one invocation.
+- **`App.set_ldd(reports=, events=)`** for programmatic control.
+- **Env `A2KIT_LDD=off`** disables both channels process-wide.
+- Most-specific layer wins: flag > app > env. Disabled emissions still
+  type-validate `report=` payloads.
+
+### Schema dump
+
+- `<app> schema <tool>` now includes `reportSchema` (the JSON schema for
+  the declared `ReportT`) when present.
+
+### Lint
+
+- New rule **`A2K-LDD-REPORT-TYPE`** — fires when `ctx.report(...)` is
+  called without a `report=` decorator kwarg, or when the declared type
+  is defined inside a function (Pydantic forward-ref constraint).
+
+### Examples
+
+- `examples/streaming_logger/` extended with `import_csv_with_reports`
+  showing all four channels working together. README rewritten with the
+  channel-decision table and kill-switch docs.
+
 ## 1.0.0 — protocol-agnostic core — 2026-05-09
 
 Clean break. ~7.9K LOC → ~2.7K LOC. Protocol-agnostic core (~1K) +

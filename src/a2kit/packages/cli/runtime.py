@@ -22,23 +22,24 @@ async def _invoke_tool_in_process(
     *,
     fmt: str = "auto",
     ctx_param_name: str | None = None,
+    report_type: type | None = None,
+    tool_name: str | None = None,
+    reports_enabled: bool = True,
+    events_enabled: bool = True,
 ) -> str:
-    """Invoke ``fn`` with ``kwargs``, format the result, return formatter ``data``.
-
-    - DI parameters are stripped via :func:`a2kit.signature.strip_dependencies`.
-    - The :class:`a2kit.runtime.ToolContext` parameter (if any) is supplied as
-      a :class:`StderrToolContext`.
-    - The function's enricher (if any, from :class:`A2KitMeta`) is applied
-      before invocation.
-    - The return value is fed to :func:`a2kit.packages.formatter.format_response`.
-    """
+    """Invoke ``fn`` with ``kwargs``, format the result, return formatter ``data``."""
     meta = get_meta(fn)
     enricher_fn = meta.enricher if meta is not None else None
     inner = strip_dependencies(fn)
     wrapped = wrap(inner, enricher_fn)
 
     if ctx_param_name:
-        kwargs[ctx_param_name] = StderrToolContext()
+        kwargs[ctx_param_name] = StderrToolContext(
+            report_type=report_type,
+            tool_name=tool_name,
+            reports_enabled=reports_enabled,
+            events_enabled=events_enabled,
+        )
 
     if inspect.iscoroutinefunction(wrapped) or inspect.iscoroutinefunction(fn):
         raw = await wrapped(**kwargs)
@@ -57,9 +58,24 @@ def invoke_tool_sync(
     *,
     fmt: str = "auto",
     ctx_param_name: str | None = None,
+    report_type: type | None = None,
+    tool_name: str | None = None,
+    reports_enabled: bool = True,
+    events_enabled: bool = True,
 ) -> str:
     """Synchronous adapter — run :func:`_invoke_tool_in_process` to completion."""
-    return asyncio.run(_invoke_tool_in_process(fn, kwargs, fmt=fmt, ctx_param_name=ctx_param_name))
+    return asyncio.run(
+        _invoke_tool_in_process(
+            fn,
+            kwargs,
+            fmt=fmt,
+            ctx_param_name=ctx_param_name,
+            report_type=report_type,
+            tool_name=tool_name,
+            reports_enabled=reports_enabled,
+            events_enabled=events_enabled,
+        )
+    )
 
 
 __all__ = ["_invoke_tool_in_process", "invoke_tool_sync"]

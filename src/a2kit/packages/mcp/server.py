@@ -29,6 +29,7 @@ def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
     if annotations is not None and hasattr(meta.annotations, "model_dump"):
         d["annotations"] = meta.annotations.model_dump(exclude_none=True)
     d.pop("enricher", None)
+    d.pop("report_type", None)  # the class itself is not JSON-serializable; report_schema travels.
     return d
 
 
@@ -41,6 +42,9 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     """
     server = FastMCP(name=app.name, **fastmcp_kwargs)
 
+    reports_enabled = getattr(app, "ldd_reports", True)
+    events_enabled = getattr(app, "ldd_events", True)
+
     for fn in app.tools():
         meta = get_meta(fn)
         if meta is None:
@@ -48,7 +52,14 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
 
         wrapped = enricher_wrap(fn, meta.enricher)
         if meta.context_param_name:
-            wrapped = bind_context(wrapped, meta.context_param_name)
+            wrapped = bind_context(
+                wrapped,
+                meta.context_param_name,
+                report_type=meta.report_type,
+                tool_name=meta.tool_name,
+                reports_enabled=reports_enabled,
+                events_enabled=events_enabled,
+            )
 
         tool = FunctionTool.from_function(
             wrapped,

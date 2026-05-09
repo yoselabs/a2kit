@@ -18,6 +18,29 @@ class App:
         self._connection_types: list[type] = []
         self._stores: dict[type, Any] = {}
         self._factories: dict[Callable[..., Any], Callable[..., Any]] = {}
+        # LDD kill-switch: env A2KIT_LDD=off disables both channels at startup.
+        # set_ldd(...) and CLI --no-reports/--no-events override per-invocation.
+        import os
+
+        env_off = os.environ.get("A2KIT_LDD", "").lower() == "off"
+        self._ldd_reports = not env_off
+        self._ldd_events = not env_off
+
+    def set_ldd(self, *, reports: bool | None = None, events: bool | None = None) -> App:
+        """Override the LDD kill-switch programmatically. ``None`` keeps current value."""
+        if reports is not None:
+            self._ldd_reports = reports
+        if events is not None:
+            self._ldd_events = events
+        return self
+
+    @property
+    def ldd_reports(self) -> bool:
+        return self._ldd_reports
+
+    @property
+    def ldd_events(self) -> bool:
+        return self._ldd_events
 
     def use_factory(self, factory: Callable[..., Any], *, as_: Callable[..., Any]) -> App:
         """Bind ``factory`` under the stable callable identity ``as_``.

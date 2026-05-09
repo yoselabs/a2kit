@@ -55,3 +55,51 @@ def test_factories_dict_is_a_copy():
     snapshot = app.factories()
     snapshot[real_get_conn] = lambda: None
     assert app.factories()[real_get_conn] is fake_get_conn
+
+
+# --- LDD kill-switch --- #
+
+
+def test_ldd_defaults_enabled():
+    app = a2kit.App("p")
+    assert app.ldd_reports is True
+    assert app.ldd_events is True
+
+
+def test_set_ldd_disables_reports():
+    app = a2kit.App("p").set_ldd(reports=False)
+    assert app.ldd_reports is False
+    assert app.ldd_events is True
+
+
+def test_set_ldd_disables_events():
+    app = a2kit.App("p").set_ldd(events=False)
+    assert app.ldd_events is False
+    assert app.ldd_reports is True
+
+
+def test_set_ldd_chainable():
+    app = a2kit.App("p")
+    out = app.set_ldd(reports=False)
+    assert out is app
+
+
+def test_set_ldd_none_keeps_existing():
+    app = a2kit.App("p").set_ldd(reports=False, events=False)
+    app.set_ldd(reports=True)  # only flips reports
+    assert app.ldd_reports is True
+    assert app.ldd_events is False
+
+
+def test_env_var_off_disables_both(monkeypatch):
+    monkeypatch.setenv("A2KIT_LDD", "off")
+    app = a2kit.App("p")
+    assert app.ldd_reports is False
+    assert app.ldd_events is False
+
+
+def test_env_var_unset_default_enabled(monkeypatch):
+    monkeypatch.delenv("A2KIT_LDD", raising=False)
+    app = a2kit.App("p")
+    assert app.ldd_reports is True
+    assert app.ldd_events is True

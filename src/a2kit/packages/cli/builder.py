@@ -217,8 +217,33 @@ def _make_tool_command(fn: Callable[..., Any]) -> click.Command:
             call_kwargs[name] = value
 
         ctx_param = meta.context_param_name if meta is not None else None
+        report_type = meta.report_type if meta is not None else None
+        # Resolve LDD flags: walk to root context to read --no-reports / --no-events
+        # then fall back to App defaults read via _APP_CTX.
+        from a2kit.packages.cli.app_ctx import _APP_CTX
+
+        root_ctx = click.get_current_context().find_root()
+        no_reports = bool(root_ctx.params.get("no_reports", False))
+        no_events = bool(root_ctx.params.get("no_events", False))
         try:
-            data = invoke_tool_sync(fn, call_kwargs, fmt=fmt, ctx_param_name=ctx_param)
+            app = _APP_CTX.get()
+        except LookupError:
+            reports_enabled = not no_reports
+            events_enabled = not no_events
+        else:
+            reports_enabled = app.ldd_reports and not no_reports
+            events_enabled = app.ldd_events and not no_events
+        try:
+            data = invoke_tool_sync(
+                fn,
+                call_kwargs,
+                fmt=fmt,
+                ctx_param_name=ctx_param,
+                report_type=report_type,
+                tool_name=meta.tool_name if meta is not None else None,
+                reports_enabled=reports_enabled,
+                events_enabled=events_enabled,
+            )
         except click.ClickException:
             raise
         except Exception as exc:
@@ -316,6 +341,10 @@ def build_full_cli(app: App) -> click.Command:
       - ``connections`` (eager)
       - ``schema`` (eager)
       - ``serve`` (LAZY — only this triggers a fastmcp import)
+
+    Top-level flags ``--no-reports`` / ``--no-events`` disable LDD channels
+    for the invocation; they override ``App.set_ldd(...)`` and the
+    ``A2KIT_LDD`` env var.
     """
     routers = list(app.routers())
     router_help_lines = [f"  {r.slug}  (run `{app.name} {r.slug} --help` for tools)" for r in routers]
@@ -328,6 +357,20 @@ def build_full_cli(app: App) -> click.Command:
         help=help_text,
         lazy_subcommands={"serve": "a2kit.packages.mcp.cli:serve_command"},
         lazy_short_help={"serve": "Run as an MCP server (stdio or HTTP)."},
+        params=[
+            click.Option(
+                ["--no-reports", "no_reports"],
+                is_flag=True,
+                default=False,
+                help="Disable ctx.report emission for this invocation.",
+            ),
+            click.Option(
+                ["--no-events", "no_events"],
+                is_flag=True,
+                default=False,
+                help="Disable ctx.event emission for this invocation.",
+            ),
+        ],
     )
 
     for router in routers:

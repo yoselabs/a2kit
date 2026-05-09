@@ -41,6 +41,7 @@ A2K_DI_KWONLY = "A2K-DI-KWONLY"
 A2K_DI_PYDANTIC_VALIDATE = "A2K-DI-PYDANTIC-VALIDATE"
 A2K_CONN_LIST_PLACEHOLDER = "A2K-CONN-LIST-PLACEHOLDER"
 A2K_IMPORT_DISCIPLINE = "A2K-IMPORT-DISCIPLINE"
+A2K_LDD_REPORT_TYPE = "A2K-LDD-REPORT-TYPE"
 
 ALL_RULES = (
     A2K002,
@@ -59,6 +60,7 @@ ALL_RULES = (
     A2K_DI_PYDANTIC_VALIDATE,
     A2K_CONN_LIST_PLACEHOLDER,
     A2K_IMPORT_DISCIPLINE,
+    A2K_LDD_REPORT_TYPE,
 )
 
 BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
@@ -140,6 +142,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         rule_di_pydantic_validate,
     )
     from a2kit.packages.lint.rules.importing import rule_import_discipline
+    from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
     from a2kit.packages.lint.rules.shape import rule_a2k002, rule_a2k003, rule_a2k011, rule_a2k013
 
     return (
@@ -157,6 +160,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_DI_PYDANTIC_VALIDATE, rule_di_pydantic_validate),
         (A2K_CONN_LIST_PLACEHOLDER, rule_conn_list_placeholder),
         (A2K_IMPORT_DISCIPLINE, rule_import_discipline),
+        (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),
     )
 
 
@@ -235,6 +239,7 @@ __all__ = [
     "A2K_DI_KWONLY",
     "A2K_DI_PYDANTIC_VALIDATE",
     "A2K_IMPORT_DISCIPLINE",
+    "A2K_LDD_REPORT_TYPE",
     "ALL_RULES",
     "BUILTIN_CAPS",
     "LintMessage",

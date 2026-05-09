@@ -107,6 +107,8 @@ def compute_schema(fn: Callable[..., Any]) -> dict[str, Any]:
             "verb": meta.verb,
             "router": meta.router_slug,
         }
+        if meta.report_schema is not None:
+            out["reportSchema"] = meta.report_schema
     return out
 
 

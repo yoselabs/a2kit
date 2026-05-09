@@ -252,3 +252,37 @@ must hold.
 
 Citation: `src/a2kit/packages/lint/rules/importing.py::rule_import_discipline`,
 `src/a2kit/packages/cli/builder.py::LazyGroup`.
+
+## 14. Don't fold structured findings into log strings
+
+The mistake: a tool body that does `ctx.info(f"found {n} duplicates in {batch}")`.
+The data is structured (a count + a batch identifier), but the agent
+receives it as an unparsed string. Pattern-matching on log lines is
+fragile, and the agent loses any signal that "this was a finding worth
+reacting to" vs "this was ambient telemetry."
+
+What to do: use `ctx.event(name, **payload)` for typed narrative milestones
+(`await ctx.event("duplicates.found", count=3, batch=4)`) or `ctx.report(payload)`
+for typed result chunks declared via `report=ReportT` on the verb decorator.
+Both stream immediately to the client and arrive as structured data — the
+agent can filter by event name, dispatch on report type, or surface the
+payload to the user without parsing the log line.
+
+Citation: `src/a2kit/packages/mcp/context.py::FastMCPContextAdapter`,
+`src/a2kit/packages/cli/context.py::StderrToolContext`.
+
+## 15. Don't rely on `A2KIT_LDD=off` env var inside test code
+
+The mistake: integration tests that disable the LDD channels by setting
+`A2KIT_LDD=off` in the test environment. The env var is read once at
+`App.__init__`, so any App constructed before the env mutation keeps the
+old value, and any App constructed in a child process inherits the parent
+process's env at fork time. Test results become order-dependent and
+hard to reproduce.
+
+What to do: pass `app.set_ldd(reports=False, events=False)` explicitly
+in the test's setup. This works regardless of import order, regardless
+of how the App was constructed, and is visible at the test's call site
+(no hidden env spookiness).
+
+Citation: `src/a2kit/app.py::App.set_ldd`.
