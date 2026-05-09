@@ -15,24 +15,19 @@ management, schema dump, and `serve`:
 ```python
 # tracker/server.py
 import a2kit
-from a2kit.packages.connections import ConnectionStore, connections_cli
+from a2kit.packages.connections import connections_cli
 
 from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-_conn_store = ConnectionStore(TrackerConn)
-
-
-async def get_store(connection: str) -> TrackerStore:
-    conn = await _conn_store.load((connection,))
-    return TrackerStore(conn)
-
-
-app = a2kit.App("tracker")
-app.add_router(ProjectsRouter(get_store))
-app.add_router(TasksRouter(get_store))
-app.add_cli(connections_cli(TrackerConn))
+app = (
+    a2kit.App("tracker")
+    .add_router(ProjectsRouter())
+    .add_router(TasksRouter())
+    .provide(TrackerStore)                   # class-as-factory; container reads __init__
+    .add_cli(connections_cli(TrackerConn))   # auto-installs TrackerConn provider
+)
 
 
 def main() -> None:
@@ -67,10 +62,11 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `set_ldd(...)` for the LDD kill-switch. |
-| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Pass factories via `__init__`; the framework does no DI introspection. |
+| `a2kit.App(name)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, and `set_ldd(...)` for the LDD kill-switch. |
+| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Slug auto-derives (`TasksRouter` → `"tasks"`); explicit `name = "..."` overrides. Class attribute `enrichers = [...]` and optional `def enrich(self, exc)` map exceptions to user-facing messages. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
-| `@a2kit.tool / read / write / list_` | Verb decorators. Kwargs: `name?, tags?, annotations?`. Per-tool features attach via stacked decorators (`@enriches`, `@lists`, `@reports`). |
+| `@a2kit.read / write / tool` | Verb decorators. Kwargs: `name?, tags?, annotations?`. |
+| `@a2kit.list_` | Specialized list verb. `@a2kit.list_(*default_fields, page_size=None, selectable_fields=None, name=None, tags=None)`. Selectable derived from `list[T]` return annotation when omitted. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). Feature decorators write namespaced keys into `meta.extra`. |
 | `a2kit.ToolContext` | Protocol for protocol-neutral logging + progress. Both adapters supply an implementation. |
 | `a2kit.Cap` | Built-in capability `StrEnum`. `a2kit.capabilities.register(...)` for custom tags. |
@@ -82,42 +78,51 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 |---|---|
 | `a2kit.packages.mcp` | FastMCP adapter. `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`. The ONE place fastmcp imports. |
 | `a2kit.packages.cli` | Click adapter. `build_full_cli(app)` returns the progressive-disclosure CLI. |
-| `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. |
+| `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. Carries the `Container` (request-scoped DI) consumed via `App.provide(...)`. |
 | `a2kit.packages.formatter` | TOON / JSON output normalization via `toon-format`. `format_response(raw, format_hint=...)`. |
 | `a2kit.packages.select` | `compile`, `evaluate`, `validate_atoms` over real CEL syntax. |
-| `a2kit.packages.enrichers` | `enriches(fn)` stacked decorator + concrete enricher implementations (e.g. `connection_enricher`). Adapters apply the wrap; core stays enricher-free. |
-| `a2kit.packages.mcp.lists` | `lists(...)` stacked decorator + `ListViewSettings` shape. Read by the listview middleware. |
 | `a2kit.packages.mcp.reports` | `reports(ReportT)` stacked decorator. Computes the pydantic JSON schema; both keys travel on `meta.extra`. |
 | `a2kit.packages.testing` | Thin pytest fixtures, syrupy `TOONSnapshotExtension`. |
 | `a2kit.packages.lint` | Static + runtime A2K rules. `a2kit lint static <path>` / `a2kit lint runtime --import pkg:app`. |
 
-### Dependency injection — constructor injection
+### Dependency injection — typed, request-scoped
 
-Routers receive their dependencies through `__init__`. Tools access them via
-`self`. The framework introspects nothing.
+Tool methods declare their dependencies as typed kwargs. The container in
+`packages/connections` resolves them per call by reading `__init__`
+annotations. Connection-scoped state flows from the wire `connection: str`
+through the auto-installed `ConnectionConfig` provider.
 
 ```python
 import a2kit
+from a2kit.packages.connections import connections_cli
+
+from .connection import TrackerConn          # subclass of ConnectionConfig
+from .store import TrackerStore              # def __init__(self, conn: TrackerConn)
 
 
 class TasksRouter(a2kit.Router):
-    def __init__(self, get_store) -> None:
-        super().__init__()
-        self.get_store = get_store
-
     @a2kit.read()
-    async def get_task(self, *, connection: str, task_id: str) -> Task:
-        store = await self.get_store(connection)
+    async def get_task(self, *, store: TrackerStore, task_id: str) -> Task:
         return store.get(task_id)
 
 
-app = a2kit.App("tracker")
-app.add_router(TasksRouter(get_store))
+app = (
+    a2kit.App("tracker")
+    .add_router(TasksRouter())
+    .provide(TrackerStore)                   # class-as-factory (introspects __init__)
+    .add_cli(connections_cli(TrackerConn))   # auto-installs TrackerConn provider
+)
 ```
 
-That's it. No `Depends(...)`, no class-as-key, no Generic markers, no
-plugin protocol. A reader unfamiliar with a2kit can predict every line's
-behavior without reading the framework source.
+What the framework does:
+
+- `connections_cli(TrackerConn)` carries a marker that `add_cli` reads to install a typed provider for `TrackerConn` (`connection: str → TrackerConn`).
+- `provide(TrackerStore)` registers `TrackerStore` as its own factory; the container reads `TrackerStore.__init__(conn: TrackerConn)` and chains.
+- At dispatch: `store: TrackerStore` is resolved per call from the wire `connection`. Two kwargs of the same type share one instance within a call (per-call cache). The wire schema strips `store`; agents only see `connection` + `task_id`.
+- For one-off non-trivial wiring, pass an explicit factory: `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.
+
+No `Depends(...)`, no class-as-key markers, no plugin protocol. The
+`provide(...)` calls *are* the DI graph; you can grep for them.
 
 ### Logging + progress + events + reports (`ToolContext`)
 
@@ -219,7 +224,7 @@ Active rules:
 - `A2K-CONN-LIST-PLACEHOLDER` — `${VAR}` inside list/dict fields on `ConnectionConfig`.
 - `A2K-IMPORT-DISCIPLINE` — `fastmcp` imports outside `packages/mcp/` and the lazy-load lines in `packages/cli/builder.py`.
 - `A2K-LDD-REPORT-TYPE` — `ctx.report(...)` without a stacked `@reports(ReportT)`, or report type defined inside a function.
-- `A2K-CORE-CLEAN` — feature identifiers (`connection`, `enricher`, `list_view`, `report_type`, `report_schema`, `router_slug`) in `src/a2kit/*.py` outside `packages/`.
+- `A2K-CORE-CLEAN` — feature identifiers (`connection`, `enricher`, `list_view`, `report_type`, `report_schema`, `router_slug`) in `src/a2kit/*.py` outside `packages/`. Same boundary keeps the DI container (`Container`, `partition_kwargs`, `apply_kwargs`) confined to `packages/connections`.
 - `A2K-EXTRA-NAMESPACE` — `meta.extra` keys must start with `a2kit.` or a `<package>.` prefix.
 
 ## Testing
@@ -232,34 +237,40 @@ import a2kit
 
 
 def test_get_task() -> None:
-    async def fake_get_store(connection: str):
+    def fake_store_factory(conn: TrackerConn) -> TrackerStore:
         return FakeStore()
 
-    app = a2kit.App("test")
-    app.add_router(TasksRouter(fake_get_store))
+    app = (
+        a2kit.App("test")
+        .add_router(TasksRouter())
+        .provide(TrackerConn, lambda connection: TrackerConn(key=(connection,), db_path="/tmp/x"))
+        .provide(TrackerStore, fake_store_factory)
+    )
     fn = app.tools()[0]
     # ... invoke through the test app
 ```
 
-No `app.dependency_overrides` map. No `make_test_app` helper. The `app`
-pytest fixture in `a2kit.packages.testing` returns a fresh `a2kit.App("test")`.
+Provider override is just `app.provide(T, fake)` — last-write-wins. No
+`dependency_overrides` map, no `make_test_app` helper. The `app` pytest
+fixture in `a2kit.packages.testing` returns a fresh `a2kit.App("test")`.
 
 ## Migration from v0.x
 
 See [CHANGELOG.md](CHANGELOG.md) for the v0.20 break notes. From the
 v0.19 / `v1-thin-core` intermediate shapes:
 
-- `Depends(<class>)` and `Depends(<callable>)` → constructor injection
+- `Depends(<class>)` / `Depends(<callable>)` → typed kwargs on tool methods + `app.provide(T, factory=None)`
 - `app.use(...)` → `app.add_router(...)`, `app.add_cli(...)`, `app.add_mcp_middleware(...)`
 - `app.connect(C)` → (delete; conn config is just a class)
-- `app.use_factory(...)` → pass factory to router constructor
+- `app.use_factory(...)` → `app.provide(T, factory)` (or `app.provide(T)` for class-as-factory)
 - `class TrackerStore(a2kit.Store[TrackerConn]):` → `class TrackerStore:` (plain class)
-- `class R(a2kit.Router, enricher=fn):` → per-tool stacked `@enriches(fn)` (from `a2kit.packages.enrichers`)
-- `@a2kit.read(enricher=…, list_view=…, report=…)` (v0.20) → stacked decorators (`@enriches`, `@lists`, `@reports`) on top of bare `@a2kit.read()`
-- Auto-derived router slug (`TasksRouter` → `tasks`) → set `name = "tasks"` explicitly; otherwise the slug is the class name verbatim
+- `class R(a2kit.Router, enricher=fn):` (pre-v0.21) / per-tool `@enriches(fn)` (v0.21) → class attribute `enrichers = [fn, ...]` and/or `def enrich(self, exc) -> str | None`
+- `@a2kit.read(enricher=…, list_view=…, report=…)` (v0.20) / stacked `@enriches/@lists/@reports` (v0.21) → enrichers are class-side; list-view absorbed into `@a2kit.list_(*default_fields, page_size=, selectable_fields=)`; only `@reports` remains stacked
+- `def __init__(self, get_store: GetStore)` factory closure → declare `store: TrackerStore` directly on tool methods; `app.provide(TrackerStore)` registers the class
+- `name = "tasks"` ceremonial line → derived from class name automatically (`class TasksRouter` → `"tasks"`); explicit `name = "..."` still wins
 - `from a2kit.exceptions import WriteNotAllowed` → `from a2kit.packages.connections.exceptions import WriteNotAllowed`
-- `make_test_app(routers, overrides=...)` → construct App + routers directly
-- `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage
+- `make_test_app(routers, overrides=...)` → construct App + routers directly; override providers via `app.provide(T, fake)` (last-write-wins)
+- `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage; `add_cli(connections_cli(ConfigT))` auto-installs the `ConfigT` provider
 
 See [ANTIPATTERNS.md](ANTIPATTERNS.md) for a2kit-specific patterns to avoid.
 

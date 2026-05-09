@@ -382,27 +382,32 @@ namespaced (`a2kit.*` or `<package>.*`).
 
 Citation: `src/a2kit/tool.py::_stamp` — three kwargs, full stop.
 
-## 20. v0.21 — auto-derived Router slugs
+## 20. ~~v0.21 — auto-derived Router slugs~~ (RETRACTED in v0.22)
 
-The mistake: `class TasksRouter(a2kit.Router): pass` magically yields
-slug `"tasks"` via "strip the `Router` suffix, camelCase split, lowercase."
-Three transformations chained. The reader has to either trust the
-algorithm or read it. Worse, the algorithm encodes a naming convention
-into framework behavior — change the convention and *every* router's
-URL silently changes.
+**Original concern:** combinatorial slugify (`Router` suffix strip +
+camelCase split + lowercase) chained three transformations and let the
+naming convention drift silently.
 
-What to do: explicit `name` only. The Router's slug is `name=` arg →
-`cls.name` class attribute → `type(self).__name__` **verbatim** (no
-string surgery). Forgetting `name=` produces an ugly slug — that's the
-forcing function.
+**Why retracted:** the antipattern was *combinatorial* slug derivation,
+not derivation per se. v0.22 ships a single, documented rule: strip
+exactly one trailing `Router` suffix (case-sensitive), lowercase the
+rest. One transformation. Collisions error at app build time, so
+silent drift is impossible. Explicit `name = "..."` still wins for
+when the wire name needs to be anchored against future class renames.
 
 ```python
 class TasksRouter(a2kit.Router):
-    name = "tasks"  # explicit
-    ...
+    pass
+# slug → "tasks"  (auto-derived)
+
+class TasksRouter(a2kit.Router):
+    name = "task-list"
+# slug → "task-list"  (explicit override; survives class rename)
 ```
 
-Citation: `src/a2kit/routers.py::Router.__init__`.
+The forcing function for explicit naming has shifted: pick `name = "..."`
+when the wire identity must outlive code refactors, not merely to avoid
+ugly defaults. Citation: `src/a2kit/routers.py::_derive_slug`.
 
 ## 21. v0.21 — ContextVar + monkey-patch to propagate state into Click subcommands
 
@@ -421,3 +426,122 @@ that capture `app` at registration time. No ContextVar, no monkey-patch.
 Citation: `src/a2kit/packages/cli/builder.py::build_full_cli` —
 `build_schema_command(app)` and `_build_serve_factory(app)` close over
 the active App; `LazyGroup` stores factories, not import strings.
+
+## 22. v0.22 — `def __init__(self, get_store: GetStore)` factory closure on Routers
+
+The mistake: every router carries a `get_store: Callable[[str], Store]`
+closure in `__init__`, then every tool method does
+`store = await self.get_store(connection)` as the first line. The
+factory exists so the connection-scoped Store can be materialized per
+call from a process-wide router. It works, but the pattern repeats
+across every project, every router, every tool — a cliché the framework
+should absorb.
+
+What to do: use `App.provide(T, factory=None)` to register a typed
+provider once, then declare the resolved type as a tool kwarg. The
+container reads `__init__` annotations and chains; the wire `connection`
+is auto-included on the schema when the chain reaches the
+auto-installed `ConnectionConfig` provider.
+
+```python
+# Before (v0.21):
+class TasksRouter(a2kit.Router):
+    def __init__(self, get_store: GetStore) -> None:
+        super().__init__()
+        self.get_store = get_store
+
+    @a2kit.read()
+    async def get_task(self, *, connection: str, task_id: str) -> Task:
+        store = await self.get_store(connection)
+        return store.get(task_id)
+
+# After (v0.22):
+class TasksRouter(a2kit.Router):
+    @a2kit.read()
+    async def get_task(self, *, store: TrackerStore, task_id: str) -> Task:
+        return store.get(task_id)
+
+app = (
+    a2kit.App("t")
+    .add_router(TasksRouter())
+    .provide(TrackerStore)                   # class-as-factory
+    .add_cli(connections_cli(TrackerConn))   # auto-installs TrackerConn
+)
+```
+
+Citation: `src/a2kit/packages/connections/container.py::Container`.
+
+## 23. v0.22 — repeating `@enriches(...)` on every method of a router
+
+The mistake: an exception enricher specific to a router (e.g.
+`tracker_404_enricher`) gets stacked on every single tool via a
+per-method decorator. Eight tools means eight identical lines. The
+enricher is a *router-level* invariant masquerading as per-method
+state.
+
+What to do: declare the enricher chain as a class attribute. Add a
+`def enrich(self, exc) -> str | None` method only when an enricher
+genuinely needs `self`. Resolution: instance method first, then class
+list, first non-None wins.
+
+```python
+# Before (v0.21):
+class TasksRouter(a2kit.Router):
+    @a2kit.read()
+    @enriches(tracker_404_enricher)
+    async def get_task(self, ...): ...
+
+    @a2kit.write()
+    @enriches(tracker_404_enricher)
+    async def create_task(self, ...): ...
+
+# After (v0.22):
+class TasksRouter(a2kit.Router):
+    enrichers = [tracker_404_enricher]
+
+    @a2kit.read()
+    async def get_task(self, ...): ...
+
+    @a2kit.write()
+    async def create_task(self, ...): ...
+```
+
+Enricher signature also tightens: `(exc) -> str | None`. The framework
+re-raises with the enriched message — enrichers stop carrying exception
+construction logic. Citation:
+`src/a2kit/packages/cli/builder.py::_wrap_with_enricher`.
+
+## 24. v0.22 — re-enumerating row fields the return type already declares
+
+The mistake: `@lists(default_fields=("id", "title"), selectable_fields=
+("id", "title", "status", "assignee", "priority", "project_id",
+"created_at", "done"))` lists every field of `Task` by hand, on top of
+a tool that already declares `-> list[Task]`. The Pydantic model knows
+its fields; copying them into the decorator is duplication waiting to
+drift.
+
+What to do: stop passing `selectable_fields` unless you specifically
+want a strict subset. The framework derives the full set from the
+return-type annotation (`list[T]` → `T.__pydantic_fields__` or
+`dataclasses.fields(T)`). Pass only `default_fields` (the projection
+default) and `page_size` (when you want pagination). The standalone
+`@lists(...)` decorator is also retired — list-view settings live on
+the consolidated `@a2kit.list_(...)` since list-view is intrinsic to
+the list verb.
+
+```python
+# Before (v0.21):
+@a2kit.list_()
+@lists(
+    default_fields=("id", "title", "status", "assignee"),
+    page_size=20,
+    selectable_fields=("id","title","status","assignee","priority","project_id","created_at","done"),
+)
+async def list_tasks(...) -> list[Task]: ...
+
+# After (v0.22):
+@a2kit.list_("id", "title", "status", "assignee", page_size=20)
+async def list_tasks(...) -> list[Task]: ...
+```
+
+Citation: `src/a2kit/tool.py::list_` and `_derive_selectable_fields`.
