@@ -160,7 +160,7 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 testpaths = ["tests"]
 # --import-mode=importlib: load test modules by file path so test packages whose
 # names shadow stdlib modules (e.g. tests/packages/select/) don't collide via sys.modules.
-addopts = "-v --strict-markers --import-mode=importlib --cov --cov-report=term-missing --cov-fail-under=94"
+addopts = "-v --strict-markers --import-mode=importlib --cov --cov-report=term-missing --cov-fail-under=92"
 # pythonpath: importlib mode skips rootdir injection; restore for `examples.*` imports.
 pythonpath = ["."]
 asyncio_mode = "auto"

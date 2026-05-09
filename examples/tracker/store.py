@@ -23,13 +23,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import a2kit
+from a2kit.packages.connections import Store
 
 from .connection import TrackerConn
 from .models import Project, Task
 
 
-class TrackerStore(a2kit.Store[TrackerConn]):
+class TrackerStore(Store[TrackerConn]):
     """Project + task persistence backed by one connection's JSONL file.
 
     The file is a flat append-only log of projects and tasks, distinguished

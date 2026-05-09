@@ -27,7 +27,6 @@ import click
 from a2kit.metadata import get_meta
 from a2kit.packages.cli.runtime import invoke_tool_sync
 from a2kit.packages.cli.schemas import compute_schema, schema_command
-from a2kit.packages.connections.cli import connections_group
 from a2kit.packages.formatter import FormatHint, format_response
 from a2kit.signature import user_input_params
 
@@ -383,7 +382,10 @@ def build_full_cli(app: App) -> click.Command:
 
     for router in routers:
         group.add_command(_router_group(router, app))
-    group.add_command(connections_group)
+    # Plugin-contributed top-level subcommands (e.g. `connections` from the
+    # Connections plugin). Read from the App so the builder is plugin-agnostic.
+    for cmd in app.cli_commands():
+        group.add_command(cmd)
     group.add_command(schema_command)
 
     _wrap_main_with_app_ctx(group, app)

@@ -1,5 +1,90 @@
 # Changelog
 
+## Next — pluggable core architecture
+
+Core a2kit now knows nothing about connections (or any other domain).
+Connection support becomes an opt-in plugin; the boundary is enforced by
+a new `A2K-CORE-PURITY` lint rule.
+
+### Plugin Protocol — `a2kit.Plugin`
+
+- New `a2kit.Plugin` Protocol (`runtime_checkable`) declaring optional
+  contribution methods: `cli_commands()`, `mcp_middleware()`,
+  `depends_resolvers()`, `claim()`, `adopt()`. Required: `register(app)`.
+- New `a2kit.DependsResolver` Protocol — plugin-contributed
+  `Depends(<class>)` resolver. Methods: `claim`, optional `precheck`
+  (decoration-time validation), `resolve` (call-time injection).
+- **`App.use(thing)` is the ONE registration verb.** Polymorphic dispatch:
+  - Class → walk plugins for `claim`/`adopt` (e.g. `app.use(TrackerConn)`).
+  - Router instance → core router registry.
+  - Plugin instance → `register(self)` + stash.
+- **`App.cli_commands()`, `mcp_middlewares()`, `depends_resolvers()`** —
+  flatten contributions across registered plugins. Builders read these
+  instead of importing specific plugin modules.
+
+### Connections become a plugin
+
+- New `a2kit.packages.connections.Connections` plugin class. Activates
+  via `app.use(Connections())`. Without it: `<app> connections ...`
+  subcommand is absent; `Depends(<ConnT>)` raises with a hint.
+- **Moved out of core:**
+  - `a2kit.Store` → `a2kit.packages.connections.Store`.
+  - `ConnectionKwargMissing`, `ConnectionNotRegistered`,
+    `StoreConnectionTypeUnknown` → `a2kit.packages.connections`.
+  - `bind_class_dependencies` connection-specific code → plugin
+    resolvers in `a2kit.packages.connections.di`.
+  - `App.connect`, `App.get_store` removed from core (sugar `connect`
+    delegates to plugins via `claim`).
+- **CLI builder is plugin-agnostic.** `<app> connections ...` lives on
+  `Connections.cli_commands()`; the builder reads `app.cli_commands()`.
+
+### Enricher mechanism into core (where it belongs)
+
+- The generic `try/except → enricher(exc, tool_name)` wrap moved INTO
+  `Router` itself (no longer a feature of `a2kit.packages.enrichers`).
+  `Router.tools()` returns already-wrapped tools; adapters are
+  enricher-agnostic.
+- `a2kit.packages.enrichers` keeps only the specific
+  `connection_enricher` implementation users opt into.
+
+### `A2K-CORE-PURITY` lint rule
+
+- Hard gate: any module-level import in `src/a2kit/*.py` (excluding
+  `src/a2kit/packages/`) from `a2kit.packages.*` fires the rule.
+  Function-body and `TYPE_CHECKING` imports are exempt (lazy).
+- Codifies the "thin core, opt-in packages" rule that was previously
+  convention.
+
+### Tracker refresh
+
+```python
+# Before:
+app.connect(TrackerConn)
+
+# After:
+from a2kit.packages.connections import Connections
+app.use(Connections())   # CLI commands + DI resolvers
+app.use(TrackerConn)     # claimed by Connections plugin
+```
+
+`<app> --help` no longer shows `connections` unless the plugin is
+registered. Cold-start: `import a2kit` is 8.7ms; conn/enricher packages
+not loaded.
+
+### Breaking changes
+
+- `a2kit.Store` → `a2kit.packages.connections.Store`. Update imports.
+- `ConnectionKwargMissing`, `ConnectionNotRegistered`,
+  `StoreConnectionTypeUnknown` no longer exported from `a2kit.exceptions`
+  / `a2kit`. Import from `a2kit.packages.connections`.
+- `App.connect(C)` requires `app.use(Connections())` first (raises
+  `RuntimeError` with hint otherwise).
+- `App.get_store(C)` removed. The Connections plugin owns this state;
+  query via `find_connections(app).get_store(C)` if needed.
+- `A2KitMeta.enricher` field stays, but enricher application is now
+  Router's job (not adapters'). Tools called outside a Router don't
+  get enrichment automatically.
+
 ## Next — DX polish: class-based DI + tracker example refresh
 
 ### Class-based dependency injection

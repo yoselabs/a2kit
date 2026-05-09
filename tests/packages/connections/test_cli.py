@@ -21,9 +21,9 @@ def app_with_widget(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped
     """Inject an App with WidgetConfig registered into the connections.cli ContextVar shim."""
     import a2kit.packages.connections.cli as cli_mod
     from a2kit.app import App
+    from a2kit.packages.connections import Connections
 
-    app = App("test")
-    app.connect(WidgetConfig)
+    app = App("test").use(Connections()).use(WidgetConfig)
     monkeypatch.setattr(cli_mod, "_get_app", lambda: app)
     return app
 

@@ -6,9 +6,7 @@ import asyncio
 import inspect
 from typing import TYPE_CHECKING, Any, cast
 
-from a2kit.metadata import get_meta
 from a2kit.packages.cli.context import StderrToolContext
-from a2kit.packages.enrichers import wrap
 from a2kit.packages.formatter import FormatHint, format_response
 from a2kit.signature import strip_dependencies
 
@@ -27,11 +25,13 @@ async def _invoke_tool_in_process(
     reports_enabled: bool = True,
     events_enabled: bool = True,
 ) -> str:
-    """Invoke ``fn`` with ``kwargs``, format the result, return formatter ``data``."""
-    meta = get_meta(fn)
-    enricher_fn = meta.enricher if meta is not None else None
-    inner = strip_dependencies(fn)
-    wrapped = wrap(inner, enricher_fn)
+    """Invoke ``fn`` with ``kwargs``, format the result, return formatter ``data``.
+
+    ``fn`` is expected to come from ``app.tools()``, which has already
+    applied the Router-level enricher wrap. The CLI runtime is
+    enricher-agnostic.
+    """
+    wrapped = strip_dependencies(fn)
 
     if ctx_param_name:
         kwargs[ctx_param_name] = StderrToolContext(

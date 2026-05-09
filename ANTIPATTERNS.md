@@ -316,3 +316,37 @@ caching across calls, wrap a singleton inside the store and cache it on
 the connection (or on the store class).
 
 Citation: `examples/tracker/store.py::TrackerStore.__init__`.
+
+## 18. Don't import from `a2kit.packages.*` in core
+
+The mistake: a file under `src/a2kit/` (excluding `src/a2kit/packages/`)
+adding `from a2kit.packages.connections import ...` at module scope.
+Even if "harmless" today, it makes the connections package a hard
+dependency of the core import path — defeats the "thin core, opt-in
+packages" promise and forces every consumer to pay for connections
+import-time cost.
+
+What to do: invert the dependency. The package contributes what it
+needs through the `Plugin` Protocol (`cli_commands`, `mcp_middleware`,
+`depends_resolvers`, etc.). Core reads from the App's flattened
+plugin contributions; plugins push, core never pulls.
+
+The `A2K-CORE-PURITY` lint rule fires on module-level package imports
+in core. Function-body and `TYPE_CHECKING` imports are exempt (lazy).
+
+Citation: `src/a2kit/packages/lint/rules/core_purity.py`,
+`src/a2kit/plugin.py`.
+
+## 19. Don't reach into `app._plugins` from user code
+
+The mistake: writing `[p for p in app._plugins if isinstance(p, Connections)]`
+in user code or test setup. The leading underscore is the contract:
+that list is plugin-internal state, subject to change.
+
+What to do: use `app.plugins()` (returns a copy) and check
+`isinstance(p, SomePlugin)`. For the connections plugin specifically,
+`a2kit.packages.connections.find_connections(app)` returns the
+registered instance (or None).
+
+Citation: `src/a2kit/app.py::App.plugins`,
+`src/a2kit/packages/connections/plugin.py::find_connections`.

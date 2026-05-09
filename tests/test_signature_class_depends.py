@@ -1,8 +1,8 @@
 """``Depends(<class>)`` resolution — class as the injection key.
 
-Stores declare their conn type via ``a2kit.Store[ConnT]`` (Generic) or
-``conn_type = ConnT`` (class attribute). The App only needs
-``app.connect(ConnT)``; no separate store registration.
+Stores declare their conn type via ``a2kit.packages.connections.Store[ConnT]``
+(Generic) or ``conn_type = ConnT`` (class attribute). The App needs
+``app.use(Connections())`` then ``app.use(ConnT)``.
 """
 
 from __future__ import annotations
@@ -14,11 +14,13 @@ from pydantic import BaseModel
 from uncalled_for import Depends
 
 import a2kit
-from a2kit.exceptions import (
+from a2kit.packages.connections import (
+    ConnectionConfig,
     ConnectionNotRegistered,
-    StoreConnectionTypeUnknown,
+    Connections,
+    ConnectionStore,
+    Store,
 )
-from a2kit.packages.connections import ConnectionConfig, ConnectionStore
 
 
 # --- Fixtures --- #
@@ -32,7 +34,7 @@ class _Item(BaseModel):
     id: str
 
 
-class ProbeStore(a2kit.Store[ProbeConn]):
+class ProbeStore(Store[ProbeConn]):
     def __init__(self, conn: ProbeConn) -> None:
         self.conn = conn
 
@@ -64,7 +66,7 @@ def test_depends_conn_class_hides_param_from_signature():
         async def get(self, *, conn: ProbeConn = Depends(ProbeConn), connection: str = "default") -> dict:
             return {"db": conn.db_path}
 
-    app = a2kit.App("p").connect(ProbeConn).use(R())
+    app = a2kit.App("p").use(Connections()).use(ProbeConn).use(R())
     fn = app.tools()[0]
     sig = __import__("inspect").signature(fn)
     # `conn` is hidden — auto-injected at call time.
@@ -80,7 +82,7 @@ def test_depends_conn_class_resolves_at_call_time():
         async def get(self, *, conn: ProbeConn = Depends(ProbeConn), connection: str = "default") -> dict:
             return {"db": conn.db_path}
 
-    app = a2kit.App("p").connect(ProbeConn).use(R())
+    app = a2kit.App("p").use(Connections()).use(ProbeConn).use(R())
     fn = app.tools()[0]
 
     async def go() -> dict:
@@ -98,7 +100,7 @@ def test_depends_store_class_resolves_via_generic():
         async def get(self, *, store: ProbeStore = Depends(ProbeStore), connection: str = "default") -> dict:
             return {"item_count": len(store.items())}
 
-    app = a2kit.App("p").connect(ProbeConn).use(R())
+    app = a2kit.App("p").use(Connections()).use(ProbeConn).use(R())
     fn = app.tools()[0]
     sig = __import__("inspect").signature(fn)
     assert "store" not in sig.parameters
@@ -122,7 +124,7 @@ def test_depends_store_class_resolves_via_attribute():
         ) -> dict:
             return {"db": store.conn.db_path}
 
-    app = a2kit.App("p").connect(ProbeConn).use(R())
+    app = a2kit.App("p").use(Connections()).use(ProbeConn).use(R())
     fn = app.tools()[0]
 
     async def go() -> dict:
@@ -131,28 +133,47 @@ def test_depends_store_class_resolves_via_attribute():
     assert asyncio.run(go()) == {"db": "/tmp/probe.jsonl"}
 
 
-def test_depends_conn_class_unregistered_raises():
+def test_depends_conn_class_no_plugin_raises_with_hint():
+    """No Connections plugin → generic 'no plugin claims this class' TypeError with hint."""
+
     class R(a2kit.Router):
         @a2kit.read("get")
         async def get(self, *, conn: ProbeConn = Depends(ProbeConn), connection: str = "default") -> dict:
             return {}
 
     app = a2kit.App("p").use(R())  # NOT connected
+    with pytest.raises(TypeError, match=r"app\.use|plugin"):
+        app.tools()
+
+
+def test_depends_conn_class_with_plugin_but_unregistered_raises():
+    """Connections plugin registered but `app.use(ProbeConn)` not called → ConnectionNotRegistered."""
+    from a2kit.packages.connections import Connections
+
+    class R(a2kit.Router):
+        @a2kit.read("get")
+        async def get(self, *, conn: ProbeConn = Depends(ProbeConn), connection: str = "default") -> dict:
+            return {}
+
+    app = a2kit.App("p").use(Connections()).use(R())
     with pytest.raises(ConnectionNotRegistered):
         app.tools()
 
 
-def test_depends_store_class_without_conn_binding_raises():
-    class _Bare:  # no conn_type, no Generic
-        def __init__(self, _conn: object) -> None: ...
+def test_depends_unrecognized_class_raises_with_hint():
+    """Class not claimed by any plugin (not ConnectionConfig, no conn_type marker)
+    → generic 'no plugin claims this class' TypeError with hint."""
+
+    class _Bare:  # no conn_type, no Generic, not ConnectionConfig
+        def __init__(self, _x: object) -> None: ...
 
     class R(a2kit.Router):
         @a2kit.read("get")
-        async def get(self, *, store: _Bare = Depends(_Bare), connection: str = "default") -> dict:
+        async def get(self, *, x: _Bare = Depends(_Bare), connection: str = "default") -> dict:
             return {}
 
-    app = a2kit.App("p").connect(ProbeConn).use(R())
-    with pytest.raises(StoreConnectionTypeUnknown):
+    app = a2kit.App("p").use(Connections()).use(ProbeConn).use(R())
+    with pytest.raises(TypeError, match="not handled by any registered plugin"):
         app.tools()
 
 
@@ -170,7 +191,7 @@ def test_legacy_stub_factory_path_still_works():
         async def get(self, *, conn: ProbeConn = Depends(get_conn), connection: str = "default") -> dict:
             return {}
 
-    app = a2kit.App("p").connect(ProbeConn).use_factory(get_conn_factory, as_=get_conn).use(R())
+    app = a2kit.App("p").use(Connections()).use(ProbeConn).use_factory(get_conn_factory, as_=get_conn).use(R())
     fn = app.tools()[0]
     sig = __import__("inspect").signature(fn)
     # Legacy form keeps the param visible (Depends rewritten by uncalled_for).
@@ -184,7 +205,7 @@ def test_class_dep_drops_annotation_from_wrapper():
         async def get(self, *, conn: ProbeConn = Depends(ProbeConn), connection: str = "default") -> dict:
             return {}
 
-    app = a2kit.App("p").connect(ProbeConn).use(R())
+    app = a2kit.App("p").use(Connections()).use(ProbeConn).use(R())
     fn = app.tools()[0]
     # The hidden `conn` annotation must be dropped (else schema dumps include it).
     assert "conn" not in fn.__annotations__

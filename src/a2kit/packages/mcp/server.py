@@ -15,7 +15,6 @@ from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
 
 from a2kit.metadata import A2KitMeta, get_meta
-from a2kit.packages.enrichers import wrap as enricher_wrap
 from a2kit.packages.mcp.context import bind_context
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
@@ -45,12 +44,14 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     reports_enabled = getattr(app, "ldd_reports", True)
     events_enabled = getattr(app, "ldd_events", True)
 
+    # Tools come pre-wrapped by Router (enricher applied there). The MCP
+    # builder is enricher-agnostic.
     for fn in app.tools():
         meta = get_meta(fn)
         if meta is None:
             continue
 
-        wrapped = enricher_wrap(fn, meta.enricher)
+        wrapped = fn
         if meta.context_param_name:
             wrapped = bind_context(
                 wrapped,
@@ -70,8 +71,11 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
         )
         server.add_tool(tool)
 
+    # Built-in middleware first; plugin-contributed middlewares after.
     server.add_middleware(ListViewMiddleware())
     server.add_middleware(GuardsMiddleware())
+    for mw in app.mcp_middlewares():
+        server.add_middleware(mw)
     return server
 
 

@@ -27,8 +27,17 @@ def _resolve_connection_key(value: Any) -> tuple[str, ...]:
 
 
 def get_conn_factory(app: App, conn_type: type[C]) -> Callable[..., Awaitable[C]]:
-    """Return a `Depends(get_conn)` factory bound to `app`'s store for `conn_type`."""
-    store = app.get_store(conn_type)
+    """Return a `Depends(get_conn)` factory bound to the app's `Connections` plugin.
+
+    Requires ``app.use(Connections())`` to have run; raises if no plugin.
+    """
+    from a2kit.packages.connections.plugin import find_connections
+
+    plugin = find_connections(app)
+    if plugin is None:
+        msg = "get_conn_factory(...): no Connections plugin registered on this App. Did you forget `app.use(Connections())`?"
+        raise RuntimeError(msg)
+    store = plugin.get_store(conn_type)
 
     async def get_conn(*, connection: str | tuple[str, ...] | list[str]) -> C:
         key = _resolve_connection_key(connection)

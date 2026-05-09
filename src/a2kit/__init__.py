@@ -15,9 +15,9 @@ if TYPE_CHECKING:
         WriteNotAllowed,
     )
     from a2kit.metadata import A2KitMeta, ListViewSettings
+    from a2kit.plugin import DependsResolver, Plugin
     from a2kit.routers import Router, RouterRegistry
     from a2kit.runtime import ToolContext
-    from a2kit.store import Store
     from a2kit.tool import list_, read, tool, write
 
 
@@ -31,7 +31,8 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "list_": ("a2kit.tool", "list_"),
     "Cap": ("a2kit.capabilities", "Cap"),
     "capabilities": ("a2kit.capabilities", "capabilities"),
-    "Store": ("a2kit.store", "Store"),
+    "Plugin": ("a2kit.plugin", "Plugin"),
+    "DependsResolver": ("a2kit.plugin", "DependsResolver"),
     "ToolContext": ("a2kit.runtime", "ToolContext"),
     "A2KitMeta": ("a2kit.metadata", "A2KitMeta"),
     "ListViewSettings": ("a2kit.metadata", "ListViewSettings"),
@@ -42,9 +43,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "InvalidFilterExpression": ("a2kit.exceptions", "InvalidFilterExpression"),
     "ReportTypeNotDeclared": ("a2kit.exceptions", "ReportTypeNotDeclared"),
     "ReportTypeMismatch": ("a2kit.exceptions", "ReportTypeMismatch"),
-    "ConnectionKwargMissing": ("a2kit.exceptions", "ConnectionKwargMissing"),
-    "ConnectionNotRegistered": ("a2kit.exceptions", "ConnectionNotRegistered"),
-    "StoreConnectionTypeUnknown": ("a2kit.exceptions", "StoreConnectionTypeUnknown"),
 }
 
 
@@ -74,17 +72,15 @@ __all__ = [
     "A2KitMeta",
     "App",
     "Cap",
-    "ConnectionKwargMissing",
-    "ConnectionNotRegistered",
+    "DependsResolver",
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
     "ListViewSettings",
+    "Plugin",
     "ReportTypeMismatch",
     "ReportTypeNotDeclared",
     "Router",
     "RouterRegistry",
-    "Store",
-    "StoreConnectionTypeUnknown",
     "ToolCallContamination",
     "ToolContext",
     "WriteNotAllowed",

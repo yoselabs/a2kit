@@ -20,11 +20,28 @@ def test_top_level_help_lists_routers_and_subgroups(app):
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
-    # Router subgroup, eager command groups, lazy serve.
+    # Router subgroup, schema, and lazy serve. The `connections` subgroup
+    # is plugin-contributed (not present unless `Connections()` is registered).
     assert "tasks" in result.output
-    assert "connections" in result.output
     assert "schema" in result.output
     assert "serve" in result.output
+
+
+def test_connections_subgroup_only_with_plugin(tasks_router):
+    """`<app> connections ...` appears iff `app.use(Connections())` is registered."""
+    from a2kit.packages.connections import Connections
+
+    # Without the plugin: no connections subgroup.
+    bare = a2kit.App("bare").use(tasks_router)
+    cli = build_full_cli(bare)
+    out = CliRunner().invoke(cli, ["--help"]).output
+    assert "connections" not in out
+
+    # With the plugin: connections subgroup present.
+    with_plugin = a2kit.App("withplugin").use(Connections()).use(tasks_router)
+    cli2 = build_full_cli(with_plugin)
+    out2 = CliRunner().invoke(cli2, ["--help"]).output
+    assert "connections" in out2
 
 
 def test_router_subgroup_lists_its_tools(app):

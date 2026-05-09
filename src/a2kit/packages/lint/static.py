@@ -42,6 +42,7 @@ A2K_DI_PYDANTIC_VALIDATE = "A2K-DI-PYDANTIC-VALIDATE"
 A2K_CONN_LIST_PLACEHOLDER = "A2K-CONN-LIST-PLACEHOLDER"
 A2K_IMPORT_DISCIPLINE = "A2K-IMPORT-DISCIPLINE"
 A2K_LDD_REPORT_TYPE = "A2K-LDD-REPORT-TYPE"
+A2K_CORE_PURITY = "A2K-CORE-PURITY"
 
 ALL_RULES = (
     A2K002,
@@ -61,6 +62,7 @@ ALL_RULES = (
     A2K_CONN_LIST_PLACEHOLDER,
     A2K_IMPORT_DISCIPLINE,
     A2K_LDD_REPORT_TYPE,
+    A2K_CORE_PURITY,
 )
 
 BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
@@ -134,6 +136,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.budget import rule_a2k014
     from a2kit.packages.lint.rules.caps import rule_a2k009, rule_a2k012
     from a2kit.packages.lint.rules.conn import rule_conn_list_placeholder
+    from a2kit.packages.lint.rules.core_purity import rule_a2k_core_purity
     from a2kit.packages.lint.rules.di import (
         rule_di_annotated,
         rule_di_import_legacy,
@@ -161,6 +164,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_CONN_LIST_PLACEHOLDER, rule_conn_list_placeholder),
         (A2K_IMPORT_DISCIPLINE, rule_import_discipline),
         (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),
+        (A2K_CORE_PURITY, rule_a2k_core_purity),
     )
 
 
@@ -233,6 +237,7 @@ __all__ = [
     "A2K013",
     "A2K014",
     "A2K_CONN_LIST_PLACEHOLDER",
+    "A2K_CORE_PURITY",
     "A2K_DI_ANNOTATED",
     "A2K_DI_IMPORT_LEGACY",
     "A2K_DI_IMPORT_SLOW",

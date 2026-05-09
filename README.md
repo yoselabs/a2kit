@@ -57,9 +57,10 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name)` | Composition root. `app.connect(ConnT)`, `app.use(Router)`, `app.use_factory(factory, as_=stub)`, `app.get_store(ConnT)`, `app.set_ldd(...)`. |
-| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Slug auto-derived; `Router` suffix stripped. Class kwarg: `class TasksRouter(a2kit.Router, enricher=fn):`. |
-| `a2kit.Store[ConnT]` | Marker base for store classes. The Generic parameter binds the conn type — `Depends(TrackerStore)` resolves the conn first, then constructs the store. |
+| `a2kit.App(name)` | Composition root. `app.use(thing)` (polymorphic — Plugin / Router / class), `app.use_factory(factory, as_=stub)`, `app.set_ldd(...)`. |
+| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Class kwarg: `class TasksRouter(a2kit.Router, enricher=fn):`. Router applies enrichers when collecting tools. |
+| `a2kit.Plugin` | Protocol for opt-in features. Plugins contribute CLI subcommands, MCP middleware, DI resolvers, and may claim foreign types passed to `app.use(...)`. |
+| `a2kit.DependsResolver` | Protocol for plugin-contributed `Depends(<class>)` resolvers. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `@a2kit.tool / read / write / list_` | Verb decorators. Map to `mcp.types.ToolAnnotations` + tags. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). |

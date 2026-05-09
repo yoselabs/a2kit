@@ -29,11 +29,20 @@ def _get_app() -> Any | None:
 
 
 def _registered_conn_types(app: Any | None) -> dict[str, type[ConnectionConfig]]:
-    """Map snake-case-ish conn-type names to ConnectionConfig subclasses on this app."""
+    """Map snake-case-ish conn-type names to ConnectionConfig subclasses on this app.
+
+    Reads from the ``Connections`` plugin's registry (the App no longer
+    holds connection types directly).
+    """
     if app is None:
         return {}
+    from a2kit.packages.connections.plugin import find_connections
+
+    plugin = find_connections(app)
+    if plugin is None:
+        return {}
     out: dict[str, type[ConnectionConfig]] = {}
-    for ct in app.connection_types():
+    for ct in plugin.conn_types():
         if isinstance(ct, type) and issubclass(ct, ConnectionConfig):
             out[ct.__name__] = ct
             out[ct.__name__.lower()] = ct

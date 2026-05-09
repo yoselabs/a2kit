@@ -74,9 +74,10 @@ def test_connections_show_missing_key_record(tmp_path: Path, monkeypatch: pytest
     from tests.packages.connections.conftest import WidgetConfig
     import a2kit.packages.connections.cli as cli_mod
 
+    from a2kit.packages.connections import Connections
+
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(tmp_path / "conn"))
-    app = App("t")
-    app.connect(WidgetConfig)
+    app = App("t").use(Connections()).use(WidgetConfig)
     monkeypatch.setattr(cli_mod, "_get_app", lambda: app)
     runner = CliRunner()
     r = runner.invoke(cli_mod.connections_group, ["show", "WidgetConfig", "--key=missing"])
@@ -89,9 +90,10 @@ def test_connections_list_unknown_conn_type(tmp_path: Path, monkeypatch: pytest.
     from tests.packages.connections.conftest import WidgetConfig
     import a2kit.packages.connections.cli as cli_mod
 
+    from a2kit.packages.connections import Connections
+
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(tmp_path / "conn"))
-    app = App("t")
-    app.connect(WidgetConfig)
+    app = App("t").use(Connections()).use(WidgetConfig)
     monkeypatch.setattr(cli_mod, "_get_app", lambda: app)
     runner = CliRunner()
     r = runner.invoke(cli_mod.connections_group, ["list", "Nope"])
@@ -397,8 +399,10 @@ def test_connections_list_with_one_registered_type(
     from tests.packages.connections.conftest import WidgetConfig
     import a2kit.packages.connections.cli as cli_mod
 
+    from a2kit.packages.connections import Connections
+
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(tmp_path / "conn"))
-    app = App("t").connect(WidgetConfig)
+    app = App("t").use(Connections()).use(WidgetConfig)
     monkeypatch.setattr(cli_mod, "_get_app", lambda: app)
 
     runner = CliRunner()
