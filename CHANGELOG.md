@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.23.0 — type-driven format routing: TSV / JSON / page-tsv (TOON dropped) — 2026-05-09
 
 ### Changed (BREAKING)
 
