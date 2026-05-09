@@ -1,10 +1,12 @@
 ## Context
 
-After the v1.0 thin-core refactor (`simplify-and-thin-core`) and the
-follow-up `v1-cleanup-debt` change, the test suite stands at
-**252 tests, 32 files, 77 % line coverage**. The numbers look fine on
-paper, but the v1.0 work surfaced three concrete signals that the
-suite is **wide but shallow**:
+> **Refreshed 2026-05-09 against v0.22.** Predecessor changes archived
+> as superseded; numbers and rule taxonomy below reflect HEAD.
+
+At the v0.22 baseline the test suite stands at **444 tests, 42
+test_*.py files, 90.34 % line coverage** (gate: 92 %). The numbers
+look fine on paper, but the v0.20-v0.22 ergonomic track surfaced
+three concrete signals that the suite is **wide but shallow**:
 
 1. The retired A2K010 rule shipped a `_parse_select_atoms_cel` stub
    that always returned `None`. No test caught it because lines were
@@ -12,16 +14,21 @@ suite is **wide but shallow**:
    would have flagged it instantly: every mutation to the body was
    semantically equivalent to "return None unchanged", so all
    mutations would survive.
-2. Phase-2 / Phase-3 subagents wrote tests in isolation. Manual audit
-   of `tests/packages/cli/` shows 2-3 redundant top-level-help
-   assertions; same for `tests/packages/lint/`. The suite optimised
-   for "coverage of features" not "coverage of behavior".
+2. Tests written in isolation across the v0.20-v0.22 cycle accumulated
+   redundancy. Manual audit of `tests/packages/cli/` shows duplicate
+   top-level-help assertions; same in `tests/packages/lint/`. The
+   suite optimised for "coverage of features" not "coverage of
+   behavior".
 3. The mirror rule from `module-layout-discipline` is documented but
-   not enforced. 32 test files vs 42 source files. Some plugin
-   packages (`enrichers/` — 1 file → 1 test file, well-mirrored)
-   are clean. Others (`lint/rules/` — 6 modules → 1 monolithic
-   test_di_rules.py + test_static.py + test_runtime.py — not
-   mirrored) drifted as the source split.
+   not enforced. 42 test files vs 42 non-exempt source files — the
+   *count* now matches by coincidence, but the *mapping* doesn't.
+   `packages/lint/rules/` is the worst offender: 8 source modules
+   (`budget.py`, `caps.py`, `conn.py`, `cross.py`, `importing.py`,
+   `ldd.py`, `purity.py`, `shape.py`) collapsed into 3 omnibus test
+   files (`test_rules_ldd.py`, `test_rules_misc.py`,
+   `test_rules_shape.py`). Several newer source files
+   (`packages/mcp/reports.py`, `packages/lint/cli.py`,
+   `packages/testing/{exceptions,fixtures}.py`) have no mirror.
 
 `mutmut` is the standard Python mutation tester. It injects
 "plausible" faults — flip operators, swap constants, drop returns —
@@ -78,24 +85,29 @@ caught it pre-merge.
 
 ### D-MUTMUT-CONFIG: `[tool.mutmut]` in `pyproject.toml`
 
+`mutmut` 3.x reads its config from `pyproject.toml [tool.mutmut]`
+(no longer requires `setup.cfg`). The relevant keys for 3.x:
+
 ```toml
 [tool.mutmut]
-paths_to_mutate = ["src/a2kit/"]
+paths_to_mutate = "src/a2kit/"
 tests_dir = "tests/"
 runner = "uv run pytest -x --no-cov --import-mode=importlib"
-exclude = [
+do_not_mutate = [
     # Protocols and dataclasses have no testable behavior.
     "src/a2kit/runtime.py",       # ToolContext Protocol
-    "src/a2kit/metadata.py",      # A2KitMeta dataclass
+    "src/a2kit/metadata.py",      # frozen dataclass — construction-only
     # __init__ files are pure re-exports.
-    "**/__init__.py",
+    "src/a2kit/**/__init__.py",
     # __main__.py is one Click group definition with no mutable behavior.
     "src/a2kit/__main__.py",
 ]
-backup = false
-swallow_output = true
-simple_output = true
 ```
+
+Note: mutmut 3.x replaced `exclude` with `do_not_mutate` and dropped
+`backup`/`swallow_output`/`simple_output` (those are now CLI flags
+or default behaviors). Implementation may need to validate the exact
+key names against the installed 3.x version during Task 1.2.
 
 `runner = "uv run pytest -x --no-cov --import-mode=importlib"`:
 
@@ -205,9 +217,14 @@ by `tests/packages/lint/test_di_rules.py`):
   re-exporting the relevant tests if < 30 LOC. The stub satisfies
   A2K-TEST-MIRROR.
 
-The `lint/rules/test_di_rules.py` situation: 21 tests covering 5 rule
-families (di, conn, importing, shape, budget). Should split into
-`test_di.py`, `test_conn.py`, etc. — clean mirror to source.
+The `lint/rules/` situation at v0.22: 8 source modules (`budget`,
+`caps`, `conn`, `cross`, `importing`, `ldd`, `purity`, `shape`)
+covered by 3 omnibus tests (`test_rules_ldd.py`, `test_rules_misc.py`,
+`test_rules_shape.py`) plus `test_static.py`/`test_runtime.py`/
+`test_core_purity.py`/`test_extra_namespace.py` for the dispatch
+layer. Should split into 8 `tests/packages/lint/rules/test_<rule>.py`
+mirrors. Dispatch-layer tests (`test_static.py`, `test_runtime.py`)
+remain at `tests/packages/lint/`.
 
 ## Risks / Trade-offs
 

@@ -1,22 +1,32 @@
 ## Why
 
-Coverage in v1.0 is **77 %** and the spec target is ≥ 95 %. The naive
-fix is "write more tests" — but pure line/branch coverage rewards
-volume over signal. Three concrete pathologies the v1.0 suites exhibit:
+> **Refreshed 2026-05-09 against v0.22 baseline.** Original draft
+> targeted v1.0 numbers (252 tests / 77 % coverage / di-conn-importing
+> rule split). The codebase has since grown through the v0.20-v0.22
+> ergonomic track; this proposal now reflects HEAD. Predecessor
+> changes (`v1-cleanup-debt`, `simplify-and-thin-core`) were archived
+> as superseded; this change builds directly on the v0.22 baseline.
 
-1. **Subagent test sprawl**: each Phase-2 / Phase-3 subagent wrote tests
-   in isolation. Some files duplicate fixtures, others test the same
-   path twice from different angles. **252 tests** is generous for
-   ~2.7 K LOC; mutation testing will surface the redundant ones.
-2. **Coverage that doesn't catch mutations**: `lint/static.py` was
-   77 %-covered and *still* shipped a `_parse_select_atoms_cel` stub
-   that returned `None` and was never exercised. Mutation testing
-   would have caught that.
+Coverage at HEAD is **90.34 %** (gate: 92 %), test count **444** across
+**42** test_*.py files for **42** non-exempt source files. The numbers
+look fine on paper, but three concrete pathologies remain:
+
+1. **Test sprawl**: 444 tests for ~2.3 K LOC. Some files duplicate
+   fixtures, others test the same path twice from different angles.
+   Mutation testing will surface the redundant ones.
+2. **Coverage that doesn't catch mutations**: a 90 %-covered branch
+   can still ship semantically-dead code if every test only exercises
+   the lines without asserting outcomes. Mutation testing is the
+   validation layer line coverage cannot give.
 3. **Mirror drift**: `tests/` is supposed to mirror `src/a2kit/` per
    spec `module-layout-discipline / Test directory mirrors source
-   structure`. Currently 32 test files for 42 source files; some
-   plugin packages have rich tests, others have stubs. The mirror is
-   *aspirational*, not enforced.
+   structure`. Currently the mirror is *aspirational*, not enforced.
+   The 8-file rule split (`packages/lint/rules/{budget,caps,conn,
+   cross,importing,ldd,purity,shape}.py`) is collapsed in tests into
+   3 omnibus files (`test_rules_ldd.py`, `test_rules_misc.py`,
+   `test_rules_shape.py`); newer source files (`reports.py`,
+   `tracer.py`, `lint/cli.py`, `testing/exceptions.py`,
+   `testing/fixtures.py`) lack mirrors entirely.
 
 `mutmut` (Astral-friendly mutation testing for Python) is the right
 tool: it injects faults into the source and measures whether the test
@@ -33,7 +43,7 @@ in CI.
 
 ### Tooling
 
-- Add `mutmut>=2.5` to `[dependency-groups] dev`.
+- Add `mutmut>=3.5` to `[dependency-groups] dev`.
 - Add `[tool.mutmut]` config to `pyproject.toml`: paths, runner,
   baseline test command, exclusion list (third-party stubs, generated
   code).
@@ -70,12 +80,18 @@ in CI.
 - Audit every `src/a2kit/**/*.py` for a corresponding test file. Fill
   gaps. Where `mutmut` reports survived mutations, add focused tests
   to kill them.
-- Specific gap targets (from coverage report):
-  - `lint/rules/*` — most rule modules at 70-90 %; survived mutations
-    likely on edge-case AST shapes. Mirror at `tests/packages/lint/rules/test_<rule>.py`.
-  - `mcp/listview.py` (36 %) — middleware result-rewriting paths.
-    Add e2e MCP roundtrip in `tests/packages/mcp/test_listview.py`.
-  - `cli/builder.py` `_make_tool_command` complexity branches.
+- Specific gap targets (from current tree audit):
+  - `packages/lint/rules/{budget,caps,conn,cross,importing,ldd,
+    purity,shape}.py` — 8 modules, currently mirrored by 3 omnibus
+    files. Split into per-rule mirrors at
+    `tests/packages/lint/rules/test_<rule>.py`.
+  - `packages/lint/cli.py` — no mirror.
+  - `packages/mcp/reports.py` — no mirror.
+  - `packages/otel/tracer.py` — covered by `test_install.py`; promote
+    or split into `test_tracer.py`.
+  - `packages/testing/{exceptions,fixtures}.py` — no mirrors.
+  - `routers.py`, `signature.py`, `tool.py`, `exceptions.py` —
+    top-level core files without dedicated mirrors.
 
 ### Documentation
 
@@ -114,9 +130,10 @@ in CI.
   testing only relevant for contributors and CI.
 - **CI cost**: full mutation run on a 2.7 K-LOC codebase is ~5-10 min.
   PR-time `mutate-fast` runs only changed files, typically <1 min.
-- **Deferred from `v1-cleanup-debt`**: tasks 3.1-3.6 (coverage uplift
-  to 95 %) become inputs to *this* change. Mutation testing replaces
-  the coverage-to-95 % aspiration as the quality bar.
+- **Quality bar shift**: mutation score replaces line-coverage-to-95 %
+  as the quality target. Coverage stays as a leading indicator (gate
+  still 92 % via `pytest --cov-fail-under`), but mutmut is the
+  authoritative correctness check.
 - **Risk**: mutation testing can be flaky (timeouts on slow tests,
   mutations that compile but are runtime no-ops). Mitigation: per-file
   exclusion list; documented mutation-score floor allows for known
