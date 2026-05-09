@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **CLI formatter renders pydantic `BaseModel` returns** in both JSON and TOON
+  paths. Previously TOON emitted `null` (with an `Unsupported type` warning) and
+  JSON fell back to `default=str` producing a quoted model repr; the MCP path
+  worked because FastMCP normalizes pydantic itself. `format_response` now
+  normalizes `BaseModel` (including models nested in lists/dicts) via
+  `model_dump(mode="json")` at the formatter boundary before either encoder
+  runs. Auto-format selection (`toon_or_json`) sees the normalized payload, so a
+  model whose dumped form has list/dict fields correctly picks TOON. No-op for
+  non-pydantic inputs (byte-identical output).
+
 ## 0.22.0 — ergonomic round: typed DI, consolidated list_, class-attr enrichers — 2026-05-09
 
 Round three on top of v0.21's de-magic posture, focused on developer ergonomics

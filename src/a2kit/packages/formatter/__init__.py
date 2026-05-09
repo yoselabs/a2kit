@@ -19,8 +19,28 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
+from pydantic import BaseModel
+
 from .response import ListViewMode, Local, Page, Passthrough, Response
 from .toon import encode_toon
+
+
+def _normalize_for_encoding(value: Any) -> Any:
+    """Convert pydantic ``BaseModel`` instances to plain JSON-mode dicts so the
+    JSON and TOON encoders see only primitives + standard containers.
+
+    Recurses through ``list``, ``tuple``, and ``dict`` containers; rewrites any
+    ``BaseModel`` it finds via ``model_dump(mode="json")``. Other values
+    (including strings, bytes, scalars, and arbitrary non-pydantic objects)
+    pass through unchanged so non-pydantic inputs remain byte-identical.
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return {k: _normalize_for_encoding(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_for_encoding(v) for v in value]
+    return value
 
 FormatHint = Literal["auto", "toon", "json"]
 FormatName = Literal["toon", "json"]
@@ -94,15 +114,16 @@ def format_response(
     Byte-identical guarantee: when the chosen format is ``"toon"``, the
     returned ``data`` equals ``toon_format.encode(raw)`` exactly.
     """
+    normalized = _normalize_for_encoding(raw)
     if format_hint == "json":
-        return Response(data=_encode_json(raw), format="json")
+        return Response(data=_encode_json(normalized), format="json")
     if format_hint == "toon":
-        return Response(data=encode_toon(raw), format="toon")
+        return Response(data=encode_toon(normalized), format="toon")
     # auto
-    chosen = toon_or_json(raw)
+    chosen = toon_or_json(normalized)
     if chosen == "toon":
-        return Response(data=encode_toon(raw), format="toon")
-    return Response(data=_encode_json(raw), format="json")
+        return Response(data=encode_toon(normalized), format="toon")
+    return Response(data=_encode_json(normalized), format="json")
 
 
 __all__ = [
