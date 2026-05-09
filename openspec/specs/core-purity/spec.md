@@ -34,3 +34,35 @@ Core's `A2KitMeta` dataclass SHALL retain `extra: dict[str, Any]` as the only na
 - **WHEN** the partition result is stored
 - **THEN** it is written to `meta.extra["a2kit.di.partition"]` and not to a new field on `A2KitMeta`
 
+### Requirement: Verb decorators carry no feature kwargs
+
+`@a2kit.read`, `@a2kit.write`, `@a2kit.list_`, `@a2kit.tool` MUST accept only `name`, `tags`, and `annotations` keyword arguments. Other behavior is attached via stacked feature decorators.
+
+#### Scenario: Reject enricher kwarg
+- **WHEN** code calls `@a2kit.read(enricher=fn)`
+- **THEN** Python raises `TypeError: read() got an unexpected keyword argument 'enricher'`
+
+#### Scenario: Reject report kwarg
+- **WHEN** code calls `@a2kit.read(report=MyReport)`
+- **THEN** Python raises `TypeError`
+
+#### Scenario: Stacked feature decorators compose
+- **WHEN** a function is decorated with `@a2kit.read()` outside `@enriches(fn)` outside `@reports(MyReport)`
+- **THEN** the resulting `A2KitMeta.extra` contains both `a2kit.enricher` and `a2kit.report_type` keys
+
+### Requirement: Router slug is explicit, with verbatim class-name fallback
+
+A `Router` instance's `slug` MUST be one of, in order of precedence: the `name=` constructor argument, the class-level `name` attribute, or `type(self).__name__` verbatim. No string transformations (no suffix stripping, no case conversion, no character substitution) are permitted.
+
+#### Scenario: Constructor name takes precedence
+- **WHEN** `Router(name="tasks")` is instantiated on a class with `name = "X"`
+- **THEN** `instance.slug == "tasks"`
+
+#### Scenario: Class attribute used when no constructor name
+- **WHEN** `class R(Router): name = "tasks"` is instantiated with no args
+- **THEN** `instance.slug == "tasks"`
+
+#### Scenario: Class name verbatim when nothing set
+- **WHEN** `class TasksRouter(Router): pass` is instantiated with no args
+- **THEN** `instance.slug == "TasksRouter"` (not "tasks", not "task")
+

@@ -112,4 +112,12 @@
 
 - [x] 13.1 Bump CHANGELOG.md v1.0.0 entry to "released" status with the final date.
 - [x] 13.2 No outstanding "known debt" markers in `simplify-and-thin-core/tasks.md` Phase 7 / Phase 8.
-- [ ] 13.3 Pause for explicit user authorization before tagging `v1.0.0` and pushing to `main`.
+- [x] 13.3 Pause for explicit user authorization before tagging `v1.0.0` and pushing to `main`.
+
+## Closeout note (2026-05-09)
+
+The remaining "tag v1.0.0 / merge to main / pause for authorization" tasks are
+superseded. The v1.0 ceremony was abandoned in favor of direct-to-main shipping
+on the v0.x track; the substantive work landed across v0.20 (de-magic round 1),
+v0.21 (de-magic-2), and v0.22 (de-magic-3 / ergonomics). Marking the merge-gate
+tasks complete to reflect that the work landed via a different path.

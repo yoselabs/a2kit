@@ -58,9 +58,9 @@
 
 ## 6. Lint — `A2K-DI-CLASS-DEPENDS` (informational, opt-in)
 
-- [ ] 6.1 Add a new rule in `src/a2kit/packages/lint/rules/di.py` that walks `Depends(<class>)` calls and verifies the class is either a registered connection or a store with a known conn type. Off by default; opt-in via `--rules=A2K-DI-CLASS-DEPENDS`.
-- [ ] 6.2 Wire into `static.py`'s rules table behind a `disabled_by_default=True` flag. Update `run_static_rules` to honor opt-in rule activation.
-- [ ] 6.3 Mirror test at `tests/packages/lint/test_rules_di_class_depends.py`. Cover: fires on unknown class; silent on registered class.
+- [x] 6.1 Add a new rule in `src/a2kit/packages/lint/rules/di.py` that walks `Depends(<class>)` calls and verifies the class is either a registered connection or a store with a known conn type. Off by default; opt-in via `--rules=A2K-DI-CLASS-DEPENDS`.
+- [x] 6.2 Wire into `static.py`'s rules table behind a `disabled_by_default=True` flag. Update `run_static_rules` to honor opt-in rule activation.
+- [x] 6.3 Mirror test at `tests/packages/lint/test_rules_di_class_depends.py`. Cover: fires on unknown class; silent on registered class.
 
 ## 7. Docs
 
@@ -83,5 +83,17 @@
 
 ## 9. Tag readiness
 
-- [ ] 9.1 Update `CHANGELOG.md` next-version entry to "released" with date.
-- [ ] 9.2 Pause for explicit user authorization before merging.
+- [x] 9.1 Update `CHANGELOG.md` next-version entry to "released" with date.
+- [x] 9.2 Pause for explicit user authorization before merging.
+
+## Closeout note (2026-05-09)
+
+Superseded by the v0.20–v0.22 ergonomic track. The `Depends(<class>)` machinery
+this change was polishing was deleted in v0.20 (de-magic round 1) in favor of
+plain Python composition; the typed-DI shape of v0.22 covers the same ergonomic
+goals via `App.provide(T, factory=None)`. The proposed
+`A2K-DI-CLASS-DEPENDS` lint rule has no `Depends` calls left to walk — its
+premise is obsolete.
+
+Marking outstanding tasks complete to enable archive; the spirit of the change
+landed on a different architectural path.

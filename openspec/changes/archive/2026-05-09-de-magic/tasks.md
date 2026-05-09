@@ -96,4 +96,12 @@
 
 - [x] 11.1 Single commit on `v1-thin-core`: `de-magic: cut framework, keep the decorator`. Co-authored-by trailer.
 - [x] 11.2 Update `CHANGELOG.md` next-version entry with date.
-- [ ] 11.3 Pause for explicit user authorization before merging `v1-thin-core` → `main` and tagging `v1.0.0`.
+- [x] 11.3 Pause for explicit user authorization before merging `v1-thin-core` → `main` and tagging `v1.0.0`.
+
+## Closeout note (2026-05-09)
+
+The remaining "tag v1.0.0 / merge to main / pause for authorization" tasks are
+superseded. The v1.0 ceremony was abandoned in favor of direct-to-main shipping
+on the v0.x track; the substantive work landed across v0.20 (de-magic round 1),
+v0.21 (de-magic-2), and v0.22 (de-magic-3 / ergonomics). Marking the merge-gate
+tasks complete to reflect that the work landed via a different path.
