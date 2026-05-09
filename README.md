@@ -208,7 +208,7 @@ a2kit lint static src/
 a2kit lint runtime --import myapp.server:app
 ```
 
-v1.0-relevant rules:
+Active rules:
 
 - `A2K-CONN-LIST-PLACEHOLDER` — `${VAR}` inside list/dict fields on `ConnectionConfig`.
 - `A2K-IMPORT-DISCIPLINE` — `fastmcp` imports outside `packages/mcp/` and the lazy-load lines in `packages/cli/builder.py`.
@@ -238,8 +238,8 @@ pytest fixture in `a2kit.packages.testing` returns a fresh `a2kit.App("test")`.
 
 ## Migration from v0.x
 
-See [CHANGELOG.md](CHANGELOG.md) for the v1.0 break notes. From the
-prior `v1-thin-core` shape:
+See [CHANGELOG.md](CHANGELOG.md) for the v0.20 break notes. From the
+v0.19 / `v1-thin-core` intermediate shapes:
 
 - `Depends(<class>)` and `Depends(<callable>)` → constructor injection
 - `app.use(...)` → `app.add_router(...)`, `app.add_cli(...)`, `app.add_mcp_middleware(...)`
@@ -254,7 +254,7 @@ See [ANTIPATTERNS.md](ANTIPATTERNS.md) for a2kit-specific patterns to avoid.
 
 ## Status
 
-v1.0 is a clean break. No v0.x compat shims, no deprecated aliases.
+v0.20 is a clean break from v0.19. No compat shims, no deprecated aliases.
 
 **Type-correctness gate.** `make lint` runs `uv run ty check src/` (Astral
 [`ty`](https://github.com/astral-sh/ty)) as a hard gate. The repo carries

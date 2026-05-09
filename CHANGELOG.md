@@ -1,342 +1,157 @@
 # Changelog
 
-## Next — de-magic (2026-05-09)
+## 0.20.0 — protocol-agnostic core, plain-Python composition — 2026-05-09
 
-Cut the framework, keep the decorator. The four `v1-thin-core` commits
-accumulated abstractions faster than the problem warranted; this change
-removes the mechanisms that read as AI slop to a senior reviewer.
+Clean break from the v0.19 architecture. Core a2kit is a fat decorator on top of
+FastMCP — `App`, `Router`, `@a2kit.read/write/list_`, `ToolContext` — and nothing
+else. Connections, formatter, select grammar, lint, MCP/CLI adapters, testing
+helpers, and OTel middleware live under `a2kit.packages.*` and load only when
+imported. `import a2kit` measured at ~13 ms; FastMCP is confined to
+`a2kit.packages.mcp`.
 
-### Removed
+The release shipped through several intermediate spikes on `v1-thin-core`
+(protocol-agnostic core, LDD streaming reports, class-based DI, pluggable plugin
+architecture). The final shape collapses those experiments into the simplest
+form that works: **constructor injection, three named composition verbs, no
+sentinels, no plugin protocol, no class-as-key DI**.
 
-- `Depends(...)` in **all** forms — class-as-key (`Depends(TrackerConn)`)
-  AND callable form (`Depends(get_conn)`). Constructor injection is the
-  only DI shape now.
-- `uncalled_for` is no longer a runtime dependency.
-- `app.use(...)` polymorphic dispatch. Three named verbs replace it:
-  `app.add_router(r)`, `app.add_cli(group)`, `app.add_mcp_middleware(m)`.
-- `app.connect(C)` — connections are plain classes; nothing to claim.
-- `app.use_factory(real, as_=stub)` — pass factories to router constructors.
-- `a2kit.Plugin`, `a2kit.DependsResolver`, `a2kit.ToolWrapper` Protocols.
-- `a2kit.packages.connections.Connections` plugin class.
-- `a2kit.Store[ConnT]` Generic marker — stores are plain classes.
-- `bind_class_dependencies` outer wrapper + class-Depends signature
-  rewriting in core.
-- `make_test_app(routers, overrides=...)` — tests construct an `App`
-  directly with the same composition verbs as production code.
-- `class R(a2kit.Router, enricher=fn):` PEP 487 class kwarg — per-tool
-  `@a2kit.read(enricher=fn)` is the only attachment form.
-- `Router(enricher=fn)` constructor kwarg + `self.enricher` instance scan.
-- `A2K-CORE-PURITY` lint rule — there's no plugin boundary worth policing.
-- `A2K-DI-ANNOTATED`, `A2K-DI-IMPORT-LEGACY`, `A2K-DI-IMPORT-SLOW`,
-  `A2K-DI-KWONLY`, `A2K-DI-PYDANTIC-VALIDATE` lint rules — they polished a
-  sentinel that no longer exists.
-- `ConnectionKwargMissing`, `ConnectionNotRegistered`,
-  `StoreConnectionTypeUnknown` exceptions — no path can raise them now.
-- `get_conn_factory(app, ConnT)` — users write a 3-line factory directly.
-- `a2kit connections ...` subcommand on the developer CLI — `a2kit` ships
-  only `a2kit lint`. App-level `connections` subgroup is wired by users
-  via `app.add_cli(connections_cli(*types))`.
+### Composition
 
-### Changed
+- **`a2kit.App(name)`** with three named verbs: `add_router(router)`,
+  `add_cli(group)`, `add_mcp_middleware(middleware)`. No polymorphic dispatch.
+- **`a2kit.Router`** is a plain Python class — pass factories via `__init__`,
+  store on `self`, call from each tool method. The framework introspects
+  nothing.
+- **`a2kit.run(app, argv=None)`** — single console-script entry. Delegates to
+  the lazy CLI builder; non-`serve` paths never load `fastmcp`.
 
-- `a2kit.packages.connections` exports: `ConnectionConfig`,
-  `ConnectionStore`, `connections_cli(*types)`, plus token / key
-  exception types. The package no longer carries a plugin or DI module.
-- `connections_cli(*types)` is a Click-group factory; users wire it via
-  `app.add_cli(connections_cli(TrackerConn))`.
-- Tracker example rewritten to constructor injection. Total LOC across
-  `server.py + store.py + routers.py` shrank substantially; reading any
-  one file is now a 30-second exercise.
+### Verbs and metadata
 
-### Migration recipe
+- **`@a2kit.tool / read / write / list_`** stamp `A2KitMeta` (frozen
+  dataclass) onto the function. Verb maps to `mcp.types.ToolAnnotations` +
+  tags. Optional `enricher=fn` per-tool wraps the call in
+  `try / except → enricher(exc, tool_name)`.
+- **`@a2kit.read(report=ReportT)`** declares the typed mid-flight chunk type.
+  `ctx.report(...)` validates against it; the schema dump exposes
+  `reportSchema`.
+- **`-> str` return** is rejected at decoration time
+  (`InvalidToolReturnTypeError`) — return `dict` or a Pydantic model.
 
-| Before (post-`pluggable-core-architecture`) | After (`de-magic`) |
-|---|---|
-| `app.use(Connections())` | (delete) |
-| `app.use(TrackerConn)` | (delete; conn config is just a class) |
-| `app.use(TasksRouter())` | `app.add_router(TasksRouter(get_store))` |
-| `Depends(TrackerConn)` parameter default | constructor-injected `self.get_conn` |
-| `Depends(TrackerStore)` parameter default | constructor-injected `self.get_store` |
-| `Depends(get_conn)` callable form | constructor-injected callable on `self` |
-| `class TrackerStore(a2kit.Store[TrackerConn]):` | `class TrackerStore:` |
-| `app.connect(TrackerConn)` | (delete) |
-| `app.use_factory(real, as_=stub)` | pass factory to router constructor |
-| `class R(a2kit.Router, enricher=fn):` | `@a2kit.read(enricher=fn)` per tool |
-| `make_test_app(routers, overrides={...})` | `App() + add_router(R(fake))` |
-| `from uncalled_for import Depends` | (delete) |
-| `from a2kit.packages.connections import Connections, Store` | (delete; only ConnectionStore + connections_cli survive) |
+### `ToolContext` — four channels for mid-flight communication
 
-### Cold-start
+- `ctx.info / warning / error / debug(msg, **kw)` — process telemetry.
+- `await ctx.report_progress(i, n)` — numeric progress.
+- `await ctx.event(name, **payload)` — typed narrative events.
+- `await ctx.report(payload)` — typed result chunks (requires
+  `report=ReportT` on the decorator).
 
-`import a2kit` measured at ~13 ms (was ~62 ms with the prior plugin
-machinery). Still well under the 100 ms budget.
+All emissions carry an elapsed `+s.mmm` timestamp. CLI: `[ +s.mmm LEVEL] msg
+key=val` on stderr. MCP: `notifications/message` with `data.elapsed_ms: int`
+and a `data.a2kit_kind` discriminator.
 
----
+**Kill-switch.** `--no-reports` / `--no-events` flags per invocation;
+`app.set_ldd(reports=False, events=False)` programmatic; env `A2KIT_LDD=off`
+process-wide. Most-specific layer wins.
 
-## Pluggable core architecture (superseded by de-magic)
+### Connections
 
-Core a2kit now knows nothing about connections (or any other domain).
-Connection support becomes an opt-in plugin; the boundary is enforced by
-a new `A2K-CORE-PURITY` lint rule.
+- **`a2kit.packages.connections`** exports `ConnectionConfig` (pydantic-settings
+  base), `ConnectionStore` (load/save with eager `${VAR}` / `op://`
+  substitution), and `connections_cli(*types)` — a Click-group factory you wire
+  via `app.add_cli(connections_cli(TrackerConn))`.
+- Eager substitution: `${VAR}` and `op://...` resolve at `store.load(...)`,
+  not at first tool call. Round-trip preserves placeholders — `store.save(cfg)`
+  writes the original `${MY_TOKEN}`, never the resolved value.
+- No `Connections` plugin class. No `Store[ConnT]` Generic. No DI sentinel.
+  Stores are plain classes; users wire factories explicitly.
 
-### Plugin Protocol — `a2kit.Plugin`
+### Adapters
 
-- New `a2kit.Plugin` Protocol (`runtime_checkable`) declaring optional
-  contribution methods: `cli_commands()`, `mcp_middleware()`,
-  `depends_resolvers()`, `claim()`, `adopt()`. Required: `register(app)`.
-- New `a2kit.DependsResolver` Protocol — plugin-contributed
-  `Depends(<class>)` resolver. Methods: `claim`, optional `precheck`
-  (decoration-time validation), `resolve` (call-time injection).
-- **`App.use(thing)` is the ONE registration verb.** Polymorphic dispatch:
-  - Class → walk plugins for `claim`/`adopt` (e.g. `app.use(TrackerConn)`).
-  - Router instance → core router registry.
-  - Plugin instance → `register(self)` + stash.
-- **`App.cli_commands()`, `mcp_middlewares()`, `depends_resolvers()`** —
-  flatten contributions across registered plugins. Builders read these
-  instead of importing specific plugin modules.
+- **`a2kit.packages.mcp`** — `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`.
+  The ONE place fastmcp imports.
+- **`a2kit.packages.cli`** — `build_full_cli(app)` returns the
+  progressive-disclosure CLI (one entry per Router; `schema`, `serve`, plus
+  any `add_cli(...)`-attached subcommands).
+- Cold-start contract: after `import a2kit`, `'fastmcp' not in sys.modules`.
+  Verified by `tests/test_cold_start.py`.
 
-### Connections become a plugin
+### Listview kit
 
-- New `a2kit.packages.connections.Connections` plugin class. Activates
-  via `app.use(Connections())`. Without it: `<app> connections ...`
-  subcommand is absent; `Depends(<ConnT>)` raises with a hint.
-- **Moved out of core:**
-  - `a2kit.Store` → `a2kit.packages.connections.Store`.
-  - `ConnectionKwargMissing`, `ConnectionNotRegistered`,
-    `StoreConnectionTypeUnknown` → `a2kit.packages.connections`.
-  - `bind_class_dependencies` connection-specific code → plugin
-    resolvers in `a2kit.packages.connections.di`.
-  - `App.connect`, `App.get_store` removed from core (sugar `connect`
-    delegates to plugins via `claim`).
-- **CLI builder is plugin-agnostic.** `<app> connections ...` lives on
-  `Connections.cli_commands()`; the builder reads `app.cli_commands()`.
+- **`@a2kit.list_(list_view=ListViewSettings(default_fields=..., page_size=...,
+  selectable_fields=...))`** declares the projection contract. Middleware
+  applies projection / pagination / CEL-based filtering on the in-memory
+  result post-hoc. `--fields=`, `--page-size=`, `--cursor=`, `--filter=`
+  available at the call site.
 
-### Enricher mechanism into core (where it belongs)
+### Filter syntax — real CEL
 
-- The generic `try/except → enricher(exc, tool_name)` wrap moved INTO
-  `Router` itself (no longer a feature of `a2kit.packages.enrichers`).
-  `Router.tools()` returns already-wrapped tools; adapters are
-  enricher-agnostic.
-- `a2kit.packages.enrichers` keeps only the specific
-  `connection_enricher` implementation users opt into.
+- **`a2kit.packages.select`** wraps `cel-python` for filter compilation. Users
+  pass real CEL: `--filter='priority=="high" && !done'`. `&&`, `||`, `!`,
+  comparisons, member access, ternary — all supported by the underlying CEL
+  engine. Legacy atom syntax is gone.
 
-### `A2K-CORE-PURITY` lint rule
+### Output formatter
 
-- Hard gate: any module-level import in `src/a2kit/*.py` (excluding
-  `src/a2kit/packages/`) from `a2kit.packages.*` fires the rule.
-  Function-body and `TYPE_CHECKING` imports are exempt (lazy).
-- Codifies the "thin core, opt-in packages" rule that was previously
-  convention.
-
-### Tracker refresh
-
-```python
-# Before:
-app.connect(TrackerConn)
-
-# After:
-from a2kit.packages.connections import Connections
-app.use(Connections())   # CLI commands + DI resolvers
-app.use(TrackerConn)     # claimed by Connections plugin
-```
-
-`<app> --help` no longer shows `connections` unless the plugin is
-registered. Cold-start: `import a2kit` is 8.7ms; conn/enricher packages
-not loaded.
-
-### Breaking changes
-
-- `a2kit.Store` → `a2kit.packages.connections.Store`. Update imports.
-- `ConnectionKwargMissing`, `ConnectionNotRegistered`,
-  `StoreConnectionTypeUnknown` no longer exported from `a2kit.exceptions`
-  / `a2kit`. Import from `a2kit.packages.connections`.
-- `App.connect(C)` requires `app.use(Connections())` first (raises
-  `RuntimeError` with hint otherwise).
-- `App.get_store(C)` removed. The Connections plugin owns this state;
-  query via `find_connections(app).get_store(C)` if needed.
-- `A2KitMeta.enricher` field stays, but enricher application is now
-  Router's job (not adapters'). Tools called outside a Router don't
-  get enrichment automatically.
-
-## Next — DX polish: class-based DI + tracker example refresh
-
-### Class-based dependency injection
-
-- **`Depends(TrackerConn)`** — connection class as the injection key.
-  Runtime looks up the registered loader, reads the user's
-  `connection: str` kwarg, returns the loaded conn. Stub `get_conn`
-  functions and `app.use_factory(...)` are no longer required for the
-  common case. Legacy stub-factory path remains supported.
-- **`Depends(TrackerStore)`** — store class as the injection key. The
-  runtime composes conn → store automatically. Stores declare their
-  binding via `class TrackerStore(a2kit.Store[TrackerConn]):` (Generic)
-  or `conn_type = TrackerConn` (class attribute).
-- **`a2kit.Store[ConnT]`** — new marker base for store classes. Lazy-
-  exported; cold-start unchanged.
-- **New exceptions** under `a2kit`: `ConnectionKwargMissing`,
-  `ConnectionNotRegistered`, `StoreConnectionTypeUnknown`. Raised at
-  `app.tools()` time (decoration) when registration is incomplete —
-  fail fast, not at first tool call.
-
-### Router enricher class kwarg
-
-- **`class TasksRouter(a2kit.Router, enricher=fn):`** — PEP 487
-  `__init_subclass__` captures the enricher. Replaces the
-  `enricher = staticmethod(fn)` boilerplate. Bare-function class
-  attributes (`enricher = my_fn`) now auto-wrap as staticmethod.
-- Precedence: constructor arg > class kwarg > class attribute.
-
-### Tracker example refresh
-
-- `examples/tracker/server.py` — drops `set_get_conn` plumbing. New
-  shape: `app.connect(TrackerConn)` + routers, that's it.
-- `examples/tracker/store.py` (renamed from `storage.py`) — inherits
-  from `a2kit.Store[TrackerConn]`.
-- `examples/tracker/routers.py` — every tool uses `Depends(TrackerConn)`
-  or `Depends(TrackerStore)`. New `list_tasks` showcases the listview
-  kit (`default_fields`, `page_size`, `selectable_fields`). New
-  `bulk_import_tasks` demonstrates all four LDD channels working
-  together.
-- `examples/tracker/deps.py` — deleted. The stub `get_conn` is no
-  longer needed.
-
-### ANTIPATTERNS
-
-- "Don't write a stub `get_conn` for single-conn apps" — added.
-- "Stores SHOULD be cheap to construct" — added.
-
-## Next — LDD streaming reports + narrative events
-
-### New ToolContext channels
-
-- **`ctx.event(name, **payload)`** — typed narrative events. Free
-  channel; any tool can emit. Wire format: MCP `notifications/message`
-  with `data.a2kit_kind="event"`, `data.name`, `data.payload`,
-  `data.elapsed_ms`. CLI: `[ +s.mmm event   ] name key=val`.
-- **`ctx.report(payload)`** — typed mid-flight result chunks. Requires
-  the verb decorator to declare `report=ReportT` (Pydantic model or
-  TypedDict). Validated at call time — raises `ReportTypeMismatch` /
-  `ReportTypeNotDeclared`. Wire: `data.a2kit_kind="report"`,
-  `data.type`, `data.payload`, `data.elapsed_ms`. CLI:
-  `[ +s.mmm report  ] TypeName key=val`.
-
-### Wire format
-
-- All CLI emissions (info / warning / error / debug / progress / event /
-  report) now use `[ +s.mmm LEVEL] ...` format with relative elapsed
-  timestamps from tool-call start.
-- All MCP emissions carry `data.elapsed_ms: int` for client-side rendering.
-
-### Kill-switch
-
-- **CLI flags** `--no-reports` / `--no-events` at the top level —
-  silence each channel for one invocation.
-- **`App.set_ldd(reports=, events=)`** for programmatic control.
-- **Env `A2KIT_LDD=off`** disables both channels process-wide.
-- Most-specific layer wins: flag > app > env. Disabled emissions still
-  type-validate `report=` payloads.
-
-### Schema dump
-
-- `<app> schema <tool>` now includes `reportSchema` (the JSON schema for
-  the declared `ReportT`) when present.
+- **`a2kit.packages.formatter`** — TOON / JSON normalization via `toon-format`.
+  Default is TOON (token-efficient for agent contexts); pass `--format=json`
+  to opt in. `--format=auto` heuristically picks JSON for flat dicts, TOON
+  otherwise.
 
 ### Lint
 
-- New rule **`A2K-LDD-REPORT-TYPE`** — fires when `ctx.report(...)` is
-  called without a `report=` decorator kwarg, or when the declared type
-  is defined inside a function (Pydantic forward-ref constraint).
+- **`a2kit lint static <path>`** — AST-only rules, no imports of user code.
+  Active rules: `A2K002`, `A2K003`, `A2K006`, `A2K008`, `A2K009`, `A2K011`,
+  `A2K012`, `A2K013`, `A2K014`, `A2K-CONN-LIST-PLACEHOLDER`,
+  `A2K-IMPORT-DISCIPLINE`, `A2K-LDD-REPORT-TYPE`.
+- **`a2kit lint runtime --import pkg:server`** — duck-typed checks on a built
+  server (snapshot presence, per-tool budgets, similar-name detection).
+- **`make lint` is a hard gate** for `ruff check`, `ruff format --check`,
+  `ty check src/`, and `a2kit lint static`. The repo carries zero
+  `# ty: ignore` comments — verified by `tests/test_type_correctness_gate.py`.
 
-### Examples
+### Testing
 
-- `examples/streaming_logger/` extended with `import_csv_with_reports`
-  showing all four channels working together. README rewritten with the
-  channel-decision table and kill-switch docs.
+- **`a2kit.packages.testing`** ships an `app` fixture (returns
+  `a2kit.App("test")`), a `cassette` fixture (vcrpy wrapper),
+  `TOONSnapshotExtension` (syrupy single-file extension), and
+  `compute_schema(fn)`. There is no `make_test_app` helper — tests construct
+  an `App` and call `add_router(...)` directly.
 
-## 1.0.0 — protocol-agnostic core — 2026-05-09
+### Optional OTel adapter
 
-Clean break. ~7.9K LOC → ~2.7K LOC. Protocol-agnostic core (~1K) +
-opt-in plugin packages under `a2kit.packages.*` (~1.7K). FastMCP is
-now a hard dependency, isolated to `a2kit.packages.mcp`. Single-entry
-`a2kit.run(app)` dispatches all CLI / serve / schema / connections
-modes from one console script.
+- **`a2kit.packages.otel`** (install with `pip install 'a2kit[otel]'`) —
+  middleware that wraps every tool call in a `mcp.tool.{name}` span and
+  increments an `a2kit.tool.calls{tool, verb, status}` counter. Wire via
+  `from a2kit.packages.otel import install; install(server)`. Lazy: a2kit
+  core does not import `opentelemetry` at any point.
 
-### v1-cleanup-debt follow-ups (consolidated under v1.0)
+### Migration from v0.19
 
-- **`App.use_factory(factory, *, as_=stub)`** binds a factory under a
-  stable callable identity. Replaces the legacy "module-level mutable
-  slot" pattern in examples (`set_get_conn(...)` → `app.use_factory(...)`).
-- **`compute_schema` canonical home** is `a2kit.packages.cli.schemas`.
-  `a2kit.packages.testing.snapshots` re-exports it for the syrupy
-  `TOONSnapshotExtension`.
-- **`_APP_CTX`** lives in `a2kit.packages.cli.app_ctx`. Both adapters
-  (`mcp.cli.serve_command`, `cli.builder.build_full_cli`) read from there.
-- **`a2kit.packages.lint.static`** split — 1227 → 244 SLOC. Per-family
-  rule modules under `a2kit.packages.lint.rules/`. **A2K010** (legacy
-  unknown-atom rule) retired entirely.
-- **CLI option synthesis** maps nullable primitives natively:
-  `Optional[int]` / `int | None` → `INTEGER` (default `None`,
-  `required=False`); same for `float`, `str`, `bool`. Non-primitive
-  nullable types still JSON-decode.
-- **Schema dump truncation**: `<app> schema [TOOL]` output now passes
-  through `formatter.truncate(...)` (default 50,000-char cap).
-- **ty (Astral)** is a hard `make lint` gate. `uv run ty check src/`
-  exits 0 with zero `# ty: ignore` comments.
-- **`opentelemetry` is lazy** — `import a2kit.packages.otel` does not
-  pull `opentelemetry` into `sys.modules`; only `install(server)`
-  triggers the load.
-- **Test layout uniformity**: `tests/packages/select/` now has
-  `__init__.py`; `pyproject.toml` sets `--import-mode=importlib` so
-  test packages whose names shadow stdlib modules don't collide via
-  `sys.modules`.
+The v0.19 architecture is gone. Notable shape changes:
 
-### New opt-in package
-
-- `a2kit.packages.otel` — opt-in via `pip install 'a2kit[otel]'`. Adds
-  an OTel-compatible `Middleware` that wraps every FastMCP tool call in
-  a span (`mcp.tool.{tool_name}`) with attributes pulled from
-  `A2KitMeta` (`a2kit.tool_name`, `a2kit.verb`, `a2kit.router`,
-  `a2kit.tags`) plus the FastMCP request id, and increments an
-  `a2kit.tool.calls{tool, verb, status}` counter. Wire with
-  `from a2kit.packages.otel import install; install(server)`. a2kit
-  core stays OTel-free; OpenTelemetry is lazy-imported.
-
-### Migration recipes (populated as work lands)
-
-- **CEL translation table** — legacy atom forms → CEL syntax (filled
-  during Phase 2 `packages/select/`).
-- **Import-path migrations** —
-  - `from a2kit.di import Depends` → `from uncalled_for import Depends`
-  - `from a2kit.contrib.connections import …` → `from a2kit.packages.connections import …`
-  - `from a2kit.scaffold import Router` → `from a2kit import Router`
-  - `from a2kit.testing import …` → `from a2kit.packages.testing import …`
-  - `from a2kit.formatter import …` → `from a2kit.packages.formatter import …`
-- **DI form** — `Annotated[T, Depends(g)]` → `T = Depends(g)`
-  (parameter-default form via `uncalled_for`).
-- **Connection contract** — `${VAR}` and `op://…` are now resolved
-  **eagerly at `store.load(...)`**, not lazily at first tool call.
-  Round-trip through `store.save(cfg)` preserves placeholders via the
-  `_raw` shadow.
-- **Override pattern** — `app.dependency_overrides[fn] = fake` →
-  `make_test_app(routers, overrides={fn: fake})` from
-  `a2kit.packages.testing`.
-- **CLI entry** — `app.run()` → `a2kit.run(app)` (delegates to
-  `a2kit.packages.cli.build_full_cli`).
+| v0.19 | v0.20 |
+|---|---|
+| `from a2kit.di import Depends` / `from uncalled_for import Depends` | constructor injection on `Router.__init__` |
+| `Annotated[T, Depends(g)]` parameter | factory passed to router constructor |
+| `*, conn: T = Depends(g)` parameter default | factory passed to router constructor |
+| `app.run()` | `a2kit.run(app)` |
+| `app.dependency_overrides[fn] = fake` | `App() + add_router(R(fake_factory))` |
+| `make_test_app(routers, overrides=...)` | `App() + add_router(...)` directly |
+| `from a2kit.contrib.connections import ...` | `from a2kit.packages.connections import ...` |
+| `from a2kit.scaffold import Router` | `from a2kit import Router` |
+| `from a2kit.testing import ...` | `from a2kit.packages.testing import ...` |
+| `from a2kit.formatter import ...` | `from a2kit.packages.formatter import ...` |
+| Lazy `${VAR}` / `op://` | Eager (resolves at `store.load(...)`) |
+| Legacy filter atom syntax | Real CEL (`&&` / `\|\|` / `!`) |
 
 ### Install note
 
-`toon-format` 1.0 has not yet shipped; v1.0 pins the working pre-release
-exactly. If you bypass the pin (e.g. fresh resolve), pass `--pre`:
+`toon-format` 1.0 has not yet shipped; v0.20 pins the working pre-release
+exactly. Pass `--pre` if a fresh resolve bypasses the pin:
 
+```bash
+uv pip install --pre 'a2kit'
 ```
-uv pip install --pre 'toon-format>=0.9.0b1'
-```
-
-### Risk-radius note
-
-`uncalled-for` is pinned tightly (`>=0.3,<0.4`). It is pre-1.0 and
-underpins every tool fn signature. If upstream introduces breaking
-changes, expect a coordinated migration in the next a2kit release.
 
 ## 0.19.0.dev0 — 2026-05-08
 
