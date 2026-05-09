@@ -70,8 +70,8 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 | `a2kit.App(name)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `set_ldd(...)` for the LDD kill-switch. |
 | `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Pass factories via `__init__`; the framework does no DI introspection. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
-| `@a2kit.tool / read / write / list_` | Verb decorators. Map to `mcp.types.ToolAnnotations` + tags. Optional `enricher=fn` per-tool. |
-| `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). |
+| `@a2kit.tool / read / write / list_` | Verb decorators. Kwargs: `name?, tags?, annotations?`. Per-tool features attach via stacked decorators (`@enriches`, `@lists`, `@reports`). |
+| `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). Feature decorators write namespaced keys into `meta.extra`. |
 | `a2kit.ToolContext` | Protocol for protocol-neutral logging + progress. Both adapters supply an implementation. |
 | `a2kit.Cap` | Built-in capability `StrEnum`. `a2kit.capabilities.register(...)` for custom tags. |
 | `a2kit.run(app, argv=None)` | Single-entry CLI dispatch. Builds Click group, invokes. |
@@ -85,7 +85,9 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 | `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. |
 | `a2kit.packages.formatter` | TOON / JSON output normalization via `toon-format`. `format_response(raw, format_hint=...)`. |
 | `a2kit.packages.select` | `compile`, `evaluate`, `validate_atoms` over real CEL syntax. |
-| `a2kit.packages.enrichers` | Concrete enricher implementations (e.g. `connection_enricher`). The wrap mechanism itself lives in core. |
+| `a2kit.packages.enrichers` | `enriches(fn)` stacked decorator + concrete enricher implementations (e.g. `connection_enricher`). Adapters apply the wrap; core stays enricher-free. |
+| `a2kit.packages.mcp.lists` | `lists(...)` stacked decorator + `ListViewSettings` shape. Read by the listview middleware. |
+| `a2kit.packages.mcp.reports` | `reports(ReportT)` stacked decorator. Computes the pydantic JSON schema; both keys travel on `meta.extra`. |
 | `a2kit.packages.testing` | Thin pytest fixtures, syrupy `TOONSnapshotExtension`. |
 | `a2kit.packages.lint` | Static + runtime A2K rules. `a2kit lint static <path>` / `a2kit lint runtime --import pkg:app`. |
 
@@ -128,7 +130,7 @@ caller immediately (no buffering).
 | Process telemetry | `ctx.info / warning / error / debug(msg, **kw)` | Free-form ambient logs |
 | Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — for progress bars |
 | **Narrative events** | `await ctx.event(name, **payload)` | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
-| **Typed reports** | `await ctx.report(payload)` (requires `report=ReportT` on decorator) | Mid-flight result chunks with a declared schema |
+| **Typed reports** | `await ctx.report(payload)` (requires stacked `@reports(ReportT)`) | Mid-flight result chunks with a declared schema |
 
 ```python
 from pydantic import BaseModel
@@ -139,7 +141,11 @@ class BatchReport(BaseModel):
     accepted: int
 
 
-@a2kit.read(report=BatchReport)
+from a2kit.packages.mcp.reports import reports
+
+
+@a2kit.read()
+@reports(BatchReport)
 async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
     await ctx.event("import.started", file=file)
     items = await load(file)
@@ -158,12 +164,12 @@ MCP: `notifications/message` with `data.elapsed_ms: int` and (for events
 **Kill-switch.** Top-level CLI flags `--no-reports` / `--no-events` per
 invocation; `app.set_ldd(reports=False, events=False)` programmatically;
 env `A2KIT_LDD=off` process-wide. Most-specific layer wins. Disabled
-emissions still type-validate `report=` payloads — keeps tests
+emissions still type-validate `@reports(...)` payloads — keeps tests
 deterministic.
 
 **Lint rule.** `A2K-LDD-REPORT-TYPE` fires when `ctx.report(...)` is
-called without `report=` declared on the decorator, or when the declared
-type is defined inside a function (Pydantic forward-ref constraint).
+called without a stacked `@reports(ReportT)` decorator, or when the
+declared type is defined inside a function (Pydantic forward-ref constraint).
 
 The `ctx` parameter is stripped from the input schema and from CLI
 option generation.
@@ -212,7 +218,9 @@ Active rules:
 
 - `A2K-CONN-LIST-PLACEHOLDER` — `${VAR}` inside list/dict fields on `ConnectionConfig`.
 - `A2K-IMPORT-DISCIPLINE` — `fastmcp` imports outside `packages/mcp/` and the lazy-load lines in `packages/cli/builder.py`.
-- `A2K-LDD-REPORT-TYPE` — `ctx.report(...)` without `report=` on the decorator, or report type defined inside a function.
+- `A2K-LDD-REPORT-TYPE` — `ctx.report(...)` without a stacked `@reports(ReportT)`, or report type defined inside a function.
+- `A2K-CORE-CLEAN` — feature identifiers (`connection`, `enricher`, `list_view`, `report_type`, `report_schema`, `router_slug`) in `src/a2kit/*.py` outside `packages/`.
+- `A2K-EXTRA-NAMESPACE` — `meta.extra` keys must start with `a2kit.` or a `<package>.` prefix.
 
 ## Testing
 
@@ -246,7 +254,10 @@ v0.19 / `v1-thin-core` intermediate shapes:
 - `app.connect(C)` → (delete; conn config is just a class)
 - `app.use_factory(...)` → pass factory to router constructor
 - `class TrackerStore(a2kit.Store[TrackerConn]):` → `class TrackerStore:` (plain class)
-- `class R(a2kit.Router, enricher=fn):` → per-tool `@a2kit.read(enricher=fn)`
+- `class R(a2kit.Router, enricher=fn):` → per-tool stacked `@enriches(fn)` (from `a2kit.packages.enrichers`)
+- `@a2kit.read(enricher=…, list_view=…, report=…)` (v0.20) → stacked decorators (`@enriches`, `@lists`, `@reports`) on top of bare `@a2kit.read()`
+- Auto-derived router slug (`TasksRouter` → `tasks`) → set `name = "tasks"` explicitly; otherwise the slug is the class name verbatim
+- `from a2kit.exceptions import WriteNotAllowed` → `from a2kit.packages.connections.exceptions import WriteNotAllowed`
 - `make_test_app(routers, overrides=...)` → construct App + routers directly
 - `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage
 

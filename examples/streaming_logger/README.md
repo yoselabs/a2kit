@@ -29,14 +29,14 @@ Rules of thumb — pick the right channel for the right purpose:
 | `ctx.error(msg, **kw)` | genuine errors **before** raising | `ctx.error("giving up", attempts=N)` |
 | `await ctx.report_progress(i, n)` | numeric progress an agent can show as a bar | `await ctx.report_progress(i, len(rows))` |
 | `await ctx.event(name, **kw)` | typed narrative milestones the agent can pattern-match | `await ctx.event("api.fetched", count=30)` |
-| `await ctx.report(payload)` | typed mid-flight result chunks (declared via `report=`) | `await ctx.report(BatchReport(batch=4, accepted=12))` |
+| `await ctx.report(payload)` | typed mid-flight result chunks (declared via `@reports(...)`) | `await ctx.report(BatchReport(batch=4, accepted=12))` |
 
 **Events vs reports.** Events are free narrative — any tool can emit, no
 declaration required, payload is documentary. Reports are typed result
-chunks — declared via `@a2kit.read(report=BatchReport)` on the
-decorator, validated at call time, schema dumped under
-`meta.a2kit.reportSchema`. Use events to say "what's happening";
-use reports to say "here's a piece of the answer."
+chunks — declared by stacking `@reports(BatchReport)` from
+`a2kit.packages.mcp.reports` on top of the verb decorator, validated at
+call time, schema dumped under `meta.a2kit.reportSchema`. Use events to
+say "what's happening"; use reports to say "here's a piece of the answer."
 
 **Wire format.** Every emission carries elapsed time. CLI:
 `[ +s.mmm LEVEL] ...` (relative seconds with millisecond precision since

@@ -9,7 +9,7 @@ when `a2kit` evolves, this folder evolves with it.
 | `models.py`       | Pydantic return models + `BatchReport` (typed LDD report shape)               |
 | `store.py`        | Plain class; `__init__` takes a `TrackerConn`                                 |
 | `enrichers.py`    | `(exc, tool_name) -> exc` rewrites for agent-readability                      |
-| `routers.py`      | Constructor-injected `get_store`, listview kit, all four LDD channels         |
+| `routers.py`      | Constructor injection + stacked `@enriches/@lists/@reports`, four LDD channels |
 | `server.py`       | Composition root: `add_router` + `add_cli`, `a2kit.run(app)` entrypoint       |
 
 ## The author surface
@@ -45,15 +45,21 @@ def main() -> None:
 That's the whole composition root. Three named verbs. No `Depends(...)`
 sentinel, no plugin protocol, no class-as-key.
 
-`routers.py` per-tool surface — constructor injection throughout:
+`routers.py` per-tool surface — constructor injection + stacked feature decorators:
 
 ```python
+from a2kit.packages.enrichers import enriches
+
+
 class ProjectsRouter(a2kit.Router):
+    name = "projects"  # explicit slug (no auto-derivation)
+
     def __init__(self, get_store) -> None:
         super().__init__()
         self.get_store = get_store
 
-    @a2kit.read(enricher=tracker_404_enricher)
+    @a2kit.read()
+    @enriches(tracker_404_enricher)
     async def get_project(self, *, connection: str, project_id: str) -> Project:
         projects, _ = (await self.get_store(connection)).load_state()
         for p in projects:
@@ -61,7 +67,8 @@ class ProjectsRouter(a2kit.Router):
                 return p
         raise KeyError(project_id)
 
-    @a2kit.write(enricher=tracker_404_enricher)
+    @a2kit.write()
+    @enriches(tracker_404_enricher)
     async def archive_project(self, *, connection: str, project_id: str) -> Project:
         store = await self.get_store(connection)
         projects, tasks = store.load_state()
@@ -75,19 +82,23 @@ parameter defaults — `self.get_store` is a regular Python attribute.
 
 ## Listview kit — projection / pagination / selectable fields
 
-`list_tasks` declares `list_view=ListViewSettings(...)` so the middleware
+`list_tasks` stacks `@lists(...)` on the verb decorator; the middleware
 projects, paginates, and filters on the agent's behalf:
 
 ```python
-_TASK_LIST_VIEW = ListViewSettings(
-    default_fields=("id", "title", "status", "assignee"),
-    page_size=20,
-    selectable_fields=("id", "title", "status", "assignee", "priority", ...),
-)
+from a2kit.packages.mcp.lists import lists
 
 
 class TasksRouter(a2kit.Router):
-    @a2kit.list_(list_view=_TASK_LIST_VIEW, enricher=tracker_404_enricher)
+    name = "tasks"
+
+    @a2kit.list_()
+    @lists(
+        default_fields=("id", "title", "status", "assignee"),
+        page_size=20,
+        selectable_fields=("id", "title", "status", "assignee", "priority", ...),
+    )
+    @enriches(tracker_404_enricher)
     async def list_tasks(self, *, connection: str, project_id: str | None = None) -> list[Task]:
         _, tasks = (await self.get_store(connection)).load_state()
         if project_id is not None:
@@ -106,7 +117,12 @@ Agents can override at call time:
 `bulk_import_tasks` exercises all four `ToolContext` channels:
 
 ```python
-@a2kit.write(report=BatchReport, enricher=tracker_404_enricher)
+from a2kit.packages.mcp.reports import reports
+
+
+@a2kit.write()
+@reports(BatchReport)
+@enriches(tracker_404_enricher)
 async def bulk_import_tasks(
     self,
     *,

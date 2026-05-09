@@ -39,9 +39,9 @@ class Task(BaseModel):
 class BatchReport(BaseModel):
     """Mid-flight chunk emitted from ``bulk_import_tasks`` via ``ctx.report``.
 
-    Demonstrates the ``report=ReportT`` decorator contract: agents receive
-    one of these per processed batch as a typed structured payload, not a
-    parsed log line.
+    Demonstrates the stacked ``@reports(ReportT)`` decorator contract:
+    agents receive one of these per processed batch as a typed structured
+    payload, not a parsed log line.
     """
 
     batch: int

@@ -101,8 +101,8 @@ def test_unknown_router_returns_nonzero(app):
     assert result.exit_code != 0
 
 
-def test_app_ctx_is_set_during_invocation(app):
-    """schema command pulls _APP_CTX — exercise it through build_full_cli.main."""
+def test_schema_command_sees_app(app):
+    """schema command closes over the active App via the build_full_cli factory."""
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["schema", "get_task", "--format", "json"])
     assert result.exit_code == 0, result.output

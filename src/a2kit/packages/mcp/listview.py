@@ -1,10 +1,11 @@
 """List-view middleware — projects fields and paginates list-shaped results.
 
-Reads :class:`a2kit.metadata.ListViewSettings` from the registered tool's
-``meta["a2kit"]["list_view"]`` payload. If the tool author declared
-``default_fields`` and the result is a list of dicts, project each row down
-to those keys. If ``page_size`` is set, slice. Single objects, scalars, and
-non-list results pass through untouched.
+Reads :class:`a2kit.packages.mcp.lists.ListViewSettings` (attached via the
+stacked ``@lists(...)`` decorator) from the registered tool's
+``meta["a2kit"]["extra"]["a2kit.list_view"]`` payload. If the tool author
+declared ``default_fields`` and the result is a list of dicts, project each
+row down to those keys. If ``page_size`` is set, slice. Single objects,
+scalars, and non-list results pass through untouched.
 
 Settings are consulted via the FastMCP server registry (looked up by tool
 name on the request); the wire payload of ``tool.meta`` is the source of

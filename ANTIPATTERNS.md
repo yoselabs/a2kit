@@ -349,3 +349,75 @@ app.add_mcp_middleware(my_middleware)
 The reader sees `add_router(...)`, knows it's a Router. No surprises.
 
 Citation: `src/a2kit/app.py::App.add_router`.
+
+## 19. v0.21 — feature kwargs accumulating on the verb decorator
+
+The mistake: every new feature parks a kwarg on `@a2kit.read/write/list_/tool`.
+v0.20 had four (`enricher=`, `list_view=`, `report=`, `router_slug=`); the
+fifth and sixth were one more capability away. Each kwarg drags a typed
+field into `A2KitMeta`, a consumer in core, and a permanent obligation
+on the central decorator's signature. To a senior reviewer this reads as
+"the framework parks feature state wherever it's convenient."
+
+What to do: each feature owns a stacked decorator that writes a namespaced
+key into `A2KitMeta.extra` (the single dict-typed extension point).
+Adapters read from `extra` at registration time. The verb decorator's
+kwargs collapse to `(name, tags, annotations)` and stop growing.
+
+```python
+# v0.20 (deprecated)
+@a2kit.read(enricher=my_enricher, report=BatchReport)
+async def import_csv(self, *, ctx, file: str) -> dict: ...
+
+# v0.21
+@a2kit.read()
+@enriches(my_enricher)
+@reports(BatchReport)
+async def import_csv(self, *, ctx, file: str) -> dict: ...
+```
+
+The boundary is enforced by lint (`A2K-CORE-CLEAN`, `A2K-EXTRA-NAMESPACE`):
+core source can't reference feature identifiers, and `extra` keys must be
+namespaced (`a2kit.*` or `<package>.*`).
+
+Citation: `src/a2kit/tool.py::_stamp` — three kwargs, full stop.
+
+## 20. v0.21 — auto-derived Router slugs
+
+The mistake: `class TasksRouter(a2kit.Router): pass` magically yields
+slug `"tasks"` via "strip the `Router` suffix, camelCase split, lowercase."
+Three transformations chained. The reader has to either trust the
+algorithm or read it. Worse, the algorithm encodes a naming convention
+into framework behavior — change the convention and *every* router's
+URL silently changes.
+
+What to do: explicit `name` only. The Router's slug is `name=` arg →
+`cls.name` class attribute → `type(self).__name__` **verbatim** (no
+string surgery). Forgetting `name=` produces an ugly slug — that's the
+forcing function.
+
+```python
+class TasksRouter(a2kit.Router):
+    name = "tasks"  # explicit
+    ...
+```
+
+Citation: `src/a2kit/routers.py::Router.__init__`.
+
+## 21. v0.21 — ContextVar + monkey-patch to propagate state into Click subcommands
+
+The mistake: stash the active `App` in a module-level `ContextVar`, then
+monkey-patch `click.Group.main` to set/reset the var around the dispatch
+call so lazy subcommands can `_APP_CTX.get()`. Two layers of indirection
+to thread one argument. The patch is invisible at call sites, the
+ContextVar reads succeed in unrelated test contexts, and any future
+maintainer hits the same "where does `app` come from?" question every
+time they read a subcommand body.
+
+What to do: the CLI builds per-app, so close over `app` in the command
+factory. Lazy subcommands become `Callable[[], click.Command]` factories
+that capture `app` at registration time. No ContextVar, no monkey-patch.
+
+Citation: `src/a2kit/packages/cli/builder.py::build_full_cli` —
+`build_schema_command(app)` and `_build_serve_factory(app)` close over
+the active App; `LazyGroup` stores factories, not import strings.
