@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal, Protocol, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from mcp.types import ToolAnnotations
 
@@ -9,7 +10,27 @@ from a2kit.exceptions import InvalidToolReturnTypeError
 from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, set_meta
 from a2kit.signature import find_context_param
 
+if TYPE_CHECKING:
+    from a2kit.routers import Router
+
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+@dataclass(frozen=True)
+class ToolDescriptor:
+    """Typed introspection record for a registered tool.
+
+    Materialized by ``App.add_router`` once per tool. ``format_hint`` is
+    pre-computed from the tool's resolved return type so the CLI runtime can
+    skip per-call format heuristics — see
+    ``a2kit.packages.formatter.inference.infer_format_hint``.
+    """
+
+    name: str
+    router: Router
+    fn: Callable[..., Any]
+    return_type: Any | None
+    format_hint: Literal["tsv", "json", "page-tsv"]
 
 
 class DispatchHook(Protocol):

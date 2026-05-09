@@ -1,4 +1,4 @@
-"""``schema`` Click command — TOON default, JSON opt-in, JSONL mode."""
+"""``schema`` Click command — JSON output, JSONL mode."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def _run(app, args):
     return CliRunner().invoke(build_schema_command(app), args)
 
 
-def test_schema_all_default_is_toon(app):
+def test_schema_all_default_lists_all_tools(app):
     result = _run(app, [])
     assert result.exit_code == 0, result.output
     # Three tools registered on the test router, names appear in output.
@@ -78,7 +78,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         setattr(Big, _tool.__name__, _tool)
 
     app = a2kit.App("big").add_router(Big())
-    result = CliRunner().invoke(build_schema_command(app), ["--format=toon"])
+    result = CliRunner().invoke(build_schema_command(app), ["--format=json"])
 
     assert result.exit_code == 0
     # Either the marker is present, or the output stayed under the cap.

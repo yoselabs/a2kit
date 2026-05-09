@@ -24,7 +24,6 @@ dependencies = [
     "pydantic>=2,<3",
     "pydantic-settings>=2.14,<3",
     "tomli-w>=1",
-    "toon-format==0.9.0b1",
 ]
 
 [project.scripts]

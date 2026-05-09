@@ -1,98 +1,54 @@
-"""``format_response`` orchestrator + ``toon_or_json`` heuristic + ``truncate``."""
+"""``format_response`` orchestrator + ``truncate`` (post-TOON).
+
+TOON-specific tests moved out — TOON was removed from the wire-format menu.
+TSV and page-tsv have their own dedicated test files.
+"""
 
 from __future__ import annotations
 
 import json
 
-import toon_format
+import pytest
 
 from a2kit.packages.formatter import (
     TRUNCATION_MARKER,
     Response,
     format_response,
-    toon_or_json,
     truncate,
 )
 
 
-class TestToonOrJsonHeuristic:
-    """Auto rule: structured nested data → TOON; flat / scalar → JSON."""
-
-    # TOON cases
-    def test_list_of_dicts_is_toon(self):
-        assert toon_or_json([{"a": 1}, {"a": 2}]) == "toon"
-
-    def test_dict_with_list_value_is_toon(self):
-        assert toon_or_json({"items": [1, 2, 3]}) == "toon"
-
-    def test_dict_with_dict_value_is_toon(self):
-        assert toon_or_json({"meta": {"x": 1}}) == "toon"
-
-    def test_list_of_lists_is_toon(self):
-        assert toon_or_json([[1, 2], [3, 4]]) == "toon"
-
-    # JSON cases
-    def test_scalar_string_is_json(self):
-        assert toon_or_json("hello") == "json"
-
-    def test_scalar_int_is_json(self):
-        assert toon_or_json(42) == "json"
-
-    def test_none_is_json(self):
-        assert toon_or_json(None) == "json"
-
-    def test_flat_dict_is_json(self):
-        assert toon_or_json({"a": 1, "b": "x"}) == "json"
-
-    def test_flat_list_is_json(self):
-        assert toon_or_json([1, 2, 3]) == "json"
-
-    def test_empty_dict_is_json(self):
-        assert toon_or_json({}) == "json"
-
-    def test_empty_list_is_json(self):
-        assert toon_or_json([]) == "json"
-
-
 class TestFormatResponseAuto:
-    def test_auto_picks_toon_for_list_of_dicts(self):
+    """Outside a tool-dispatch context, ``auto`` falls back to JSON."""
+
+    def test_auto_for_list_of_dicts_is_json(self):
         data = [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
         r = format_response(data)
-        assert r.format == "toon"
-        assert r.data == toon_format.encode(data)
+        assert r.format == "json"
+        assert json.loads(r.data) == data
 
-    def test_auto_picks_json_for_flat_dict(self):
+    def test_auto_for_flat_dict_is_json(self):
         data = {"a": 1, "b": 2}
         r = format_response(data)
         assert r.format == "json"
         assert json.loads(r.data) == data
 
-    def test_auto_picks_json_for_scalar(self):
+    def test_auto_for_scalar_is_json(self):
         r = format_response("hi")
         assert r.format == "json"
         assert json.loads(r.data) == "hi"
 
 
 class TestFormatResponseHints:
-    def test_toon_hint_forces_toon(self):
-        # A flat dict that auto would route to JSON — toon hint overrides.
-        data = {"a": 1}
-        r = format_response(data, format_hint="toon")
-        assert r.format == "toon"
-        assert r.data == toon_format.encode(data)
-
     def test_json_hint_forces_json(self):
-        # Nested data that auto would route to TOON — json hint overrides.
         data = [{"a": 1}, {"a": 2}]
         r = format_response(data, format_hint="json")
         assert r.format == "json"
         assert json.loads(r.data) == data
 
-    def test_toon_byte_identical_to_library(self):
-        # The contract: format_response(..., toon).data == toon_format.encode(...)
-        data = {"outer": {"inner": [{"x": 1}, {"x": 2}]}}
-        r = format_response(data, format_hint="toon")
-        assert r.data == toon_format.encode(data)
+    def test_toon_hint_raises(self):
+        with pytest.raises(ValueError, match="toon"):
+            format_response({"a": 1}, format_hint="toon")  # type: ignore[arg-type]
 
 
 class TestFormatResponseReturnType:
@@ -118,7 +74,6 @@ class TestTruncate:
         assert result.endswith(TRUNCATION_MARKER)
 
     def test_default_cap(self):
-        # Default is 50_000 — payloads smaller than that pass through.
         s = "x" * 49_000
         assert truncate(s) == s
 

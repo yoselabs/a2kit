@@ -1,22 +1,19 @@
 """Pydantic BaseModel rendering through ``format_response``.
 
-The CLI path used to leave BaseModel inputs un-normalized — TOON encoded them as
-``null`` (with an ``Unsupported type`` warning), and JSON ``default=str``
-produced the model's repr quoted as a single string. The fix is to normalize
-``BaseModel`` (and BaseModels nested in lists/dicts) via
-``model_dump(mode="json")`` at the formatter boundary, before either encoder
-runs. These tests pin that contract.
+The CLI path used to leave BaseModel inputs un-normalized — the JSON
+``default=str`` fallback produced the model's repr quoted as a single string.
+The fix is to normalize ``BaseModel`` (and BaseModels nested in lists/dicts)
+via ``model_dump(mode="json")`` at the formatter boundary, before the encoder
+runs.
 """
 
 from __future__ import annotations
 
 import json
-import logging
 
-import toon_format
 from pydantic import BaseModel
 
-from a2kit.packages.formatter import format_response, toon_or_json
+from a2kit.packages.formatter import format_response
 
 
 class Task(BaseModel):
@@ -35,22 +32,12 @@ class TestTopLevelBaseModel:
         got = format_response(raw, format_hint="json")
         assert got.format == "json"
         assert json.loads(got.data) == raw.model_dump(mode="json")
-        # explicit byte-equality against the canonical compact encoding
         expected = json.dumps(
             raw.model_dump(mode="json"),
             separators=(",", ":"),
             ensure_ascii=False,
         )
         assert got.data == expected
-
-    def test_toon_dumps_via_model_dump_no_warning(self, caplog):
-        raw = Task(id="t1", title="x")
-        with caplog.at_level(logging.WARNING):
-            got = format_response(raw, format_hint="toon")
-        assert got.format == "toon"
-        assert got.data == toon_format.encode(raw.model_dump(mode="json"))
-        # No "Unsupported type" log records
-        assert not any("Unsupported type" in r.message for r in caplog.records)
 
 
 class TestListOfBaseModels:
@@ -59,12 +46,6 @@ class TestListOfBaseModels:
         got = format_response(raw, format_hint="json")
         assert got.format == "json"
         assert json.loads(got.data) == [r.model_dump(mode="json") for r in raw]
-
-    def test_toon(self):
-        raw = [Task(id="a", title="x"), Task(id="b", title="y")]
-        got = format_response(raw, format_hint="toon")
-        assert got.format == "toon"
-        assert got.data == toon_format.encode([r.model_dump(mode="json") for r in raw])
 
 
 class TestDictWithBaseModelValues:
@@ -86,15 +67,18 @@ class TestNestedBaseModel:
         assert json.loads(got.data) == raw.model_dump(mode="json")
 
 
-class TestAutoFormatSelection:
-    def test_auto_picks_toon_for_model_with_list_field(self):
-        raw = Project(name="P", tasks=[Task(id="a", title="x")])
-        got = format_response(raw, format_hint="auto")
-        assert got.format == "toon"
-        assert got.data == toon_format.encode(raw.model_dump(mode="json"))
+class TestAutoFallback:
+    """Outside a tool-dispatch context, ``auto`` falls back to JSON."""
 
-    def test_auto_picks_json_for_flat_model(self):
+    def test_auto_for_flat_model_is_json(self):
         raw = Task(id="a", title="x")
+        got = format_response(raw, format_hint="auto")
+        assert got.format == "json"
+
+    def test_auto_for_nested_model_is_json(self):
+        # Type-driven routing happens at the descriptor level (CLI runtime),
+        # not in `format_response("auto")` directly. Direct callers get JSON.
+        raw = Project(name="P", tasks=[Task(id="a", title="x")])
         got = format_response(raw, format_hint="auto")
         assert got.format == "json"
 
@@ -107,16 +91,14 @@ class TestNonPydanticInputsUnchanged:
         got = format_response(raw, format_hint="json")
         assert got.data == json.dumps(raw, separators=(",", ":"), ensure_ascii=False)
 
-    def test_nested_dict_toon_byte_identical(self):
-        raw = {"items": [1, 2, 3], "meta": {"k": "v"}}
-        got = format_response(raw, format_hint="toon")
-        assert got.data == toon_format.encode(raw)
-
     def test_scalar_json(self):
         got = format_response("hello", format_hint="json")
         assert got.data == '"hello"'
 
-    def test_toon_or_json_unchanged_for_non_pydantic(self):
-        # Heuristic still works on plain dicts/lists.
-        assert toon_or_json([{"a": 1}, {"a": 2}]) == "toon"
-        assert toon_or_json({"a": 1}) == "json"
+
+class TestToonRemoved:
+    def test_format_hint_toon_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="toon"):
+            format_response({"a": 1}, format_hint="toon")  # type: ignore[arg-type]

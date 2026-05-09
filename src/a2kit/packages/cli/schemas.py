@@ -7,8 +7,8 @@ remaining kwonly params. Returns a dict with ``name``, ``description``,
 
 No fastmcp import.
 
-The testing-snapshot helper (``a2kit.packages.testing.snapshots.TOONSnapshotExtension``)
-imports ``compute_schema`` from here.
+The testing helpers in ``a2kit.packages.testing.snapshots`` import
+``compute_schema`` from here.
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ def build_schema_command(app: Any) -> click.Command:
     @click.option(
         "--format",
         "fmt",
-        type=click.Choice(["auto", "toon", "json"]),
+        type=click.Choice(["auto", "json", "tsv"]),
         default="auto",
         show_default=True,
     )
@@ -144,7 +144,7 @@ def build_schema_command(app: Any) -> click.Command:
         help="Emit one JSON schema per line (only with --format=json).",
     )
     def schema_cmd(tool_name: str | None, fmt: str, jsonl: bool) -> None:
-        """Print tool schemas. Default format is TOON (token-efficient for LLMs)."""
+        """Print tool schemas. Default format is auto (JSON unless type-driven routing picks otherwise)."""
         schemas = _all_schemas(app)
 
         if tool_name is not None:

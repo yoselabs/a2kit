@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Changed (BREAKING)
+
+- **Type-driven format routing.** `format_hint="auto"` (the default) now
+  consults the tool's pre-computed `ToolDescriptor.format_hint`, derived once
+  at `app.add_router()` from the resolved return-type annotation. Tools
+  declared `-> list[ScalarOnlyModel]` route to **TSV** (~30% fewer tokens than
+  JSON for the dominant tracker shape — see K research R122). Tools declared
+  `-> Page[T]` (where `T` is scalar-only) route to a hybrid **`page-tsv`**
+  format: JSON envelope, embedded TSV string for `items`, with an
+  `_items_format: "tsv"` discriminator. All other shapes (single models,
+  dicts, scalars, untyped, `Union`, deep nesting) route to JSON.
+- **TOON removed.** `format_hint="toon"` raises `ValueError`. The `toon`
+  module, `encode_toon`, `toon_or_json`, the `toon-format` dependency, and
+  the `TOONSnapshotExtension` syrupy helper are gone. Empirical R122 token
+  benchmark (cl100k_base / o200k_base) showed TOON has no win zone — TSV beats
+  it by 4-36% on tabular shapes; JSON beats it by 16-20% on shapes with list
+  or nested-dict columns.
+- `Page` is now `class Page(BaseModel, Generic[T])` (was `@dataclass`). Bare
+  `Page(items=[...], next_cursor="x")` construction stays compatible.
+  Subclasses can add fields naturally: `class SearchPage(Page[Task]): total: int`.
+- `App.tool_descriptors() -> list[ToolDescriptor]` is the typed introspection
+  surface. `App.tools()` continues to return bound callables for back-compat.
+
+### Migration
+
+- Tools already typed (`-> list[Task]`, `-> Page[Task]`) get the new behavior
+  with no source change. Token counts drop on tabular outputs.
+- Untyped tools route to JSON (no behavior change vs. the legacy `auto`
+  fallback to JSON).
+- If you depended on TOON output, switch to JSON. The benchmark shows JSON is
+  cheaper on every shape where TOON was previously chosen.
+
 ### Fixed
 
 - **CLI formatter renders pydantic `BaseModel` returns** in both JSON and TOON

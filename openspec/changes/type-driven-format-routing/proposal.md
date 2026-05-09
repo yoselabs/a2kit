@@ -7,15 +7,16 @@ This change replaces runtime heuristic routing with type-driven routing computed
 ## What Changes
 
 - **BREAKING (auto-format only):** `format_hint="auto"` no longer inspects the payload. It consults the cached `format_hint` on the tool's `ToolDescriptor`, computed at `app.add_router()` time from the function's return-type annotation.
-- **BREAKING (auto-format menu):** TOON is removed from the auto menu. It remains available via explicit `format_hint="toon"`. Hand-written callers of `format_response` that relied on auto picking TOON for `list[dict]` see TSV or JSON instead.
+- **BREAKING (TOON removed entirely):** TOON is no longer a supported wire format. `format_hint="toon"` raises `ValueError`. The `toon` module, `encode_toon`, `toon_or_json`, `toon-format` dependency, and TOON-specific tests are removed. Rationale: K research R122 shows TOON is dominated in token cost across every realistic shape — no win zone justifies the dependency and the dead code path.
 - New: `ToolDescriptor` dataclass with `name`, `router`, `fn`, `return_type`, `format_hint`, `schema`, exposed via `App.tool_descriptors()`. `App.tools()` continues to return callables (back-compat).
-- New: `_infer_format_hint(return_type)` walks pydantic-aware annotations to compute `"tsv" | "json" | "page-tsv"`. Fallback rule: missing type, `Any`, `Union` of incompatible shapes, unresolved forward ref, or any element type that isn't a scalar-only `BaseModel` → `"json"`.
+- New: `infer_format_hint(return_type)` walks pydantic-aware annotations to compute `"tsv" | "json" | "page-tsv"`. Fallback rule: missing type, `Any`, `Union` of incompatible shapes, unresolved forward ref, or any element type that isn't a scalar-only `BaseModel` → `"json"`.
 - New: `Page[T]` is a generic pydantic model. The existing `Page` dataclass at `a2kit/packages/formatter/response.py` is rewritten as `class Page(BaseModel, Generic[T])` with `items: list[T] = []` and `next_cursor: str | None = None`. Construction (`Page(items=[...], next_cursor="x")`) stays compatible. Subclassing to add `total: int | None` / `has_more: bool` becomes natural pydantic field declaration. At inference time, `Page[T]` (or subclass thereof) with scalar-only `T` → `"page-tsv"` hint.
 - New: TSV encoder (`encode_tsv`) using stdlib `csv` with `QUOTE_MINIMAL`, tab delimiter, `\n` line terminator. Header from declared field order (not alphabetical). List/dict cells (rare under the type-driven rule) are JSON-blob'd.
 - New: hybrid `page-tsv` encoder. Output is JSON: `{"items": "<tsv-string-with-header>", "next_cursor": "...", "_items_format": "tsv"}`. Metadata fields stay structured; `items` becomes a single string the agent parses as a TSV table. Top-level wire format remains `"json"`; `_items_format` discriminator signals embedded TSV.
-- `format_response` accepts `format_hint="tsv"` and `"page-tsv"` as first-class options alongside `"auto" | "toon" | "json"`.
-- `_invoke_tool_in_process` reads the cached hint from the descriptor instead of running `toon_or_json`.
-- `toon_or_json` stays as a public helper for legacy callers but is not used internally; documented as deprecated.
+- `format_response` accepts `format_hint` values `"auto" | "json" | "tsv" | "page-tsv"`. Passing `"toon"` raises `ValueError`.
+- `_invoke_tool_in_process` reads the cached hint from the descriptor; no heuristic is consulted.
+- Files removed: `src/a2kit/packages/formatter/toon.py`, `tests/packages/formatter/test_toon.py`. `encode_toon` and `toon_or_json` symbols removed from public exports.
+- Dependency removed: `toon-format` from `pyproject.toml`.
 
 ## Capabilities
 

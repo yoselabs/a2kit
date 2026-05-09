@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from a2kit.routers import Router, RouterRegistry
-from a2kit.tool import identity_dispatch_hook
+from a2kit.tool import ToolDescriptor, identity_dispatch_hook
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -29,6 +29,7 @@ class App:
     def __init__(self, name: str) -> None:
         self.name = name
         self._routers = RouterRegistry()
+        self._descriptors: list[ToolDescriptor] = []
         self._cli_extras: list[click.Command] = []
         self._mcp_middlewares: list[Any] = []
         # Lazy: created on first .provide() call.
@@ -51,6 +52,7 @@ class App:
             msg = f"router slug {slug!r} already registered by {type(existing).__name__!r}; declare an explicit name= or rename the class"
             raise ValueError(msg)
         self._routers.add(router)
+        self._descriptors.extend(_build_descriptors(router))
         return self
 
     def add_cli(self, command: click.Command) -> App:
@@ -124,6 +126,15 @@ class App:
     def tools(self) -> list[Callable[..., Any]]:
         return self._routers.tools()
 
+    def tool_descriptors(self) -> list[ToolDescriptor]:
+        """Typed descriptors materialized at ``add_router`` time. One per tool.
+
+        Each descriptor carries the resolved return type and the pre-computed
+        ``format_hint`` so the CLI runtime can dispatch encoders without
+        re-running type inference per call.
+        """
+        return list(self._descriptors)
+
     # --- internals ----------------------------------------------------- #
 
     def _ensure_container(self) -> None:
@@ -146,3 +157,44 @@ class App:
         self._ensure_container()
         container: Any = self._container
         install_connection_providers(container, conn_types)
+
+
+def _build_descriptors(router: Router) -> list[ToolDescriptor]:
+    """Materialize one ``ToolDescriptor`` per tool on ``router``.
+
+    Resolves return-type annotations (handling ``from __future__ import
+    annotations`` and string-quoted forward refs) and computes each tool's
+    ``format_hint`` via ``infer_format_hint``. On any resolution failure, the
+    descriptor falls back to ``return_type=None`` and ``format_hint="json"``
+    and a warning is logged once per tool.
+    """
+    import logging
+    import typing
+
+    from a2kit.packages.formatter.inference import infer_format_hint
+
+    log = logging.getLogger(__name__)
+    out: list[ToolDescriptor] = []
+    for fn in router.tools():
+        try:
+            hints = typing.get_type_hints(fn, include_extras=True)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "Failed to resolve type hints for %s.%s: %s",
+                router.slug,
+                getattr(fn, "__name__", "<callable>"),
+                exc,
+            )
+            hints = {}
+        return_type = hints.get("return")
+        format_hint = infer_format_hint(return_type)
+        out.append(
+            ToolDescriptor(
+                name=getattr(fn, "__name__", "<callable>"),
+                router=router,
+                fn=fn,
+                return_type=return_type,
+                format_hint=format_hint,
+            )
+        )
+    return out

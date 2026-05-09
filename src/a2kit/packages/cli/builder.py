@@ -145,6 +145,8 @@ def _wrap_with_enricher(fn: Callable[..., Any], router: Router | None = None) ->
 
 
 def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None = None) -> click.Command:
+    from a2kit.packages.formatter.inference import infer_format_hint
+
     meta = get_meta(fn)
     tool_name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
     description = (fn.__doc__ or "").strip().splitlines()[0] if fn.__doc__ else ""
@@ -155,6 +157,8 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
         resolved_hints = get_type_hints(fn)
     except Exception:  # noqa: BLE001
         resolved_hints = {}
+
+    descriptor_hint = infer_format_hint(resolved_hints.get("return"))
     required_names: set[str] = set()
     json_decode_params: set[str] = set()
     click_params: list[click.Parameter] = []
@@ -205,7 +209,7 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
     click_params.append(
         click.Option(
             ["--format", "fmt"],
-            type=click.Choice(["auto", "toon", "json"]),
+            type=click.Choice(["auto", "json", "tsv", "page-tsv"]),
             default="auto",
             show_default=True,
         )
@@ -224,10 +228,17 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
 
     def callback(**kwargs: Any) -> None:
         fmt = kwargs.pop("fmt", "auto")
+        # Type-driven routing: "auto" resolves to the descriptor's
+        # pre-computed hint at command-build time.
+        if fmt == "auto":
+            fmt = descriptor_hint
         schema_flag = kwargs.pop("schema", False)
         if schema_flag:
             schema = compute_schema(fn, container=app.container())
-            click.echo(format_response(schema, format_hint=cast("FormatHint", fmt)).data)
+            # Schemas are dicts; keep them on the JSON path regardless of the
+            # tool's descriptor hint.
+            schema_fmt = "json" if fmt in ("tsv", "page-tsv") else fmt
+            click.echo(format_response(schema, format_hint=cast("FormatHint", schema_fmt)).data)
             return
 
         missing = [n for n in required_names if kwargs.get(n) is None]

@@ -1,31 +1,14 @@
-"""Per-tool schema snapshots — syrupy single-file extension.
+"""Per-tool schema snapshots.
 
 `compute_schema(fn)` is re-exported from `a2kit.packages.cli.schemas` (its
-canonical location). `TOONSnapshotExtension` subclasses syrupy's
-`SingleFileSnapshotExtension` and serializes any schema dict via
-`a2kit.packages.formatter.format_response` forced to TOON, so snapshot
-bytes are byte-identical to ``<app> schema --format=toon``.
+canonical location). The previous `TOONSnapshotExtension` was removed when
+TOON was dropped as a wire format; if you need schema snapshots, use syrupy's
+default JSON extension or write a thin subclass calling
+`format_response(data, format_hint="json")`.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
-from syrupy.extensions.single_file import SingleFileSnapshotExtension
-
 from a2kit.packages.cli.schemas import compute_schema
 
-
-class TOONSnapshotExtension(SingleFileSnapshotExtension):
-    """Syrupy single-file extension that writes TOON-encoded schemas."""
-
-    _file_extension = "toon"
-    file_extension = "toon"
-
-    def serialize(self, data: Any, **kwargs: Any) -> str:
-        from a2kit.packages.formatter import format_response
-
-        return format_response(data, format_hint="toon").data
-
-
-__all__ = ["TOONSnapshotExtension", "compute_schema"]
+__all__ = ["compute_schema"]

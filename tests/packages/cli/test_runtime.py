@@ -36,10 +36,12 @@ def test_format_auto_picks_json_for_flat_dict() -> None:
     assert out == '{"value":14}'
 
 
-def test_format_toon_forced() -> None:
-    out = invoke_tool_sync(simple_tool, {"n": 2}, fmt="toon")
-    # Just confirm it differs from JSON form (TOON encoding present).
-    assert out != '{"value":4}'
+def test_format_toon_raises() -> None:
+    """TOON was removed from the wire-format menu — passing it raises."""
+    import pytest
+
+    with pytest.raises(ValueError, match="toon"):
+        invoke_tool_sync(simple_tool, {"n": 2}, fmt="toon")
 
 
 def test_enricher_wraps_exceptions() -> None:
