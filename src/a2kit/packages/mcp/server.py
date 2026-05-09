@@ -19,6 +19,8 @@ from a2kit.packages.mcp.context import bind_context
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
 
+_EXTRA_DROP_FROM_WIRE = ("a2kit.enricher", "a2kit.report_type")
+
 
 def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
     """JSON-serializable projection of ``A2KitMeta`` for ``tool.meta`` wire output."""
@@ -27,8 +29,13 @@ def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
     annotations = d.get("annotations")
     if annotations is not None and hasattr(meta.annotations, "model_dump"):
         d["annotations"] = meta.annotations.model_dump(exclude_none=True)
-    d.pop("enricher", None)
-    d.pop("report_type", None)  # the class itself is not JSON-serializable; report_schema travels.
+    extra = dict(d.get("extra") or {})
+    for key in _EXTRA_DROP_FROM_WIRE:
+        extra.pop(key, None)
+    list_view = extra.get("a2kit.list_view")
+    if list_view is not None and hasattr(list_view, "__dataclass_fields__"):
+        extra["a2kit.list_view"] = asdict(list_view)
+    d["extra"] = extra
     return d
 
 
@@ -44,19 +51,20 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     reports_enabled = getattr(app, "ldd_reports", True)
     events_enabled = getattr(app, "ldd_events", True)
 
-    # Tools come pre-wrapped by Router (enricher applied there). The MCP
-    # builder is enricher-agnostic.
+    from a2kit.packages.enrichers import wrap as wrap_with_enricher
+
     for fn in app.tools():
         meta = get_meta(fn)
         if meta is None:
             continue
 
-        wrapped = fn
+        enricher = meta.extra.get("a2kit.enricher")
+        wrapped = wrap_with_enricher(fn, enricher) if enricher is not None else fn
         if meta.context_param_name:
             wrapped = bind_context(
                 wrapped,
                 meta.context_param_name,
-                report_type=meta.report_type,
+                report_type=meta.extra.get("a2kit.report_type"),
                 tool_name=meta.tool_name,
                 reports_enabled=reports_enabled,
                 events_enabled=events_enabled,

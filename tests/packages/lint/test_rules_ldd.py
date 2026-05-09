@@ -14,7 +14,7 @@ def _findings(src: str) -> list:
     return list(rule_ldd_report_type(tree, "<test>", src))
 
 
-def test_fires_when_ctx_report_called_without_kwarg() -> None:
+def test_fires_when_ctx_report_called_without_reports_decorator() -> None:
     src = """
     import a2kit
 
@@ -28,15 +28,17 @@ def test_fires_when_ctx_report_called_without_kwarg() -> None:
     assert out[0].rule == A2K_LDD_REPORT_TYPE
 
 
-def test_silent_when_kwarg_present_and_module_scope() -> None:
+def test_silent_when_reports_decorator_present_and_module_scope() -> None:
     src = """
     from pydantic import BaseModel
     import a2kit
+    from a2kit.packages.mcp.reports import reports
 
     class BatchReport(BaseModel):
         n: int
 
-    @a2kit.read(report=BatchReport)
+    @a2kit.read()
+    @reports(BatchReport)
     async def get_thing(*, ctx) -> dict:
         await ctx.report(BatchReport(n=1))
         return {}
@@ -48,18 +50,19 @@ def test_fires_when_reportt_is_not_module_scope() -> None:
     src = """
     from pydantic import BaseModel
     import a2kit
+    from a2kit.packages.mcp.reports import reports
 
     def make_decorator():
         class InnerReport(BaseModel):
             n: int
 
-        @a2kit.read(report=InnerReport)
+        @a2kit.read()
+        @reports(InnerReport)
         async def get_thing(*, ctx) -> dict:
             return {}
         return get_thing
     """
     out = _findings(src)
-    # InnerReport is not at module scope.
     assert any(f.rule == A2K_LDD_REPORT_TYPE for f in out)
 
 
@@ -99,7 +102,6 @@ def test_other_dot_report_not_flagged_when_no_decorator() -> None:
 
 
 def test_a2kit_tool_decorator_also_covered() -> None:
-    """``@a2kit.tool(...)`` (the explicit verb) is also a target."""
     src = """
     import a2kit
 

@@ -1,8 +1,11 @@
-"""Tracker routers — constructor injection, per-tool enricher.
+"""Tracker routers — constructor injection, stacked feature decorators.
 
 Routers receive a `get_store` factory in `__init__` and call it from each
-tool method. No DI sentinel, no class-as-key, no Generic introspection.
-The per-tool ``enricher=`` decorator kwarg attaches the not-found rewrite.
+tool method. Per-tool concerns attach via stacked decorators:
+
+- `@enriches(...)` — exception rewrite (replaces the old `enricher=` kwarg)
+- `@lists(...)`    — list-view projection settings (old `list_view=` kwarg)
+- `@reports(T)`    — typed report payload for `ctx.report` (old `report=` kwarg)
 """
 
 from __future__ import annotations
@@ -12,7 +15,9 @@ import uuid
 from typing import TYPE_CHECKING
 
 import a2kit
-from a2kit.metadata import ListViewSettings
+from a2kit.packages.enrichers import enriches
+from a2kit.packages.mcp.lists import lists
+from a2kit.packages.mcp.reports import reports
 
 from .enrichers import tracker_404_enricher
 from .models import BatchReport, Project, Task
@@ -25,33 +30,21 @@ if TYPE_CHECKING:
     GetStore = Callable[[str], Awaitable[TrackerStore]]
 
 
-_TASK_LIST_VIEW = ListViewSettings(
-    default_fields=("id", "title", "status", "assignee"),
-    page_size=20,
-    selectable_fields=(
-        "id",
-        "title",
-        "status",
-        "assignee",
-        "priority",
-        "project_id",
-        "created_at",
-        "done",
-    ),
-)
-
-
 class ProjectsRouter(a2kit.Router):
+    name = "projects"
+
     def __init__(self, get_store: GetStore) -> None:
         super().__init__()
         self.get_store = get_store
 
-    @a2kit.list_(enricher=tracker_404_enricher)
+    @a2kit.list_()
+    @enriches(tracker_404_enricher)
     async def list_projects(self, *, connection: str) -> list[Project]:
         projects, _ = (await self.get_store(connection)).load_state()
         return projects
 
-    @a2kit.read(enricher=tracker_404_enricher)
+    @a2kit.read()
+    @enriches(tracker_404_enricher)
     async def get_project(self, *, connection: str, project_id: str) -> Project:
         projects, _ = (await self.get_store(connection)).load_state()
         for p in projects:
@@ -59,7 +52,8 @@ class ProjectsRouter(a2kit.Router):
                 return p
         raise KeyError(project_id)
 
-    @a2kit.write(enricher=tracker_404_enricher)
+    @a2kit.write()
+    @enriches(tracker_404_enricher)
     async def create_project(self, *, connection: str, name: str) -> Project:
         store = await self.get_store(connection)
         projects, tasks = store.load_state()
@@ -68,7 +62,8 @@ class ProjectsRouter(a2kit.Router):
         store.replace(projects, tasks)
         return new
 
-    @a2kit.write(enricher=tracker_404_enricher)
+    @a2kit.write()
+    @enriches(tracker_404_enricher)
     async def archive_project(self, *, connection: str, project_id: str) -> Project:
         store = await self.get_store(connection)
         projects, tasks = store.load_state()
@@ -81,18 +76,36 @@ class ProjectsRouter(a2kit.Router):
 
 
 class TasksRouter(a2kit.Router):
+    name = "tasks"
+
     def __init__(self, get_store: GetStore) -> None:
         super().__init__()
         self.get_store = get_store
 
-    @a2kit.list_(list_view=_TASK_LIST_VIEW, enricher=tracker_404_enricher)
+    @a2kit.list_()
+    @lists(
+        default_fields=("id", "title", "status", "assignee"),
+        page_size=20,
+        selectable_fields=(
+            "id",
+            "title",
+            "status",
+            "assignee",
+            "priority",
+            "project_id",
+            "created_at",
+            "done",
+        ),
+    )
+    @enriches(tracker_404_enricher)
     async def list_tasks(self, *, connection: str, project_id: str | None = None) -> list[Task]:
         _, tasks = (await self.get_store(connection)).load_state()
         if project_id is not None:
             tasks = [t for t in tasks if t.project_id == project_id]
         return tasks
 
-    @a2kit.read(enricher=tracker_404_enricher)
+    @a2kit.read()
+    @enriches(tracker_404_enricher)
     async def get_task(self, *, connection: str, task_id: str) -> Task:
         _, tasks = (await self.get_store(connection)).load_state()
         for t in tasks:
@@ -100,7 +113,8 @@ class TasksRouter(a2kit.Router):
                 return t
         raise KeyError(task_id)
 
-    @a2kit.write(enricher=tracker_404_enricher)
+    @a2kit.write()
+    @enriches(tracker_404_enricher)
     async def create_task(self, *, connection: str, project_id: str, title: str) -> Task:
         store = await self.get_store(connection)
         projects, tasks = store.load_state()
@@ -111,7 +125,8 @@ class TasksRouter(a2kit.Router):
         store.replace(projects, tasks)
         return new
 
-    @a2kit.write(enricher=tracker_404_enricher)
+    @a2kit.write()
+    @enriches(tracker_404_enricher)
     async def complete_task(self, *, connection: str, task_id: str) -> Task:
         store = await self.get_store(connection)
         projects, tasks = store.load_state()
@@ -122,7 +137,9 @@ class TasksRouter(a2kit.Router):
                 return tasks[i]
         raise KeyError(task_id)
 
-    @a2kit.write(report=BatchReport, enricher=tracker_404_enricher)
+    @a2kit.write()
+    @reports(BatchReport)
+    @enriches(tracker_404_enricher)
     async def bulk_import_tasks(
         self,
         *,

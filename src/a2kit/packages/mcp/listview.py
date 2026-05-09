@@ -19,7 +19,8 @@ from fastmcp.server.middleware import Middleware, MiddlewareContext
 
 
 def _list_view_settings(meta_a2kit: dict[str, Any]) -> dict[str, Any] | None:
-    lv = meta_a2kit.get("list_view")
+    extra = meta_a2kit.get("extra") if isinstance(meta_a2kit, dict) else None
+    lv = extra.get("a2kit.list_view") if isinstance(extra, dict) else None
     if not lv:
         return None
     return lv if isinstance(lv, dict) else None

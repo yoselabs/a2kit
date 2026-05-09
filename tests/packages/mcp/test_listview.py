@@ -11,8 +11,8 @@ import asyncio
 from typing import Any
 
 import a2kit
-from a2kit.metadata import ListViewSettings
 from a2kit.packages.mcp import build_mcp_server
+from a2kit.packages.mcp.lists import lists
 from a2kit.packages.mcp.listview import _apply
 
 
@@ -58,7 +58,8 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
     class R(a2kit.Router):
         name = "rows"
 
-        @a2kit.list_("rows", list_view=ListViewSettings(default_fields=("id",), page_size=3))
+        @a2kit.list_("rows")
+        @lists(default_fields=("id",), page_size=3)
         async def rows(self) -> list[dict[str, Any]]:
             return [{"id": i, "extra": "drop"} for i in range(10)]
 
@@ -69,7 +70,7 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
         tools = {t.name: t for t in await server.list_tools()}
         rows = tools["rows"]
         a2kit_meta = (rows.meta or {})["a2kit"]
-        lv = a2kit_meta["list_view"]
+        lv = a2kit_meta["extra"]["a2kit.list_view"]
         # asdict turns the tuple into a list (or keeps tuple — both fine).
         assert list(lv["default_fields"]) == ["id"]
         assert lv["page_size"] == 3

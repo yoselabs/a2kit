@@ -4,6 +4,10 @@ An *enricher* is a function `(exc, tool_name) -> exc` that turns cryptic
 errors into agent-actionable ones. Enrichers know nothing about MCP, CLI, or
 fastmcp — they just transform exceptions. Adapters call `wrap(fn, enricher)`
 before registering the tool so both protocols honor identical error semantics.
+
+Tools attach an enricher via the stacked ``@enriches(fn)`` decorator, which
+writes ``a2kit.enricher`` into ``A2KitMeta.extra``. Adapters (CLI, MCP) read
+that key at registration time and apply ``wrap``.
 """
 
 from __future__ import annotations
@@ -14,10 +18,34 @@ from collections.abc import Callable
 from difflib import get_close_matches
 from typing import Any, TypeVar, cast
 
+from a2kit.metadata import stage_extra
+
+EXTRA_KEY = "a2kit.enricher"
+
 EnricherFn = Callable[[Exception, str], Exception]
 """`(exc, tool_name) -> enriched_exc`. Return same instance for passthrough."""
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def enriches(enricher: EnricherFn) -> Callable[[F], F]:
+    """Stack on top of a verb decorator to attach an exception enricher.
+
+    Usage::
+
+        @a2kit.read()
+        @enriches(my_enricher)
+        async def get_thing(self, *, id: str) -> dict: ...
+
+    Order: place ``@enriches`` *inside* (below) the verb decorator. The verb
+    decorator consumes the staged extra at stamp time.
+    """
+
+    def deco(fn: F) -> F:
+        stage_extra(fn, EXTRA_KEY, enricher)
+        return fn
+
+    return deco
 
 
 def chain(*enrichers: EnricherFn) -> EnricherFn:
@@ -105,4 +133,4 @@ def connection_enricher(store: Any) -> EnricherFn:
     return enrich
 
 
-__all__ = ["EnricherFn", "chain", "connection_enricher", "wrap"]
+__all__ = ["EXTRA_KEY", "EnricherFn", "chain", "connection_enricher", "enriches", "wrap"]

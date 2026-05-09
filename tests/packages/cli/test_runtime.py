@@ -61,21 +61,22 @@ def test_enricher_wraps_exceptions() -> None:
             return FriendlyError("nicer message")
         return exc
 
+    from a2kit.packages.enrichers import enriches, wrap
+
     class R(a2kit.Router):
-        @a2kit.read(enricher=enrich)
+        @a2kit.read()
+        @enriches(enrich)
         def boom(self, *, x: int) -> dict:
             raise BoomError("ugly")
 
-    fn = R().tools()[0]
-    # `fn` is the enricher-wrapped tool; it still needs `self` bound.
-    import functools
+    # Router stores bound methods now; adapters apply the enricher wrap explicitly.
+    bound = R().tools()[0]
+    from a2kit.metadata import get_meta
 
-    @functools.wraps(fn)
-    def bound(**kw):
-        return fn(R(), **kw)
+    enriched = wrap(bound, get_meta(bound).extra["a2kit.enricher"])
 
     with pytest.raises(FriendlyError, match="nicer message"):
-        invoke_tool_sync(bound, {"x": 1}, fmt="json")
+        invoke_tool_sync(enriched, {"x": 1}, fmt="json")
 
 
 def test_ctx_param_supplied() -> None:

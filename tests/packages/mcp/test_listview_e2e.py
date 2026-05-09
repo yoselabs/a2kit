@@ -12,17 +12,15 @@ import asyncio
 from typing import Any
 
 import a2kit
-from a2kit.metadata import ListViewSettings
 from a2kit.packages.mcp import build_mcp_server
+from a2kit.packages.mcp.lists import lists
 from a2kit.packages.mcp.listview import _apply, _apply_to_items, _list_view_settings, _project_row
 
 # --------------------------- module-level tools (no `self` binding issues) --------------------------- #
 
 
-@a2kit.list_(
-    "list_things",
-    list_view=ListViewSettings(default_fields=("id", "name"), page_size=2),
-)
+@a2kit.list_("list_things")
+@lists(default_fields=("id", "name"), page_size=2)
 async def _list_things() -> list[dict[str, Any]]:
     return [
         {"id": 1, "name": "a", "extra": "drop"},
@@ -101,16 +99,16 @@ def test_listview_e2e_passthrough_for_non_list_dict_result() -> None:
 
 def test_list_view_settings_returns_none_for_missing_key() -> None:
     assert _list_view_settings({}) is None
-    assert _list_view_settings({"list_view": None}) is None
+    assert _list_view_settings({"extra": {"a2kit.list_view": None}}) is None
 
 
 def test_list_view_settings_returns_none_for_non_dict() -> None:
-    assert _list_view_settings({"list_view": "garbage"}) is None
+    assert _list_view_settings({"extra": {"a2kit.list_view": "garbage"}}) is None
 
 
 def test_list_view_settings_returns_dict_when_present() -> None:
     payload = {"default_fields": ("id",), "page_size": 5}
-    assert _list_view_settings({"list_view": payload}) == payload
+    assert _list_view_settings({"extra": {"a2kit.list_view": payload}}) == payload
 
 
 def test_project_row_passes_through_non_dict() -> None:

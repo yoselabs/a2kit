@@ -12,9 +12,8 @@ if TYPE_CHECKING:
         ReportTypeMismatch,
         ReportTypeNotDeclared,
         ToolCallContamination,
-        WriteNotAllowed,
     )
-    from a2kit.metadata import A2KitMeta, ListViewSettings
+    from a2kit.metadata import A2KitMeta
     from a2kit.routers import Router, RouterRegistry
     from a2kit.runtime import ToolContext
     from a2kit.tool import list_, read, tool, write
@@ -32,11 +31,9 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "capabilities": ("a2kit.capabilities", "capabilities"),
     "ToolContext": ("a2kit.runtime", "ToolContext"),
     "A2KitMeta": ("a2kit.metadata", "A2KitMeta"),
-    "ListViewSettings": ("a2kit.metadata", "ListViewSettings"),
     "A2KitError": ("a2kit.exceptions", "A2KitError"),
     "ToolCallContamination": ("a2kit.exceptions", "ToolCallContamination"),
     "InvalidToolReturnTypeError": ("a2kit.exceptions", "InvalidToolReturnTypeError"),
-    "WriteNotAllowed": ("a2kit.exceptions", "WriteNotAllowed"),
     "InvalidFilterExpression": ("a2kit.exceptions", "InvalidFilterExpression"),
     "ReportTypeNotDeclared": ("a2kit.exceptions", "ReportTypeNotDeclared"),
     "ReportTypeMismatch": ("a2kit.exceptions", "ReportTypeMismatch"),
@@ -71,14 +68,12 @@ __all__ = [
     "Cap",
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
-    "ListViewSettings",
     "ReportTypeMismatch",
     "ReportTypeNotDeclared",
     "Router",
     "RouterRegistry",
     "ToolCallContamination",
     "ToolContext",
-    "WriteNotAllowed",
     "capabilities",
     "list_",
     "read",

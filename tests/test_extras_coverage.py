@@ -246,11 +246,13 @@ def test_listview_middleware_returns_result_when_tool_name_missing() -> None:
 
 
 def test_tool_generic_decorator_stamps_meta() -> None:
-    """`@tool(...)` (the verb-agnostic generic decorator) stamps `A2KitMeta`."""
-    from a2kit.metadata import ListViewSettings, get_meta
+    """`@tool(...)` stamps `A2KitMeta`; stacked `@lists(...)` writes into extra."""
+    from a2kit.metadata import get_meta
+    from a2kit.packages.mcp.lists import lists
     from a2kit.tool import tool
 
-    @tool(name="manual", tags={"x"}, list_view=ListViewSettings(default_fields=("a",)))
+    @tool(name="manual", tags={"x"})
+    @lists(default_fields=("a",))
     async def fn() -> dict[str, int]:
         return {"a": 1}
 
@@ -259,8 +261,9 @@ def test_tool_generic_decorator_stamps_meta() -> None:
     assert meta.tool_name == "manual"
     assert meta.verb == "tool"
     assert "x" in meta.tags
-    assert meta.list_view is not None
-    assert meta.list_view.default_fields == ("a",)
+    lv = meta.extra.get("a2kit.list_view")
+    assert lv is not None
+    assert lv.default_fields == ("a",)
 
 
 def test_tool_generic_decorator_defaults_to_function_name() -> None:
@@ -288,7 +291,7 @@ def test_invalid_tool_return_type_error_message() -> None:
 
 
 def test_write_not_allowed_with_empty_key_and_tool_name() -> None:
-    from a2kit.exceptions import WriteNotAllowed
+    from a2kit.packages.connections.exceptions import WriteNotAllowed
 
     err = WriteNotAllowed((), tool_name="dangerous")
     assert "<unknown>" in str(err)
@@ -296,7 +299,7 @@ def test_write_not_allowed_with_empty_key_and_tool_name() -> None:
 
 
 def test_write_not_allowed_with_key_no_tool_name() -> None:
-    from a2kit.exceptions import WriteNotAllowed
+    from a2kit.packages.connections.exceptions import WriteNotAllowed
 
     err = WriteNotAllowed(("p", "e"))
     assert "p-e" in str(err)
@@ -323,25 +326,25 @@ def test_invalid_filter_expression_carries_hint() -> None:
 # --------------------------- routers slugify branches --------------------------- #
 
 
-def test_router_slug_strips_router_suffix() -> None:
-    """`MyTrackerRouter` → slug `my-tracker`."""
+def test_router_slug_class_name_verbatim() -> None:
+    """No `name` set → slug is the class name verbatim (no string surgery)."""
     import a2kit
 
     class MyTrackerRouter(a2kit.Router):
         pass
 
     r = MyTrackerRouter()
-    assert r.slug == "my-tracker"
+    assert r.slug == "MyTrackerRouter"
 
 
-def test_router_slug_explicit_name_wins() -> None:
+def test_router_slug_class_attr_wins() -> None:
     import a2kit
 
     class XYZ(a2kit.Router):
         name = "custom_slug"
 
     r = XYZ()
-    assert r.slug == "custom-slug"
+    assert r.slug == "custom_slug"
 
 
 def test_router_slug_constructor_arg_wins() -> None:
@@ -351,7 +354,7 @@ def test_router_slug_constructor_arg_wins() -> None:
         pass
 
     r = _R("Override")
-    assert r.slug == "override"
+    assert r.slug == "Override"
 
 
 def test_router_registry_round_trip() -> None:

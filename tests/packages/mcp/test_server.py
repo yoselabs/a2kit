@@ -8,8 +8,9 @@ from typing import Any
 import pytest
 
 import a2kit
-from a2kit.metadata import ListViewSettings
+from a2kit.packages.enrichers import enriches
 from a2kit.packages.mcp import build_mcp_server
+from a2kit.packages.mcp.lists import lists
 
 
 class _SampleRouter(a2kit.Router):
@@ -19,7 +20,8 @@ class _SampleRouter(a2kit.Router):
     async def ping(self, *, name: str = "world") -> dict[str, str]:
         return {"hello": name}
 
-    @a2kit.list_("rows", list_view=ListViewSettings(default_fields=("id", "name"), page_size=2))
+    @a2kit.list_("rows")
+    @lists(default_fields=("id", "name"), page_size=2)
     async def rows(self) -> list[dict[str, Any]]:
         return [
             {"id": 1, "name": "a", "extra": "drop"},
@@ -56,9 +58,10 @@ def test_tools_registered_with_a2kit_meta(app: a2kit.App) -> None:
         assert a2kit_meta["verb"] == "read"
         assert a2kit_meta["tool_name"] == "ping"
         assert "read" in a2kit_meta["tags"]
-        assert a2kit_meta["router_slug"] == "sample"
-        # enricher dropped (callable, non-serializable)
-        assert "enricher" not in a2kit_meta
+        assert a2kit_meta["extra"]["a2kit.router_slug"] == "sample"
+        # enricher and report_type dropped from wire (non-JSON-serializable)
+        assert "a2kit.enricher" not in a2kit_meta["extra"]
+        assert "a2kit.report_type" not in a2kit_meta["extra"]
         # annotations serialized via model_dump
         ann = a2kit_meta["annotations"]
         assert isinstance(ann, dict)
@@ -73,7 +76,7 @@ def test_list_view_settings_round_trip(app: a2kit.App) -> None:
         tools = {t.name: t for t in await server.list_tools()}
         rows = tools["rows"]
         a2kit_meta = (rows.meta or {})["a2kit"]
-        lv = a2kit_meta["list_view"]
+        lv = a2kit_meta["extra"]["a2kit.list_view"]
         assert list(lv["default_fields"]) == ["id", "name"]
         assert lv["page_size"] == 2
 
@@ -104,7 +107,8 @@ def test_enricher_fires_before_registration() -> None:
         fired.append(exc)
         return ValueError(f"enriched: {exc!s}")
 
-    @a2kit.read("boom", enricher=my_enricher)
+    @a2kit.read("boom")
+    @enriches(my_enricher)
     async def boom() -> dict[str, str]:
         raise RuntimeError("kaboom")
 

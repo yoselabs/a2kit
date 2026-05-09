@@ -6,7 +6,7 @@ from typing import Any, Literal, TypeVar
 from mcp.types import ToolAnnotations
 
 from a2kit.exceptions import InvalidToolReturnTypeError
-from a2kit.metadata import A2KitMeta, EnricherFn, ListViewSettings, set_meta
+from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, set_meta
 from a2kit.signature import find_context_param
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -18,16 +18,6 @@ def _check_return(fn: Callable[..., Any]) -> None:
         raise InvalidToolReturnTypeError(getattr(fn, "__name__", "<callable>"))
 
 
-def _report_schema(report_type: type | None) -> dict[str, Any] | None:
-    if report_type is None:
-        return None
-    try:
-        from pydantic import TypeAdapter
-    except ImportError:
-        return None
-    return TypeAdapter(report_type).json_schema()
-
-
 def _stamp(
     fn: F,
     *,
@@ -35,25 +25,23 @@ def _stamp(
     name: str | None,
     tags: frozenset[str],
     annotations: ToolAnnotations,
-    enricher: EnricherFn | None,
-    list_view: ListViewSettings | None,
-    router_slug: str | None,
-    report_type: type | None,
 ) -> F:
     _check_return(fn)
+    pending: dict[str, Any] = dict(getattr(fn, PENDING_EXTRA_ATTR, None) or {})
     meta = A2KitMeta(
         tool_name=name or getattr(fn, "__name__", "<callable>"),
         verb=verb,
         tags=tags,
         annotations=annotations,
-        router_slug=router_slug,
-        list_view=list_view,
-        enricher=enricher,
         context_param_name=find_context_param(fn),
-        report_type=report_type,
-        report_schema=_report_schema(report_type),
+        extra=pending,
     )
     set_meta(fn, meta)
+    if hasattr(fn, PENDING_EXTRA_ATTR):
+        import contextlib
+
+        with contextlib.suppress(AttributeError):
+            delattr(fn, PENDING_EXTRA_ATTR)
     return fn
 
 
@@ -62,10 +50,6 @@ def tool(
     *,
     tags: set[str] | frozenset[str] | None = None,
     annotations: ToolAnnotations | None = None,
-    enricher: EnricherFn | None = None,
-    list_view: ListViewSettings | None = None,
-    router_slug: str | None = None,
-    report: type | None = None,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
@@ -74,16 +58,12 @@ def tool(
             name=name,
             tags=frozenset(tags or ()),
             annotations=annotations or ToolAnnotations(),
-            enricher=enricher,
-            list_view=list_view,
-            router_slug=router_slug,
-            report_type=report,
         )
 
     return deco
 
 
-def read(name: str | None = None, *, tags: set[str] | None = None, **kw: Any) -> Callable[[F], F]:
+def read(name: str | None = None, *, tags: set[str] | None = None) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
             fn,
@@ -91,16 +71,12 @@ def read(name: str | None = None, *, tags: set[str] | None = None, **kw: Any) ->
             name=name,
             tags=frozenset({"read", *(tags or set())}),
             annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
-            enricher=kw.get("enricher"),
-            list_view=kw.get("list_view"),
-            router_slug=kw.get("router_slug"),
-            report_type=kw.get("report"),
         )
 
     return deco
 
 
-def write(name: str | None = None, *, tags: set[str] | None = None, **kw: Any) -> Callable[[F], F]:
+def write(name: str | None = None, *, tags: set[str] | None = None) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
             fn,
@@ -108,16 +84,12 @@ def write(name: str | None = None, *, tags: set[str] | None = None, **kw: Any) -
             name=name,
             tags=frozenset({"write", *(tags or set())}),
             annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True),
-            enricher=kw.get("enricher"),
-            list_view=kw.get("list_view"),
-            router_slug=kw.get("router_slug"),
-            report_type=kw.get("report"),
         )
 
     return deco
 
 
-def list_(name: str | None = None, *, tags: set[str] | None = None, **kw: Any) -> Callable[[F], F]:
+def list_(name: str | None = None, *, tags: set[str] | None = None) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
             fn,
@@ -125,10 +97,6 @@ def list_(name: str | None = None, *, tags: set[str] | None = None, **kw: Any) -
             name=name,
             tags=frozenset({"read", "list", *(tags or set())}),
             annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
-            enricher=kw.get("enricher"),
-            list_view=kw.get("list_view"),
-            router_slug=kw.get("router_slug"),
-            report_type=kw.get("report"),
         )
 
     return deco

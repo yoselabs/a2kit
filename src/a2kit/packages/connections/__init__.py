@@ -1,6 +1,5 @@
 """a2kit.packages.connections — pydantic-settings-backed Connection store + CLI."""
 
-from a2kit.exceptions import WriteNotAllowed
 from a2kit.packages.connections.cli import connections_cli
 from a2kit.packages.connections.config import ConnectionConfig, default_config_dir
 from a2kit.packages.connections.exceptions import (
@@ -11,6 +10,7 @@ from a2kit.packages.connections.exceptions import (
     KeyFieldMissing,
     OpResolutionError,
     TokenResolutionError,
+    WriteNotAllowed,
 )
 from a2kit.packages.connections.filters import EphemeralAwareStore, FilteredStore, scope_filter
 from a2kit.packages.connections.store import ConnectionStore

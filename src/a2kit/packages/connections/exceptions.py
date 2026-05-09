@@ -57,3 +57,14 @@ class OpResolutionError(TokenResolutionError):
         self.ref = ref
         self.hint = hint
         super().__init__(f"Failed to resolve 1Password reference {ref!r}: {hint}")
+
+
+class WriteNotAllowed(PermissionError):
+    """Raised when a write-marked tool is invoked against a read-only connection."""
+
+    def __init__(self, key: tuple[str, ...], tool_name: str | None = None) -> None:
+        self.key = key
+        self.tool_name = tool_name
+        joined = "-".join(key) if key else "<unknown>"
+        suffix = f" (tool {tool_name!r})" if tool_name else ""
+        super().__init__(f"Connection {joined!r} is read-only — cannot run write-marked tool{suffix}.")

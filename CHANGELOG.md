@@ -1,5 +1,96 @@
 # Changelog
 
+## 0.21.0 — de-magic round 2: stacked decorators, lint-enforced core purity — 2026-05-09
+
+Second pass at trimming framework magic from the v0.20 surface. The verb decorators
+(`@a2kit.read/write/list_/tool`) drop their feature kwargs (`enricher=`, `list_view=`,
+`report=`, `router_slug=`); each feature now lives in its own package and attaches
+via a stacked decorator that writes into `A2KitMeta.extra`. The Router class no
+longer derives slugs by string surgery, and the CLI builder no longer monkey-patches
+`click.Group.main` or relies on a module-level `ContextVar`.
+
+A senior-Python read of `src/a2kit/*.py` now finds no references to "connection",
+"enricher", "list_view", "report_type", "report_schema", or "router_slug" — verified
+by a new lint rule (`A2K-CORE-CLEAN`) that runs in CI as a hard gate.
+
+### Decorator surface
+
+- **`@a2kit.read/write/list_/tool`** accept only `(name, tags, annotations)`. The
+  four feature kwargs are removed.
+- **Stacked feature decorators** replace them. Order: verb decorator outermost,
+  feature decorators below.
+  - `from a2kit.packages.enrichers import enriches` — `@enriches(my_enricher)`
+  - `from a2kit.packages.mcp.lists import lists, ListViewSettings` — `@lists(default_fields=..., page_size=...)`
+  - `from a2kit.packages.mcp.reports import reports` — `@reports(BatchReport)`
+- **`A2KitMeta.extra: dict[str, Any]`** is the single extension point. Feature
+  decorators write namespaced keys (`a2kit.enricher`, `a2kit.list_view`,
+  `a2kit.report_type`, `a2kit.report_schema`, `a2kit.router_slug`).
+
+### Router naming
+
+- `Router.slug` resolves to `name=` constructor arg → `cls.name` class attribute →
+  `type(self).__name__` **verbatim**. No suffix stripping, no camelCase split, no
+  case conversion.
+- Routers without `name` set get an unsightly slug — that's the forcing function.
+  The tracker example sets `name = "projects"` / `name = "tasks"` explicitly.
+
+### Router internals
+
+- `Router._collect_methods` walks bound members instead of `type(self).__dict__`.
+  Tools register as bound methods; `_bind_if_method` and the consequential manual
+  rebind are gone from the CLI builder.
+
+### CLI builder
+
+- `_wrap_main_with_app_ctx` deleted. `_APP_CTX` ContextVar deleted. The schema
+  command and the lazy `serve` command are factories that close over the active
+  `App` directly. `LazyGroup` now stores `Callable[[], click.Command]` factories
+  instead of `module:attr` import strings.
+
+### Connections
+
+- `WriteNotAllowed` moves to `a2kit.packages.connections.exceptions` — it was the
+  last connection-aware identifier in core. Core now grep-clean.
+
+### Lint
+
+- **`A2K-CORE-CLEAN`** (new, hard gate) — rejects feature identifiers in
+  `src/a2kit/*.py` outside `packages/`.
+- **`A2K-EXTRA-NAMESPACE`** (new, hard gate) — rejects `meta.extra[<key>] = ...`
+  writes whose key isn't `a2kit.*` or a `<package>.*` prefix.
+- **`A2K-LDD-REPORT-TYPE`** rewritten to look for stacked `@reports(ReportT)`
+  rather than the dropped `report=` kwarg.
+
+### Migration from 0.20
+
+```python
+# 0.20
+@a2kit.read(enricher=my_enricher, report=BatchReport)
+async def import_csv(self, *, ctx, file: str) -> dict: ...
+
+# 0.21
+@a2kit.read()
+@enriches(my_enricher)
+@reports(BatchReport)
+async def import_csv(self, *, ctx, file: str) -> dict: ...
+```
+
+```python
+# 0.20: from a2kit.exceptions import WriteNotAllowed
+# 0.21: from a2kit.packages.connections.exceptions import WriteNotAllowed
+```
+
+```python
+# 0.20: class TasksRouter(a2kit.Router): pass            # slug = "tasks" (auto)
+# 0.21: class TasksRouter(a2kit.Router): name = "tasks"  # slug = "tasks" (explicit)
+```
+
+### Numbers
+
+- Tests: 441 passing (was 428)
+- Coverage: 93.52% (gate ≥92%)
+- Cold-start: ~13ms (unchanged)
+
 ## 0.20.0 — protocol-agnostic core, plain-Python composition — 2026-05-09
 
 Clean break from the v0.19 architecture. Core a2kit is a fat decorator on top of

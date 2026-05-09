@@ -105,10 +105,11 @@ def compute_schema(fn: Callable[..., Any]) -> dict[str, Any]:
         out["tags"] = sorted(meta.tags)
         out["meta"] = {
             "verb": meta.verb,
-            "router": meta.router_slug,
+            "router": meta.extra.get("a2kit.router_slug"),
         }
-        if meta.report_schema is not None:
-            out["reportSchema"] = meta.report_schema
+        report_schema = meta.extra.get("a2kit.report_schema")
+        if report_schema is not None:
+            out["reportSchema"] = report_schema
     return out
 
 
@@ -121,48 +122,50 @@ def _all_schemas(app: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
-@click.command("schema")
-@click.argument("tool_name", required=False)
-@click.option(
-    "--format",
-    "fmt",
-    type=click.Choice(["auto", "toon", "json"]),
-    default="auto",
-    show_default=True,
-)
-@click.option(
-    "--jsonl",
-    is_flag=True,
-    default=False,
-    help="Emit one JSON schema per line (only with --format=json).",
-)
-def schema_command(tool_name: str | None, fmt: str, jsonl: bool) -> None:
-    """Print tool schemas. Default format is TOON (token-efficient for LLMs)."""
-    from a2kit.packages.cli.app_ctx import _APP_CTX
+def build_schema_command(app: Any) -> click.Command:
+    """Build a ``schema`` Click command bound to ``app`` via closure."""
 
-    app = _APP_CTX.get()
-    schemas = _all_schemas(app)
+    @click.command("schema")
+    @click.argument("tool_name", required=False)
+    @click.option(
+        "--format",
+        "fmt",
+        type=click.Choice(["auto", "toon", "json"]),
+        default="auto",
+        show_default=True,
+    )
+    @click.option(
+        "--jsonl",
+        is_flag=True,
+        default=False,
+        help="Emit one JSON schema per line (only with --format=json).",
+    )
+    def schema_cmd(tool_name: str | None, fmt: str, jsonl: bool) -> None:
+        """Print tool schemas. Default format is TOON (token-efficient for LLMs)."""
+        schemas = _all_schemas(app)
 
-    if tool_name is not None:
-        result: Any = schemas.get(tool_name)
-        if result is None:
-            msg = f"Unknown tool: {tool_name!r}. Known: {sorted(schemas)}"
-            raise click.UsageError(msg)
-    else:
-        result = schemas
-
-    if jsonl:
-        if fmt != "json":
-            raise click.UsageError("--jsonl requires --format=json")
         if tool_name is not None:
-            click.echo(truncate(json.dumps(result, separators=(",", ":"), default=str)))
+            result: Any = schemas.get(tool_name)
+            if result is None:
+                msg = f"Unknown tool: {tool_name!r}. Known: {sorted(schemas)}"
+                raise click.UsageError(msg)
+        else:
+            result = schemas
+
+        if jsonl:
+            if fmt != "json":
+                raise click.UsageError("--jsonl requires --format=json")
+            if tool_name is not None:
+                click.echo(truncate(json.dumps(result, separators=(",", ":"), default=str)))
+                return
+            for s in result.values():
+                click.echo(truncate(json.dumps(s, separators=(",", ":"), default=str)))
             return
-        for s in result.values():
-            click.echo(truncate(json.dumps(s, separators=(",", ":"), default=str)))
-        return
 
-    response = format_response(result, format_hint=cast("FormatHint", fmt))
-    click.echo(truncate(response.data))
+        response = format_response(result, format_hint=cast("FormatHint", fmt))
+        click.echo(truncate(response.data))
+
+    return schema_cmd
 
 
-__all__ = ["compute_schema", "schema_command"]
+__all__ = ["build_schema_command", "compute_schema"]

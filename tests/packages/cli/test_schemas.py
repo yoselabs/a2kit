@@ -6,16 +6,11 @@ import json
 
 from click.testing import CliRunner
 
-from a2kit.packages.cli.schemas import schema_command
-from a2kit.packages.cli.app_ctx import _APP_CTX
+from a2kit.packages.cli.schemas import build_schema_command
 
 
 def _run(app, args):
-    token = _APP_CTX.set(app)
-    try:
-        return CliRunner().invoke(schema_command, args)
-    finally:
-        _APP_CTX.reset(token)
+    return CliRunner().invoke(build_schema_command(app), args)
 
 
 def test_schema_all_default_is_toon(app):
@@ -67,13 +62,10 @@ def test_per_tool_schema_format_json(app):
 def test_schema_output_respects_truncation_cap(monkeypatch):
     """schema_command pipes through formatter.truncate; large outputs are capped."""
     import a2kit
-    from a2kit.packages.cli.app_ctx import _APP_CTX
-    from a2kit.packages.cli.schemas import schema_command
     from a2kit.packages.formatter import DEFAULT_MAX_CHARS
-    from click.testing import CliRunner
 
     class Big(a2kit.Router):
-        pass
+        name = "big"
 
     # Build many tools so combined schema dict definitely exceeds the cap.
     for i in range(200):
@@ -86,11 +78,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         setattr(Big, _tool.__name__, _tool)
 
     app = a2kit.App("big").add_router(Big())
-    token = _APP_CTX.set(app)
-    try:
-        result = CliRunner().invoke(schema_command, ["--format=toon"])
-    finally:
-        _APP_CTX.reset(token)
+    result = CliRunner().invoke(build_schema_command(app), ["--format=toon"])
 
     assert result.exit_code == 0
     # Either the marker is present, or the output stayed under the cap.

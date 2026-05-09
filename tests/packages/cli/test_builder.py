@@ -124,6 +124,8 @@ def test_optional_int_maps_to_integer_click_option():
     from a2kit.packages.cli.builder import build_full_cli
 
     class Probe(a2kit.Router):
+        name = "probe"
+
         @a2kit.read("get")
         def get(self, *, project_id: int | None = None) -> dict:
             return {"project_id": project_id}
@@ -142,6 +144,8 @@ def test_optional_str_invokes_with_string_value():
     seen: dict = {}
 
     class Probe(a2kit.Router):
+        name = "probe"
+
         @a2kit.read("get")
         def get(self, *, query: str | None = None) -> dict:
             seen["query"] = query
@@ -158,6 +162,8 @@ def test_optional_bool_maps_to_flag():
     from a2kit.packages.cli.builder import build_full_cli
 
     class Probe(a2kit.Router):
+        name = "probe"
+
         @a2kit.read("get")
         def get(self, *, verbose: bool | None = None) -> dict:
             return {"verbose": verbose}
@@ -177,6 +183,8 @@ def test_nonprimitive_nullable_still_json_decodes():
     seen: dict = {}
 
     class Probe(a2kit.Router):
+        name = "probe"
+
         @a2kit.read("get")
         def get(self, *, ids: list[int] | None = None) -> dict:
             seen["ids"] = ids
