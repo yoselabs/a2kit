@@ -43,18 +43,15 @@ tracker = "tracker.server:main"
 tracker --help
 tracker tasks list-tasks --project-id=abc      # in-process; no MCP roundtrip
 tracker connections login TrackerConn --key=default --field=db_path=./data.jsonl
-tracker schema list-tasks                       # TOON by default; --format=json opts in
+tracker schema list-tasks                       # JSON; --jsonl for one-per-line
 tracker serve --transport=stdio                 # only this loads fastmcp
 ```
 
 ## Install
 
 ```bash
-uv pip install --pre a2kit
+uv pip install a2kit
 ```
-
-`--pre` is required until [`toon-format`](https://pypi.org/project/toon-format/)
-ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 
 ## API surface
 
@@ -79,10 +76,10 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 | `a2kit.packages.mcp` | FastMCP adapter. `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`. The ONE place fastmcp imports. |
 | `a2kit.packages.cli` | Click adapter. `build_full_cli(app)` returns the progressive-disclosure CLI. |
 | `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. Carries the `Container` (request-scoped DI) consumed via `App.provide(...)`. |
-| `a2kit.packages.formatter` | TOON / JSON output normalization via `toon-format`. `format_response(raw, format_hint=...)`. |
+| `a2kit.packages.formatter` | Type-driven output routing — TSV / JSON / hybrid `page-tsv`. `format_response(raw, format_hint=...)`. Auto picks based on the tool's return-type annotation. |
 | `a2kit.packages.select` | `compile`, `evaluate`, `validate_atoms` over real CEL syntax. |
 | `a2kit.packages.mcp.reports` | `reports(ReportT)` stacked decorator. Computes the pydantic JSON schema; both keys travel on `meta.extra`. |
-| `a2kit.packages.testing` | Thin pytest fixtures, syrupy `TOONSnapshotExtension`. |
+| `a2kit.packages.testing` | Thin pytest fixtures + `compute_schema` helper. |
 | `a2kit.packages.lint` | Static + runtime A2K rules. `a2kit lint static <path>` / `a2kit lint runtime --import pkg:app`. |
 
 ### Dependency injection — typed, request-scoped
@@ -185,9 +182,9 @@ option generation.
 
 - `<app> --help` — top-level: one entry per Router (with progressive-disclosure hint), plus `schema`, `serve`, plus any subcommand attached via `app.add_cli(...)`.
 - `<app> <router> --help` — list tools in that router.
-- `<app> <router> <tool> [--name VALUE ...] [--format=auto|toon|json] [--schema]` — invoke the tool in-process. Output flows through the formatter.
+- `<app> <router> <tool> [--name VALUE ...] [--format=auto|json|tsv|page-tsv] [--schema]` — invoke the tool in-process. Output flows through the formatter; `auto` picks based on the tool's return-type annotation (`list[ScalarOnlyModel]` → TSV, `Page[T]` → hybrid `page-tsv`, else JSON).
 - `<app> connections {login,logout,list,show,delete}` — present iff the app wired `connections_cli(...)` via `add_cli`.
-- `<app> schema [TOOL] [--format=toon|json] [--jsonl]` — schema discovery.
+- `<app> schema [TOOL] [--format=auto|json|tsv] [--jsonl]` — schema discovery.
 - `<app> serve [--transport=stdio|http] [--host] [--port]` — MCP server (the ONLY mode that loads fastmcp).
 
 `'fastmcp' not in sys.modules` after any non-`serve` command — verified by `tests/test_cold_start.py`.

@@ -110,7 +110,7 @@ You'll see something like:
 ```
 
 …on **stderr**, while **stdout** receives the final formatted dict
-(`imported=5 batches=3` in TOON, or JSON if you pass `--format=json`).
+as JSON (`{"imported":5,"batches":3}`).
 
 ## Buffering & "snappy" feedback
 
