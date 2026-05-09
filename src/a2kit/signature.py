@@ -41,3 +41,38 @@ def user_input_params(fn: Callable[..., Any]) -> dict[str, inspect.Parameter]:
             continue
         out[name] = param
     return out
+
+
+def wire_input_params(
+    fn: Callable[..., Any],
+    container: Any | None = None,
+) -> tuple[dict[str, inspect.Parameter], bool]:
+    """Return ``(wire_params, needs_connection)`` for ``fn``.
+
+    Injectable kwargs (whose types match a registered container provider)
+    are filtered out. ``needs_connection`` is True when at least one
+    injectable's chain reaches a ``connection: str`` boundary; callers
+    (CLI/MCP schema gen) auto-add a wire ``connection: str`` option.
+    """
+    base = user_input_params(fn)
+    if container is None:
+        return base, False
+    try:
+        hints = get_type_hints(fn)
+    except Exception:
+        hints = {}
+    out: dict[str, inspect.Parameter] = {}
+    needs_conn = False
+    for name, param in base.items():
+        ann = hints.get(name, param.annotation)
+        if container.has(ann):
+            if container._chain_reaches_connection(ann):  # noqa: SLF001
+                needs_conn = True
+            continue
+        out[name] = param
+    # If a tool method already declares ``connection: str`` itself, it's
+    # already in ``out``; needs_conn stays False from this loop and we
+    # don't synthesize a duplicate.
+    if "connection" in out:
+        needs_conn = False
+    return out, needs_conn

@@ -9,19 +9,36 @@ if TYPE_CHECKING:
 
 
 _ROUTER_SLUG_KEY = "a2kit.router_slug"
+_ROUTER_SUFFIX = "Router"
+
+
+def _derive_slug(class_name: str) -> str:
+    """Strip one trailing ``Router`` and lowercase: ``TasksRouter`` → ``tasks``.
+
+    The suffix is case-sensitive; ``MyRouter`` becomes ``my`` but ``Myrouter``
+    stays ``myrouter``. Collisions across routers in one app are caught by
+    ``App.add_router``.
+    """
+    base = class_name
+    if base.endswith(_ROUTER_SUFFIX) and len(base) > len(_ROUTER_SUFFIX):
+        base = base[: -len(_ROUTER_SUFFIX)]
+    return base.lower()
 
 
 class Router:
     """Group of tools sharing dependencies and a slug.
 
     Slug resolution: ``name=`` constructor arg, then ``cls.name`` class
-    attribute, then ``type(self).__name__`` verbatim. No string surgery.
+    attribute, then a derivation rule on ``type(self).__name__``: strip
+    a single trailing ``Router`` suffix (case-sensitive), lowercase the
+    rest. Collisions across routers in one ``App`` raise at build time.
     """
 
     name: str | None = None
+    enrichers: list[Callable[[Exception], str | None]] = []  # noqa: RUF012
 
     def __init__(self, name: str | None = None) -> None:
-        self.slug = name or self.name or type(self).__name__
+        self.slug = name or self.name or _derive_slug(type(self).__name__)
         self._tools: list[Callable[..., Any]] = []
         for fn in self._collect_methods():
             meta = get_meta(fn)

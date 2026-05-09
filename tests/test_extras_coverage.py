@@ -246,13 +246,11 @@ def test_listview_middleware_returns_result_when_tool_name_missing() -> None:
 
 
 def test_tool_generic_decorator_stamps_meta() -> None:
-    """`@tool(...)` stamps `A2KitMeta`; stacked `@lists(...)` writes into extra."""
+    """`@tool(...)` stamps `A2KitMeta`."""
     from a2kit.metadata import get_meta
-    from a2kit.packages.mcp.lists import lists
     from a2kit.tool import tool
 
     @tool(name="manual", tags={"x"})
-    @lists(default_fields=("a",))
     async def fn() -> dict[str, int]:
         return {"a": 1}
 
@@ -261,9 +259,6 @@ def test_tool_generic_decorator_stamps_meta() -> None:
     assert meta.tool_name == "manual"
     assert meta.verb == "tool"
     assert "x" in meta.tags
-    lv = meta.extra.get("a2kit.list_view")
-    assert lv is not None
-    assert lv.default_fields == ("a",)
 
 
 def test_tool_generic_decorator_defaults_to_function_name() -> None:
@@ -326,15 +321,40 @@ def test_invalid_filter_expression_carries_hint() -> None:
 # --------------------------- routers slugify branches --------------------------- #
 
 
-def test_router_slug_class_name_verbatim() -> None:
-    """No `name` set → slug is the class name verbatim (no string surgery)."""
+def test_router_slug_derived_from_class() -> None:
+    """No `name` set → strip ``Router`` suffix and lowercase the rest."""
     import a2kit
 
     class MyTrackerRouter(a2kit.Router):
         pass
 
     r = MyTrackerRouter()
-    assert r.slug == "MyTrackerRouter"
+    assert r.slug == "mytracker"
+
+
+def test_router_slug_no_router_suffix() -> None:
+    import a2kit
+
+    class Tasks(a2kit.Router):
+        pass
+
+    r = Tasks()
+    assert r.slug == "tasks"
+
+
+def test_router_slug_collision_raises() -> None:
+    import a2kit
+
+    class TasksRouter(a2kit.Router):
+        pass
+
+    class Tasks(a2kit.Router):
+        pass
+
+    app = a2kit.App("a").add_router(TasksRouter())
+
+    with pytest.raises(ValueError, match="already registered"):
+        app.add_router(Tasks())
 
 
 def test_router_slug_class_attr_wins() -> None:

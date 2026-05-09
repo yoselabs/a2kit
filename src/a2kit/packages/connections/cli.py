@@ -59,7 +59,15 @@ def _build_registry(conn_types: tuple[type[ConnectionConfig], ...]) -> dict[str,
 
 
 def connections_cli(*conn_types: type[ConnectionConfig]) -> click.Group:
-    """Return a ``connections`` Click group bound to the given connection types."""
+    """Return a ``connections`` Click group bound to the given connection types.
+
+    The returned group carries an ``_a2kit_connections_types`` attribute
+    that ``App.add_cli`` consults to auto-register a typed provider for
+    each ``conn_types`` entry. Apps that want a custom factory can call
+    ``app.provide(ConfigT, my_factory)`` before ``add_cli`` (manual
+    registration wins; auto-registration is a no-op when a provider
+    already exists for the type).
+    """
     registry = _build_registry(conn_types)
 
     @click.group(name="connections")
@@ -155,6 +163,8 @@ def connections_cli(*conn_types: type[ConnectionConfig]) -> click.Group:
         for k, v in masked.items():
             click.echo(f"{k} = {v!r}")
 
+    # Marker consumed by App.add_cli to auto-register typed providers.
+    group._a2kit_connections_types = tuple(conn_types)  # ty: ignore[unresolved-attribute]
     return group
 
 

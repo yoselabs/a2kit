@@ -13,14 +13,12 @@ from typing import Any
 
 import a2kit
 from a2kit.packages.mcp import build_mcp_server
-from a2kit.packages.mcp.lists import lists
 from a2kit.packages.mcp.listview import _apply, _apply_to_items, _list_view_settings, _project_row
 
 # --------------------------- module-level tools (no `self` binding issues) --------------------------- #
 
 
-@a2kit.list_("list_things")
-@lists(default_fields=("id", "name"), page_size=2)
+@a2kit.list_("id", "name", page_size=2, name="list_things")
 async def _list_things() -> list[dict[str, Any]]:
     return [
         {"id": 1, "name": "a", "extra": "drop"},
@@ -30,7 +28,7 @@ async def _list_things() -> list[dict[str, Any]]:
     ]
 
 
-@a2kit.list_("plain_things")
+@a2kit.list_(name="plain_things")
 async def _plain_things() -> list[dict[str, Any]]:
     return [{"id": 1, "extra": "keep"}]
 

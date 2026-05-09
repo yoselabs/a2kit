@@ -12,7 +12,6 @@ from typing import Any
 
 import a2kit
 from a2kit.packages.mcp import build_mcp_server
-from a2kit.packages.mcp.lists import lists
 from a2kit.packages.mcp.listview import _apply
 
 
@@ -58,8 +57,7 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
     class R(a2kit.Router):
         name = "rows"
 
-        @a2kit.list_("rows")
-        @lists(default_fields=("id",), page_size=3)
+        @a2kit.list_("id", page_size=3, name="rows")
         async def rows(self) -> list[dict[str, Any]]:
             return [{"id": i, "extra": "drop"} for i in range(10)]
 

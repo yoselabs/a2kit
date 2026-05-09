@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.22.0 — ergonomic round: typed DI, consolidated list_, class-attr enrichers — 2026-05-09
+
+Round three on top of v0.21's de-magic posture, focused on developer ergonomics
+without re-introducing magic. Four wins, all expressible as plain Python:
+
+- **`@a2kit.list_(*default_fields, page_size=None, selectable_fields=None)`** absorbs
+  list-view projection settings. The standalone `@lists(...)` decorator and the
+  `a2kit.packages.mcp.lists` module are removed. When `selectable_fields` is omitted,
+  the framework derives it from the tool's `list[T]` return type — no redundant
+  enumeration of fields the Pydantic model already declares.
+- **Class-attribute `enrichers` + optional `def enrich(self, exc)` method** replace
+  the per-method `@enriches(...)` decorator. The `a2kit.packages.enrichers` module
+  is removed. Resolution: instance method first, then class list, first non-None
+  return wins. Enricher functions now return `str | None` (the framework rebuilds
+  the exception with the enriched message); the old `(exc, tool_name) -> Exception`
+  shape is gone.
+- **Request-scoped DI via `App.provide(T, factory=None)`**. A typed container in
+  `packages/connections` resolves tool-method kwargs annotated with provider types
+  (`store: TrackerStore`, etc.) per call. When `factory` is omitted, the class
+  itself is the factory and the container introspects `__init__`. Tool authors stop
+  writing `__init__(self, get_store: GetStore)` factories; routers can be parameterless.
+  `add_cli(connections_cli(ConfigT))` auto-installs a typed provider for `ConfigT` —
+  no second `provide(ConfigT, ...)` call required.
+- **Hybrid Router slug derivation**. `class TasksRouter(a2kit.Router)` derives slug
+  `"tasks"` automatically (strip a single trailing `Router`, lowercase). Explicit
+  `name = "..."` still wins. Collisions across routers in one App raise at build
+  time. The de-magic-2 antipattern entry on slug auto-derivation is retracted with
+  new reasoning: a single documented suffix-strip rule is convention, not magic.
+
+The agent-facing wire schema strips injectable kwargs (`store: TrackerStore` is not
+in the MCP/CLI input schema) and auto-includes `connection: str` whenever the
+injectable graph reaches the connection-config provider. Cold-start budget unchanged.
+
+### Migration
+
+```python
+# Before (v0.21):
+class TasksRouter(a2kit.Router):
+    name = "tasks"
+
+    def __init__(self, get_store: GetStore) -> None:
+        super().__init__()
+        self.get_store = get_store
+
+    @a2kit.list_()
+    @lists(default_fields=("id", "title"), page_size=20, selectable_fields=(...))
+    @enriches(tracker_404_enricher)
+    async def list_tasks(self, *, connection: str) -> list[Task]:
+        store = await self.get_store(connection)
+        ...
+
+# After (v0.22):
+class TasksRouter(a2kit.Router):
+    enrichers = [tracker_404_enricher]
+    # name auto-derived → "tasks"
+
+    @a2kit.list_("id", "title", page_size=20)
+    async def list_tasks(self, *, store: TrackerStore) -> list[Task]:
+        ...
+
+app = (
+    a2kit.App("tracker")
+    .add_router(TasksRouter())
+    .provide(TrackerStore)                       # class-as-factory
+    .add_cli(connections_cli(TrackerConfig))     # auto-installs TrackerConfig provider
+)
+```
+
 ## 0.21.0 — de-magic round 2: stacked decorators, lint-enforced core purity — 2026-05-09
 
 Second pass at trimming framework magic from the v0.20 surface. The verb decorators

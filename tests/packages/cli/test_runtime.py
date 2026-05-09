@@ -43,39 +43,31 @@ def test_format_toon_forced() -> None:
 
 
 def test_enricher_wraps_exceptions() -> None:
-    """Enricher is applied by Router (since pluggable-core-architecture).
-
-    The CLI runtime is enricher-agnostic — it receives already-wrapped tools
-    from `router.tools()`. To exercise the enricher path, route the tool
-    through a Router and call the wrapped fn.
-    """
+    """Class-attribute ``enrichers`` are applied by the CLI builder."""
 
     class BoomError(Exception):
         pass
 
-    class FriendlyError(Exception):
-        pass
-
-    def enrich(exc: Exception, _name: str) -> Exception:
+    def enrich(exc: Exception) -> str | None:
         if isinstance(exc, BoomError):
-            return FriendlyError("nicer message")
-        return exc
-
-    from a2kit.packages.enrichers import enriches, wrap
+            return "nicer message"
+        return None
 
     class R(a2kit.Router):
+        enrichers = [enrich]
+
         @a2kit.read()
-        @enriches(enrich)
         def boom(self, *, x: int) -> dict:
             raise BoomError("ugly")
 
-    # Router stores bound methods now; adapters apply the enricher wrap explicitly.
-    bound = R().tools()[0]
-    from a2kit.metadata import get_meta
+    # Builder applies enrichers; here we apply manually using the same wrapper.
+    from a2kit.packages.cli.builder import _wrap_with_enricher
 
-    enriched = wrap(bound, get_meta(bound).extra["a2kit.enricher"])
+    router = R()
+    bound = router.tools()[0]
+    enriched = _wrap_with_enricher(bound, router)
 
-    with pytest.raises(FriendlyError, match="nicer message"):
+    with pytest.raises(BoomError, match="nicer message"):
         invoke_tool_sync(enriched, {"x": 1}, fmt="json")
 
 

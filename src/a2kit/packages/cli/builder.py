@@ -26,7 +26,7 @@ from a2kit.metadata import get_meta
 from a2kit.packages.cli.runtime import invoke_tool_sync
 from a2kit.packages.cli.schemas import build_schema_command, compute_schema
 from a2kit.packages.formatter import FormatHint, format_response
-from a2kit.signature import user_input_params
+from a2kit.signature import wire_input_params
 
 if TYPE_CHECKING:
     from a2kit.app import App
@@ -112,25 +112,45 @@ def _option_name(param_name: str) -> str:
     return "--" + param_name.replace("_", "-")
 
 
-def _wrap_with_enricher(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """If the tool's meta carries an ``a2kit.enricher`` extra key, wrap fn with it."""
-    meta = get_meta(fn)
-    if meta is None:
+def _wrap_with_enricher(fn: Callable[..., Any], router: Router | None = None) -> Callable[..., Any]:
+    """Wrap ``fn`` with the router's enricher chain (class list + ``enrich`` method)."""
+    if router is None:
         return fn
-    enricher = meta.extra.get("a2kit.enricher")
-    if enricher is None:
+    enrichers = list(getattr(type(router), "enrichers", None) or ())
+    enrich_method = getattr(router, "enrich", None)
+    if not enrichers and not callable(enrich_method):
         return fn
-    from a2kit.packages.enrichers import wrap
 
-    return wrap(fn, enricher)
+    import functools
+
+    @functools.wraps(fn)
+    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        try:
+            result = fn(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+        except Exception as exc:
+            if callable(enrich_method):
+                msg = enrich_method(exc)
+                if msg is not None:
+                    raise type(exc)(msg) from exc
+            for enricher in enrichers:
+                msg = enricher(exc)
+                if msg is not None:
+                    raise type(exc)(msg) from exc
+            raise
+
+    return _wrapped
 
 
-def _make_tool_command(fn: Callable[..., Any], app: App) -> click.Command:
+def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None = None) -> click.Command:
     meta = get_meta(fn)
     tool_name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
     description = (fn.__doc__ or "").strip().splitlines()[0] if fn.__doc__ else ""
 
-    params = user_input_params(fn)
+    container = app.container()
+    params, needs_connection = wire_input_params(fn, container)
     try:
         resolved_hints = get_type_hints(fn)
     except Exception:  # noqa: BLE001
@@ -171,6 +191,17 @@ def _make_tool_command(fn: Callable[..., Any], app: App) -> click.Command:
             opt_kwargs["default"] = default
         click_params.append(click.Option([opt_name, name], **opt_kwargs))
 
+    if needs_connection and "connection" not in params:
+        click_params.append(
+            click.Option(
+                ["--connection", "connection"],
+                type=click.STRING,
+                required=True,
+                show_default=False,
+                help="Connection name (single key, or comma-separated for multi-field keys).",
+            )
+        )
+
     click_params.append(
         click.Option(
             ["--format", "fmt"],
@@ -189,13 +220,13 @@ def _make_tool_command(fn: Callable[..., Any], app: App) -> click.Command:
         )
     )
 
-    wrapped_fn = _wrap_with_enricher(fn)
+    wrapped_fn = _wrap_with_enricher(fn, router)
 
     def callback(**kwargs: Any) -> None:
         fmt = kwargs.pop("fmt", "auto")
         schema_flag = kwargs.pop("schema", False)
         if schema_flag:
-            schema = compute_schema(fn)
+            schema = compute_schema(fn, container=app.container())
             click.echo(format_response(schema, format_hint=cast("FormatHint", fmt)).data)
             return
 
@@ -217,6 +248,14 @@ def _make_tool_command(fn: Callable[..., Any], app: App) -> click.Command:
                     raise click.BadParameter(msg) from exc
             call_kwargs[name] = value
 
+        # Auto-added wire ``connection`` (when injectable graph reaches it
+        # but the tool method itself doesn't declare ``connection``) is
+        # kept on call_kwargs so the dispatch hook can use it for chain
+        # resolution. The hook strips it before calling fn if fn doesn't
+        # declare it.
+        if needs_connection and "connection" in kwargs and kwargs["connection"] is not None:
+            call_kwargs["connection"] = kwargs["connection"]
+
         ctx_param = meta.context_param_name if meta is not None else None
         report_type = meta.extra.get("a2kit.report_type") if meta is not None else None
 
@@ -236,6 +275,7 @@ def _make_tool_command(fn: Callable[..., Any], app: App) -> click.Command:
                 tool_name=meta.tool_name if meta is not None else None,
                 reports_enabled=reports_enabled,
                 events_enabled=events_enabled,
+                dispatch_hook=app.dispatch_hook(),
             )
         except click.ClickException:
             raise
@@ -260,7 +300,7 @@ def _router_group(router: Router, app: App) -> click.Group:
         help=f"Tools in router {router.slug!r}.",
     )
     for fn in router.tools():
-        group.add_command(_make_tool_command(fn, app))
+        group.add_command(_make_tool_command(fn, app, router=router))
     return group
 
 

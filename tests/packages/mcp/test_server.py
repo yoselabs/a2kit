@@ -8,9 +8,7 @@ from typing import Any
 import pytest
 
 import a2kit
-from a2kit.packages.enrichers import enriches
 from a2kit.packages.mcp import build_mcp_server
-from a2kit.packages.mcp.lists import lists
 
 
 class _SampleRouter(a2kit.Router):
@@ -20,8 +18,7 @@ class _SampleRouter(a2kit.Router):
     async def ping(self, *, name: str = "world") -> dict[str, str]:
         return {"hello": name}
 
-    @a2kit.list_("rows")
-    @lists(default_fields=("id", "name"), page_size=2)
+    @a2kit.list_("id", "name", page_size=2, name="rows")
     async def rows(self) -> list[dict[str, Any]]:
         return [
             {"id": 1, "name": "a", "extra": "drop"},
@@ -59,8 +56,7 @@ def test_tools_registered_with_a2kit_meta(app: a2kit.App) -> None:
         assert a2kit_meta["tool_name"] == "ping"
         assert "read" in a2kit_meta["tags"]
         assert a2kit_meta["extra"]["a2kit.router_slug"] == "sample"
-        # enricher and report_type dropped from wire (non-JSON-serializable)
-        assert "a2kit.enricher" not in a2kit_meta["extra"]
+        # report_type is dropped from wire (non-JSON-serializable)
         assert "a2kit.report_type" not in a2kit_meta["extra"]
         # annotations serialized via model_dump
         ann = a2kit_meta["annotations"]
@@ -96,35 +92,28 @@ def test_unknown_fastmcp_kwarg_propagates(app: a2kit.App) -> None:
 
 
 def test_enricher_fires_before_registration() -> None:
-    """An enricher attached to a tool must wrap before FunctionTool.from_function.
-
-    Module-level fn (not a class method) so we can verify enricher fires when
-    the wrapped fn is invoked directly without binding shenanigans.
-    """
+    """A class-attribute enricher must wrap fn before FunctionTool.from_function."""
     fired: list[Exception] = []
 
-    def my_enricher(exc: Exception, tool_name: str) -> Exception:
+    def my_enricher(exc: Exception) -> str | None:
         fired.append(exc)
-        return ValueError(f"enriched: {exc!s}")
-
-    @a2kit.read("boom")
-    @enriches(my_enricher)
-    async def boom() -> dict[str, str]:
-        raise RuntimeError("kaboom")
+        return f"enriched: {exc!s}"
 
     class R(a2kit.Router):
         name = "r"
+        enrichers = [my_enricher]
 
-    r = R()
-    r._tools.append(boom)  # bypass class-method collection
+        @a2kit.read("boom")
+        async def boom(self) -> dict[str, str]:
+            raise RuntimeError("kaboom")
 
-    app = a2kit.App("e").add_router(r)
+    app = a2kit.App("e").add_router(R())
     server = build_mcp_server(app)
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}
         bt = tools["boom"]
-        with pytest.raises(ValueError, match="enriched: kaboom"):
+        with pytest.raises(RuntimeError, match="enriched: kaboom"):
             await bt.fn()
 
     asyncio.run(_check())

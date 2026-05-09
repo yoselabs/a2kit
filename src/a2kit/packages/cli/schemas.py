@@ -23,7 +23,7 @@ from pydantic import create_model
 
 from a2kit.metadata import get_meta
 from a2kit.packages.formatter import FormatHint, format_response, truncate
-from a2kit.signature import user_input_params
+from a2kit.signature import wire_input_params
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,12 +46,14 @@ def _annotation_to_field(param: inspect.Parameter, resolved: dict[str, Any]) -> 
     return (ann, default)
 
 
-def _input_schema(fn: Callable[..., Any]) -> dict[str, Any]:
-    params = user_input_params(fn)
-    if not params:
+def _input_schema(fn: Callable[..., Any], container: Any | None = None) -> dict[str, Any]:
+    params, needs_connection = wire_input_params(fn, container)
+    if not params and not needs_connection:
         return {"type": "object", "properties": {}}
     resolved = _resolved_hints(fn)
     fields: dict[str, Any] = {name: _annotation_to_field(p, resolved) for name, p in params.items()}
+    if needs_connection and "connection" not in fields:
+        fields["connection"] = (str, ...)
     fn_name = getattr(fn, "__name__", "tool")
     model = create_model(f"{fn_name}_in", **fields)
     return model.model_json_schema()
@@ -83,7 +85,7 @@ def _annotations_dict(annotations: Any) -> dict[str, Any]:
     return {}
 
 
-def compute_schema(fn: Callable[..., Any]) -> dict[str, Any]:
+def compute_schema(fn: Callable[..., Any], container: Any | None = None) -> dict[str, Any]:
     """Return a dict describing ``fn`` for schema snapshots / CLI dump.
 
     Output keys: ``name``, ``description``, ``inputSchema``, ``outputSchema``,
@@ -95,7 +97,7 @@ def compute_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "name": name,
         "description": description,
-        "inputSchema": _input_schema(fn),
+        "inputSchema": _input_schema(fn, container),
     }
     output_schema = _output_schema(fn)
     if output_schema is not None:
@@ -114,11 +116,12 @@ def compute_schema(fn: Callable[..., Any]) -> dict[str, Any]:
 
 
 def _all_schemas(app: Any) -> dict[str, dict[str, Any]]:
+    container = getattr(app, "container", lambda: None)()
     out: dict[str, dict[str, Any]] = {}
     for fn in app.tools():
         meta = get_meta(fn)
         name = meta.tool_name if meta is not None else fn.__name__
-        out[name] = compute_schema(fn)
+        out[name] = compute_schema(fn, container)
     return out
 
 

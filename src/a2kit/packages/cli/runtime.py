@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from a2kit.packages.cli.context import StderrToolContext
 from a2kit.packages.formatter import FormatHint, format_response
+from a2kit.tool import identity_dispatch_hook
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -23,15 +24,22 @@ async def _invoke_tool_in_process(
     tool_name: str | None = None,
     reports_enabled: bool = True,
     events_enabled: bool = True,
+    dispatch_hook: Callable[..., Any] | None = None,
 ) -> str:
     """Invoke ``fn`` with ``kwargs``, format the result, return formatter ``data``.
 
-    ``fn`` is expected to come from ``app.tools()``, which has already
-    applied the Router-level enricher wrap. The CLI runtime is
-    enricher-agnostic.
+    ``fn`` is expected to come from ``app.tools()`` (already enricher-wrapped
+    by the CLI builder). The ``dispatch_hook`` resolves request-scoped DI
+    kwargs (e.g., ``store: TrackerStore``) before the tool runs.
     """
-    if ctx_param_name:
-        kwargs[ctx_param_name] = StderrToolContext(
+    hook = dispatch_hook or identity_dispatch_hook
+    resolved_any: Any = hook(fn, kwargs)
+    if inspect.isawaitable(resolved_any):
+        resolved_any = await resolved_any
+    call_kwargs: dict[str, Any] = dict(resolved_any)
+
+    if ctx_param_name and ctx_param_name not in call_kwargs:
+        call_kwargs[ctx_param_name] = StderrToolContext(
             report_type=report_type,
             tool_name=tool_name,
             reports_enabled=reports_enabled,
@@ -39,9 +47,9 @@ async def _invoke_tool_in_process(
         )
 
     if inspect.iscoroutinefunction(fn):
-        raw = await fn(**kwargs)
+        raw = await fn(**call_kwargs)
     else:
-        raw = fn(**kwargs)
+        raw = fn(**call_kwargs)
         if inspect.isawaitable(raw):
             raw = await raw
 
@@ -59,6 +67,7 @@ def invoke_tool_sync(
     tool_name: str | None = None,
     reports_enabled: bool = True,
     events_enabled: bool = True,
+    dispatch_hook: Callable[..., Any] | None = None,
 ) -> str:
     """Synchronous adapter — run :func:`_invoke_tool_in_process` to completion."""
     return asyncio.run(
@@ -71,6 +80,7 @@ def invoke_tool_sync(
             tool_name=tool_name,
             reports_enabled=reports_enabled,
             events_enabled=events_enabled,
+            dispatch_hook=dispatch_hook,
         )
     )
 

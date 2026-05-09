@@ -52,8 +52,6 @@ async def _persist(_batch: list[dict[str, str]]) -> None:
 
 
 class TasksRouter(a2kit.Router):
-    name = "tasks"
-
     @a2kit.read()
     async def import_csv(
         self,

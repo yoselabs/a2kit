@@ -1,24 +1,23 @@
 from __future__ import annotations
 
 import a2kit
-from a2kit.packages.connections import ConnectionStore, connections_cli
+from a2kit.packages.connections import connections_cli
 
 from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-_conn_store = ConnectionStore(TrackerConn)
-
-
-async def get_store(connection: str) -> TrackerStore:
-    conn = await _conn_store.load((connection,))
-    return TrackerStore(conn)
-
-
-app = a2kit.App("tracker-mcp")
-app.add_router(ProjectsRouter(get_store))
-app.add_router(TasksRouter(get_store))
-app.add_cli(connections_cli(TrackerConn))
+app = (
+    a2kit.App("tracker-mcp")
+    .add_router(ProjectsRouter())
+    .add_router(TasksRouter())
+    # `add_cli(connections_cli(TrackerConn))` auto-registers a typed provider
+    # for `TrackerConn` (factory: `connection: str → TrackerConn`). With the
+    # `TrackerStore` provider below, the chain is:
+    #     wire `connection` → TrackerConn → TrackerStore (class-as-factory).
+    .add_cli(connections_cli(TrackerConn))
+    .provide(TrackerStore)
+)
 
 
 def main() -> None:

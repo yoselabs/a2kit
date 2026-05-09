@@ -11,6 +11,19 @@ Verb = Literal["read", "write", "list", "tool"]
 
 
 @dataclass(frozen=True, slots=True)
+class ListViewSettings:
+    """Carrier for ``@a2kit.list_(...)`` projection / pagination settings.
+
+    Lives in core (read by ``packages/mcp/listview.py`` middleware) but
+    holds no domain feature names — just the shape of list-view config.
+    """
+
+    default_fields: tuple[str, ...] = ()
+    page_size: int | None = None
+    selectable_fields: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class A2KitMeta:
     tool_name: str
     verb: Verb
