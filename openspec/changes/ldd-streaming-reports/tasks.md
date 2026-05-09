@@ -71,5 +71,5 @@
 
 ## 9. Tag readiness — when ready to ship
 
-- [x] 9.1 Update `CHANGELOG.md` next-version entry to "released" status with date.
-- [x] 9.2 Pause for explicit user authorization before merging.
+- [ ] 9.1 Update `CHANGELOG.md` next-version entry to "released" status with date.
+- [ ] 9.2 Pause for explicit user authorization before merging.

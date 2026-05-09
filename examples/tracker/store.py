@@ -1,11 +1,19 @@
 """`TrackerStore` — a class wrapping the JSONL persistence for one connection.
 
-Constructed from a `TrackerConn`, it exposes the operations tools care
-about: `load_state()` returns the parsed projects + tasks, `replace()`
-writes back. Tools build a store per call:
+Inherits from ``a2kit.Store[TrackerConn]`` so the runtime can resolve
+``Depends(TrackerStore)`` automatically (Generic parameter binds the conn).
+Tools that need state inject the store directly:
 
-    store = TrackerStore(conn)
-    projects, tasks = store.load_state()
+    @a2kit.write()
+    async def archive_project(
+        self,
+        *,
+        store: TrackerStore = Depends(TrackerStore),
+        connection: str,
+        project_id: str,
+    ) -> Project:
+        projects, tasks = store.load_state()
+        ...
 
 The class is the boundary worth swapping: a real backend would replace
 `TrackerStore` with a database client; nothing else in the example moves.
@@ -14,15 +22,14 @@ The class is the boundary worth swapping: a real backend would replace
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import a2kit
+
+from .connection import TrackerConn
 from .models import Project, Task
 
-if TYPE_CHECKING:
-    from .connection import TrackerConn
 
-
-class TrackerStore:
+class TrackerStore(a2kit.Store[TrackerConn]):
     """Project + task persistence backed by one connection's JSONL file.
 
     The file is a flat append-only log of projects and tasks, distinguished

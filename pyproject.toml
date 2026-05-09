@@ -152,6 +152,8 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 # Union, /tmp paths, unused tuple unpacks) to exercise dead corners.
 "tests/test_extras_coverage.py" = ["F401"]
 "tests/test_extras_coverage_2.py" = ["S108", "SIM300", "UP045", "RUF059"]
+"tests/test_signature_class_depends.py" = ["S108", "F841"]
+"tests/test_routers_enricher.py" = ["F841"]
 "tests/packages/lint/test_rules_misc.py" = ["S108"]
 
 [tool.pytest.ini_options]

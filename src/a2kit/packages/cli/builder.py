@@ -303,14 +303,22 @@ def _bind_if_method(fn: Callable[..., Any], router: Router) -> Callable[..., Any
     return bound
 
 
-def _router_group(router: Router) -> click.Group:
-    """Build a Click group containing one subcommand per tool on ``router``."""
+def _router_group(router: Router, app: App) -> click.Group:
+    """Build a Click group containing one subcommand per tool on ``router``.
+
+    Tools with ``Depends(<class>)`` defaults are wrapped via
+    :func:`bind_class_dependencies` so the class-keyed deps resolve at call
+    time using the user-supplied ``connection`` kwarg.
+    """
+    from a2kit.signature import bind_class_dependencies
+
     group = click.Group(
         name=router.slug,
         help=f"Tools in router {router.slug!r}.",
     )
     for fn in router.tools():
-        callable_ = _bind_if_method(fn, router)
+        bound_class_deps = bind_class_dependencies(fn, app)
+        callable_ = _bind_if_method(bound_class_deps, router)
         group.add_command(_make_tool_command(callable_))
     return group
 
@@ -374,7 +382,7 @@ def build_full_cli(app: App) -> click.Command:
     )
 
     for router in routers:
-        group.add_command(_router_group(router))
+        group.add_command(_router_group(router, app))
     group.add_command(connections_group)
     group.add_command(schema_command)
 

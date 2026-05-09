@@ -19,11 +19,9 @@ from a2kit.packages.connections import get_conn_factory
 
 from .routers import ProjectsRouter, TasksRouter
 from .connection import TrackerConn
-from .deps import get_conn
 
 app = a2kit.App("tracker")
 app.connect(TrackerConn)
-app.use_factory(get_conn_factory(app, TrackerConn), as_=get_conn)
 app.use(ProjectsRouter())
 app.use(TasksRouter())
 
@@ -59,8 +57,9 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name)` | Composition root. `app.connect(ConnT)`, `app.use(Router)`, `app.use_factory(factory, as_=stub)`, `app.get_store(ConnT)`. |
-| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Slug auto-derived; `Router` suffix stripped. |
+| `a2kit.App(name)` | Composition root. `app.connect(ConnT)`, `app.use(Router)`, `app.use_factory(factory, as_=stub)`, `app.get_store(ConnT)`, `app.set_ldd(...)`. |
+| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Slug auto-derived; `Router` suffix stripped. Class kwarg: `class TasksRouter(a2kit.Router, enricher=fn):`. |
+| `a2kit.Store[ConnT]` | Marker base for store classes. The Generic parameter binds the conn type — `Depends(TrackerStore)` resolves the conn first, then constructs the store. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `@a2kit.tool / read / write / list_` | Verb decorators. Map to `mcp.types.ToolAnnotations` + tags. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). |
@@ -80,6 +79,42 @@ ships 1.0; a2kit pins the working pre-release exactly (`0.9.0b1`).
 | `a2kit.packages.enrichers` | Protocol-neutral `wrap(fn, enricher)` + `connection_enricher`. |
 | `a2kit.packages.testing` | Thin pytest fixtures, syrupy `TOONSnapshotExtension`, `make_test_app(routers, overrides=...)`. |
 | `a2kit.packages.lint` | Static + runtime A2K rules. `a2kit lint static <path>` / `a2kit lint runtime --import pkg:app`. |
+
+### Dependency injection — class as the key
+
+Three injection shapes; pick the one that reads cleanest at the call site.
+
+```python
+from uncalled_for import Depends
+import a2kit
+
+# 1. Connection class — `Depends(TrackerConn)` resolves via the registered loader.
+async def get_project(
+    *,
+    conn: TrackerConn = Depends(TrackerConn),
+    connection: str,
+    project_id: str,
+) -> Project: ...
+
+# 2. Store class — runtime composes conn → store. Declare via `Store[ConnT]`.
+class TrackerStore(a2kit.Store[TrackerConn]):
+    def __init__(self, conn: TrackerConn) -> None: ...
+
+async def archive_project(
+    *,
+    store: TrackerStore = Depends(TrackerStore),
+    connection: str,
+    project_id: str,
+) -> Project: ...
+
+# 3. Stub factory — for multi-tenant or test overrides where the factory
+#    needs to be swapped at composition root. Backwards-compatible legacy path.
+async def get_conn(*, connection: str) -> TrackerConn: ...
+app.use_factory(my_factory, as_=get_conn)
+```
+
+The runtime hides class-Depends params from the tool's input schema — only
+`connection: str` (and the user kwargs) appear to the agent.
 
 a2kit re-exports zero external symbols. Users import `Depends` from
 `uncalled_for` directly:

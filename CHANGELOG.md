@@ -1,5 +1,52 @@
 # Changelog
 
+## Next — DX polish: class-based DI + tracker example refresh
+
+### Class-based dependency injection
+
+- **`Depends(TrackerConn)`** — connection class as the injection key.
+  Runtime looks up the registered loader, reads the user's
+  `connection: str` kwarg, returns the loaded conn. Stub `get_conn`
+  functions and `app.use_factory(...)` are no longer required for the
+  common case. Legacy stub-factory path remains supported.
+- **`Depends(TrackerStore)`** — store class as the injection key. The
+  runtime composes conn → store automatically. Stores declare their
+  binding via `class TrackerStore(a2kit.Store[TrackerConn]):` (Generic)
+  or `conn_type = TrackerConn` (class attribute).
+- **`a2kit.Store[ConnT]`** — new marker base for store classes. Lazy-
+  exported; cold-start unchanged.
+- **New exceptions** under `a2kit`: `ConnectionKwargMissing`,
+  `ConnectionNotRegistered`, `StoreConnectionTypeUnknown`. Raised at
+  `app.tools()` time (decoration) when registration is incomplete —
+  fail fast, not at first tool call.
+
+### Router enricher class kwarg
+
+- **`class TasksRouter(a2kit.Router, enricher=fn):`** — PEP 487
+  `__init_subclass__` captures the enricher. Replaces the
+  `enricher = staticmethod(fn)` boilerplate. Bare-function class
+  attributes (`enricher = my_fn`) now auto-wrap as staticmethod.
+- Precedence: constructor arg > class kwarg > class attribute.
+
+### Tracker example refresh
+
+- `examples/tracker/server.py` — drops `set_get_conn` plumbing. New
+  shape: `app.connect(TrackerConn)` + routers, that's it.
+- `examples/tracker/store.py` (renamed from `storage.py`) — inherits
+  from `a2kit.Store[TrackerConn]`.
+- `examples/tracker/routers.py` — every tool uses `Depends(TrackerConn)`
+  or `Depends(TrackerStore)`. New `list_tasks` showcases the listview
+  kit (`default_fields`, `page_size`, `selectable_fields`). New
+  `bulk_import_tasks` demonstrates all four LDD channels working
+  together.
+- `examples/tracker/deps.py` — deleted. The stub `get_conn` is no
+  longer needed.
+
+### ANTIPATTERNS
+
+- "Don't write a stub `get_conn` for single-conn apps" — added.
+- "Stores SHOULD be cheap to construct" — added.
+
 ## Next — LDD streaming reports + narrative events
 
 ### New ToolContext channels

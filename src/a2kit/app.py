@@ -59,6 +59,13 @@ class App:
         return self
 
     def connect(self, conn_type: type[ConnT]) -> App:
+        """Register ``conn_type`` for ``Depends(...)`` resolution.
+
+        Stores that wrap this connection declare their binding via
+        ``class TrackerStore(a2kit.Store[TrackerConn]):`` (Generic) or
+        ``conn_type = TrackerConn`` (class attribute). Either form is
+        sufficient — no separate ``store=`` registration is needed.
+        """
         if conn_type not in self._connection_types:
             self._connection_types.append(conn_type)
         return self
@@ -74,12 +81,14 @@ class App:
         return self._routers.all()
 
     def tools(self) -> list[Callable[..., Any]]:
-        from a2kit.signature import rebuild_with_factories
+        from a2kit.signature import bind_class_dependencies, rebuild_with_factories
 
         raw = self._routers.tools()
+        # First: rewrite Depends(<class>) defaults to closures that resolve at call time.
+        bound = [bind_class_dependencies(fn, self) for fn in raw]
         if not self._factories:
-            return raw
-        return [rebuild_with_factories(fn, self._factories) for fn in raw]
+            return bound
+        return [rebuild_with_factories(fn, self._factories) for fn in bound]
 
     def connection_types(self) -> list[type]:
         return list(self._connection_types)

@@ -286,3 +286,33 @@ of how the App was constructed, and is visible at the test's call site
 (no hidden env spookiness).
 
 Citation: `src/a2kit/app.py::App.set_ldd`.
+
+## 16. Don't write a stub `get_conn` for single-conn apps
+
+The mistake: defining `async def get_conn(*, connection: str) -> TrackerConn: ...`
+as a stub identity, then wiring it via
+`app.use_factory(get_conn_factory(app, TrackerConn), as_=get_conn)`. Three
+identifiers — stub, factory, alias — for one fact: "this tool needs a
+`TrackerConn` for the requested `connection`."
+
+What to do: use `Depends(TrackerConn)` directly. The runtime knows how to
+load a registered conn class. The stub-factory shape is still supported
+for advanced cases (multi-tenant factory swaps, per-test overrides), but
+it's not the right default.
+
+Citation: `src/a2kit/signature.py::bind_class_dependencies`,
+`src/a2kit/app.py::App.connect`.
+
+## 17. Stores SHOULD be cheap to construct
+
+The mistake: a `TrackerStore.__init__` that opens a database connection,
+loads cached state, or does any I/O. The runtime constructs a fresh store
+per tool call. Slow `__init__` adds proportional latency to every
+invocation.
+
+What to do: keep `__init__` to attribute assignment. Do I/O in methods
+(`load_state`, `replace`, `query`). If you genuinely need pooling or
+caching across calls, wrap a singleton inside the store and cache it on
+the connection (or on the store class).
+
+Citation: `examples/tracker/store.py::TrackerStore.__init__`.
