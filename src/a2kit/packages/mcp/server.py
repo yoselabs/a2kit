@@ -21,7 +21,6 @@ from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
 
 from a2kit.metadata import A2KitMeta, get_meta
-from a2kit.packages.mcp.context import bind_context
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
 
@@ -43,6 +42,40 @@ def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
         extra["a2kit.list_view"] = asdict(list_view)
     d["extra"] = extra
     return d
+
+
+def _wrap_with_ldd_state(
+    fn: Any,
+    *,
+    report_type: type | None,
+    tool_name: str | None,
+    reports_enabled: bool,
+    events_enabled: bool,
+) -> Any:
+    """Set the per-call LDD contextvar before invoking ``fn``.
+
+    Replaces the old ``bind_context`` adapter wrapping. The tool's signature is
+    preserved unchanged; ``ctx: a2kit.ToolContext`` (= ``fastmcp.Context``) is
+    injected directly by FastMCP. Free functions ``a2kit.ldd.event`` and
+    ``a2kit.ldd.report`` read the contextvar to honor enable flags and report
+    type without needing to wrap the Context object.
+    """
+    from a2kit.ldd import ldd_state_for_call
+
+    @functools.wraps(fn)
+    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with ldd_state_for_call(
+            events_enabled=events_enabled,
+            reports_enabled=reports_enabled,
+            report_type=report_type,
+            tool_name=tool_name,
+        ):
+            result = fn(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+
+    return _wrapped
 
 
 def _wrap_with_router_enrichers(fn: Any, router: Any | None) -> Any:
@@ -150,13 +183,46 @@ def _router_for_tool(app: Any, fn: Any) -> Any | None:
     return None
 
 
+def _merge_lifespan(app: Any, user_lifespan: Any | None) -> Any:
+    """Build an async context manager that runs a2kit lifecycle around ``user_lifespan``.
+
+    Order: dispatch_startup(app) → user_lifespan(server).__aenter__ → yield →
+    user_lifespan(server).__aexit__ → dispatch_shutdown(app). If ``user_lifespan``
+    is None, only the a2kit handlers run.
+    """
+    from contextlib import asynccontextmanager
+
+    from a2kit.app import dispatch_shutdown, dispatch_startup
+
+    @asynccontextmanager
+    async def _lifespan(server: Any) -> Any:
+        await dispatch_startup(app)
+        try:
+            if user_lifespan is None:
+                yield None
+            else:
+                async with user_lifespan(server) as user_state:
+                    yield user_state
+        finally:
+            await dispatch_shutdown(app)
+
+    return _lifespan
+
+
 def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     """Build a FastMCP server from an ``a2kit.App``.
 
     All ``fastmcp_kwargs`` flow straight to ``FastMCP.__init__`` — auth,
     providers, transforms, lifespan, tasks, sampling_handler, etc. a2kit owns
     no auth abstraction; FastMCP plugins work directly.
+
+    When ``app`` has registered ``on_startup`` / ``on_shutdown`` handlers, this
+    function derives a ``lifespan`` async context manager and merges it with
+    any user-supplied ``lifespan=`` kwarg. Order: a2kit-startup → user-lifespan
+    enter → user body → user-lifespan exit → a2kit-shutdown.
     """
+    if hasattr(app, "has_lifecycle_handlers") and app.has_lifecycle_handlers():
+        fastmcp_kwargs["lifespan"] = _merge_lifespan(app, fastmcp_kwargs.get("lifespan"))
     server = FastMCP(name=app.name, **fastmcp_kwargs)
 
     reports_enabled = getattr(app, "ldd_reports", True)
@@ -175,22 +241,30 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
         if container is not None and dispatch_hook is not None:
             wrapped = _wrap_with_dispatch_hook(wrapped, dispatch_hook, container)
         if meta.context_param_name:
-            wrapped = bind_context(
+            wrapped = _wrap_with_ldd_state(
                 wrapped,
-                meta.context_param_name,
                 report_type=meta.extra.get("a2kit.report_type"),
                 tool_name=meta.tool_name,
                 reports_enabled=reports_enabled,
                 events_enabled=events_enabled,
             )
 
+        # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — keep them
+        # out of agent-facing `list_tools` by tagging with `_meta` and disabling
+        # them at registration; clients can still invoke them by name.
+        from a2kit.tool import _RESERVED_TOOL_NAME_PREFIX
+
+        is_meta = meta.tool_name.startswith(_RESERVED_TOOL_NAME_PREFIX)
+        tool_tags = {*meta.tags, "_meta"} if is_meta else set(meta.tags)
         tool = FunctionTool.from_function(
             wrapped,
             name=meta.tool_name,
-            tags=set(meta.tags),
+            tags=tool_tags,
             annotations=meta.annotations,
             meta={"a2kit": _meta_to_dict(meta)},
         )
+        if is_meta:
+            tool.disable()
         server.add_tool(tool)
 
     # Built-in middleware first; user-attached middlewares (via add_mcp_middleware) after.

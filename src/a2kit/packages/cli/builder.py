@@ -108,6 +108,51 @@ def _click_type_for(annotation: Any) -> tuple[Any, bool]:
     return click.STRING, True
 
 
+_MD_INLINE_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("**", ""),  # bold
+    ("__", ""),
+    ("`", ""),  # inline code
+)
+
+
+def _strip_md(text: str) -> str:
+    """Coarse markdown stripper for terminal rendering.
+
+    Removes inline emphasis markers (``**bold**`` → ``bold``, ``*italic*`` →
+    ``italic``, ``` `code` ``` → ``code``); rewrites ``[text](url)`` links to
+    ``text (url)``. Block constructs (headers, lists, code fences) pass
+    through unchanged — terminals render them readable enough.
+    """
+    import re
+
+    out = text
+    out = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", out)
+    for marker, repl in _MD_INLINE_PATTERNS:
+        out = out.replace(marker, repl)
+    # Single-asterisk italics: replace pairs but leave bare * (e.g. lists) alone.
+    out = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", out)
+    out = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"\1", out)
+    return out
+
+
+def _docstring_to_help(fn: Callable[..., Any]) -> tuple[str, str]:
+    """Return ``(short_help, long_help)`` for a tool function's docstring.
+
+    Short help is the first non-empty line of the dedented docstring.
+    Long help is the full PEP-257-dedented body with markdown stripped for
+    terminal rendering.
+    """
+    import inspect as _inspect
+
+    raw = _inspect.getdoc(fn)
+    if not raw:
+        return "", ""
+    lines = raw.splitlines()
+    short = next((line.strip() for line in lines if line.strip()), "")
+    long_help = _strip_md(raw)
+    return short, long_help
+
+
 def _option_name(param_name: str) -> str:
     return "--" + param_name.replace("_", "-")
 
@@ -149,7 +194,7 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
 
     meta = get_meta(fn)
     tool_name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
-    description = (fn.__doc__ or "").strip().splitlines()[0] if fn.__doc__ else ""
+    short_help, long_help = _docstring_to_help(fn)
 
     container = app.container()
     params, needs_connection = wire_input_params(fn, container)
@@ -157,6 +202,10 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
         resolved_hints = get_type_hints(fn)
     except Exception:  # noqa: BLE001
         resolved_hints = {}
+    try:
+        annotated_hints = get_type_hints(fn, include_extras=True)
+    except Exception:  # noqa: BLE001
+        annotated_hints = {}
 
     descriptor_hint = infer_format_hint(resolved_hints.get("return"))
     required_names: set[str] = set()
@@ -193,6 +242,11 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
         }
         if has_default:
             opt_kwargs["default"] = default
+        from a2kit.params import description_of
+
+        param_desc = description_of(annotated_hints.get(name))
+        if param_desc:
+            opt_kwargs["help"] = param_desc
         click_params.append(click.Option([opt_name, name], **opt_kwargs))
 
     if needs_connection and "connection" not in params:
@@ -287,6 +341,7 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
                 reports_enabled=reports_enabled,
                 events_enabled=events_enabled,
                 dispatch_hook=app.dispatch_hook(),
+                app=app,
             )
         except click.ClickException:
             raise
@@ -299,8 +354,8 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
         name=tool_name,
         params=click_params,
         callback=callback,
-        help=description,
-        short_help=description,
+        help=long_help,
+        short_help=short_help,
     )
 
 
@@ -371,7 +426,37 @@ def build_full_cli(app: App) -> click.Command:
     for cmd in app.cli_extras():
         group.add_command(cmd)
     group.add_command(build_schema_command(app))
+    # `<app> health` shorthand for `_meta.health`. Only registered when the
+    # health probe is enabled — keeps the surface clean for apps that didn't
+    # opt in.
+    if getattr(app, "_health", None) is not None and app._health.enabled:  # noqa: SLF001
+        group.add_command(_build_health_command(app))
     return group
+
+
+def _build_health_command(app: App) -> click.Command:
+    """``<app> health`` — invoke ``_meta.health`` and exit non-zero on degraded."""
+    import json
+
+    from a2kit.packages.health import HEALTH_TOOL_NAME
+
+    @click.command(name="health", help="Run aggregated health probe; exits non-zero on degraded.")
+    def _health_cmd() -> None:
+        from a2kit.packages.testing.client import client as _client
+
+        async def _run() -> dict[str, Any]:
+            async with _client(app) as c:
+                result = await c.invoke(HEALTH_TOOL_NAME)
+                return result if isinstance(result, dict) else {"status": "unknown"}
+
+        import asyncio
+
+        result = asyncio.run(_run())
+        click.echo(json.dumps(result, indent=2))
+        if result.get("status") != "ok":
+            raise click.exceptions.Exit(1)
+
+    return _health_cmd
 
 
 __all__ = ["LazyGroup", "build_full_cli"]

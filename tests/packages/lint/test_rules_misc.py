@@ -365,6 +365,27 @@ def test_import_discipline_silent_inside_otel_dir(tmp_path: Path) -> None:
     assert A2K_IMPORT_DISCIPLINE not in _codes(findings)
 
 
+def test_import_discipline_silent_inside_cli_context(tmp_path: Path) -> None:
+    """``packages/cli/context.py`` is allowlisted for the lazy elicit() import."""
+    body = "from fastmcp.server.elicitation import AcceptedElicitation\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "cli" / "context.py", body)
+    findings = run_static_rules([p])
+    assert A2K_IMPORT_DISCIPLINE not in _codes(findings)
+
+
+def test_user_tool_with_fastmcp_context_annotation_is_silent(tmp_path: Path) -> None:
+    """Tool annotations ``ctx: fastmcp.Context`` import fastmcp at module top.
+
+    User code under their own package isn't subject to A2K-IMPORT-DISCIPLINE
+    (the rule only fires inside ``a2kit/``). This regression locks that in
+    so portable tool authors aren't penalized for using the real type.
+    """
+    body = "from fastmcp import Context\nasync def my_tool(*, ctx: Context) -> dict:\n    return {}\n"
+    p = _write(tmp_path / "user_app" / "tools.py", body)
+    findings = run_static_rules([p])
+    assert A2K_IMPORT_DISCIPLINE not in _codes(findings)
+
+
 def test_import_discipline_noqa(tmp_path: Path) -> None:
     body = "from fastmcp import FastMCP  # noqa: A2K-IMPORT-DISCIPLINE\n"
     p = _write(tmp_path / "src" / "a2kit" / "user_app.py", body)

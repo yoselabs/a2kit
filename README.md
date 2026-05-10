@@ -3,7 +3,8 @@
 **Fat tool decorator on top of FastMCP — protocol-agnostic core, plain-Python composition.**
 
 a2kit ships an `App`, verb decorators (`@a2kit.read` / `@a2kit.write` /
-`@a2kit.list_`), and a `ToolContext` Protocol — that's it for the core.
+`@a2kit.list_`), and a `ToolContext` alias for `fastmcp.Context` — that's it
+for the core.
 Connections, formatter, select grammar, lint, testing helpers, MCP server,
 and CLI live under `a2kit.packages.*` and are imported only when you
 actually use them. FastMCP is a hard dependency, but it's confined to
@@ -65,7 +66,7 @@ uv pip install a2kit
 | `@a2kit.read / write / tool` | Verb decorators. Kwargs: `name?, tags?, annotations?`. |
 | `@a2kit.list_` | Specialized list verb. `@a2kit.list_(*default_fields, page_size=None, selectable_fields=None, name=None, tags=None)`. Selectable derived from `list[T]` return annotation when omitted. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). Feature decorators write namespaced keys into `meta.extra`. |
-| `a2kit.ToolContext` | Protocol for protocol-neutral logging + progress. Both adapters supply an implementation. |
+| `a2kit.ToolContext` | Lazy alias for `fastmcp.Context` — tools annotate `ctx: a2kit.ToolContext` and receive the live FastMCP Context on the MCP transport, or a Context-shaped CLI stub on the CLI transport. Bare `import a2kit` doesn't pull fastmcp; the alias resolves on first access. |
 | `a2kit.Cap` | Built-in capability `StrEnum`. `a2kit.capabilities.register(...)` for custom tags. |
 | `a2kit.run(app, argv=None)` | Single-entry CLI dispatch. Builds Click group, invokes. |
 
@@ -121,21 +122,86 @@ What the framework does:
 No `Depends(...)`, no class-as-key markers, no plugin protocol. The
 `provide(...)` calls *are* the DI graph; you can grep for them.
 
+### MCP tool annotations
+
+Verb decorators accept the MCP `ToolAnnotations` hints that clients use to
+decide things like "should I auto-invoke without confirmation?" or "how
+much trust to extend to repeated calls?".
+
+```python
+@a2kit.read(idempotent=True, open_world=True, title="Fetch Web Page")
+async def fetch(*, url: str) -> FetchResponse:
+    ...
+
+@a2kit.write(destructive=False, idempotent=True, title="Mark Complete")
+async def mark_complete(*, task_id: str) -> Task:
+    ...
+```
+
+Defaults are conservative: `idempotent=False`, `open_world=False`,
+`destructive=False` on `@read`, `True` on `@write`. Apps that touch the
+network must opt into `open_world=True`. `@a2kit.read(destructive=...)`
+raises `TypeError` — read tools are non-destructive by spec. The full
+escape hatch is `annotations=ToolAnnotations(...)` if you need to set
+fields a2kit doesn't model.
+
+### Per-parameter descriptions
+
+`a2kit.Param(description=...)` attaches schema metadata to direct kwargs
+(non-model parameters):
+
+```python
+from typing import Annotated
+
+@a2kit.read()
+async def fetch(
+    *,
+    url: Annotated[str, a2kit.Param(description="Absolute http(s) URL.")],
+) -> FetchResponse:
+    """First line is the short description.
+
+    The full body is the long help — markdown stripped on CLI, intact on MCP.
+    """
+```
+
+The description flows to both the MCP input schema (via pydantic) and
+click `--option HELP`. For kwargs that are Pydantic body models,
+`Field(description=...)` already works — `Param` is the sibling for
+direct kwargs.
+
+### Health probe
+
+```python
+app = a2kit.App("my-app", health_tool=True)
+
+@app.health_check
+async def _sqlite() -> a2kit.HealthResult:
+    return a2kit.HealthResult.ok() if state.sqlite else a2kit.HealthResult.fail("not opened")
+```
+
+Registers a built-in `_meta.health` tool (hidden from agent-facing
+`list_tools` but invokable by name). CLI exposes `<app> health` whose exit
+code reflects aggregated status. The `_meta.*` namespace is reserved —
+user tools can't claim it.
+
 ### Logging + progress + events + reports (`ToolContext`)
 
-`ToolContext` exposes **four channels** for mid-flight communication.
-Each emission carries an elapsed `+s.mmm` timestamp and reaches the
-caller immediately (no buffering).
+`a2kit.ToolContext` is an alias for `fastmcp.Context`. All Context logging
+methods are async; events and reports moved off the Context class and live
+as free functions in `a2kit.ldd`.
 
 | Channel | API | When to use |
 |---|---|---|
-| Process telemetry | `ctx.info / warning / error / debug(msg, **kw)` | Free-form ambient logs |
+| Process telemetry | `await ctx.info / warning / error / debug(msg, **kw)` | Free-form ambient logs |
 | Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — for progress bars |
-| **Narrative events** | `await ctx.event(name, **payload)` | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
-| **Typed reports** | `await ctx.report(payload)` (requires stacked `@reports(ReportT)`) | Mid-flight result chunks with a declared schema |
+| **Narrative events** | `await event(ctx, name, **payload)` (from `a2kit.ldd`) | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
+| **Typed reports** | `await report(ctx, payload)` (requires stacked `@reports(ReportT)`) | Mid-flight result chunks with a declared schema |
+| **Typed event registry** | `app.ldd.events.register(MyEvent, progress=fn)` then `await app.ldd.events.emit_typed(ctx, evt)` | One-call emit: dump → event → progress |
 
 ```python
 from pydantic import BaseModel
+from a2kit.ldd import event, report
+from a2kit.packages.mcp.reports import reports
 
 
 class BatchReport(BaseModel):
@@ -143,18 +209,15 @@ class BatchReport(BaseModel):
     accepted: int
 
 
-from a2kit.packages.mcp.reports import reports
-
-
 @a2kit.read()
 @reports(BatchReport)
 async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
-    await ctx.event("import.started", file=file)
+    await event(ctx, "import.started", file=file)
     items = await load(file)
     for i, item in enumerate(items):
         await ctx.report_progress(i, len(items))
-        await ctx.report(BatchReport(batch=i, accepted=1))
-    await ctx.event("import.complete", count=len(items))
+        await report(ctx, BatchReport(batch=i, accepted=1))
+    await event(ctx, "import.complete", count=len(items))
     return {"imported": len(items)}
 ```
 
@@ -169,7 +232,7 @@ env `A2KIT_LDD=off` process-wide. Most-specific layer wins. Disabled
 emissions still type-validate `@reports(...)` payloads — keeps tests
 deterministic.
 
-**Lint rule.** `A2K-LDD-REPORT-TYPE` fires when `ctx.report(...)` is
+**Lint rule.** `A2K-LDD-REPORT-TYPE` fires when `report(ctx, ...)` is
 called without a stacked `@reports(ReportT)` decorator, or when the
 declared type is defined inside a function (Pydantic forward-ref constraint).
 
@@ -220,14 +283,44 @@ Active rules:
 
 - `A2K-CONN-LIST-PLACEHOLDER` — `${VAR}` inside list/dict fields on `ConnectionConfig`.
 - `A2K-IMPORT-DISCIPLINE` — `fastmcp` imports outside `packages/mcp/` and the lazy-load lines in `packages/cli/builder.py`.
-- `A2K-LDD-REPORT-TYPE` — `ctx.report(...)` without a stacked `@reports(ReportT)`, or report type defined inside a function.
+- `A2K-LDD-REPORT-TYPE` — `report(ctx, ...)` without a stacked `@reports(ReportT)`, or report type defined inside a function.
 - `A2K-CORE-CLEAN` — feature identifiers (`connection`, `enricher`, `list_view`, `report_type`, `report_schema`, `router_slug`) in `src/a2kit/*.py` outside `packages/`. Same boundary keeps the DI container (`Container`, `partition_kwargs`, `apply_kwargs`) confined to `packages/connections`.
 - `A2K-EXTRA-NAMESPACE` — `meta.extra` keys must start with `a2kit.` or a `<package>.` prefix.
 
 ## Testing
 
-Tests construct routers with fake factories and register them with a fresh
-`App` — same shape as production code:
+### In-process test client (recommended)
+
+`a2kit.testing.client(app)` runs the **full dispatcher** in-process — same
+DI resolution, decorator processing, return-value rendering, and `ctx`
+wiring as production. Lifecycle hooks fire. Events / progress / logs /
+reports are captured for assertions.
+
+```python
+import asyncio
+import a2kit
+from a2kit.testing import client
+
+async def test_fetch():
+    async with client(app) as c:
+        result = await c.invoke("web.fetch", url="https://example.com")
+        assert result.status == "ok"
+        assert any(e["name"] == "TierEnded" for e in c.events)
+        assert c.progress[-1] == (1.0, 1.0)
+        # Cross-format assertion without spinning a real MCP server:
+        assert c.render_as("json", result)["status"] == "ok"
+```
+
+`client.invoke` returns the raw tool value (no formatter). `client.render_as(fmt, val)`
+runs the value through `a2kit.packages.formatter` for wire-format checks.
+`client.tools()` returns descriptors matching what `list_tools` would
+advertise. `connection=` flows through the same DI chain as the CLI/MCP
+transports.
+
+### Direct construction (lightweight unit tests)
+
+For tests that don't need the full dispatcher, construct routers with fake
+factories and register them with a fresh `App`:
 
 ```python
 import a2kit
@@ -270,6 +363,8 @@ v0.19 / `v1-thin-core` intermediate shapes:
 - `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage; `add_cli(connections_cli(ConfigT))` auto-installs the `ConfigT` provider
 
 See [ANTIPATTERNS.md](ANTIPATTERNS.md) for a2kit-specific patterns to avoid.
+See [OPERATIONAL_CONTRACTS.md](OPERATIONAL_CONTRACTS.md) for documented
+behaviors on cancellation, timeouts, multi-App, errors, and streaming.
 
 ## Status
 

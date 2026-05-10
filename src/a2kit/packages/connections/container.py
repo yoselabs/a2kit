@@ -31,7 +31,7 @@ import inspect
 import types
 import typing
 from collections.abc import Callable
-from typing import Any, TypeVar, get_origin, get_type_hints
+from typing import Any, TypeVar, get_origin
 
 T = TypeVar("T")
 Factory = Callable[..., Any]
@@ -46,6 +46,22 @@ class UnresolvableType(Exception):
         super().__init__(f"cannot resolve {type_!r}; chain: {self.chain}")
 
 
+class SyncResolveUnavailable(Exception):
+    """Raised by :meth:`Container.resolve_sync` when an async factory is in the chain.
+
+    ``async_link`` names the type whose factory is async (or whose singleton has
+    not yet been resolved and is async-backed). Callers should switch to
+    ``await container.resolve(T)`` for the offending chain.
+    """
+
+    def __init__(self, type_: Any, async_link: Any) -> None:
+        self.type_ = type_
+        self.async_link = async_link
+        super().__init__(
+            f"cannot resolve {type_!r} synchronously: {async_link!r} requires async factory; use `await container.resolve(...)` instead"
+        )
+
+
 class _ParamSpec:
     __slots__ = ("annotation", "has_default", "name")
 
@@ -58,8 +74,13 @@ class _ParamSpec:
 def _factory_callable(factory: Factory) -> Callable[..., Any]:
     """Return the introspectable callable for a factory.
 
-    For a class, that's its ``__init__``; for a callable, the callable itself.
+    For a class, that's its ``__init__``; for a singleton wrapper, the underlying
+    user factory (so signature introspection sees the user's parameters, not
+    ``__call__``'s ``*args, **kwargs``); for a callable, the callable itself.
     """
+    if getattr(factory, "_is_a2kit_singleton", False):
+        user = factory.user_factory  # ty: ignore[unresolved-attribute]
+        return user.__init__ if inspect.isclass(user) else user
     if inspect.isclass(factory):
         return factory.__init__
     return factory
@@ -67,11 +88,10 @@ def _factory_callable(factory: Factory) -> Callable[..., Any]:
 
 def _factory_params(factory: Factory) -> list[_ParamSpec]:
     """List the factory's input parameters (skipping ``self``)."""
+    from a2kit.signature import resolve_hints
+
     target = _factory_callable(factory)
-    try:
-        hints = get_type_hints(target, include_extras=False)
-    except Exception:  # noqa: BLE001
-        hints = {}
+    hints = resolve_hints(target)
     sig = inspect.signature(target)
     out: list[_ParamSpec] = []
     for pname, param in sig.parameters.items():
@@ -162,7 +182,7 @@ class Container:
         self,
         type_: type,
         *,
-        connection: str | None,
+        connection: str | None = None,
         cache: dict[type, Any] | None = None,
         chain: list[type] | None = None,
     ) -> Any:
@@ -187,6 +207,123 @@ class Container:
             result = await result
         cache[type_] = result
         return result
+
+    def resolve_sync(
+        self,
+        type_: type,
+        *,
+        connection: str | None = None,
+        cache: dict[type, Any] | None = None,
+        chain: list[type] | None = None,
+    ) -> Any:
+        """Synchronously resolve ``type_`` if every factory in the reachable chain is sync.
+
+        Raises :class:`SyncResolveUnavailable` if any factory in the chain is async
+        (or if a singleton wrapper backs an unresolved async user-factory). Singleton
+        types whose value has already been cached short-circuit as sync regardless of
+        the original factory's async-ness.
+        """
+        if cache is None:
+            cache = {}
+        if chain is None:
+            chain = []
+        if type_ in cache:
+            return cache[type_]
+        if type_ in chain:
+            msg = f"provider cycle: {[*chain, type_]}"
+            raise ValueError(msg)
+        factory = self._providers.get(type_)
+        if factory is None:
+            raise UnresolvableType(type_, [*chain])
+
+        # Singleton fast-path: cached value is sync regardless of original factory.
+        sw = _as_singleton_wrapper(factory)
+        if sw is not None and sw.is_resolved():
+            cached = sw.get_cached()
+            cache[type_] = cached
+            return cached
+
+        # Reject async factories upfront with a clear offender.
+        async_link = self._is_sync_chain(type_)
+        if async_link is not None:
+            raise SyncResolveUnavailable(type_, async_link=async_link)
+
+        new_chain = [*chain, type_]
+        kwargs = self._resolve_factory_kwargs_sync(factory, connection, cache, new_chain)
+        result = factory(**kwargs)
+        # Defensive: a sync chain should never produce an awaitable, but guard anyway.
+        if inspect.isawaitable(result):
+            raise SyncResolveUnavailable(type_, async_link=type_)
+        cache[type_] = result
+        return result
+
+    def _is_sync_chain(
+        self,
+        type_: type,
+        seen: set[type] | None = None,
+    ) -> Any:
+        """Walk the provider graph; return the first async link or ``None`` if all sync.
+
+        Singleton-cached values short-circuit as sync. Singleton wrappers backing
+        an async user-factory return ``type_`` as the offending link only if the
+        cached value is not yet present.
+        """
+        if seen is None:
+            seen = set()
+        if type_ in seen or self._providers.get(type_) is None:
+            return None
+        seen.add(type_)
+        factory = self._providers[type_]
+        if self._factory_is_async(factory):
+            return type_
+        return self._first_async_dep(factory, seen)
+
+    @staticmethod
+    def _factory_is_async(factory: Factory) -> bool:
+        sw = _as_singleton_wrapper(factory)
+        if sw is not None:
+            return not sw.is_resolved() and sw.is_async
+        return inspect.iscoroutinefunction(factory)
+
+    def _first_async_dep(self, factory: Factory, seen: set[type]) -> Any:
+        # Singleton wrappers backing already-resolved values short-circuit.
+        sw = _as_singleton_wrapper(factory)
+        if sw is not None and sw.is_resolved():
+            return None
+        for spec in self._params_for(factory):
+            if not self.has(spec.annotation):
+                continue
+            bad = self._is_sync_chain(spec.annotation, seen)
+            if bad is not None:
+                return bad
+        return None
+
+    def _resolve_factory_kwargs_sync(
+        self,
+        factory: Factory,
+        connection: str | None,
+        cache: dict[type, Any],
+        new_chain: list[type],
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        for spec in self._params_for(factory):
+            if spec.name == "connection" and (spec.annotation is str or spec.annotation is inspect.Parameter.empty):
+                if connection is None:
+                    raise UnresolvableType(str, new_chain)
+                kwargs["connection"] = connection
+                continue
+            if self.has(spec.annotation):
+                kwargs[spec.name] = self.resolve_sync(
+                    spec.annotation,
+                    connection=connection,
+                    cache=cache,
+                    chain=new_chain,
+                )
+                continue
+            if spec.has_default:
+                continue
+            raise UnresolvableType(spec.annotation, new_chain)
+        return kwargs
 
     async def _resolve_factory_kwargs(
         self,
@@ -323,10 +460,9 @@ class Container:
 
 def _params_for_method(fn: Callable[..., Any]) -> list[_ParamSpec]:
     """Method-aware variant of :func:`_factory_params` (skips ``self``)."""
-    try:
-        hints = get_type_hints(fn, include_extras=False)
-    except Exception:  # noqa: BLE001
-        hints = {}
+    from a2kit.signature import resolve_hints
+
+    hints = resolve_hints(fn)
     try:
         sig = inspect.signature(fn)
     except (TypeError, ValueError):
@@ -385,9 +521,21 @@ def install_connection_providers(container: Container, conn_types: tuple[type, .
         container.register(ct, _make_factory())
 
 
+def _as_singleton_wrapper(factory: Any) -> Any:
+    """Return ``factory`` if it is a singleton wrapper marker, else ``None``.
+
+    The singleton wrapper carries ``_is_a2kit_singleton = True`` so the container
+    can special-case sync-resolve and chain analysis without importing ``app``.
+    """
+    if getattr(factory, "_is_a2kit_singleton", False):
+        return factory
+    return None
+
+
 __all__ = [
     "Container",
     "Factory",
+    "SyncResolveUnavailable",
     "UnresolvableType",
     "container_dispatch",
     "install_connection_providers",

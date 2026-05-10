@@ -1,0 +1,149 @@
+"""Section 4 of `a2web-feedback-round-2`: health probe.
+
+Gherkin scenarios (mirroring `specs/health-probe/spec.md`):
+
+  Scenario: health tool returns ok with version
+    GIVEN App(name, health_tool=True) with no registered checks
+    WHEN _meta.health is invoked
+    THEN response = {"status": "ok", "version": <ver>, "checks": []}
+
+  Scenario: health tool not registered by default
+    GIVEN App(name) (no health_tool=)
+    THEN _meta.health is absent from app.tool_descriptors()
+
+  Scenario: passing check contributes ok entry
+    GIVEN @app.health_check returning HealthResult.ok()
+    THEN response.checks contains {name, status="ok"}
+
+  Scenario: failing check flips status to degraded
+    GIVEN @app.health_check returning HealthResult.fail("reason")
+    THEN response.status == "degraded" and the entry has reason
+
+  Scenario: _meta.* namespace reserved
+    GIVEN @a2kit.read(name="_meta.custom") on a user tool
+    THEN ValueError at decoration time
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import pytest
+
+import a2kit
+from a2kit.packages.health import HEALTH_TOOL_NAME, HealthResult
+from a2kit.testing import client
+
+
+def test_health_tool_not_registered_by_default() -> None:
+    app = a2kit.App("plain")
+    names = [d.name for d in app.tool_descriptors()]
+    assert HEALTH_TOOL_NAME not in names
+
+
+def test_health_tool_registered_when_enabled() -> None:
+    app = a2kit.App("with-health", health_tool=True)
+    names = [d.name for d in app.tool_descriptors()]
+    assert HEALTH_TOOL_NAME in names
+
+
+def test_health_returns_ok_with_no_checks() -> None:
+    app = a2kit.App("with-health", health_tool=True)
+
+    async def go() -> Any:
+        async with client(app) as c:
+            return await c.invoke(HEALTH_TOOL_NAME)
+
+    result = asyncio.run(go())
+    assert result["status"] == "ok"
+    assert result["checks"] == []
+    assert "version" in result
+
+
+def test_passing_check_contributes_ok_entry() -> None:
+    app = a2kit.App("with-health", health_tool=True)
+
+    @app.health_check
+    def _sqlite_ok() -> HealthResult:
+        return HealthResult.ok()
+
+    async def go() -> Any:
+        async with client(app) as c:
+            return await c.invoke(HEALTH_TOOL_NAME)
+
+    result = asyncio.run(go())
+    assert result["status"] == "ok"
+    assert any(e["name"] == "_sqlite_ok" and e["status"] == "ok" for e in result["checks"])
+
+
+def test_failing_check_flips_status_to_degraded() -> None:
+    app = a2kit.App("with-health", health_tool=True)
+
+    @app.health_check
+    async def _broken() -> HealthResult:
+        return HealthResult.fail("sqlite missing")
+
+    async def go() -> Any:
+        async with client(app) as c:
+            return await c.invoke(HEALTH_TOOL_NAME)
+
+    result = asyncio.run(go())
+    assert result["status"] == "degraded"
+    failing = next(e for e in result["checks"] if e["name"] == "_broken")
+    assert failing["status"] == "fail"
+    assert failing["reason"] == "sqlite missing"
+
+
+def test_mixed_checks_yield_degraded() -> None:
+    app = a2kit.App("with-health", health_tool=True)
+
+    @app.health_check
+    def _ok() -> HealthResult:
+        return HealthResult.ok()
+
+    @app.health_check
+    def _bad() -> HealthResult:
+        return HealthResult.fail("nope")
+
+    async def go() -> Any:
+        async with client(app) as c:
+            return await c.invoke(HEALTH_TOOL_NAME)
+
+    result = asyncio.run(go())
+    assert result["status"] == "degraded"
+    statuses = {e["name"]: e["status"] for e in result["checks"]}
+    assert statuses == {"_ok": "ok", "_bad": "fail"}
+
+
+def test_meta_namespace_reserved_for_user_tools() -> None:
+    """User tools cannot claim a `_meta.*` name."""
+    with pytest.raises(ValueError, match="reserved"):
+
+        @a2kit.read(name="_meta.custom")
+        async def custom() -> dict:
+            return {}
+
+
+def test_meta_health_name_allowed_for_builtin() -> None:
+    """The internal builtin tool with name `_meta.health` decorates without error."""
+    # Just constructing the App with health_tool=True triggers the internal
+    # decoration; if the reserved-name guard rejected the builtin we'd see
+    # the ValueError here.
+    app = a2kit.App("with-health", health_tool=True)
+    names = [d.name for d in app.tool_descriptors()]
+    assert HEALTH_TOOL_NAME in names
+
+
+def test_health_result_classmethods() -> None:
+    ok = HealthResult.ok()
+    assert ok.status == "ok"
+    assert ok.reason is None
+    bad = HealthResult.fail("disk full")
+    assert bad.status == "fail"
+    assert bad.reason == "disk full"
+
+
+def test_health_result_lazy_reexport() -> None:
+    """`a2kit.HealthResult` resolves via lazy __getattr__ without pulling fastmcp."""
+    assert a2kit.HealthResult is HealthResult

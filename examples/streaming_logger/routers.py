@@ -13,6 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 import a2kit
+from a2kit.ldd import event, report
 from a2kit.packages.mcp.reports import reports
 
 
@@ -66,15 +67,15 @@ class TasksRouter(a2kit.Router):
         call so the agent / CLI user sees the narrative interleaved
         with the final return value.
         """
-        ctx.info("starting import", file=file, batch_size=batch_size)
+        await ctx.info("starting import", file=file, batch_size=batch_size)
         rows = _load_csv(file)
-        ctx.info("loaded rows", count=len(rows))
+        await ctx.info("loaded rows", count=len(rows))
         for i in range(0, len(rows), batch_size):
             batch = rows[i : i + batch_size]
             await ctx.report_progress(i, len(rows))
-            ctx.info("processing batch", start=i, size=len(batch))
+            await ctx.info("processing batch", start=i, size=len(batch))
             await _persist(batch)
-        ctx.info("done", imported=len(rows))
+        await ctx.info("done", imported=len(rows))
         return {
             "imported": len(rows),
             "batches": (len(rows) + batch_size - 1) // batch_size if rows else 0,
@@ -93,17 +94,17 @@ class TasksRouter(a2kit.Router):
         ``attempts`` retries are made; if all fail, the tool emits
         ``ctx.error`` then raises.
         """
-        ctx.info("long_running start", attempts=attempts)
+        await ctx.info("long_running start", attempts=attempts)
         for attempt in range(1, attempts + 1):
-            ctx.info("attempt", n=attempt)
+            await ctx.info("attempt", n=attempt)
             await asyncio.sleep(0)
             if attempt < attempts:
-                ctx.warning("transient failure, retrying", attempt=attempt)
+                await ctx.warning("transient failure, retrying", attempt=attempt)
                 continue
             if fail_after >= 0 and attempts > fail_after:
-                ctx.error("giving up", attempts=attempts)
+                await ctx.error("giving up", attempts=attempts)
                 raise RuntimeError("long_running exceeded retry budget")
-            ctx.info("succeeded", attempt=attempt)
+            await ctx.info("succeeded", attempt=attempt)
             return {"attempts": attempt, "ok": 1}
         # Unreachable in practice; included so type checkers see a return.
         return {"attempts": attempts, "ok": 0}
@@ -119,21 +120,21 @@ class TasksRouter(a2kit.Router):
     ) -> dict[str, int]:
         """LDD with the four channels at once.
 
-        - ``ctx.event(name, ...)`` for narrative milestones (``import.started``,
-          ``import.complete``).
-        - ``ctx.report(BatchReport(...))`` for typed mid-flight result chunks.
+        - ``await event(ctx, name, ...)`` for narrative milestones
+          (``import.started``, ``import.complete``).
+        - ``await report(ctx, BatchReport(...))`` for typed mid-flight result chunks.
         - ``ctx.info(...)`` for free-form telemetry.
         - ``ctx.report_progress(i, total)`` for numeric progress.
         """
-        await ctx.event("import.started", file=file, batch_size=batch_size)
+        await event(ctx, "import.started", file=file, batch_size=batch_size)
         rows = _load_csv(file)
-        ctx.info("loaded rows", count=len(rows))
+        await ctx.info("loaded rows", count=len(rows))
         for i in range(0, len(rows), batch_size):
             batch = rows[i : i + batch_size]
             await ctx.report_progress(i, len(rows))
             await _persist(batch)
-            await ctx.report(BatchReport(batch=i // batch_size, accepted=len(batch), rejected=0))
-        await ctx.event("import.complete", imported=len(rows))
+            await report(ctx, BatchReport(batch=i // batch_size, accepted=len(batch), rejected=0))
+        await event(ctx, "import.complete", imported=len(rows))
         return {
             "imported": len(rows),
             "batches": (len(rows) + batch_size - 1) // batch_size if rows else 0,

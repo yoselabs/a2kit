@@ -1,5 +1,244 @@
 # Changelog
 
+## 0.25.0 — a2web feedback round 2 (test client + annotations + health + descriptions + ops contracts) — 2026-05-10
+
+### BREAKING
+
+- **Antipattern #1 lint broadened.** `_check_return` previously rejected only
+  `-> str` returns; now also rejects `int`, `float`, `bool`, `bytes`, and
+  `None` (both `type(None)` and the literal `None` annotation form). Tools
+  must return a Pydantic model, dict, or list/Page of either. Pre-1.0
+  latitude — fail-at-import is the loudest signal possible. Migration: wrap
+  primitive returns in a typed shape (`-> dict[str, int]` instead of `-> int`).
+
+### Added
+
+- **`a2kit.testing.client(app)`** — async-context-manager test client that
+  runs the **full dispatcher** in-process. Captures events, progress,
+  logs, and reports for assertions. Lifecycle hooks fire. `render_as(fmt, val)`
+  for wire-format checks. `tools()` for descriptor introspection.
+  `connection=` passthrough through the same DI chain CLI/MCP transports use.
+- **MCP `ToolAnnotations` kwargs on verb decorators** — `@a2kit.read` /
+  `@a2kit.write` / `@a2kit.tool` accept `idempotent`, `open_world`,
+  `destructive`, `title`. Conservative defaults (idempotent=False,
+  open_world=False, destructive=False on read / True on write).
+  `@a2kit.read(destructive=...)` raises `TypeError` — read tools are
+  non-destructive by spec. Explicit `annotations=ToolAnnotations(...)` is
+  the escape hatch.
+- **`App(name, health_tool=False, debug=False)` constructor flags.**
+  When `health_tool=True`, a built-in `_meta.health` tool is registered.
+  `debug=True` enables tracebacks in error envelopes (currently flag-only).
+- **`@app.health_check` decorator** — register sync or async readiness
+  probes. Probes can take DI kwargs (resolved through the App's dispatch
+  hook). Aggregates into `{status: "ok"|"degraded", version, checks: [...]}`.
+- **`a2kit.HealthResult`** — `status: Literal["ok", "fail"]` + optional
+  `reason`. Classmethods `ok()` / `fail(reason)`.
+- **`_meta.*` reserved namespace.** User tools cannot claim names starting
+  with `_meta.` — built-in protocol-meta tools (currently just `_meta.health`)
+  own that namespace. Decoration-time `ValueError`.
+- **`a2kit.Param(description=..., **extras)`** — annotation marker for tool
+  kwargs. Returns a `pydantic.Field` info object so the description flows
+  through `Annotated[T, Param(...)]` to both the MCP input schema (via
+  pydantic) and click `--option HELP` text (via the CLI builder's
+  `description_of` helper).
+- **Docstring → tool description contract.** First non-empty line of the
+  docstring becomes the tool's short description; the full PEP-257-dedented
+  body becomes the long help. CLI strips markdown for terminal rendering
+  (`_strip_md` handles `**bold**`, `*italic*`, `` `code` ``,
+  `[text](url)` → `text (url)`). MCP forwards the body verbatim
+  (markdown intact).
+- **`OPERATIONAL_CONTRACTS.md`** — documented contracts for cancellation
+  propagation (Q1), per-tool timeouts (Q2 — recommended `anyio.fail_after`
+  pattern), multi-App isolation (Q3 — production-supported), dev auto-reload
+  (Q4 — out of scope), error envelope (Q5 — MCP `-32603` / CLI traceback;
+  `App(debug=True)` toggles wire traceback), streaming output (Q6 —
+  deferred).
+
+### Changed
+
+- **`_build_descriptors` uses `meta.tool_name`** instead of raw
+  `fn.__name__` — honors the decorator's `name=` override so tools with
+  explicit names (like the built-in `_meta.health`) register under the
+  intended descriptor name.
+
+## 0.24.0 — fastmcp.Context passthrough + app lifecycle + DI ergonomics + return-type discipline (a2web feedback round 1) — 2026-05-10
+
+### BREAKING
+
+- **`a2kit.ToolContext` is now `fastmcp.Context`.** The narrow `ToolContext`
+  Protocol that ran on a wrapper adapter is gone — tools that annotate
+  `ctx: a2kit.ToolContext` now receive the live `fastmcp.Context` on the MCP
+  transport, and a Context-shaped CLI stub on the CLI transport. The lazy
+  `__getattr__` on `a2kit` resolves `ToolContext` to `fastmcp.Context` on
+  first access (cold-start invariant preserved: bare `import a2kit` still
+  doesn't pull fastmcp).
+- **All Context logging methods are async.** `ctx.info` / `ctx.warning` /
+  `ctx.error` / `ctx.debug` / `ctx.log` / `ctx.report_progress` are async on
+  both transports (matching `fastmcp.Context`). Sync callers will silently
+  produce a coroutine and log nothing — always `await` them.
+- **`ctx.event(...)` and `ctx.report(...)` removed from the Context API.**
+  These moved off the Context class and live as free functions in
+  `a2kit.ldd`: `await event(ctx, "name", **payload)` /
+  `await report(ctx, payload)`. Per-call state (kill-switches, declared
+  report type) flows through a `contextvars.ContextVar` set by the runtime
+  dispatch site, so the free functions Just Work on either transport.
+- **`FastMCPContextAdapter` and `bind_context` deleted.** No public consumers
+  in-tree; both were private wiring for the now-defunct adapter pattern.
+- **`a2kit.runtime` module deleted** (it held the narrow Protocol).
+
+### Migration
+
+```python
+# --- ctx logging methods are async now ---
+async def my_tool(*, ctx: a2kit.ToolContext) -> dict:
+    ctx.info("hello", count=3)            # before  (silent on MCP, sync on CLI stub)
+    await ctx.info("hello", count=3)      # after   (works on both transports)
+
+# --- ctx.event / ctx.report → free functions ---
+from a2kit.ldd import event, report
+async def my_tool(*, ctx: a2kit.ToolContext) -> dict:
+    await ctx.event("import.started", n=10)         # before
+    await event(ctx, "import.started", n=10)        # after
+
+    await ctx.report(BatchReport(...))              # before
+    await report(ctx, BatchReport(...))             # after
+
+# --- typed event registry (new) ---
+class StepStarted(BaseModel):
+    step: int; total: int
+app.ldd.events.register(StepStarted, progress=lambda e: (e.step, e.total))
+async def run(*, ctx: a2kit.ToolContext):
+    await app.ldd.events.emit_typed(ctx, StepStarted(step=1, total=3))
+
+# --- a2web pattern (singletons + lifecycle) ---
+def register_state(app, *, settings=None):
+    state = AppState(settings=settings or get_settings(), ...)
+    atexit.register(_atexit_close, state)
+    app.provide(AppState, lambda: state)
+
+# After
+@app.singleton(AppState)
+def _build_state():
+    return AppState(settings=get_settings(), ...)
+
+@app.on_startup
+async def _open_resources(app):
+    state = app.container().resolve_sync(AppState)
+    state.sqlite = await open_sqlite(state.settings)
+
+@app.on_shutdown
+async def _close_resources(app):
+    state = app.container().resolve_sync(AppState)
+    if state.sqlite is not None:
+        await state.sqlite.close()
+```
+
+### Cold-start budget note
+
+- Bare `import a2kit` invariant unchanged: stays under 100ms with no fastmcp
+  in `sys.modules` (the `Context` re-export is lazy via `__getattr__`).
+- User-app `<app> --help` triggers fastmcp import on first access to
+  `a2kit.ToolContext` from a tool annotation. Fastmcp's own import cost
+  (~1s on a typical machine) dominates total wall-clock; the a2kit + click
+  + builder overhead on top stays under 200ms (parametrized in
+  `tests/test_cold_start.py::test_user_app_help_a2kit_overhead_under_200ms`
+  across the streaming_logger, elicitation, and sampling examples).
+
+### Added
+
+- **`a2kit.ldd.event` / `a2kit.ldd.report`** — protocol-neutral free functions
+  replacing the deleted `ctx.event` / `ctx.report` methods. Take any
+  `fastmcp.Context`-shaped object as the first arg; route via the per-call
+  `ldd_state_for_call` contextvar set by the dispatch site.
+- **`a2kit.ldd.EventRegistry`** + **`app.ldd.events`** — typed event registry.
+  Register Pydantic event models once (optionally with a progress callback);
+  emit instances via `await app.ldd.events.emit_typed(ctx, evt)`. Handles
+  `model_dump(mode="json")` (datetime → ISO etc.), routes through `event()`,
+  forwards to `ctx.report_progress(...)` when a callback is registered.
+  Re-registration is last-write-wins.
+- **`a2kit.ldd.format_ldd_line(level, msg, fields, elapsed_ms)`** — single
+  canonical LDD-line renderer used by both the CLI stub and any future
+  transport. `TEXT_CAP=60` with `…` elision applied to `msg` on both CLI
+  and the MCP `message` field.
+- **`a2kit.signature.resolve_hints(fn)`** — single fallback for
+  `get_type_hints` failures across the six core sites that previously rolled
+  their own try/except. Logs WARN once per `__qualname__` on failure,
+  returns `{}`. Cold-start preserving (no eager fastmcp import).
+- **`StderrToolContext` full `fastmcp.Context` surface**: per-instance state
+  (`set_state`/`get_state`/`delete_state`), `read_resource` (file:// only,
+  text + binary), primitive `elicit` loop (str/int/float/bool/enum), and
+  `MCPOnlyError` for `sample`/`list_resources`/`list_prompts`/`get_prompt`/
+  `list_roots`/`send_notification`. `send_log_message` mirrors the MCP-side
+  structured-log primitive.
+- **`a2kit.packages.cli.context.MCPOnlyError`** — raised by the CLI stub for
+  methods that have no client-side facility. Constructor: `(method, hint=None)`.
+- **`examples/elicitation/`**, **`examples/sampling/`**, **`examples/typed_events/`** — three new examples + tests covering elicit on stdin, sample raising on CLI, and typed-event registry usage.
+- **`A2K-LOCAL-RETURN-MODEL` lint rule** — static AST check that fires when a
+  tool's return annotation references a `pydantic.BaseModel` subclass defined
+  inside a function, classmethod, or closure (including generic carriers like
+  `Page[Result]`, `list[Result]`). Skips `if TYPE_CHECKING:` blocks. Closes
+  the gap where the rule was documented in `ANTIPATTERNS.md` but not actually
+  shipped.
+- **Decoration-time return-type-scope check** — `_check_return_scope` in
+  `src/a2kit/tool.py` raises `InvalidToolReturnTypeError` at import time when
+  a tool's return-type class has `<locals>` in `__qualname__` (the CPython
+  signal for "defined in a function body"). Pairs with the lint rule for
+  belt-and-suspenders coverage.
+- **`a2kit.testing.peek(app, T)`** — one-line wrapper over
+  `Container.resolve_sync(T)` for tests. Re-exported from `a2kit.testing` and
+  `a2kit.packages.testing`.
+
+
+- **`App.on_startup(handler)` / `App.on_shutdown(handler)`** — register async or
+  sync lifecycle handlers invoked exactly once before the first tool dispatch
+  / after the last. Both methods double as decorators (`@app.on_startup`).
+  Startup runs in registration order; shutdown in reverse (LIFO unwind).
+  Startup failures abort cleanly with no shutdown handlers run; shutdown
+  failures are logged via `a2kit.lifecycle` (ERROR) and swallowed so the
+  original exit reason is preserved.
+- **`App.singleton(type_, factory=None)`** — register a factory whose result is
+  cached on the App for its lifetime. Method form (`app.singleton(T, fn)`) and
+  decorator form (`@app.singleton(T)`) both supported. Factories must NOT
+  depend on `connection` (directly or transitively) — `singleton` raises
+  `ValueError` at registration, naming the offending parameter or chain.
+  Async factories are coalesced under a lazy `asyncio.Lock` so concurrent
+  first-resolves await exactly once.
+- **`App.has_singleton(type_)` / `App.singletons()`** — introspection mirrors
+  parallel to `has_provider` / `container().providers()`. Unresolved entries
+  carry the public sentinel `a2kit.UNRESOLVED`.
+- **`Container.resolve_sync(type_, *, connection=None)`** — synchronous resolve
+  for chains where every factory is sync. Raises `SyncResolveUnavailable`
+  (with `async_link` naming the first async factory) if the chain hits async.
+  Singleton-cached values short-circuit as sync regardless of original
+  factory.
+- **CLI lifecycle integration** — `a2kit.run(app)` invokes registered handlers
+  inside the same `asyncio.run` that wraps the tool body, so resources opened
+  in startup are bound to the loop the tool runs in (no fresh-loop dance).
+- **MCP lifespan integration** — `build_mcp_server(app)` derives a `lifespan=`
+  context manager from the App's handlers and merges with any user-provided
+  `lifespan=` kwarg (a2kit-startup → user-enter → body → user-exit →
+  a2kit-shutdown).
+
+### Changed
+
+- **`Container.resolve(connection=...)` is now optional** (was required
+  keyword) — connection-less apps no longer have to pass `connection=None`
+  everywhere. No behavior change for connection-using apps.
+- **`a2kit.ldd.event` and `a2kit.ldd.report` first args are positional-only**
+  (`async def event(__ctx, __name, /, **payload)`). Lets typed event payloads
+  include keys like `name` / `ctx` without colliding. All existing callers
+  pass these positionally already.
+- **A2K-IMPORT-DISCIPLINE allowlist** extended to include
+  `src/a2kit/packages/cli/context.py` (lazy fastmcp import inside `elicit()`).
+
+### Removed
+
+- **`a2kit.runtime` module** (held the narrow `ToolContext` Protocol).
+- **`a2kit.packages.mcp.context`** module (`FastMCPContextAdapter`,
+  `bind_context`).
+- **`ctx.event(...)` and `ctx.report(...)`** methods on the Context API. Use
+  `await event(ctx, ...)` / `await report(ctx, ...)` from `a2kit.ldd`.
+
 ## 0.23.0 — type-driven format routing: TSV / JSON / page-tsv (TOON dropped) — 2026-05-09
 
 ### Changed (BREAKING)

@@ -50,3 +50,51 @@ def test_connections_cli_does_not_load_fastmcp() -> None:
 def test_otel_package_does_not_eagerly_load_opentelemetry() -> None:
     out = _runtime_check("import sys;import a2kit.packages.otel;print('opentelemetry' in sys.modules)")
     assert out.strip() == "False", "otel package must defer opentelemetry import"
+
+
+# --- User-app cold start (with fastmcp loaded) -------------------------- #
+#
+# Bare ``import a2kit`` must stay <100ms (asserted above). For real user apps
+# that build an App, register routers, and run ``--help``, the budget relaxes
+# to 200ms — fastmcp is allowed to load (Context type is referenced at app
+# build time once we touch tool annotations) but the click CLI tree must
+# still come up fast enough that ``my-app --help`` feels instant.
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "examples.streaming_logger.server",
+        "examples.elicitation.server",
+        "examples.sampling.server",
+    ],
+)
+def test_user_app_help_a2kit_overhead_under_200ms(module: str) -> None:
+    """``a2kit``-side cold-start for ``<app> --help`` stays under 200ms.
+
+    This measures the *a2kit + click + user-app* portion only — fastmcp is
+    pre-imported before the timer starts. A typical user app needs fastmcp
+    loaded (Context type is touched by tool annotations) and that import
+    alone is ~1s on most machines, dominated by fastmcp's own dep tree. The
+    200ms budget here catches regressions in our own CLI tree construction
+    independent of fastmcp's floor — the bare-package <100ms test above
+    already guards the cold-start invariant for non-MCP entry points.
+    """
+    code = (
+        "import time, sys;"
+        "import fastmcp;"  # pre-warm: fastmcp's own import cost is out of scope
+        "t0 = time.perf_counter();"
+        f"import {module} as m;"
+        "from click.testing import CliRunner;"
+        "from a2kit.packages.cli.builder import build_full_cli;"
+        "cli = build_full_cli(m.app);"
+        "result = CliRunner().invoke(cli, ['--help']);"
+        "ms = (time.perf_counter() - t0) * 1000;"
+        "print(ms); print(result.exit_code)"
+    )
+    out = _runtime_check(code)
+    ms_str, exit_str = out.strip().splitlines()
+    assert exit_str == "0", f"--help exited with {exit_str} for {module}"
+    assert float(ms_str) < 200, f"{module} a2kit-overhead --help took {ms_str}ms (>=200ms)"

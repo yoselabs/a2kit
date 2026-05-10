@@ -17,9 +17,10 @@ class ToolCallContamination(A2KitError, ValueError):
 
 
 class InvalidToolReturnTypeError(A2KitError, TypeError):
-    def __init__(self, fn_name: str) -> None:
+    def __init__(self, fn_name: str, *, message: str | None = None) -> None:
         self.fn_name = fn_name
-        super().__init__(f"Tool {fn_name!r} declares `-> str`. FastMCP double-serialises strings; return a dict or Pydantic model instead.")
+        default = f"Tool {fn_name!r} declares `-> str`. FastMCP double-serialises strings; return a dict or Pydantic model instead."
+        super().__init__(message if message is not None else default)
 
 
 class InvalidFilterExpression(A2KitError, ValueError):

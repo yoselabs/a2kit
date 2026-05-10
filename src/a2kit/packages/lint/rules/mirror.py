@@ -24,8 +24,6 @@ A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
 # acquires real logic.
 ALLOW_LIST: frozenset[str] = frozenset(
     {
-        # why: ToolContext Protocol — pure interface, no implementation.
-        "src/a2kit/runtime.py",
         # why: frozen dataclass; construction-only, covered indirectly.
         "src/a2kit/metadata.py",
     }

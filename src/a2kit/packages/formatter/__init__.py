@@ -117,10 +117,7 @@ def format_response(
         from .page import encode_page_tsv as _encode_page_tsv
 
         if not isinstance(raw, Page):
-            msg = (
-                f"format_hint='page-tsv' requires a Page instance, got "
-                f"{type(raw).__name__}"
-            )
+            msg = f"format_hint='page-tsv' requires a Page instance, got {type(raw).__name__}"
             raise TypeError(msg)
         return Response(data=_encode_page_tsv(raw), format="json")
 

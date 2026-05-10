@@ -29,18 +29,25 @@ MCP and a Jira/Confluence-wrapping MCP) and a2kit itself. Each entry:
 >   v1.0 connections use `pydantic-settings` `ConnectionConfig` triples
 >   `(project, env, db)`; the loose-tuple antipattern is unreachable.
 
-## 1. Don't return `-> str` from a tool
+## 1. Don't return primitives from a tool
 
-The mistake: typing a tool as `-> str` looks natural ("agents read text") but
-FastMCP double-serialises strings — the tool returns a JSON-encoded string,
-the runtime wraps it in another JSON envelope, and the agent sees a quoted
-quoted blob. Worse, schema introspection produces an `output_schema` whose
-shape is "string" while the actual return is a formatted JSON document.
+The mistake: typing a tool as `-> str` (or any other primitive — `int`,
+`float`, `bool`, `bytes`, `None`) looks natural ("agents read text") but
+breaks the wire contract. FastMCP double-serialises strings — the tool
+returns a JSON-encoded string, the runtime wraps it in another JSON
+envelope, and the agent sees a quoted-quoted blob. Other primitives
+produce schemas whose shape is the bare type while real consumers expect
+named fields. The only honest answer is a structured shape.
 
-What to do: return `dict` or a Pydantic model. If you need a string body,
-wrap it: `return {"format": "toon", "data": "<rows>"}`. The decorators in
-`a2kit.tool` enforce this at decoration time — `_check_return` raises
-`InvalidToolReturnTypeError` the moment the file imports.
+What to do: return a Pydantic model, `dict`, or a list/Page of either. If
+you need a string body, wrap it: `return {"format": "markdown", "data": "<text>"}`.
+The decorators in `a2kit.tool` enforce this at decoration time — `_check_return`
+raises `InvalidToolReturnTypeError` the moment the file imports, citing
+the offending type and `antipattern #1` in the message.
+
+As of v0.25 the guard rejects `str`, `int`, `float`, `bool`, `bytes`, and
+`None` (both `type(None)` and the literal `None` annotation form). Earlier
+versions only caught `-> str`.
 
 Citation: `src/a2kit/tool.py::_check_return`,
 `src/a2kit/exceptions.py::InvalidToolReturnTypeError`.
@@ -55,11 +62,26 @@ and it cannot see locals from a function that has already returned. Result:
 `InvalidSignature: name 'Result' is not defined` at server build time.
 
 What to do: hoist every BaseModel used as a tool return type to module scope.
-The lint rule A2K-LOCAL-RETURN-MODEL flags it; if you're not running the
-linter, treat it as a hard convention.
+Two enforced mechanisms catch this — there is no opt-out:
+
+- **Static lint** — rule `A2K-LOCAL-RETURN-MODEL` (in
+  `src/a2kit/packages/lint/rules/local_return_model.py`) walks tool return
+  annotations and fires on any `BaseModel` subclass whose `ClassDef` is
+  inside a function, classmethod, or closure (including generic carriers
+  like `Page[Result]`, `list[Result]`). Skips `if TYPE_CHECKING:` blocks.
+- **Decoration-time runtime check** — `_check_return_scope` in
+  `src/a2kit/tool.py` raises `InvalidToolReturnTypeError` at module-import
+  time if the return-type class has `<locals>` in its `__qualname__`. This
+  catches the antipattern even when the linter is not run, provided the
+  module's annotations are not stringified (`from __future__ import
+  annotations` defers to the lint rule, since stringified names cannot be
+  resolved without the function's locals dict — which is exactly the
+  failure mode being flagged).
 
 Citation: surfaced during a2kit v0.2 build; reproducible with FastMCP and any
 locally-defined Pydantic return-type model.
+`src/a2kit/packages/lint/rules/local_return_model.py`,
+`src/a2kit/tool.py::_check_return_scope`,
 `src/a2kit/packages/mcp/server.py::build_mcp_server`.
 
 ## 3. `from __future__ import annotations` stringifies return annotations

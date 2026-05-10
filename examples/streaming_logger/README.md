@@ -3,8 +3,14 @@
 This example demonstrates **LDD** (Logging-Driven Development): a tool
 should *stream its narrative as it executes*, not just return a final
 value. Long-running operations narrate themselves through
-`ctx.info(...)` / `ctx.warning(...)` / `await ctx.report_progress(...)`,
+`await ctx.info(...)` / `await ctx.warning(...)` / `await ctx.report_progress(...)`,
 and a2kit routes those updates to whichever protocol the user is on.
+
+> **API note.** As of `fastmcp-context-passthrough`, `a2kit.ToolContext` is a
+> direct re-export of `fastmcp.Context`, so all logging methods are **async**
+> on both transports — always `await` them. `ctx.event(...)` and `ctx.report(...)`
+> moved off the Context class and live as free functions in `a2kit.ldd`:
+> `await event(ctx, "name", **payload)` / `await report(ctx, payload)`.
 
 | Caller             | Where the stream lands                    |
 |--------------------|-------------------------------------------|
@@ -24,12 +30,12 @@ Rules of thumb — pick the right channel for the right purpose:
 
 | Channel | Use when... | Example |
 |---|---|---|
-| `ctx.info(msg, **kw)` | free-form telemetry, ambient process noise | `ctx.info("processing batch", start=i)` |
-| `ctx.warning(msg, **kw)` | retryable issues, recoverable anomalies | `ctx.warning("transient failure", attempt=2)` |
-| `ctx.error(msg, **kw)` | genuine errors **before** raising | `ctx.error("giving up", attempts=N)` |
+| `await ctx.info(msg, **kw)` | free-form telemetry, ambient process noise | `await ctx.info("processing batch", start=i)` |
+| `await ctx.warning(msg, **kw)` | retryable issues, recoverable anomalies | `await ctx.warning("transient failure", attempt=2)` |
+| `await ctx.error(msg, **kw)` | genuine errors **before** raising | `await ctx.error("giving up", attempts=N)` |
 | `await ctx.report_progress(i, n)` | numeric progress an agent can show as a bar | `await ctx.report_progress(i, len(rows))` |
-| `await ctx.event(name, **kw)` | typed narrative milestones the agent can pattern-match | `await ctx.event("api.fetched", count=30)` |
-| `await ctx.report(payload)` | typed mid-flight result chunks (declared via `@reports(...)`) | `await ctx.report(BatchReport(batch=4, accepted=12))` |
+| `await event(ctx, name, **kw)` (from `a2kit.ldd`) | typed narrative milestones the agent can pattern-match | `await event(ctx, "api.fetched", count=30)` |
+| `await report(ctx, payload)` (from `a2kit.ldd`) | typed mid-flight result chunks (declared via `@reports(...)`) | `await report(ctx, BatchReport(batch=4, accepted=12))` |
 
 **Events vs reports.** Events are free narrative — any tool can emit, no
 declaration required, payload is documentary. Reports are typed result

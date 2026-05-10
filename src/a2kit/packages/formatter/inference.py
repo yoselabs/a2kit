@@ -83,9 +83,7 @@ def _is_pep604_union(annotation: Any) -> bool:
 
 
 def _model_is_scalar_only(cls: type[BaseModel]) -> bool:
-    return all(
-        _is_dump_scalar(field.annotation) for field in cls.model_fields.values()
-    )
+    return all(_is_dump_scalar(field.annotation) for field in cls.model_fields.values())
 
 
 def infer_format_hint(return_type: Any) -> FormatHintInferred:  # noqa: PLR0911
