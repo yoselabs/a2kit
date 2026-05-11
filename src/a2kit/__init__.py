@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     )
     from a2kit.metadata import A2KitMeta
     from a2kit.routers import Router, RouterRegistry
+    from a2kit.surface import Surface
     from a2kit.tool import list_, read, tool, write
 
 
@@ -25,6 +26,7 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "UNRESOLVED": ("a2kit.app", "UNRESOLVED"),
     "Router": ("a2kit.routers", "Router"),
     "RouterRegistry": ("a2kit.routers", "RouterRegistry"),
+    "Surface": ("a2kit.surface", "Surface"),
     "tool": ("a2kit.tool", "tool"),
     "read": ("a2kit.tool", "read"),
     "write": ("a2kit.tool", "write"),
@@ -79,6 +81,7 @@ __all__ = [
     "ReportTypeNotDeclared",
     "Router",
     "RouterRegistry",
+    "Surface",
     "ToolCallContamination",
     "ToolContext",
     "capabilities",

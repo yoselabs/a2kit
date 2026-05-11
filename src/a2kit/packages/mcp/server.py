@@ -51,14 +51,15 @@ def _wrap_with_ldd_state(
     tool_name: str | None,
     reports_enabled: bool,
     events_enabled: bool,
+    sinks: tuple[Any, ...] = (),
 ) -> Any:
     """Set the per-call LDD contextvar before invoking ``fn``.
 
     Replaces the old ``bind_context`` adapter wrapping. The tool's signature is
     preserved unchanged; ``ctx: a2kit.ToolContext`` (= ``fastmcp.Context``) is
     injected directly by FastMCP. Free functions ``a2kit.ldd.event`` and
-    ``a2kit.ldd.report`` read the contextvar to honor enable flags and report
-    type without needing to wrap the Context object.
+    ``a2kit.ldd.report`` read the contextvar to honor enable flags, report
+    type, and in-process sink fan-out without needing to wrap the Context.
     """
     from a2kit.ldd import ldd_state_for_call
 
@@ -69,6 +70,7 @@ def _wrap_with_ldd_state(
             reports_enabled=reports_enabled,
             report_type=report_type,
             tool_name=tool_name,
+            sinks=sinks,
         ):
             result = fn(*args, **kwargs)
             if inspect.isawaitable(result):
@@ -236,7 +238,7 @@ def _merge_lifespan(app: Any, user_lifespan: Any | None) -> Any:
     return _lifespan
 
 
-def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
+def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 -- Surface filter adds one branch; extracting per-tool body would reduce clarity
     """Build a FastMCP server from an ``a2kit.App``.
 
     All ``fastmcp_kwargs`` flow straight to ``FastMCP.__init__`` — auth,
@@ -260,13 +262,20 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
 
     reports_enabled = getattr(app, "ldd_reports", True)
     events_enabled = getattr(app, "ldd_events", True)
+    app_sinks: tuple[Any, ...] = app.ldd.sinks if hasattr(app, "ldd") else ()
 
     container = app.container() if hasattr(app, "container") else None
     dispatch_hook = app.dispatch_hook() if hasattr(app, "dispatch_hook") else None
 
+    from a2kit.surface import SURFACE_META_KEY, Surface
+
     for fn in app.tools():
         meta = get_meta(fn)
         if meta is None:
+            continue
+
+        tool_surfaces = meta.extra.get(SURFACE_META_KEY, Surface.ALL)
+        if Surface.MCP not in tool_surfaces:
             continue
 
         router = _router_for_tool(app, fn)
@@ -280,6 +289,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
                 tool_name=meta.tool_name,
                 reports_enabled=reports_enabled,
                 events_enabled=events_enabled,
+                sinks=app_sinks,
             )
         if app_debug:
             wrapped = _wrap_with_debug_traceback(wrapped)

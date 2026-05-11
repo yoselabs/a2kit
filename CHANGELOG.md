@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.26.0 — a2web feedback round 3 (router-as-plugin + Surface + LDD sinks) — 2026-05-11
+
+### Added
+
+- **`Router` is now the unit of installation.** Optional class attributes
+  on a Router subclass — `providers = (...)`, `on_startup`/`on_shutdown`
+  methods, and a custom `install(self, app)` hook — are honored by
+  `app.add_router(r)`. There is no separate "plugin" type; one verb
+  installs everything the Router declares. Plain Routers (tools only)
+  behave exactly as before.
+- **`a2kit.Surface`** — `Flag` enum (`CLI`, `MCP`, `ALL`). Pass to any
+  verb decorator (`@a2kit.read(surfaces=Surface.CLI)`) to constrain
+  which transports the tool mounts on. CLI builder and MCP server
+  filter by `Surface` membership at mount time. Default `Surface.ALL`.
+- **`a2kit.packages.connections.connections(*conn_types)`** — Router
+  factory that installs typed providers honestly via `Router.install`.
+  Use alongside the existing `connections_cli(...)` for the full
+  surface: `app.add_router(connections(X)); app.add_cli(connections_cli(X))`.
+- **`A2K-SURFACE-EXPLICIT` lint rule** — fires when a credential-named
+  tool (`login`, `logout`, `auth_*`, `rotate_key`, `issue_token`, etc.)
+  defaults to `Surface.ALL`. Suppress with explicit `surfaces=` kwarg.
+- **`app.ldd.add_sink(sink)`** — register an in-process observer for
+  every LDD emission (events and reports), on every transport. Sinks
+  are async callables receiving an `LddEmission` payload (kind, name,
+  payload dict, elapsed_ms, tool_name, ctx). Fan-out is sequential and
+  best-effort; sink exceptions are caught and logged on `a2kit.ldd.sinks`.
+  Replaces the double-emit pattern OTel/Datadog/audit-log integrations
+  needed before.
+- **`a2kit.ldd.LddEmission`** + **`a2kit.ldd.LddSink`** — public types
+  for sink implementers.
+- **OPERATIONAL_CONTRACTS Q2** rewritten with four prescribed
+  `anyio.fail_after` patterns (single-budget, nested multi-stage,
+  silent degrade with `move_on_after`, cleanup-on-timeout).
+- **OPERATIONAL_CONTRACTS Q6** rewritten: heartbeat pattern for
+  visibility during long phases, `add_sink` API documentation,
+  cancellation contract for sinks. Cross-linked from
+  `docs/SPIKE_LDD_CANCELLATION.md`.
+
+### Changed
+
+- **README leading example** switched to imperative composition; the
+  fluent chain is now documented as a "shorthand for compact composition
+  in tests and small scripts." Subsystem-crossing installs (router,
+  CLI, providers, lifecycle) are visible line-by-line.
+- **`examples/tracker/server.py`** ported to the canonical two-call form
+  (`add_router(connections(X))` + `add_cli(connections_cli(X))`).
+
+### Deprecated
+
+- **Hidden auto-install of connection providers via
+  `add_cli(connections_cli(X))`.** Emits `DeprecationWarning` pointing at
+  the new two-call form. The auto-install path will be removed in v0.27.
+
 ## 0.25.0 — a2web feedback round 2 (test client + annotations + health + descriptions + ops contracts) — 2026-05-10
 
 ### BREAKING

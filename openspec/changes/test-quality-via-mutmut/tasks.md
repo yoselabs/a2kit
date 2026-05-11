@@ -27,7 +27,13 @@
 
 - [x] 3.1 Run the new rule against the current tree. Capture the list of missing mirrors as `MIRROR_GAPS.md` (working doc; deleted at end of phase). Expected gaps include: `routers.py`, `signature.py`, `tool.py`, `exceptions.py` (top-level core); `packages/lint/cli.py`; `packages/mcp/reports.py`; `packages/otel/tracer.py`; `packages/testing/exceptions.py`, `packages/testing/fixtures.py`; the 8 `packages/lint/rules/*` modules.
 - [x] 3.2 Created 27 stub mirrors (one per source file under D-MIRROR-SPLIT-VS-MERGE's "stub" branch). Each carries a single `def test_mirror_stub_present` sentinel. Real tests stay in their consolidated location (e.g. `tests/packages/lint/test_rules_misc.py`, `tests/test_health.py`); the stub satisfies the A2K-TEST-MIRROR file-presence + has-test-function checks while a future contributor can promote dedicated tests when a source file grows enough to warrant ≥30 LOC of focused tests.
-- [~] 3.3 The omnibus-split into per-rule mirror files is **deferred**. The stubs in 3.2 satisfy the lint rule today; a real per-rule split would be a separate ~200 LOC refactor that doesn't change behavior. Listed as a follow-up — promote the relevant tests from the omnibus files into each stub when working on that rule.
+- [x] 3.3 Omnibus files split into per-rule mirrors (commit `fb72065`):
+  `test_rules_misc.py` → `test_budget.py` / `test_caps.py` / `test_conn.py` /
+  `test_cross.py` / `test_importing.py`; `test_rules_ldd.py` → `test_ldd.py`;
+  `test_rules_shape.py` → `test_shape.py`; `test_core_purity.py` +
+  `test_extra_namespace.py` merged into `test_purity.py`. Cross-cutting
+  decorator-helper tests moved to `test_rule_helpers.py` at the package-test
+  directory (test-only file, no source mirror needed). 1:1 mirror holds.
   - `tests/packages/lint/rules/test_budget.py`
   - `tests/packages/lint/rules/test_caps.py`
   - `tests/packages/lint/rules/test_conn.py`

@@ -41,6 +41,7 @@ A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"
 A2K_CORE_CLEAN = "A2K-CORE-CLEAN"
 A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
 A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
+A2K_SURFACE_EXPLICIT = "A2K-SURFACE-EXPLICIT"
 
 ALL_RULES = (
     A2K002,
@@ -59,6 +60,7 @@ ALL_RULES = (
     A2K_CORE_CLEAN,
     A2K_EXTRA_NAMESPACE,
     A2K_TEST_MIRROR,
+    A2K_SURFACE_EXPLICIT,
 )
 
 BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
@@ -138,6 +140,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.mirror import rule_test_mirror
     from a2kit.packages.lint.rules.purity import rule_core_clean, rule_extra_namespace
     from a2kit.packages.lint.rules.shape import rule_a2k002, rule_a2k003, rule_a2k011, rule_a2k013
+    from a2kit.packages.lint.rules.surface import rule_surface_explicit
 
     return (
         (A2K002, rule_a2k002),
@@ -154,6 +157,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_CORE_CLEAN, rule_core_clean),
         (A2K_EXTRA_NAMESPACE, rule_extra_namespace),
         (A2K_TEST_MIRROR, rule_test_mirror),
+        (A2K_SURFACE_EXPLICIT, rule_surface_explicit),
     )
 
 
@@ -231,6 +235,7 @@ __all__ = [
     "A2K_IMPORT_DISCIPLINE",
     "A2K_LDD_REPORT_TYPE",
     "A2K_LOCAL_RETURN_MODEL",
+    "A2K_SURFACE_EXPLICIT",
     "A2K_TEST_MIRROR",
     "ALL_RULES",
     "BUILTIN_CAPS",

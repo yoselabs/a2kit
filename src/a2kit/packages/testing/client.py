@@ -174,6 +174,7 @@ class TestClient:
             reports_enabled=True,
             report_type=report_type,
             tool_name=tool_name,
+            sinks=self.app.ldd.sinks if hasattr(self.app, "ldd") else (),
         ):
             return await _invoke_through_dispatcher(
                 self.app,

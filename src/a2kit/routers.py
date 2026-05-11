@@ -32,10 +32,20 @@ class Router:
     attribute, then a derivation rule on ``type(self).__name__``: strip
     a single trailing ``Router`` suffix (case-sensitive), lowercase the
     rest. Collisions across routers in one ``App`` raise at build time.
+
+    Optional extension points:
+
+    - ``providers: tuple[type | tuple[type, Callable], ...]`` — class attribute.
+      Each entry is either a type (registered as its own factory) or a
+      ``(type, factory)`` tuple. Installed onto the App during ``add_router``.
+    - ``on_startup`` / ``on_shutdown`` — async or sync methods. When defined
+      on the subclass, they are registered as App lifecycle handlers during
+      ``add_router``.
     """
 
     name: str | None = None
     enrichers: list[Callable[[Exception], str | None]] = []  # noqa: RUF012
+    providers: tuple[Any, ...] = ()
 
     def __init__(self, name: str | None = None) -> None:
         self.slug = name or self.name or _derive_slug(type(self).__name__)

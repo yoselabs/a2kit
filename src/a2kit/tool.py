@@ -9,6 +9,7 @@ from mcp.types import ToolAnnotations
 from a2kit.exceptions import InvalidToolReturnTypeError
 from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, set_meta
 from a2kit.signature import find_context_param
+from a2kit.surface import SURFACE_META_KEY, Surface
 
 if TYPE_CHECKING:
     from a2kit.routers import Router
@@ -164,11 +165,13 @@ def _stamp(
     name: str | None,
     tags: frozenset[str],
     annotations: ToolAnnotations,
+    surfaces: Surface = Surface.ALL,
 ) -> F:
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
     pending: dict[str, Any] = dict(getattr(fn, PENDING_EXTRA_ATTR, None) or {})
+    pending[SURFACE_META_KEY] = surfaces
     meta = A2KitMeta(
         tool_name=resolved_name,
         verb=verb,
@@ -227,6 +230,7 @@ def tool(
     open_world: bool = False,
     destructive: bool | None = None,
     title: str | None = None,
+    surfaces: Surface = Surface.ALL,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
@@ -244,6 +248,7 @@ def tool(
                 title=title,
                 explicit=annotations,
             ),
+            surfaces=surfaces,
         )
 
     return deco
@@ -257,6 +262,7 @@ def read(
     open_world: bool = False,
     destructive: bool | None = None,
     title: str | None = None,
+    surfaces: Surface = Surface.ALL,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
@@ -274,6 +280,7 @@ def read(
                 title=title,
                 explicit=None,
             ),
+            surfaces=surfaces,
         )
 
     return deco
@@ -287,6 +294,7 @@ def write(
     open_world: bool = False,
     destructive: bool | None = None,
     title: str | None = None,
+    surfaces: Surface = Surface.ALL,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
@@ -304,6 +312,7 @@ def write(
                 title=title,
                 explicit=None,
             ),
+            surfaces=surfaces,
         )
 
     return deco
@@ -315,6 +324,7 @@ def list_(
     tags: set[str] | None = None,
     page_size: int | None = None,
     selectable_fields: tuple[str, ...] | None = None,
+    surfaces: Surface = Surface.ALL,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Absorbs list-view projection/pagination.
 
@@ -352,6 +362,7 @@ def list_(
             name=name,
             tags=frozenset({"read", "list", *(tags or set())}),
             annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+            surfaces=surfaces,
         )
 
     return deco

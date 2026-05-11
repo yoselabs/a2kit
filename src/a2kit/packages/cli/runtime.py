@@ -25,6 +25,7 @@ async def _invoke_tool_in_process(
     reports_enabled: bool = True,
     events_enabled: bool = True,
     dispatch_hook: Callable[..., Any] | None = None,
+    sinks: tuple[Any, ...] = (),
 ) -> str:
     """Invoke ``fn`` with ``kwargs``, format the result, return formatter ``data``.
 
@@ -52,6 +53,7 @@ async def _invoke_tool_in_process(
         reports_enabled=reports_enabled,
         report_type=report_type,
         tool_name=tool_name,
+        sinks=sinks,
     ):
         if inspect.iscoroutinefunction(fn):
             raw = await fn(**call_kwargs)
@@ -89,6 +91,10 @@ def invoke_tool_sync(
     process so this is rarely exercised.
     """
 
+    sinks: tuple[Any, ...] = ()
+    if app is not None and hasattr(app, "ldd"):
+        sinks = app.ldd.sinks
+
     async def _runner() -> str:
         run_lifecycle = app is not None and getattr(app, "has_lifecycle_handlers", lambda: False)()
         if run_lifecycle and not app._lifecycle_started:  # noqa: SLF001 -- intentional, lifecycle state is App-scoped
@@ -107,6 +113,7 @@ def invoke_tool_sync(
                     reports_enabled=reports_enabled,
                     events_enabled=events_enabled,
                     dispatch_hook=dispatch_hook,
+                    sinks=sinks,
                 )
             finally:
                 await dispatch_shutdown(app)
@@ -120,6 +127,7 @@ def invoke_tool_sync(
             reports_enabled=reports_enabled,
             events_enabled=events_enabled,
             dispatch_hook=dispatch_hook,
+            sinks=sinks,
         )
 
     return asyncio.run(_runner())

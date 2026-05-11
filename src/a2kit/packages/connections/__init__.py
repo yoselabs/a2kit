@@ -13,6 +13,7 @@ from a2kit.packages.connections.exceptions import (
     WriteNotAllowed,
 )
 from a2kit.packages.connections.filters import EphemeralAwareStore, FilteredStore, scope_filter
+from a2kit.packages.connections.router import connections
 from a2kit.packages.connections.store import ConnectionStore
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "OpResolutionError",
     "TokenResolutionError",
     "WriteNotAllowed",
+    "connections",
     "connections_cli",
     "default_config_dir",
     "scope_filter",

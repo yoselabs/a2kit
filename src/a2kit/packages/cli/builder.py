@@ -365,11 +365,19 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
 
 def _router_group(router: Router, app: App) -> click.Group:
     """Build a Click group containing one subcommand per tool on ``router``."""
+    from a2kit.metadata import get_meta
+    from a2kit.surface import SURFACE_META_KEY, Surface
+
     group = click.Group(
         name=router.slug,
         help=f"Tools in router {router.slug!r}.",
     )
     for fn in router.tools():
+        meta = get_meta(fn)
+        if meta is not None:
+            tool_surfaces = meta.extra.get(SURFACE_META_KEY, Surface.ALL)
+            if Surface.CLI not in tool_surfaces:
+                continue
         group.add_command(_make_tool_command(fn, app, router=router))
     return group
 

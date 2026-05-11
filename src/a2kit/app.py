@@ -178,12 +178,53 @@ class App:
             raise ValueError(msg)
         self._routers.add(router)
         self._descriptors.extend(_build_descriptors(router))
+        # Install Router-declared providers.
+        for entry in getattr(router, "providers", ()):
+            if isinstance(entry, tuple):
+                ptype, pfactory = entry
+                self.provide(ptype, pfactory)
+            else:
+                self.provide(entry)
+        # Routers with custom DI plumbing implement ``install(self, app)`` —
+        # called after the basic ``providers`` loop so the Router can layer on
+        # anything the default ``app.provide`` path can't express (e.g. the
+        # connections package's ``connection`` resolver chain).
+        custom_install = getattr(type(router), "install", None)
+        if custom_install is not None and "install" in type(router).__dict__:
+            custom_install(router, self)
+        # Bridge Router lifecycle methods to App lifecycle handlers, but only
+        # when the subclass actually defines them (skip inherited bases).
+        cls = type(router)
+        if "on_startup" in cls.__dict__:
+            startup_method = router.on_startup  # ty: ignore[unresolved-attribute]
+
+            def _startup_bridge(_app: App, _m: Any = startup_method) -> Any:
+                return _m()
+
+            self.on_startup(_startup_bridge)
+        if "on_shutdown" in cls.__dict__:
+            shutdown_method = router.on_shutdown  # ty: ignore[unresolved-attribute]
+
+            def _shutdown_bridge(_app: App, _m: Any = shutdown_method) -> Any:
+                return _m()
+
+            self.on_shutdown(_shutdown_bridge)
         return self
 
     def add_cli(self, command: click.Command) -> App:
         # Detect connections-cli markers and auto-register typed providers.
         types_marker = getattr(command, "_a2kit_connections_types", None)
         if types_marker:
+            import warnings
+
+            warnings.warn(
+                "add_cli(connections_cli(X)) is auto-installing X as a provider via a hidden marker. "
+                "This behavior is deprecated and will be removed in v0.27. "
+                "Use `app.add_router(connections(X))` to install the provider explicitly, "
+                "then `app.add_cli(connections_cli(X))` for the CLI subcommands.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self._auto_register_connections(tuple(types_marker))
         self._cli_extras.append(command)
         return self

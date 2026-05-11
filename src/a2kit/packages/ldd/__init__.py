@@ -32,9 +32,10 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import logging
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from a2kit.exceptions import ReportTypeMismatch, ReportTypeNotDeclared
 
@@ -80,6 +81,55 @@ def format_ldd_line(level: str, msg: str, fields: Mapping[str, Any], elapsed_ms:
     return head + body + tail
 
 
+#: Logger for sink-fan-out failures. Sinks that raise are caught here so a
+#: bad sink can't break tool dispatch (see ``_dispatch_sinks``).
+_SINK_LOGGER = logging.getLogger("a2kit.ldd.sinks")
+
+
+@dataclass(frozen=True, slots=True)
+class LddEmission:
+    """Structured payload delivered to in-process LDD sinks.
+
+    Built by :func:`event` / :func:`report` after their wire emit, then
+    fan-out to each sink registered on ``app.ldd.add_sink(...)``.
+    """
+
+    kind: Literal["event", "report"]
+    name: str
+    payload: dict[str, Any]
+    elapsed_ms: int
+    tool_name: str | None
+    ctx: Any
+
+
+class LddSink(Protocol):
+    """Async callable that observes :class:`LddEmission` payloads.
+
+    Registered via ``app.ldd.add_sink(sink)``. Invoked sequentially after
+    each wire emit, in registration order. Sink exceptions are caught
+    and logged on ``a2kit.ldd.sinks``; one bad sink never breaks tool
+    dispatch.
+
+    Sinks SHOULD return quickly — fan-out is sequential, so a slow sink
+    delays the next emit. For heavy work (network export, batched writes),
+    push to a queue from the sink and process out-of-band.
+    """
+
+    async def __call__(self, emission: LddEmission, /) -> None: ...
+
+
+async def _dispatch_sinks(emission: LddEmission, sinks: tuple[LddSink, ...]) -> None:
+    """Fan ``emission`` out to ``sinks`` sequentially; isolate exceptions."""
+    for sink in sinks:
+        try:
+            await sink(emission)
+        except Exception:
+            _SINK_LOGGER.exception(
+                "LDD sink %r raised; continuing",
+                getattr(sink, "__name__", repr(sink)),
+            )
+
+
 @dataclass
 class _LddState:
     events_enabled: bool = True
@@ -87,6 +137,7 @@ class _LddState:
     report_type: type | None = None
     tool_name: str | None = None
     start_monotonic: float = field(default_factory=time.monotonic)
+    sinks: tuple[LddSink, ...] = ()
 
 
 _LDD_STATE: contextvars.ContextVar[_LddState | None] = contextvars.ContextVar("_a2kit_ldd_state", default=None)
@@ -112,12 +163,17 @@ def ldd_state_for_call(
     reports_enabled: bool = True,
     report_type: type | None = None,
     tool_name: str | None = None,
+    sinks: tuple[LddSink, ...] = (),
 ) -> Iterator[None]:
     """Set the per-call LDD state for the lifetime of the wrapped block.
 
     Used by the runtime dispatch sites (CLI ``invoke_tool_sync`` and MCP
     middleware) to scope event/report semantics to a single tool invocation.
     Resets on exit.
+
+    ``sinks`` is the tuple of in-process observers registered on the App via
+    ``app.ldd.add_sink(...)``; :func:`event` and :func:`report` fan out to
+    each after the wire emit.
     """
     token = _LDD_STATE.set(
         _LddState(
@@ -126,6 +182,7 @@ def ldd_state_for_call(
             report_type=report_type,
             tool_name=tool_name,
             start_monotonic=time.monotonic(),
+            sinks=sinks,
         )
     )
     try:
@@ -172,6 +229,7 @@ async def event(__ctx: Any, __name: str, /, **payload: Any) -> None:
     if not state.events_enabled:
         return
     elapsed = _elapsed_ms()
+    payload_dict = dict(payload)
     if _is_fastmcp_context(__ctx):
         await __ctx.log(
             message=_cap_text(__name),
@@ -179,13 +237,25 @@ async def event(__ctx: Any, __name: str, /, **payload: Any) -> None:
             extra={
                 "a2kit_kind": "event",
                 "name": __name,
-                "payload": dict(payload),
+                "payload": payload_dict,
                 "elapsed_ms": elapsed,
             },
         )
     else:
         # CLI stub — internal _emit; preserves the LDD wire format.
-        __ctx._emit("event", __name, dict(payload), elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
+        __ctx._emit("event", __name, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
+    if state.sinks:
+        await _dispatch_sinks(
+            LddEmission(
+                kind="event",
+                name=__name,
+                payload=payload_dict,
+                elapsed_ms=elapsed,
+                tool_name=state.tool_name,
+                ctx=__ctx,
+            ),
+            state.sinks,
+        )
 
 
 async def report(ctx: Any, payload: Any, /) -> None:
@@ -218,6 +288,18 @@ async def report(ctx: Any, payload: Any, /) -> None:
         )
     else:
         ctx._emit("report", type_name, body, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
+    if state.sinks:
+        await _dispatch_sinks(
+            LddEmission(
+                kind="report",
+                name=type_name,
+                payload=body,
+                elapsed_ms=elapsed,
+                tool_name=state.tool_name,
+                ctx=ctx,
+            ),
+            state.sinks,
+        )
 
 
 # --- Typed event registry --------------------------------------------------- #
@@ -272,20 +354,44 @@ class EventRegistry:
 class _AppLdd:
     """Namespace mounted on :class:`a2kit.App` as ``app.ldd``.
 
-    Currently exposes ``events: EventRegistry``. Kept as a small object so
-    future LDD facets (e.g. structured-log filters) can be added without
-    cluttering the App namespace.
+    Exposes:
+
+    - ``events: EventRegistry`` — typed event registration + emission.
+    - ``add_sink`` / ``remove_sink`` / ``sinks`` — in-process observer
+      registration. Each registered sink receives every :class:`LddEmission`
+      after the wire emit, in registration order. See :class:`LddSink`.
     """
 
-    __slots__ = ("events",)
+    __slots__ = ("_sinks", "events")
 
     def __init__(self) -> None:
         self.events = EventRegistry()
+        self._sinks: list[LddSink] = []
+
+    def add_sink(self, sink: LddSink) -> None:
+        """Append ``sink`` to the App's sink list.
+
+        Idempotent on identity: re-adding the same sink object appends a
+        second registration (the sink will be invoked twice per emission).
+        Pass a wrapper if you need de-duplication.
+        """
+        self._sinks.append(sink)
+
+    def remove_sink(self, sink: LddSink) -> None:
+        """Remove ``sink`` from the App's sink list. Raises if not registered."""
+        self._sinks.remove(sink)
+
+    @property
+    def sinks(self) -> tuple[LddSink, ...]:
+        """Immutable snapshot of currently registered sinks."""
+        return tuple(self._sinks)
 
 
 __all__ = [
     "TEXT_CAP",
     "EventRegistry",
+    "LddEmission",
+    "LddSink",
     "_AppLdd",
     "event",
     "format_ldd_line",

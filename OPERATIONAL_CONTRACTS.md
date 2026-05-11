@@ -34,10 +34,17 @@ is cancelled mid-await; the test asserts the `finally` block ran and
 ## Q2. Per-tool timeouts
 
 **Current behavior.** No built-in timeout flag on `@a2kit.read` / `@a2kit.write`.
+Tools cooperate with structured concurrency directly.
 
-**Tool author's responsibility.** Use `anyio.fail_after(seconds)` inside the
-tool body for per-call budgets, or scope at the resource layer (e.g. a sqlite
-client with its own statement timeout).
+**Why no built-in.** A decorator-level timeout suggests every tool has one
+budget; in practice the right number depends on the stage. Network ≠ extraction
+≠ format-routing. A blanket `@a2kit.read(timeout=60)` would either kill
+post-network processing or force authors to inflate the budget. Per-region
+`anyio.fail_after` is the honest tool.
+
+### Prescribed patterns
+
+**Single-budget network call** — the common case:
 
 ```python
 import anyio
@@ -48,14 +55,61 @@ async def fetch(*, url: str) -> FetchResponse:
         return await fetcher.fetch(url)
 ```
 
-**Why no built-in.** A framework-level timeout flag suggests every tool has
-one budget; in practice the right number depends on the tier (browser tier
-vs cache lookup vs DNS). Per-tool flags would force authors to pick a
-worst-case number; per-call `fail_after` is more honest.
+**Multi-stage with nested budgets** — overall cap + per-stage sub-budget:
 
-**Future plans.** None planned. If a strong consumer ask emerges, the
-mechanism would be a `@a2kit.read(timeout=...)` kwarg that wraps the body
-in `anyio.fail_after` — straightforward to add.
+```python
+@a2kit.read()
+async def fetch(*, url: str) -> FetchResponse:
+    async with anyio.fail_after(60):              # overall cap
+        async with anyio.fail_after(10):
+            conn = await pool.acquire(url)         # connect budget
+        async with anyio.fail_after(30):
+            raw = await conn.read_all()            # read budget
+    return extract_markdown(raw)                  # not under the cap
+```
+
+The outer `fail_after` guarantees the tool returns within 60s. The inner
+budgets carve that up; if either fires, the outer hasn't yet, and the
+caller sees a single `TimeoutError`.
+
+**Silent degrade** — when a missing budget is recoverable:
+
+```python
+@a2kit.read()
+async def fetch_with_cache(*, url: str) -> FetchResponse:
+    cache_hit: FetchResponse | None = None
+    async with anyio.move_on_after(2.0):           # no raise on timeout
+        cache_hit = await cache.get(url)
+    if cache_hit is not None:
+        return cache_hit
+    async with anyio.fail_after(60):
+        return await fetcher.fetch(url)
+```
+
+`move_on_after` exits the block silently when its budget fires — useful
+for "best effort" stages where a slow path should fall through to the
+next strategy rather than crash.
+
+**Cleanup on timeout** — interaction with Q1:
+
+```python
+@a2kit.read()
+async def fetch(*, url: str) -> FetchResponse:
+    handle = await pool.acquire()
+    try:
+        async with anyio.fail_after(30):
+            return await fetcher.fetch(url, handle)
+    finally:
+        await pool.release(handle)                 # always runs, even on TimeoutError
+```
+
+`TimeoutError` propagates like any other exception; `try/finally` is the
+canonical cleanup mechanism per Q1's cancellation contract.
+
+**Future plans.** None planned. The `fail_after` idiom is more expressive
+than a decorator kwarg can be; if a strong consumer ask emerges for
+advertising the budget in MCP annotations, that becomes a separate concern
+(metadata, not enforcement).
 
 ## Q3. Multi-App in production
 
@@ -142,28 +196,97 @@ require sub-classing `ToolError` upstream in FastMCP — deferred.
 client raising path (dispatcher does not swallow), and the `debug` flag's
 effect on the wire output.
 
-## Q6. Streaming output for large responses
+## Q6. Streaming output for large responses + visibility during long phases
 
 **Current behavior.** Tool returns are atomic. The dispatcher receives the
 full return value, formats it, and emits one response. There is no
 chunked-output API.
 
-**Workaround.** Mid-flight communication uses LDD primitives:
+**Workaround for mid-flight visibility — heartbeat events.** When a tool
+has a long-running phase (slow network tier, browser render, batch
+extract) and a caller needs to see *where* it is — especially before a
+timeout fires — emit periodic heartbeat events from inside the phase:
 
-- `await event(ctx, "name", **payload)` — narrative events.
-- `await report(ctx, payload)` — typed result chunks (declared via
-  `@reports(T)`).
-- `await ctx.report_progress(current, total)` — numeric progress.
+```python
+from dataclasses import dataclass
+import anyio
 
-Tools with large content (>100KB) typically still return a single payload;
-agents and humans see the LDD stream during execution and the full result
-at the end.
+@dataclass
+class TierHeartbeat:
+    step: str
+    elapsed_s: float
+    status: str
+
+# At router setup:
+app.ldd.events.register(TierHeartbeat)
+
+@router.read()
+async def fetch(*, url: str, ctx: a2kit.ToolContext) -> FetchResponse:
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(_heartbeat_loop, ctx, "browser")
+        async with anyio.fail_after(60):
+            return await browser_fetch(url)
+
+async def _heartbeat_loop(ctx, step: str) -> None:
+    start = anyio.current_time()
+    while True:
+        await anyio.sleep(5)
+        await app.ldd.events.emit_typed(
+            ctx,
+            TierHeartbeat(step=step, elapsed_s=anyio.current_time() - start, status="…")
+        )
+```
+
+If the `fail_after` fires at 60s, the caller (and any attached sinks) has
+seen 11 heartbeats and knows the tool died in the `browser` phase, not
+the extraction that comes after.
+
+**In-process observation — `app.ldd.add_sink`.** OTel exporters, Datadog
+adapters, audit-log writers, and any other in-process consumer that wants
+to observe every emission (events and reports, on every transport)
+register an async sink:
+
+```python
+from a2kit.ldd import LddEmission
+
+async def otel_sink(emission: LddEmission) -> None:
+    span = tracer.start_span(f"a2kit.{emission.name}")
+    try:
+        span.set_attribute("kind", emission.kind)
+        span.set_attribute("elapsed_ms", emission.elapsed_ms)
+        if emission.tool_name:
+            span.set_attribute("tool", emission.tool_name)
+        for k, v in emission.payload.items():
+            span.set_attribute(k, v)
+    finally:
+        span.end()
+
+app.ldd.add_sink(otel_sink)
+```
+
+Sinks receive every LDD emission after the wire emit (CLI stderr or MCP
+notification). Fan-out is sequential and best-effort: a sink exception
+is caught and logged on `a2kit.ldd.sinks`, never breaking tool dispatch.
+
+**Cancellation contract.** When the surrounding `anyio.fail_after`
+expires (or the tool is otherwise cancelled), every emission that
+**completed** before cancellation arrived has landed — on the wire and
+on every sink that already ran. An emission in flight at the moment of
+cancellation may be dropped at the sink that was mid-await (and any
+sinks queued after it in the fan-out). This is intentional: sinks
+shouldn't block tool cancellation. For guaranteed delivery, write
+synchronous-fast sinks that push to a queue and process out-of-band;
+use `app.on_shutdown` to flush at shutdown.
+
+See `docs/SPIKE_LDD_CANCELLATION.md` for the spike that established
+this contract.
 
 **Future plans.** Streaming output (e.g. `AsyncIterator[Chunk]` returns
-translating to MCP chunked notifications) is **deferred**. It would require
-material design work on the dispatcher (return-type detection, chunk
-serialization, backpressure) and on the MCP transport layer. Track via a
-future change proposal once a consumer has a concrete need.
+translating to MCP chunked notifications) is **deferred**. It would
+require material design work on the dispatcher (return-type detection,
+chunk serialization, backpressure) and on the MCP transport layer.
+For visibility-during-execution use cases, the heartbeat + add_sink
+pattern above is the canonical answer.
 
 ## See also
 

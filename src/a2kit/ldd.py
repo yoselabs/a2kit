@@ -8,6 +8,22 @@ reference feature identifiers).
 
 from __future__ import annotations
 
-from a2kit.packages.ldd import EventRegistry, event, format_ldd_line, ldd_state_for_call, report
+from a2kit.packages.ldd import (
+    EventRegistry,
+    LddEmission,
+    LddSink,
+    event,
+    format_ldd_line,
+    ldd_state_for_call,
+    report,
+)
 
-__all__ = ["EventRegistry", "event", "format_ldd_line", "ldd_state_for_call", "report"]
+__all__ = [
+    "EventRegistry",
+    "LddEmission",
+    "LddSink",
+    "event",
+    "format_ldd_line",
+    "ldd_state_for_call",
+    "report",
+]

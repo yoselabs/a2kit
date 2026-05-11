@@ -14,26 +14,30 @@ A single console script handles every mode — tool subcommands, connection
 management, schema dump, and `serve`:
 
 ```python
-# tracker/server.py
+# tracker/server.py — canonical imperative composition
 import a2kit
-from a2kit.packages.connections import connections_cli
+from a2kit.packages.connections import connections, connections_cli
 
 from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-app = (
-    a2kit.App("tracker")
-    .add_router(ProjectsRouter())
-    .add_router(TasksRouter())
-    .provide(TrackerStore)                   # class-as-factory; container reads __init__
-    .add_cli(connections_cli(TrackerConn))   # auto-installs TrackerConn provider
-)
+app = a2kit.App("tracker")
+app.add_router(ProjectsRouter())
+app.add_router(TasksRouter())
+app.add_router(connections(TrackerConn))   # installs TrackerConn provider via Router
+app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
+app.provide(TrackerStore)                  # class-as-factory; container reads __init__
 
 
 def main() -> None:
     a2kit.run(app)
 ```
+
+> **Style note.** The fluent chain (`a2kit.App(...).add_router(...).provide(...)`)
+> still works as a shorthand for compact composition in tests and small scripts.
+> Prefer the imperative form in real apps — each line names one subsystem,
+> grep finds every install, no hidden side effects.
 
 ```toml
 [project.scripts]
@@ -60,10 +64,11 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, and `set_ldd(...)` for the LDD kill-switch. |
-| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Slug auto-derives (`TasksRouter` → `"tasks"`); explicit `name = "..."` overrides. Class attribute `enrichers = [...]` and optional `def enrich(self, exc)` map exceptions to user-facing messages. |
+| `a2kit.App(name)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, and `set_ldd(...)` for the LDD kill-switch. `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)`, `on_startup`/`on_shutdown` methods, and a custom `install(self, app)` hook for plugins. |
+| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Slug auto-derives (`TasksRouter` → `"tasks"`); explicit `name = "..."` overrides. Optional class attributes: `enrichers = [...]` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`). Optional methods: `on_startup`/`on_shutdown` (lifecycle), `install(self, app)` (custom plumbing). |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
-| `@a2kit.read / write / tool` | Verb decorators. Kwargs: `name?, tags?, annotations?`. |
+| `a2kit.Surface` | `Flag` — `CLI`, `MCP`, `ALL`. Pass to any verb decorator (`@a2kit.read(surfaces=Surface.CLI)`) to constrain which transports the tool mounts on. Default `Surface.ALL`. Credential-management tools should declare `Surface.CLI` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
+| `@a2kit.read / write / tool` | Verb decorators. Kwargs: `name?, tags?, annotations?, surfaces?`. |
 | `@a2kit.list_` | Specialized list verb. `@a2kit.list_(*default_fields, page_size=None, selectable_fields=None, name=None, tags=None)`. Selectable derived from `list[T]` return annotation when omitted. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). Feature decorators write namespaced keys into `meta.extra`. |
 | `a2kit.ToolContext` | Lazy alias for `fastmcp.Context` — tools annotate `ctx: a2kit.ToolContext` and receive the live FastMCP Context on the MCP transport, or a Context-shaped CLI stub on the CLI transport. Bare `import a2kit` doesn't pull fastmcp; the alias resolves on first access. |
@@ -104,17 +109,16 @@ class TasksRouter(a2kit.Router):
         return store.get(task_id)
 
 
-app = (
-    a2kit.App("tracker")
-    .add_router(TasksRouter())
-    .provide(TrackerStore)                   # class-as-factory (introspects __init__)
-    .add_cli(connections_cli(TrackerConn))   # auto-installs TrackerConn provider
-)
+app = a2kit.App("tracker")
+app.add_router(TasksRouter())
+app.add_router(connections(TrackerConn))   # installs TrackerConn provider
+app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
+app.provide(TrackerStore)                  # class-as-factory (introspects __init__)
 ```
 
 What the framework does:
 
-- `connections_cli(TrackerConn)` carries a marker that `add_cli` reads to install a typed provider for `TrackerConn` (`connection: str → TrackerConn`).
+- `connections(TrackerConn)` returns a Router whose `install()` registers a typed provider for `TrackerConn` (`connection: str → TrackerConn`). `connections_cli(TrackerConn)` adds the matching Click subcommands.
 - `provide(TrackerStore)` registers `TrackerStore` as its own factory; the container reads `TrackerStore.__init__(conn: TrackerConn)` and chains.
 - At dispatch: `store: TrackerStore` is resolved per call from the wire `connection`. Two kwargs of the same type share one instance within a call (per-call cache). The wire schema strips `store`; agents only see `connection` + `task_id`.
 - For one-off non-trivial wiring, pass an explicit factory: `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.
