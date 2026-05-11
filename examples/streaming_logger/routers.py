@@ -1,11 +1,12 @@
 """LDD demo routers — stream progress through ``ctx: a2kit.ToolContext``.
 
-Each tool emits ``ctx.info`` / ``ctx.warning`` / ``ctx.error`` /
+Each tool emits ``a2kit.ldd.info`` / ``warning`` / ``error`` plus
 ``ctx.report_progress`` calls as it executes. Same code paths over MCP
 (notifications) and CLI (stderr lines).
 
-v0.26.1+ idiom: typed event payloads (``await a2kit.ldd.event(ctx, evt)``)
-are shown alongside the kwargs form so the two shapes are visible.
+Field-bearing logging lives on ``a2kit.ldd.*`` (third sibling of
+``event`` / ``report``); the plain ``ctx.info("msg")`` form is reserved
+for fastmcp's narrow signature and SHOULD NOT take field kwargs.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 import a2kit
-from a2kit.ldd import event, report
+from a2kit.ldd import error, event, info, report, warning
 from a2kit.packages.mcp.reports import reports
 
 
@@ -79,19 +80,19 @@ class TasksRouter(a2kit.Router):
     ) -> dict[str, int]:
         """Stream a CSV import in batches.
 
-        Demonstrates the LDD pattern: each milestone is a ``ctx.info``
+        Demonstrates the LDD pattern: each milestone is an ``a2kit.ldd.info``
         call so the agent / CLI user sees the narrative interleaved
         with the final return value.
         """
-        await ctx.info("starting import", file=file, batch_size=batch_size)
+        await info(ctx, "starting import", file=file, batch_size=batch_size)
         rows = _load_csv(file)
-        await ctx.info("loaded rows", count=len(rows))
+        await info(ctx, "loaded rows", count=len(rows))
         for i in range(0, len(rows), batch_size):
             batch = rows[i : i + batch_size]
             await ctx.report_progress(i, len(rows))
-            await ctx.info("processing batch", start=i, size=len(batch))
+            await info(ctx, "processing batch", start=i, size=len(batch))
             await _persist(batch)
-        await ctx.info("done", imported=len(rows))
+        await info(ctx, "done", imported=len(rows))
         return {
             "imported": len(rows),
             "batches": (len(rows) + batch_size - 1) // batch_size if rows else 0,
@@ -105,22 +106,22 @@ class TasksRouter(a2kit.Router):
         attempts: int = 3,
         fail_after: int = 5,
     ) -> dict[str, int]:
-        """Showcase ``ctx.warning`` on retryable issues, ``ctx.error`` before giving up.
+        """Showcase ``a2kit.ldd.warning`` on retryable issues, ``error`` before giving up.
 
-        ``attempts`` retries are made; if all fail, the tool emits
-        ``ctx.error`` then raises.
+        ``attempts`` retries are made; if all fail, the tool emits an
+        ``error`` line then raises.
         """
-        await ctx.info("long_running start", attempts=attempts)
+        await info(ctx, "long_running start", attempts=attempts)
         for attempt in range(1, attempts + 1):
-            await ctx.info("attempt", n=attempt)
+            await info(ctx, "attempt", n=attempt)
             await asyncio.sleep(0)
             if attempt < attempts:
-                await ctx.warning("transient failure, retrying", attempt=attempt)
+                await warning(ctx, "transient failure, retrying", attempt=attempt)
                 continue
             if fail_after >= 0 and attempts > fail_after:
-                await ctx.error("giving up", attempts=attempts)
+                await error(ctx, "giving up", attempts=attempts)
                 raise RuntimeError("long_running exceeded retry budget")
-            await ctx.info("succeeded", attempt=attempt)
+            await info(ctx, "succeeded", attempt=attempt)
             return {"attempts": attempt, "ok": 1}
         # Unreachable in practice; included so type checkers see a return.
         return {"attempts": attempts, "ok": 0}
@@ -139,13 +140,13 @@ class TasksRouter(a2kit.Router):
         - ``await event(ctx, name, ...)`` for narrative milestones
           (``import.started``, ``import.complete``).
         - ``await report(ctx, BatchReport(...))`` for typed mid-flight result chunks.
-        - ``ctx.info(...)`` for free-form telemetry.
+        - ``await info(ctx, ...)`` for free-form fielded telemetry.
         - ``ctx.report_progress(i, total)`` for numeric progress.
         """
-        # Typed instance form (v0.26.1) — name = type name, payload from model_dump.
+        # Typed instance form — name = type name, payload from model_dump.
         await event(ctx, ImportStarted(file=file, batch_size=batch_size))
         rows = _load_csv(file)
-        await ctx.info("loaded rows", count=len(rows))
+        await info(ctx, "loaded rows", count=len(rows))
         for i in range(0, len(rows), batch_size):
             batch = rows[i : i + batch_size]
             await ctx.report_progress(i, len(rows))

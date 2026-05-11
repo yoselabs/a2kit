@@ -3,14 +3,18 @@
 This example demonstrates **LDD** (Logging-Driven Development): a tool
 should *stream its narrative as it executes*, not just return a final
 value. Long-running operations narrate themselves through
-`await ctx.info(...)` / `await ctx.warning(...)` / `await ctx.report_progress(...)`,
-and a2kit routes those updates to whichever protocol the user is on.
+`await a2kit.ldd.info(ctx, ...)` / `warning` / `error` plus
+`await ctx.report_progress(...)`, and a2kit routes those updates to
+whichever protocol the user is on.
 
-> **API note.** As of `fastmcp-context-passthrough`, `a2kit.ToolContext` is a
-> direct re-export of `fastmcp.Context`, so all logging methods are **async**
-> on both transports — always `await` them. `ctx.event(...)` and `ctx.report(...)`
-> moved off the Context class and live as free functions in `a2kit.ldd`:
-> `await event(ctx, "name", **payload)` / `await report(ctx, payload)`.
+> **API note.** `a2kit.ToolContext` is a direct re-export of
+> `fastmcp.Context` — its logging methods (`ctx.info` / `ctx.warning` /
+> etc.) match fastmcp's narrow signature `(message, logger_name=None,
+> extra=None)`. **Field-bearing narrative logging lives on `a2kit.ldd.*`
+> free functions**, alongside `event` and `report`:
+> `await a2kit.ldd.info(ctx, "msg", k=v, ...)`. The kwarg-on-ctx form
+> (`ctx.info("msg", k=v)`) is rejected at runtime on both transports —
+> use the `a2kit.ldd.*` alternative.
 
 | Caller             | Where the stream lands                    |
 |--------------------|-------------------------------------------|
@@ -30,9 +34,9 @@ Rules of thumb — pick the right channel for the right purpose:
 
 | Channel | Use when... | Example |
 |---|---|---|
-| `await ctx.info(msg, **kw)` | free-form telemetry, ambient process noise | `await ctx.info("processing batch", start=i)` |
-| `await ctx.warning(msg, **kw)` | retryable issues, recoverable anomalies | `await ctx.warning("transient failure", attempt=2)` |
-| `await ctx.error(msg, **kw)` | genuine errors **before** raising | `await ctx.error("giving up", attempts=N)` |
+| `await info(ctx, msg, **kw)` (from `a2kit.ldd`) | free-form telemetry, ambient process noise | `await info(ctx, "processing batch", start=i)` |
+| `await warning(ctx, msg, **kw)` (from `a2kit.ldd`) | retryable issues, recoverable anomalies | `await warning(ctx, "transient failure", attempt=2)` |
+| `await error(ctx, msg, **kw)` (from `a2kit.ldd`) | genuine errors **before** raising | `await error(ctx, "giving up", attempts=N)` |
 | `await ctx.report_progress(i, n)` | numeric progress an agent can show as a bar | `await ctx.report_progress(i, len(rows))` |
 | `await event(ctx, name, **kw)` (from `a2kit.ldd`) | typed narrative milestones the agent can pattern-match | `await event(ctx, "api.fetched", count=30)` |
 | `await report(ctx, payload)` (from `a2kit.ldd`) | typed mid-flight result chunks (declared via `@reports(...)`) | `await report(ctx, BatchReport(batch=4, accepted=12))` |
@@ -66,26 +70,27 @@ async def import_csv(
     file: str,
     batch_size: int = 100,
 ) -> dict:
-    ctx.info("starting import", file=file, batch_size=batch_size)
+    await info(ctx, "starting import", file=file, batch_size=batch_size)
     rows = _load(file)
-    ctx.info("loaded rows", count=len(rows))
+    await info(ctx, "loaded rows", count=len(rows))
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
         await ctx.report_progress(i, len(rows))
-        ctx.info("processing batch", start=i, size=len(batch))
+        await info(ctx, "processing batch", start=i, size=len(batch))
         await _persist(batch)
-    ctx.info("done", imported=len(rows))
+    await info(ctx, "done", imported=len(rows))
     return {"imported": len(rows), "batches": (len(rows) + batch_size - 1) // batch_size}
 ```
 
-`ctx` is typed as `a2kit.ToolContext` — a Protocol with `info` /
-`warning` / `error` / `debug` / `report_progress`. a2kit picks the
-right adapter at call time:
+`ctx` is typed as `a2kit.ToolContext` — a re-export of `fastmcp.Context`.
+The fielded-narrative form lives on `a2kit.ldd.{info,warning,error,debug}`
+free functions; they branch internally on the live ctx type:
 
-- CLI: `a2kit.packages.cli.context.StderrToolContext` — prints
-  `[INFO] msg key=val` to stderr.
-- MCP: `a2kit.packages.mcp.context.FastMCPContextAdapter` — wraps
-  `fastmcp.Context` so each call becomes a protocol notification.
+- CLI: `a2kit.packages.cli.context.StderrToolContext` — backend prints
+  `[ +s.mmm INFO    ] msg key=val` to stderr.
+- MCP: the live `fastmcp.Context` — backend awaits
+  `ctx.log(level=..., message=..., extra={...fields...})` so each call
+  becomes a `notifications/message` to the agent.
 
 The agent client sees the same narrative the CLI user sees, just
 encoded for the wire (see [`fastmcp.Context.info` docs](https://gofastmcp.com/python-sdk/fastmcp-context#info)).
@@ -120,10 +125,10 @@ as JSON (`{"imported":5,"batches":3}`).
 
 ## Buffering & "snappy" feedback
 
-Stderr is line-buffered by default in Python. Each `ctx.info(...)`
-flushes immediately — no `flush=True` needed. That means even a
-multi-minute import feels live to the user as long as you call `ctx.info`
-between milestones.
+Stderr is line-buffered by default in Python. Each
+`a2kit.ldd.info(...)` flushes immediately — no `flush=True` needed.
+That means even a multi-minute import feels live to the user as long
+as you emit between milestones.
 
 ## MCP invocation
 

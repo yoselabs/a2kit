@@ -61,20 +61,36 @@ def test_info_no_fields_emits_prefix_and_msg() -> None:
     assert " hello" in out
 
 
-def test_warning_with_fields_emits_kv() -> None:
+def test_warning_with_extra_emits_kv() -> None:
+    """Narrow stub matches fastmcp.Context: fields arrive via ``extra=``,
+    not as ``**kwargs``. Field-bearing kwargs form moved to ``a2kit.ldd.warning``."""
     ctx = StderrToolContext()
-    out = _capture_stderr_async(lambda: ctx.warning("stuck", retry=3, where="foo"))
+    out = _capture_stderr_async(lambda: ctx.warning("stuck", extra={"retry": 3, "where": "foo"}))
     assert "WARN" in out
     assert "stuck" in out
     assert "retry=3" in out
     assert "where='foo'" in out
 
 
-def test_error_repr_quotes_strings_only() -> None:
+def test_error_with_extra_repr_quotes_strings_only() -> None:
     ctx = StderrToolContext()
-    out = _capture_stderr_async(lambda: ctx.error("boom", code=42, name="db"))
+    out = _capture_stderr_async(lambda: ctx.error("boom", extra={"code": 42, "name": "db"}))
     assert "code=42" in out
     assert "name='db'" in out
+
+
+def test_ldd_kwarg_form_renders_through_stub() -> None:
+    """``a2kit.ldd.warning(ctx, "msg", k=v)`` is the canonical fielded form;
+    on the CLI stub it lands through ``_emit`` and renders identically to the
+    old widened ``ctx.warning("msg", k=v)`` shape."""
+    from a2kit.ldd import warning as ldd_warning
+
+    ctx = StderrToolContext()
+    out = _capture_stderr_async(lambda: ldd_warning(ctx, "stuck", retry=3, where="foo"))
+    assert "WARN" in out
+    assert "stuck" in out
+    assert "retry=3" in out
+    assert "where='foo'" in out
 
 
 def test_debug_emits_debug_level() -> None:

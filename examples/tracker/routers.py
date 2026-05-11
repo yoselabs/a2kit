@@ -13,7 +13,7 @@ import asyncio
 import uuid
 
 import a2kit
-from a2kit.ldd import event, report
+from a2kit.ldd import event, info, report
 from a2kit.packages.mcp.reports import reports
 
 from .enrichers import tracker_404_enricher
@@ -115,7 +115,7 @@ class TasksRouter(a2kit.Router):
         projects, tasks = store.load_state()
         if not any(p.id == project_id for p in projects):
             raise KeyError(project_id)
-        await ctx.info("loaded state", projects=len(projects), tasks=len(tasks))
+        await info(ctx, "loaded state", projects=len(projects), tasks=len(tasks))
 
         accepted = 0
         rejected = 0

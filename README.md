@@ -312,21 +312,26 @@ user tools can't claim it.
 ### Logging + progress + events + reports (`ToolContext`)
 
 `a2kit.ToolContext` is an alias for `fastmcp.Context`. All Context logging
-methods are async; events and reports moved off the Context class and live
-as free functions in `a2kit.ldd`.
+methods are async; field-bearing logging, events, and reports live as
+free functions in `a2kit.ldd` (three siblings, one dispatch shape).
 
 | Channel | API | When to use |
 |---|---|---|
-| Process telemetry | `await ctx.info / warning / error / debug(msg, **kw)` | Free-form ambient logs |
+| Plain logging (fastmcp passthrough) | `await ctx.info(msg)` / `ctx.info(msg, extra={"k": 1})` | Free-form messages to the MCP client; matches fastmcp's narrow signature |
+| **Fielded logging (a2kit.ldd)** | `await info(ctx, msg, **fields)` (also `warning` / `error` / `debug` / `log`) | Structured narrative-with-data; renders identically on CLI and MCP. **Don't** pass kwargs to `ctx.info` directly — it crashes on MCP transport. |
 | Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — for progress bars |
-| **Narrative events (kwargs)** | `await event(ctx, "name.string", **payload)` (from `a2kit.ldd`) | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
+| **Narrative events (kwargs)** | `await event(ctx, "name.string", **payload)` | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
 | **Narrative events (typed)** | `await event(ctx, MyEvent(...))` — instance second positional | Pass a dataclass / pydantic model directly; name defaults to class name, fields serialize via `dataclasses.asdict` / `model_dump`. Enum fields coerced via `.value`. |
 | **Typed reports** | `await report(ctx, payload)` (requires stacked `@reports(ReportT)`) | Mid-flight result chunks with a declared schema |
 | **Typed event registry** | `app.ldd.events.register(MyEvent, progress=fn)` then `await app.ldd.events.emit_typed(ctx, evt)` | One-call emit: dump → event → progress (use this when you also need progress reporting) |
 
+`info` / `warning` / `error` / `debug` / `log` also accept the instance
+form (`await info(ctx, MyEvent(...))`) — same coercion rules as `event`,
+shared helper so the two primitives can't drift.
+
 ```python
 from pydantic import BaseModel
-from a2kit.ldd import event, report
+from a2kit.ldd import event, info, report
 from a2kit.packages.mcp.reports import reports
 
 
@@ -342,6 +347,7 @@ async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
     items = await load(file)
     for i, item in enumerate(items):
         await ctx.report_progress(i, len(items))
+        await info(ctx, "processing", batch=i, count=len(items))
         await report(ctx, BatchReport(batch=i, accepted=1))
     # Typed form: pass an instance directly. Name = class name; payload serializes
     # via model_dump / dataclasses.asdict.

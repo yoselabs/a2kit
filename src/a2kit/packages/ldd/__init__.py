@@ -94,7 +94,7 @@ class LddEmission:
     fan-out to each sink registered on ``app.ldd.add_sink(...)``.
     """
 
-    kind: Literal["event", "report"]
+    kind: Literal["event", "report", "log"]
     name: str
     payload: dict[str, Any]
     elapsed_ms: int
@@ -355,6 +355,89 @@ async def report(ctx: Any, payload: Any, /) -> None:
         )
 
 
+_LOG_LEVEL_LABEL: dict[str, str] = {"debug": "DEBUG", "info": "INFO", "warning": "WARN", "error": "ERROR"}
+
+
+async def log(
+    __ctx: Any,
+    __level: Literal["debug", "info", "warning", "error"],
+    __msg_or_instance: Any,
+    /,
+    **fields: Any,
+) -> None:
+    """Emit a structured field-bearing log line on either transport.
+
+    Third sibling of :func:`event` and :func:`report`; the missing
+    protocol-neutral primitive for narrative-with-data logging. Two
+    call shapes (mirrors :func:`event` verbatim, shares the same
+    ``_typed_event_to_payload`` helper):
+
+    1. **String form**: ``log(ctx, "info", "msg", k=v, ...)``. Third
+       positional is the message; remaining kwargs are fields.
+    2. **Instance form**: ``log(ctx, "info", instance)``. Third positional
+       is a dataclass / pydantic ``BaseModel`` / object. Message defaults
+       to ``type(instance).__name__``; fields derive via ``model_dump``
+       (pydantic), ``dataclasses.asdict`` (dataclass), or ``vars(instance)``
+       (fallback). Enum values are unwrapped to ``.value``.
+
+    MCP path → ``await ctx.log(level=..., message=msg_capped, extra={**fields, "elapsed_ms": ...})``.
+    CLI path → ``ctx._emit(LEVEL, msg, fields, elapsed_ms=...)`` (same backend
+    that ``StderrToolContext.info/warning/error/debug`` use).
+
+    Shares the events kill-switch (``--no-events`` / ``A2KIT_LDD=off``) so
+    a single flag silences all three LDD primitives consistently.
+    """
+    state = _current_state()
+    if not state.events_enabled:
+        return
+    elapsed = _elapsed_ms()
+
+    if isinstance(__msg_or_instance, str):
+        msg = __msg_or_instance
+        payload_dict = dict(fields)
+    else:
+        msg, payload_dict = _typed_event_to_payload(__msg_or_instance, dict(fields))
+
+    if _is_fastmcp_context(__ctx):
+        wire_extra = {**payload_dict, "elapsed_ms": elapsed}
+        await __ctx.log(level=__level, message=_cap_text(msg), extra=wire_extra)
+    else:
+        __ctx._emit(_LOG_LEVEL_LABEL[__level], msg, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
+
+    if state.sinks:
+        await _dispatch_sinks(
+            LddEmission(
+                kind="log",
+                name=msg,
+                payload=payload_dict,
+                elapsed_ms=elapsed,
+                tool_name=state.tool_name,
+                ctx=__ctx,
+            ),
+            state.sinks,
+        )
+
+
+async def info(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log(ctx, "info", ...)`` shorthand."""
+    await log(__ctx, "info", __msg_or_instance, **fields)
+
+
+async def warning(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log(ctx, "warning", ...)`` shorthand."""
+    await log(__ctx, "warning", __msg_or_instance, **fields)
+
+
+async def error(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log(ctx, "error", ...)`` shorthand."""
+    await log(__ctx, "error", __msg_or_instance, **fields)
+
+
+async def debug(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log(ctx, "debug", ...)`` shorthand."""
+    await log(__ctx, "debug", __msg_or_instance, **fields)
+
+
 # --- Typed event registry --------------------------------------------------- #
 
 ProgressFn = "Callable[[Any], tuple[float, float | None]]"
@@ -446,8 +529,13 @@ __all__ = [
     "LddEmission",
     "LddSink",
     "_AppLdd",
+    "debug",
+    "error",
     "event",
     "format_ldd_line",
+    "info",
     "ldd_state_for_call",
+    "log",
     "report",
+    "warning",
 ]

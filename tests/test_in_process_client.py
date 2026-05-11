@@ -41,7 +41,7 @@ from typing import Any
 from pydantic import BaseModel
 
 import a2kit
-from a2kit.ldd import event, report
+from a2kit.ldd import event, info, report, warning
 from a2kit.packages.mcp.reports import reports
 from a2kit.testing import client
 
@@ -63,8 +63,8 @@ class _Router(a2kit.Router):
 
     @a2kit.read()
     async def emit_telemetry(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-        await ctx.info("starting", batch=1)
-        await ctx.warning("transient", attempt=2)
+        await info(ctx, "starting", batch=1)
+        await warning(ctx, "transient", attempt=2)
         await event(ctx, "phase.started", n=10)
         await ctx.report_progress(5, total=10)
         await event(ctx, "phase.complete")

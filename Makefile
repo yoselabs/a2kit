@@ -10,6 +10,7 @@ lint:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run ty check src/
+	uv run ty check examples/
 	uv run a2kit lint static src/ tests/ examples/
 
 format:

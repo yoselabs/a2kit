@@ -124,14 +124,14 @@ async def bulk_import_tasks(
     titles: list[str],
     batch_size: int = 5,
 ) -> dict[str, int]:
-    await ctx.event("import.started", project_id=project_id, n=len(titles))
+    await event(ctx, "import.started", project_id=project_id, n=len(titles))
     projects, tasks = store.load_state()
-    ctx.info("loaded state", projects=len(projects), tasks=len(tasks))
+    await info(ctx, "loaded state", projects=len(projects), tasks=len(tasks))
     for i in range(0, len(titles), batch_size):
         ...
         await ctx.report_progress(i, len(titles))
-        await ctx.report(BatchReport(batch=..., accepted=..., rejected=...))
-    await ctx.event("import.complete", accepted=N, rejected=M)
+        await report(ctx, BatchReport(batch=..., accepted=..., rejected=...))
+    await event(ctx, "import.complete", accepted=N, rejected=M)
     return {"accepted": N, "rejected": M}
 ```
 

@@ -33,6 +33,14 @@ class MCPOnlyError(RuntimeError):
         super().__init__(msg)
 
 
+def _fields_with_logger(logger_name: str | None, extra: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Compose `extra` into a flat fields dict, injecting `logger=...` if provided."""
+    fields: dict[str, Any] = dict(extra) if extra else {}
+    if logger_name:
+        fields["logger"] = logger_name
+    return fields
+
+
 _LEVEL_LABEL: dict[str, str] = {
     "debug": "DEBUG",
     "info": "INFO",
@@ -74,18 +82,25 @@ class StderrToolContext:
         self._state: dict[str, Any] = {}
 
     # --- Logging (fastmcp.Context-shaped, all async) ---------------------- #
+    #
+    # Signatures match fastmcp.Context exactly: (message, logger_name=None,
+    # extra=None). Field-bearing narrative logging lives on a2kit.ldd.* free
+    # functions (info/warning/error/debug); they share `_emit` with these
+    # methods so CLI rendering stays consistent. The kwargs-on-ctx pattern
+    # crashed under MCP transport (fastmcp's narrow signature) — the divergence
+    # is removed by routing fielded calls through a2kit.ldd.* instead.
 
-    async def info(self, msg: str, **fields: Any) -> None:
-        self._emit("INFO", msg, fields)
+    async def info(self, message: str, logger_name: str | None = None, extra: Mapping[str, Any] | None = None) -> None:
+        self._emit("INFO", message, _fields_with_logger(logger_name, extra))
 
-    async def warning(self, msg: str, **fields: Any) -> None:
-        self._emit("WARN", msg, fields)
+    async def warning(self, message: str, logger_name: str | None = None, extra: Mapping[str, Any] | None = None) -> None:
+        self._emit("WARN", message, _fields_with_logger(logger_name, extra))
 
-    async def error(self, msg: str, **fields: Any) -> None:
-        self._emit("ERROR", msg, fields)
+    async def error(self, message: str, logger_name: str | None = None, extra: Mapping[str, Any] | None = None) -> None:
+        self._emit("ERROR", message, _fields_with_logger(logger_name, extra))
 
-    async def debug(self, msg: str, **fields: Any) -> None:
-        self._emit("DEBUG", msg, fields)
+    async def debug(self, message: str, logger_name: str | None = None, extra: Mapping[str, Any] | None = None) -> None:
+        self._emit("DEBUG", message, _fields_with_logger(logger_name, extra))
 
     async def log(
         self,

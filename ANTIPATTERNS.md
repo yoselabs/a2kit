@@ -567,3 +567,37 @@ async def list_tasks(...) -> list[Task]: ...
 ```
 
 Citation: `src/a2kit/tool.py::list_` and `_derive_selectable_fields`.
+
+
+## 25. v0.27 — kwargs on `ctx.info / warning / error / debug`
+
+`fastmcp.Context.info(message, logger_name=None, extra=None)` is the
+real upstream signature. The CLI stub historically widened it to
+`info(msg, **fields)` so structured narrative logging would render
+nicely on stderr. Tools written against the widened shape worked on
+CLI and through the in-process test client (a CLI subclass) but
+crashed on real MCP transport with
+`TypeError: Context.info() got an unexpected keyword argument 'foo'`
+— masked as `ToolError: Error calling tool 'X'` to agents under
+`App(debug=False)`.
+
+Use `a2kit.ldd.info(ctx, msg, **fields)` (and `warning` / `error` /
+`debug` siblings) for structured field-bearing logging. The free
+function dispatches internally: `await ctx.log(level=..., message=...,
+extra={...})` on MCP, `_emit(LEVEL, msg, fields)` on CLI. Same wire
+format, same rendering, both transports green. `ctx.info("plain
+message")` and `ctx.info("msg", extra={...})` (fastmcp's narrow form)
+continue to work; only the `**kwargs` shape was an invention.
+
+```python
+# Before:
+await ctx.info("starting import", file=file, batch_size=batch_size)
+
+# After:
+from a2kit.ldd import info
+await info(ctx, "starting import", file=file, batch_size=batch_size)
+```
+
+Citation: `src/a2kit/packages/ldd/__init__.py::log` (the dispatcher);
+`tests/test_context_surface.py::test_field_bearing_logging_is_only_on_ldd_not_on_ctx`
+(the architectural-invariant test that catches regressions).

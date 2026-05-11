@@ -12,18 +12,28 @@ from a2kit.packages.ldd import (
     EventRegistry,
     LddEmission,
     LddSink,
+    debug,
+    error,
     event,
     format_ldd_line,
+    info,
     ldd_state_for_call,
+    log,
     report,
+    warning,
 )
 
 __all__ = [
     "EventRegistry",
     "LddEmission",
     "LddSink",
+    "debug",
+    "error",
     "event",
     "format_ldd_line",
+    "info",
     "ldd_state_for_call",
+    "log",
     "report",
+    "warning",
 ]
