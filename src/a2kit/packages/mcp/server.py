@@ -31,9 +31,12 @@ def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
     """JSON-serializable projection of ``A2KitMeta`` for ``tool.meta`` wire output."""
     d = asdict(meta)
     d["tags"] = sorted(meta.tags)
-    annotations = d.get("annotations")
-    if annotations is not None and hasattr(meta.annotations, "model_dump"):
-        d["annotations"] = meta.annotations.model_dump(exclude_none=True)
+    # Skip the internal annotation-storage fields; project the wire shape via
+    # ``annotations_as_dict`` which avoids the ``mcp.types`` lazy import when
+    # the consumer didn't pass an explicit ``ToolAnnotations`` instance.
+    d.pop("_annotations_kwargs", None)
+    d.pop("_annotations_explicit", None)
+    d["annotations"] = meta.annotations_as_dict()
     extra = dict(d.get("extra") or {})
     for key in _EXTRA_DROP_FROM_WIRE:
         extra.pop(key, None)
@@ -145,7 +148,8 @@ def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
     """
     from a2kit.signature import wire_input_params
 
-    wire_params, needs_conn = wire_input_params(fn, container)
+    wire_params, wire_scopes_needed = wire_input_params(fn, container)
+    needs_conn = "connection" in wire_scopes_needed
 
     if not _has_injectables(fn, container):
         return fn  # no rewrite needed
@@ -179,7 +183,11 @@ def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
                 annotation=str,
             )
         )
-    _wrapped.__signature__ = inspect.Signature(parameters=new_params)  # ty: ignore[unresolved-attribute]
+    # ``__signature__`` is an established convention for callable objects
+    # (PEP 362) but isn't part of the static function-attribute set, so we
+    # set it via ``setattr`` to keep the type checker happy without a
+    # suppression marker.
+    setattr(_wrapped, "__signature__", inspect.Signature(parameters=new_params))  # noqa: B010
     # Preserve return annotation for output-schema gen.
     import contextlib
 
@@ -199,9 +207,9 @@ def _has_injectables(fn: Any, container: Any) -> bool:
         return False
     from a2kit.signature import wire_input_params
 
-    base, needs_conn = wire_input_params(fn, container=None)
-    wire, _ = wire_input_params(fn, container=container)
-    return len(wire) < len(base) or needs_conn
+    base, _ = wire_input_params(fn, container=None)
+    wire, wire_scopes = wire_input_params(fn, container=container)
+    return len(wire) < len(base) or bool(wire_scopes)
 
 
 def _router_for_tool(app: Any, fn: Any) -> Any | None:

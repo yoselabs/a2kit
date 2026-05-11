@@ -83,8 +83,8 @@ def test_import_csv_with_reports_emits_event_and_report_lines(tmp_path: Path) ->
     err = result.stderr
     # Narrative events fire at start + end.
     assert "event   ]" in err
-    assert "import.started" in err
-    assert "import.complete" in err
+    assert "ImportStarted" in err
+    assert "ImportComplete" in err
     # Reports fire per-batch with the BatchReport class name.
     assert "report  ]" in err
     assert "BatchReport" in err
@@ -111,7 +111,7 @@ def test_no_reports_flag_silences_reports_but_not_events(tmp_path: Path) -> None
     assert result.exit_code == 0, result.output
     err = result.stderr
     # Events still fire.
-    assert "import.started" in err
+    assert "ImportStarted" in err
     # Reports do not.
     assert "BatchReport" not in err
 

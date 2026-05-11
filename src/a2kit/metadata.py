@@ -25,12 +25,57 @@ class ListViewSettings:
 
 @dataclass(frozen=True, slots=True)
 class A2KitMeta:
+    """Per-tool metadata stamped by verb decorators.
+
+    ``annotations`` is exposed as a property that lazily constructs the
+    ``mcp.types.ToolAnnotations`` instance. The decorator path stores the
+    kwargs in ``_annotations_kwargs`` (or an already-built explicit instance
+    in ``_annotations_explicit``) so the mcp.types import is deferred until
+    the consumer actually reads the annotation surface. This shaves ~90ms
+    off cold-start for CLI flows that never touch annotations
+    (``--help``, plain tool invocation).
+    """
+
     tool_name: str
     verb: Verb
     tags: frozenset[str]
-    annotations: ToolAnnotations
+    _annotations_kwargs: dict[str, Any] | None = None
+    _annotations_explicit: Any = None
     context_param_name: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def annotations(self) -> ToolAnnotations:
+        """Lazy-construct ``ToolAnnotations`` from stored kwargs.
+
+        First access pays the ``mcp.types`` import cost (~400ms cold-start).
+        Callers that only need the JSON-shaped dict (schema dump, wire
+        projection) should call :meth:`annotations_as_dict` instead — it
+        skips the pydantic object entirely.
+        """
+        if self._annotations_explicit is not None:
+            return self._annotations_explicit
+        from mcp.types import ToolAnnotations
+
+        kw = self._annotations_kwargs or {}
+        return ToolAnnotations(**kw)
+
+    def annotations_as_dict(self) -> dict[str, Any]:
+        """Return the annotation kwargs in ``ToolAnnotations`` wire shape.
+
+        Skips the pydantic object construction (and the ``mcp.types``
+        import). For an explicit ``ToolAnnotations`` instance we still
+        have to call ``model_dump`` — but that branch is rare (only when
+        the consumer passed a full ``ToolAnnotations`` via the
+        ``annotations=`` kwarg on a verb decorator).
+        """
+        if self._annotations_explicit is not None:
+            dump = getattr(self._annotations_explicit, "model_dump", None)
+            if callable(dump):
+                return dump(exclude_none=True)
+            return {}
+        kw = self._annotations_kwargs or {}
+        return {k: v for k, v in kw.items() if v is not None}
 
 
 META_ATTR = "_a2kit"

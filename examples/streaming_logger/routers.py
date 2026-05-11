@@ -3,6 +3,9 @@
 Each tool emits ``ctx.info`` / ``ctx.warning`` / ``ctx.error`` /
 ``ctx.report_progress`` calls as it executes. Same code paths over MCP
 (notifications) and CLI (stderr lines).
+
+v0.26.1+ idiom: typed event payloads (``await a2kit.ldd.event(ctx, evt)``)
+are shown alongside the kwargs form so the two shapes are visible.
 """
 
 from __future__ import annotations
@@ -17,8 +20,21 @@ from a2kit.ldd import event, report
 from a2kit.packages.mcp.reports import reports
 
 
+class ImportStarted(BaseModel):
+    """Typed start-of-import event — emitted via the v0.26.1 instance form."""
+
+    file: str
+    batch_size: int
+
+
+class ImportComplete(BaseModel):
+    """Typed end-of-import event — paired with ImportStarted."""
+
+    imported: int
+
+
 class BatchReport(BaseModel):
-    """Typed mid-flight chunk emitted via ``ctx.report``.
+    """Typed mid-flight chunk emitted via ``a2kit.ldd.report``.
 
     Distinct from ``ctx.info`` (free-form telemetry) — agents can
     pattern-match on the type and consume rows incrementally.
@@ -126,7 +142,8 @@ class TasksRouter(a2kit.Router):
         - ``ctx.info(...)`` for free-form telemetry.
         - ``ctx.report_progress(i, total)`` for numeric progress.
         """
-        await event(ctx, "import.started", file=file, batch_size=batch_size)
+        # Typed instance form (v0.26.1) — name = type name, payload from model_dump.
+        await event(ctx, ImportStarted(file=file, batch_size=batch_size))
         rows = _load_csv(file)
         await ctx.info("loaded rows", count=len(rows))
         for i in range(0, len(rows), batch_size):
@@ -134,7 +151,7 @@ class TasksRouter(a2kit.Router):
             await ctx.report_progress(i, len(rows))
             await _persist(batch)
             await report(ctx, BatchReport(batch=i // batch_size, accepted=len(batch), rejected=0))
-        await event(ctx, "import.complete", imported=len(rows))
+        await event(ctx, ImportComplete(imported=len(rows)))
         return {
             "imported": len(rows),
             "batches": (len(rows) + batch_size - 1) // batch_size if rows else 0,

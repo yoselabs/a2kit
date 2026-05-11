@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.27.2 — CLI cold-start: schema gen no longer triggers mcp.types — 2026-05-12
+
+The previous release deferred `mcp.types` from module-load time but `--schema`
+still triggered it via `meta.annotations.model_dump(...)`. Schema generation
+now uses the stored kwargs dict directly, skipping the pydantic build entirely.
+
+### Added
+
+- **`A2KitMeta.annotations_as_dict()`** — returns the annotation kwargs in
+  `ToolAnnotations` wire shape without constructing the pydantic object.
+  Used by CLI schema gen (`packages/cli/schemas.py`) and MCP wire projection
+  (`packages/mcp/server.py:_meta_to_dict`). The lazy `meta.annotations`
+  property is unchanged for consumers that genuinely need the typed object.
+
+### Performance
+
+CLI cold-start (median over 15 runs, M1 Mac):
+
+| Scenario | v0.27.1 | v0.27.2 | Δ |
+|---|---:|---:|---:|
+| `<app> --help` | 138ms | 139ms | flat |
+| `<app> tool ping` | 138ms | 137ms | flat |
+| `<app> tool hello` (DI) | 139ms | 140ms | flat |
+| `<app> tool ping --schema` | 612ms | 137ms | **-78%** |
+
+All CLI paths now run in the 127-146ms band. The `mcp.types` import is
+fully off the cold-start path; only `<app> serve` (MCP transport) pulls it.
+
+## 0.27.1 — CLI cold-start: defer mcp.types import — 2026-05-11
+
+CLI tool invocations (`<app> --help`, `<app> <router> <tool>`) now skip the `mcp.types` / fastmcp / anyio / httpx imports entirely. Cold-start drops ~75% on the common case.
+
+### Changed
+
+- **`A2KitMeta.annotations` is now a lazy property.** The verb decorators (`@a2kit.read/write/list_/tool`) store annotation kwargs in `_annotations_kwargs` / `_annotations_explicit` at decoration time; `meta.annotations` constructs the `ToolAnnotations` instance on first read. Behavior is unchanged from the consumer's view; the field is still readable as `meta.annotations`.
+- **`a2kit.tool` no longer imports `mcp.types` at module load.** `ToolAnnotations` lives under `TYPE_CHECKING`; only consumers that read `meta.annotations` (MCP schema gen, `--schema` flag) pay the import cost.
+
+### Performance
+
+CLI cold-start (median over 25 runs, M1 Mac):
+
+| Scenario | v0.27.0 | v0.27.1 | Δ |
+|---|---:|---:|---:|
+| `<app> --help` | 544ms | 138ms | -75% |
+| `<app> tool ping` (no DI) | 510ms | 138ms | -73% |
+| `<app> tool hello` (DI singleton) | 610ms | 139ms | -77% |
+| `<app> tool ping --schema` | 669ms | 761ms | +14% (materializes annotations) |
+
+`<app> serve` (MCP transport) is unaffected — it needs the full mcp stack.
+
+### Notes
+
+- No API breakage. `meta.annotations.readOnlyHint` still works exactly as before; first access lazily imports `mcp.types`.
+- The MCP wire-output projection (`packages/mcp/server.py:_meta_to_dict`) updated to materialize the lazy annotations into the wire dict (transparent to consumers).
+
 ## 0.27.0 — DI sync + container relocation + DI-aware lifecycle (breaking) — 2026-05-11
 
 This release shrinks the DI substrate, removes the `connection` magic name from core, and makes lifecycle hooks DI-aware. The container is now a small synchronous library that knows nothing about specific features. Async resource initialization moves out of DI factories into resource classes (lazy-init pattern, documented in README "Resource pattern" section).
@@ -35,7 +90,6 @@ A2kit consumers (a2web etc.) migrate by:
 - ~600 LOC deleted across the container, app.py, and consumer surfaces.
 - Container: 540 → ~200 LOC (still has chain resolution; was further deleted).
 - Test count went from 716 (v0.26) → 719 with broader behavior coverage of the new dispatch path.
-
 
 ## 0.26.1 — a2web feedback round 4 (additive ergonomics) — 2026-05-11
 

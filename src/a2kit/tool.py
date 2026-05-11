@@ -4,12 +4,13 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
-from mcp.types import ToolAnnotations
-
 from a2kit.exceptions import InvalidToolReturnTypeError
 from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, set_meta
 from a2kit.signature import find_context_param
 from a2kit.surface import SURFACE_META_KEY, Surface
+
+if TYPE_CHECKING:
+    from mcp.types import ToolAnnotations
 
 if TYPE_CHECKING:
     from a2kit.routers import Router
@@ -164,7 +165,8 @@ def _stamp(
     verb: Literal["read", "write", "list", "tool"],
     name: str | None,
     tags: frozenset[str],
-    annotations: ToolAnnotations,
+    annotations_kwargs: dict[str, Any] | None = None,
+    annotations_explicit: Any = None,
     surfaces: Surface = Surface.ALL,
 ) -> F:
     _check_return(fn)
@@ -176,7 +178,8 @@ def _stamp(
         tool_name=resolved_name,
         verb=verb,
         tags=tags,
-        annotations=annotations,
+        _annotations_kwargs=annotations_kwargs,
+        _annotations_explicit=annotations_explicit,
         context_param_name=find_context_param(fn),
         extra=pending,
     )
@@ -189,7 +192,13 @@ def _stamp(
     return fn
 
 
-def _build_annotations(
+def _kwargs_for(pair: tuple[dict[str, Any] | None, Any | None]) -> dict[str, Any]:
+    """Map ``(kwargs, explicit)`` to the ``_stamp`` keyword arguments."""
+    kwargs, explicit = pair
+    return {"annotations_kwargs": kwargs, "annotations_explicit": explicit}
+
+
+def _build_annotation_kwargs(
     *,
     verb: str,
     base_read_only: bool,
@@ -199,26 +208,32 @@ def _build_annotations(
     destructive: bool | None,
     title: str | None,
     explicit: ToolAnnotations | None,
-) -> ToolAnnotations:
-    """Compose ``ToolAnnotations`` honoring per-decorator defaults + kwargs.
+) -> tuple[dict[str, Any] | None, Any | None]:
+    """Return ``(kwargs, explicit)`` for the deferred annotation builder.
+
+    Decorator path stores these on ``A2KitMeta``; ``meta.annotations``
+    constructs the actual ``ToolAnnotations`` lazily on first read. This
+    keeps ``mcp.types`` out of the cold-start path for CLI flows that never
+    inspect annotations.
 
     - ``destructive`` only valid on ``write`` / ``tool``; raising on ``read``
       keeps the API self-documenting (read tools are non-destructive by spec).
-    - ``explicit`` (full ``ToolAnnotations``) wins entirely when provided —
-      escape hatch for advanced users.
+    - ``explicit`` (full ``ToolAnnotations``) wins entirely when provided.
     """
     if explicit is not None:
-        return explicit
+        return None, explicit
     if verb == "read" and destructive is not None:
         raise TypeError("`destructive` is not valid on `@a2kit.read`; use `@a2kit.write` or `@a2kit.tool`")
     is_destructive = base_destructive if destructive is None else destructive
-    return ToolAnnotations(
-        readOnlyHint=base_read_only,
-        destructiveHint=is_destructive,
-        idempotentHint=idempotent,
-        openWorldHint=open_world,
-        title=title,
-    )
+    kwargs: dict[str, Any] = {
+        "readOnlyHint": base_read_only,
+        "destructiveHint": is_destructive,
+        "idempotentHint": idempotent,
+        "openWorldHint": open_world,
+    }
+    if title is not None:
+        kwargs["title"] = title
+    return kwargs, None
 
 
 def tool(
@@ -238,15 +253,17 @@ def tool(
             verb="tool",
             name=name,
             tags=frozenset(tags or ()),
-            annotations=_build_annotations(
-                verb="tool",
-                base_read_only=False,
-                base_destructive=False,
-                idempotent=idempotent,
-                open_world=open_world,
-                destructive=destructive,
-                title=title,
-                explicit=annotations,
+            **_kwargs_for(
+                _build_annotation_kwargs(
+                    verb="tool",
+                    base_read_only=False,
+                    base_destructive=False,
+                    idempotent=idempotent,
+                    open_world=open_world,
+                    destructive=destructive,
+                    title=title,
+                    explicit=annotations,
+                )
             ),
             surfaces=surfaces,
         )
@@ -270,15 +287,17 @@ def read(
             verb="read",
             name=name,
             tags=frozenset({"read", *(tags or set())}),
-            annotations=_build_annotations(
-                verb="read",
-                base_read_only=True,
-                base_destructive=False,
-                idempotent=idempotent,
-                open_world=open_world,
-                destructive=destructive,
-                title=title,
-                explicit=None,
+            **_kwargs_for(
+                _build_annotation_kwargs(
+                    verb="read",
+                    base_read_only=True,
+                    base_destructive=False,
+                    idempotent=idempotent,
+                    open_world=open_world,
+                    destructive=destructive,
+                    title=title,
+                    explicit=None,
+                )
             ),
             surfaces=surfaces,
         )
@@ -302,15 +321,17 @@ def write(
             verb="write",
             name=name,
             tags=frozenset({"write", *(tags or set())}),
-            annotations=_build_annotations(
-                verb="write",
-                base_read_only=False,
-                base_destructive=True,
-                idempotent=idempotent,
-                open_world=open_world,
-                destructive=destructive,
-                title=title,
-                explicit=None,
+            **_kwargs_for(
+                _build_annotation_kwargs(
+                    verb="write",
+                    base_read_only=False,
+                    base_destructive=True,
+                    idempotent=idempotent,
+                    open_world=open_world,
+                    destructive=destructive,
+                    title=title,
+                    explicit=None,
+                )
             ),
             surfaces=surfaces,
         )
@@ -361,7 +382,7 @@ def list_(
             verb="list",
             name=name,
             tags=frozenset({"read", "list", *(tags or set())}),
-            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+            annotations_kwargs={"readOnlyHint": True, "destructiveHint": False},
             surfaces=surfaces,
         )
 
