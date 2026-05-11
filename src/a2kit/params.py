@@ -32,11 +32,20 @@ if TYPE_CHECKING:
     from pydantic.fields import FieldInfo
 
 
-def Param(*, description: str | None = None, **extras: Any) -> FieldInfo:  # noqa: N802 — public marker, idiomatic capitalized
+def Param(description: str | None = None, **extras: Any) -> FieldInfo:  # noqa: N802 — public marker, idiomatic capitalized
     """Build a Pydantic ``FieldInfo`` carrying tool-kwarg metadata.
 
-    The returned object is meant for use inside ``Annotated[T, Param(...)]``.
-    ``extras`` are forwarded to ``pydantic.Field`` (e.g. ``examples=``,
+    Two call shapes:
+
+    - **Positional shorthand**: ``Param("Absolute URL.")``. Cosmetically shorter
+      at the ``Annotated[T, Param(...)]`` call site.
+    - **Keyword form**: ``Param(description="Absolute URL.")``. Equivalent.
+
+    Passing both raises ``TypeError`` (Python's natural "got multiple values
+    for argument 'description'"); the message mentions ``description`` so test
+    assertions on it stay simple.
+
+    Both forms accept ``extras`` forwarded to ``pydantic.Field`` (``examples=``,
     ``title=``, ``ge=``, ``le=``).
     """
     from pydantic import Field

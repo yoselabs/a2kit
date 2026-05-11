@@ -211,13 +211,61 @@ def _is_fastmcp_context(ctx: Any) -> bool:
     return isinstance(ctx, fastmcp_context)
 
 
-async def event(__ctx: Any, __name: str, /, **payload: Any) -> None:
+def _typed_event_to_payload(instance: Any, extra: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Serialize an event instance to ``(name, payload_dict)``.
+
+    Used by :func:`event`'s typed path. Honors a ``name=`` override pulled
+    out of ``extra``; remaining ``extra`` kwargs are merged into the payload
+    after the instance fields (caller wins on collisions).
+    """
+    import dataclasses
+    from enum import Enum
+
+    name_override = extra.pop("name", None)
+    name = name_override if isinstance(name_override, str) else type(instance).__name__
+
+    if hasattr(instance, "model_dump"):
+        payload_dict = instance.model_dump(mode="json")
+    elif dataclasses.is_dataclass(instance) and not isinstance(instance, type):
+        payload_dict = dataclasses.asdict(instance)
+    else:
+        try:
+            payload_dict = dict(vars(instance))
+        except TypeError:
+            payload_dict = {}
+
+    # Enum → enum.value (recursive shallow walk for top-level fields).
+    payload_dict = {k: (v.value if isinstance(v, Enum) else v) for k, v in payload_dict.items()}
+
+    # Merge extra kwargs after instance fields; caller wins on collisions.
+    payload_dict.update(extra)
+    return name, payload_dict
+
+
+async def event(__ctx: Any, __name_or_payload: Any, /, **payload: Any) -> None:
     """Emit a structured event on either transport.
 
-    Positional-only ``ctx`` and event-name args (Python 3.8+ ``/`` syntax)
-    so ``**payload`` keys can include ``name``, ``ctx``, etc. without
-    colliding — important for typed-event registry emission where the
-    payload is a Pydantic model dump.
+    Two call shapes are accepted (positional-only ``ctx`` and the second arg
+    via ``/`` syntax keep ``**payload`` open for any key including ``name``):
+
+    1. **Kwargs form** (legacy): ``event(ctx, "name.string", key=value, ...)``.
+       Second positional is the event name string; remaining kwargs form the
+       payload.
+    2. **Typed form**: ``event(ctx, instance)``. Second positional is any
+       class instance. Name defaults to ``type(instance).__name__``. The
+       payload is derived from the instance:
+
+       - ``instance.model_dump(mode="json")`` if it has ``model_dump``
+         (pydantic ``BaseModel``).
+       - ``dataclasses.asdict(instance)`` if a dataclass instance.
+       - ``vars(instance)`` as a fallback.
+
+       Any ``Enum`` value in the resulting dict is replaced by
+       ``value.value`` so wire payloads stay JSON-friendly.
+
+       An optional ``name=`` kwarg overrides the default class-name. Any
+       additional kwargs are merged into the payload after the instance
+       fields (caller wins on key collisions).
 
     MCP path → ``ctx.log(level="info", extra={"a2kit_kind": "event", ...})``.
     CLI path → stderr line via :func:`format_ldd_line` (kind ``event``).
@@ -229,7 +277,12 @@ async def event(__ctx: Any, __name: str, /, **payload: Any) -> None:
     if not state.events_enabled:
         return
     elapsed = _elapsed_ms()
-    payload_dict = dict(payload)
+
+    if isinstance(__name_or_payload, str):
+        __name = __name_or_payload
+        payload_dict = dict(payload)
+    else:
+        __name, payload_dict = _typed_event_to_payload(__name_or_payload, payload)
     if _is_fastmcp_context(__ctx):
         await __ctx.log(
             message=_cap_text(__name),

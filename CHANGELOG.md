@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.26.1 — a2web feedback round 4 (additive ergonomics) — 2026-05-11
+
+### Added
+
+- **Typed `a2kit.ldd.event(ctx, instance)`** — the free function now accepts
+  a class instance as its second positional argument. Name defaults to
+  `type(instance).__name__`; payload derives via `model_dump(mode="json")`
+  (pydantic), `dataclasses.asdict` (dataclass), or `vars(instance)` fallback.
+  `Enum` field values are coerced via `.value`. Optional `name=` kwarg
+  overrides the default class-name on the typed path. The legacy
+  `event(ctx, "name.string", **kwargs)` form is unchanged.
+- **`a2kit.testing.null_context()`** — a no-op `ToolContext`-shaped shim for
+  unit-testing internal phase functions that bypass
+  `a2kit.testing.client(app)`. Every wire method (logging, progress, event
+  emit, report, sample, list_*) is a silent no-op. Production code can take
+  `ctx: a2kit.ToolContext` (non-Optional) and tests construct the shim instead
+  of passing `None`.
+- **`a2kit.Param("description")` positional shorthand** — equivalent to
+  `a2kit.Param(description="description")`. Cosmetically shorter at the
+  `Annotated[T, Param(...)]` call site for one-line descriptions. Passing
+  both the positional and the `description=` kwarg raises `TypeError`.
+
+### Notes
+
+- Pure additive. No breaking changes. Consumers writing the typed-event
+  flattener shim (a2web's `_event_payload`, ~25 LOC) can delete it.
+- README sections "Per-parameter descriptions" and "Logging + progress +
+  events + reports" updated to document the new shapes. New "Null context
+  for internal phase tests" subsection under Testing.
+
 ## 0.26.0 — a2web feedback round 3 (router-as-plugin + Surface + LDD sinks) — 2026-05-11
 
 ### Added

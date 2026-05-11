@@ -12,6 +12,7 @@ from a2kit.packages.testing import (
     app,
     cassette,
     compute_schema,
+    null_context,
     peek,
 )
 from a2kit.packages.testing.client import TestClient, client
@@ -23,5 +24,6 @@ __all__ = [
     "cassette",
     "client",
     "compute_schema",
+    "null_context",
     "peek",
 ]
