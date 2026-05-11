@@ -1,11 +1,107 @@
-"""Mirror stub for A2K-TEST-MIRROR.
+"""Tests for `a2kit.packages.lint.rules.conn`.
 
-The real tests for this source file live in a consolidated location.
-This file exists to satisfy the mirror-discipline lint rule per
-``module-layout-discipline``. When the source file grows enough to
-warrant dedicated tests, move them here.
+Split from `tests/packages/lint/test_rules_misc.py` per
+`module-layout-discipline / Test directory mirrors source structure`.
 """
 
+from __future__ import annotations
 
-def test_mirror_stub_present() -> None:
-    """Sentinel — proves the mirror file exists with a ``def test_*`` function."""
+from pathlib import Path
+
+from a2kit.packages.lint.static import (
+    A2K014,
+    A2K_CONN_LIST_PLACEHOLDER,
+    run_static_rules,
+)
+
+
+def _write(path: Path, body: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _codes(findings: object) -> set[str]:
+    return {f.rule for f in findings}  # type: ignore[union-attr]
+
+
+# --------------------------- conn.py: tuple/dict shapes --------------------------- #
+
+
+def test_conn_list_placeholder_in_tuple(tmp_path: Path) -> None:
+    body = "from a2kit.connections import ConnectionConfig\nclass C(ConnectionConfig):\n    tags: tuple = ('${MY_TAG}', 'plain')\n"
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER in _codes(findings)
+
+
+def test_conn_list_placeholder_in_set(tmp_path: Path) -> None:
+    body = "from a2kit.connections import ConnectionConfig\nclass C(ConnectionConfig):\n    tags: set = {'${MY_TAG}', 'plain'}\n"
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER in _codes(findings)
+
+
+def test_conn_list_placeholder_nested_dict_value(tmp_path: Path) -> None:
+    """Recursion into nested list inside dict value."""
+    body = "from a2kit.connections import ConnectionConfig\nclass C(ConnectionConfig):\n    headers: dict = {'auth': ['${TOKEN}']}\n"
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER in _codes(findings)
+
+
+def test_conn_list_placeholder_dict_key_with_placeholder(tmp_path: Path) -> None:
+    """Dict KEY containing ${VAR} also flags (covers the keys-walk branch)."""
+    body = "from a2kit.connections import ConnectionConfig\nclass C(ConnectionConfig):\n    map: dict = {'${TOKEN}': 'v'}\n"
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER in _codes(findings)
+
+
+def test_conn_list_placeholder_skipped_on_fixture_path(tmp_path: Path) -> None:
+    body = "from a2kit.connections import ConnectionConfig\nclass C(ConnectionConfig):\n    tags: list = ['${MY_TAG}']\n"
+    p = _write(tmp_path / "tests" / "fixtures" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER not in _codes(findings)
+
+
+def test_conn_list_placeholder_no_value_silent(tmp_path: Path) -> None:
+    """Type-only `AnnAssign` with no value (e.g. abstract field) — silent."""
+    body = "from a2kit.connections import ConnectionConfig\nclass C(ConnectionConfig):\n    tags: list\n"
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER not in _codes(findings)
+
+
+def test_conn_list_placeholder_non_collection_value_silent(tmp_path: Path) -> None:
+    """`AnnAssign` value is a function call — not list/tuple/set/dict, silent."""
+    body = (
+        "from a2kit.connections import ConnectionConfig\ndef factory(): return []\nclass C(ConnectionConfig):\n    tags: list = factory()\n"
+    )
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER not in _codes(findings)
+
+
+def test_conn_list_placeholder_noqa(tmp_path: Path) -> None:
+    body = (
+        "from a2kit.connections import ConnectionConfig\n"
+        "class C(ConnectionConfig):\n"
+        "    tags: list = ['${MY_TAG}']  # noqa: A2K-CONN-LIST-PLACEHOLDER\n"
+    )
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K_CONN_LIST_PLACEHOLDER not in _codes(findings)
+
+
+# --------------------------- budget.py edges --------------------------- #
+
+
+def test_a2k014_just_under_threshold_silent(tmp_path: Path) -> None:
+    body = "x = 1\n" * 100
+    p = _write(tmp_path / "src" / "m.py", body)
+    findings = run_static_rules([p])
+    assert A2K014 not in _codes(findings)
+
+
+# --------------------------- A2K006 cross is wired through `run_static_rules` --------------------------- #
