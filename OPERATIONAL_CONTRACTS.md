@@ -108,14 +108,19 @@ servers); a2kit shouldn't pick a single answer.
 **Current behavior.** Unhandled exceptions in tool bodies bubble to the
 dispatcher.
 
-- **MCP path.** The exception becomes a JSON-RPC error response. `code`
-  follows MCP/JSON-RPC convention (`-32603` for internal errors); `message`
-  is `str(exception)`. When `App(..., debug=True)` is set, the response's
-  `data.traceback` field carries the full Python traceback string for
-  diagnosis. In production (`debug=False`, the default) tracebacks are
-  not included.
-- **CLI path.** The process exits with a non-zero status code; the
-  traceback is printed to stderr. The exception is not caught.
+- **MCP path.** FastMCP wraps the exception as a `ToolError` on the wire.
+  By default (`App(debug=False)`) a2kit passes `mask_error_details=True` to
+  FastMCP, so the wire message is a generic `f"Error calling tool {name!r}"`
+  with no detail. With `App(debug=True)`, a2kit passes
+  `mask_error_details=False` AND wraps every tool with a debug helper that
+  appends the full traceback to the exception's `str()`. FastMCP's
+  unmasked path then emits `f"Error calling tool {name!r}: {message}"`
+  where `message` includes the traceback. Use `debug=True` only in
+  development — tracebacks expose internal paths.
+- **CLI path.** The process exits with a non-zero status code; the error
+  message goes to stderr as ``error: <message>``. When `App(debug=True)`,
+  the full traceback follows the error line on stderr; otherwise only the
+  one-line message appears.
 
 `asyncio.CancelledError` is treated specially (see Q1) — it bubbles unchanged
 without being wrapped in an envelope, since cancellation is not an error.
@@ -130,6 +135,8 @@ without being wrapped in an envelope, since cancellation is not an error.
 
 **Future plans.** None for the envelope shape. The `debug=True` traceback
 toggle is the relevant lever; `App(debug=True)` is the documented contract.
+A structured `data.traceback` field (rather than message-embedded text) would
+require sub-classing `ToolError` upstream in FastMCP — deferred.
 
 **Regression test.** `tests/test_error_envelope.py` — covers the in-process
 client raising path (dispatcher does not swallow), and the `debug` flag's

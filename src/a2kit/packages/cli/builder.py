@@ -347,6 +347,10 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
             raise
         except Exception as exc:
             click.echo(f"error: {exc}", err=True)
+            if getattr(app, "debug", False):
+                import traceback
+
+                click.echo(traceback.format_exc(), err=True)
             raise click.exceptions.Exit(1) from exc
         click.echo(data)
 

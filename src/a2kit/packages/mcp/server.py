@@ -107,6 +107,33 @@ def _wrap_with_router_enrichers(fn: Any, router: Any | None) -> Any:
     return _wrapped
 
 
+def _wrap_with_debug_traceback(fn: Any) -> Any:
+    """Augment exceptions with a full traceback in their message.
+
+    Used when ``App(debug=True)`` — FastMCP unmasked-error path emits
+    ``f"Error calling tool {name!r}: {e}"`` on the wire, so embedding the
+    traceback in ``str(e)`` carries diagnostic detail through to the client.
+    ``asyncio.CancelledError`` is re-raised unchanged so cancellation isn't
+    wrapped (see OPERATIONAL_CONTRACTS.md Q1).
+    """
+    import asyncio
+    import functools
+    import traceback
+
+    @functools.wraps(fn)
+    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await fn(*args, **kwargs)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            tb = traceback.format_exc()
+            augmented = type(exc)(f"{exc}\n\nTraceback:\n{tb}")
+            raise augmented from exc
+
+    return _wrapped
+
+
 def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
     """Apply the App's dispatch hook to resolve injectable kwargs before fn.
 
@@ -223,6 +250,12 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     """
     if hasattr(app, "has_lifecycle_handlers") and app.has_lifecycle_handlers():
         fastmcp_kwargs["lifespan"] = _merge_lifespan(app, fastmcp_kwargs.get("lifespan"))
+    # `App(debug=True)` unmasks error details so the tool's exception message
+    # reaches the wire. Tool wrappers further down append the traceback to
+    # `str(exc)` when debug is on (see `_wrap_with_debug_traceback`).
+    app_debug = bool(getattr(app, "debug", False))
+    if "mask_error_details" not in fastmcp_kwargs:
+        fastmcp_kwargs["mask_error_details"] = not app_debug
     server = FastMCP(name=app.name, **fastmcp_kwargs)
 
     reports_enabled = getattr(app, "ldd_reports", True)
@@ -248,6 +281,8 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
                 reports_enabled=reports_enabled,
                 events_enabled=events_enabled,
             )
+        if app_debug:
+            wrapped = _wrap_with_debug_traceback(wrapped)
 
         # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — keep them
         # out of agent-facing `list_tools` by tagging with `_meta` and disabling

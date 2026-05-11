@@ -139,3 +139,99 @@ def test_app_debug_flag_defaults_false() -> None:
     assert plain.debug is False
     chatty = a2kit.App("chatty", debug=True)
     assert chatty.debug is True
+
+
+def test_cli_error_no_traceback_when_debug_false() -> None:
+    """CLI error path prints `error: ...` but no traceback when debug=False."""
+    from click.testing import CliRunner
+
+    from a2kit.packages.cli.builder import build_full_cli
+
+    class _R(a2kit.Router):
+        @a2kit.read()
+        async def boom(self) -> dict:
+            raise ValueError("plain failure")
+
+    app = a2kit.App("cli-err").add_router(_R())
+    cli = build_full_cli(app)
+    result = CliRunner().invoke(cli, ["_r", "boom"])
+    assert result.exit_code != 0
+    assert "error: plain failure" in result.output
+    assert "Traceback (most recent call last):" not in result.output
+
+
+def test_cli_error_includes_traceback_when_debug_true() -> None:
+    """CLI error path prints the traceback to stderr when debug=True."""
+    from click.testing import CliRunner
+
+    from a2kit.packages.cli.builder import build_full_cli
+
+    class _R(a2kit.Router):
+        @a2kit.read()
+        async def boom(self) -> dict:
+            raise ValueError("detailed failure")
+
+    app = a2kit.App("cli-err-dbg", debug=True).add_router(_R())
+    cli = build_full_cli(app)
+    result = CliRunner().invoke(cli, ["_r", "boom"])
+    assert result.exit_code != 0
+    assert "error: detailed failure" in result.output
+    assert "Traceback" in result.output
+    # The actual ValueError frame should appear.
+    assert "ValueError" in result.output
+
+
+def test_mcp_debug_wrapper_augments_message() -> None:
+    """The MCP-side debug wrapper appends the traceback to `str(exc)`."""
+    import asyncio
+
+    from a2kit.packages.mcp.server import _wrap_with_debug_traceback
+
+    async def boom() -> None:
+        raise ValueError("base msg")
+
+    wrapped = _wrap_with_debug_traceback(boom)
+
+    async def go() -> None:
+        await wrapped()
+
+    with pytest.raises(ValueError) as ei:
+        asyncio.run(go())
+    msg = str(ei.value)
+    assert "base msg" in msg
+    assert "Traceback:" in msg
+    assert "ValueError" in msg
+
+
+def test_mcp_debug_wrapper_passes_cancelled_unchanged() -> None:
+    """CancelledError must not be wrapped (per OPERATIONAL_CONTRACTS Q1)."""
+    import asyncio
+
+    from a2kit.packages.mcp.server import _wrap_with_debug_traceback
+
+    async def stuck() -> None:
+        await asyncio.sleep(60)
+
+    wrapped = _wrap_with_debug_traceback(stuck)
+
+    async def go() -> None:
+        task = asyncio.create_task(wrapped())
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(go())
+
+
+def test_mcp_server_passes_mask_error_details_from_app_debug() -> None:
+    """`App(debug=True)` flips fastmcp's mask_error_details to False."""
+    from a2kit.packages.mcp.server import build_mcp_server
+
+    plain = a2kit.App("plain")
+    server_plain = build_mcp_server(plain)
+    assert server_plain._mask_error_details is True
+
+    chatty = a2kit.App("chatty", debug=True)
+    server_chatty = build_mcp_server(chatty)
+    assert server_chatty._mask_error_details is False
