@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.27.0 — DI sync + container relocation + DI-aware lifecycle (breaking) — 2026-05-11
+
+This release shrinks the DI substrate, removes the `connection` magic name from core, and makes lifecycle hooks DI-aware. The container is now a small synchronous library that knows nothing about specific features. Async resource initialization moves out of DI factories into resource classes (lazy-init pattern, documented in README "Resource pattern" section).
+
+### Breaking
+
+- **`packages/connections/container.py` is gone.** The DI container lives at `a2kit.packages.di.Container`. All imports update: `from a2kit.packages.connections.container import Container` → `from a2kit.packages.di.container import Container`.
+- **DI factories MUST be synchronous.** `app.singleton(T, async_factory)` and `app.provide(T, async_factory)` raise `ValueError` at registration. Move async opens into resource classes (see README "Resource pattern").
+- **`Container.resolve` is synchronous.** The async `resolve` method and `resolve_sync` are both deleted; `SyncResolveUnavailable` is gone. There is one resolve method, sync.
+- **`Container.resolve` no longer accepts `connection=`.** Connection-string resolution moves to a dispatch hook in `packages/connections/dispatch.py`. The container has no notion of "connection".
+- **`Container.partition_kwargs` returns `(wire, injectable)` — two-tuple, not three.** `needs_connection` is gone; use the generic `Container.wire_scopes_used_by(fn)` instead.
+- **Lifecycle handler signature changed.** Old `(app: App)` is removed. Handlers take typed DI kwargs (`async def _open(state: AppState)`); resolution happens through the container the same way `@health_check` does it. The legacy `_app` parameter is no longer supplied.
+- **`App.container()` returns `Container` (non-Optional).** Drops the `is None` guards at every consumer site. Container is eager-initialized in `App.__init__`.
+- **`App._reject_singleton_connection_dep` is gone.** The sync-only rule transitively rejects connection-dependent factories.
+
+### Added
+
+- **`a2kit.packages.di`** — new home for the DI container. Module is feature-agnostic; no `"connection"` or other feature names appear anywhere in its code (enforced by `test_container_source_has_no_feature_names`).
+- **`Container.register_wire_scope(name, *types)` and `Container.wire_scopes_used_by(fn)`** — generic primitive for "wire-routed string parameters". Consumer packages register a scope by name; schema gen consults the container generically. `connections` registers `"connection"` as one such scope.
+- **`Container.apply_kwargs(fn, wire, *, pre_resolved=None)`** — pre_resolved cache lets consumer dispatch hooks seed values that the container should treat as already-resolved (instead of calling the factory).
+- **`a2kit.packages.connections.dispatch`** — async dispatch hook factory that awaits `store.load(connection)` and substitutes typed configs into the container's per-call cache before sync resolution runs.
+
+### Migration
+
+A2kit consumers (a2web etc.) migrate by:
+1. Removing the `_app: a2kit.App` parameter from `@on_startup`/`@on_shutdown`; replace with the typed kwargs the hook actually needs (e.g. `state: AppState`).
+2. Converting async singleton/provide factories to sync. Move the async resource open into the resource class itself (lazy-init pattern from README).
+3. Removing `Optional` from resource handles on AppState; locks move inside resources.
+4. Removing any `_app.container().resolve(AppState, connection=None)` dance from hooks; the DI is automatic.
+
+### Notes
+
+- ~600 LOC deleted across the container, app.py, and consumer surfaces.
+- Container: 540 → ~200 LOC (still has chain resolution; was further deleted).
+- Test count went from 716 (v0.26) → 719 with broader behavior coverage of the new dispatch path.
+
+
 ## 0.26.1 — a2web feedback round 4 (additive ergonomics) — 2026-05-11
 
 ### Added

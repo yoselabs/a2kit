@@ -42,12 +42,12 @@ async def _sqlite_open() -> a2kit.HealthResult:
 
 
 @app.on_startup
-async def _open_sqlite(_app: a2kit.App) -> None:
+async def _open_sqlite() -> None:
     _state.sqlite_open = True
 
 
 @app.on_shutdown
-async def _close_sqlite(_app: a2kit.App) -> None:
+async def _close_sqlite() -> None:
     _state.sqlite_open = False
 
 

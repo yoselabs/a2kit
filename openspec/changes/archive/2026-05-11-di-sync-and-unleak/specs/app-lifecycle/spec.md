@@ -1,8 +1,5 @@
-# app-lifecycle Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpose after archive.
-## Requirements
 ### Requirement: App exposes `on_startup` and `on_shutdown` registration
 
 The `a2kit.App` class SHALL expose `on_startup(handler)` and `on_shutdown(handler)` methods that register process-lifecycle handlers. Each method SHALL accept a callable that takes arbitrary DI-resolvable kwargs (e.g. `state: AppState`) and returns either `None` or an awaitable. Each method SHALL also be usable as a decorator (with or without parens). Multiple handlers MAY be registered for either phase. The methods SHALL return the original handler unchanged so the same call site supports both `app.on_startup(fn)` and `@app.on_startup` decorator usage without divergent return semantics.
@@ -59,29 +56,10 @@ If a startup handler raises an exception, the runtime SHALL NOT invoke any subse
 - **WHEN** the lifecycle dispatches startup
 - **THEN** H1 ran, H2 raised, H3 did not run, no shutdown handler ran
 
-### Requirement: Shutdown failure is logged and swallowed; remaining handlers still run
+## REMOVED Requirements
 
-If a shutdown handler raises, the runtime SHALL log the exception (logger name `a2kit.lifecycle`, level ERROR, with traceback), SHALL invoke remaining shutdown handlers, and SHALL NOT re-raise. The original exit reason (if any) SHALL NOT be masked.
+### Requirement: Lifecycle handlers receive the `App` instance
 
-#### Scenario: One shutdown handler raises, others run
+**Reason:** Lifecycle handlers were the only registration point in a2kit that bypassed DI. The asymmetry forced consumers to write a `container().resolve(...)` dance in every hook and carry `if container is None` guards. With DI-aware lifecycle handlers, the model is consistent across tools, health checks, lifecycle, and singleton/provider factories.
 
-- **GIVEN** shutdown handlers S1, S2 (raises `RuntimeError("close failed")`), S3, registered in that order
-- **WHEN** the lifecycle dispatches shutdown (LIFO: S3 first)
-- **THEN** S3 ran, S2 raised and was logged, S1 ran
-- **AND** the lifecycle dispatch completed without raising
-
-#### Scenario: Tool error is preserved when shutdown also raises
-
-- **GIVEN** a CLI invocation where the tool body raised `ToolError` and a shutdown handler subsequently raises `ShutdownError`
-- **WHEN** the lifecycle finishes
-- **THEN** the caller of `run` sees `ToolError` (not `ShutdownError`)
-- **AND** `ShutdownError` was logged
-
-### Requirement: Sync handlers are accepted and run inline
-
-`on_startup` and `on_shutdown` SHALL accept plain (non-async) callables. The runtime SHALL invoke them inline (not in a thread) during the async lifecycle dispatch.
-
-#### Scenario: Sync handler accepted
-
-- **WHEN** `app.on_startup(lambda a: setattr(a, "_marker", True))` is registered
-- **THEN** during startup the lambda is called and `app._marker is True` afterward
+**Migration:** Hooks that previously took `(app: App)` and called `app.container().resolve(AppState, connection=None)` now take `(state: AppState)` directly. The container resolves the kwarg automatically.

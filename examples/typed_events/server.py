@@ -1,11 +1,17 @@
-"""``app.ldd.events`` typed-event registry demo.
+"""Typed event emission demo — v0.27 idiom.
 
-Routers register Pydantic event models on the App's `EventRegistry` once at
-module load, optionally with a progress-extraction callback. Tools then
-emit instances via ``await app.ldd.events.emit_typed(ctx, evt)`` — the
-registry handles ``model_dump(mode="json")``, calls
-:func:`a2kit.ldd.event`, and forwards to ``ctx.report_progress`` when a
-callback is registered.
+Two ways to emit a structured event with a registered type:
+
+1. **Free-function form with an instance** (v0.26.1): pass the model
+   directly to ``a2kit.ldd.event``. The event name defaults to
+   ``type(instance).__name__``; payload serializes via ``model_dump``
+   (pydantic) or ``dataclasses.asdict``. No registry needed when you
+   don't also want progress reports.
+
+2. **Registry + ``emit_typed``**: for events that also report progress
+   to the MCP client. Register the model with a progress callback at
+   module load; ``emit_typed`` runs ``model_dump → event →
+   report_progress`` in one call.
 
 Run as a CLI::
 
@@ -26,28 +32,45 @@ import a2kit
 
 
 class StepStarted(BaseModel):
+    """Phase boundary — emitted via the free-function form below."""
+
     step: int
     total: int
     label: str
 
 
+class StepProgressed(BaseModel):
+    """Mid-step heartbeat — registered with progress callback so the MCP
+    client gets a progress notification."""
+
+    step: int
+    total: int
+
+
 class StepCompleted(BaseModel):
+    """Phase boundary close — also reports progress."""
+
     step: int
     total: int
     elapsed_ms: int
 
 
 app = a2kit.App("typed-events-demo")
-app.ldd.events.register(StepStarted, progress=lambda e: (e.step, e.total))
+# Register only the events that also need progress callbacks. StepStarted
+# doesn't need progress — it emits via the free function path below.
+app.ldd.events.register(StepProgressed, progress=lambda e: (e.step, e.total))
 app.ldd.events.register(StepCompleted, progress=lambda e: (e.step, e.total))
 
 
 class JobsRouter(a2kit.Router):
     @a2kit.read()
     async def run(self, *, ctx: a2kit.ToolContext, steps: int = 3) -> dict[str, int]:
-        """Run ``steps`` fake work units, emitting typed events with progress."""
+        """Run ``steps`` fake work units, emitting typed events along the way."""
         for i in range(1, steps + 1):
-            await app.ldd.events.emit_typed(ctx, StepStarted(step=i, total=steps, label=f"step-{i}"))
+            # Free-function typed emit (no registry needed).
+            await a2kit.ldd.event(ctx, StepStarted(step=i, total=steps, label=f"step-{i}"))
+            # Registered events that also report progress use the registry.
+            await app.ldd.events.emit_typed(ctx, StepProgressed(step=i, total=steps))
             await asyncio.sleep(0)
             await app.ldd.events.emit_typed(ctx, StepCompleted(step=i, total=steps, elapsed_ms=1))
         return {"steps": steps}

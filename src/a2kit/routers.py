@@ -44,7 +44,9 @@ class Router:
     """
 
     name: str | None = None
-    enrichers: list[Callable[[Exception], str | None]] = []  # noqa: RUF012
+    #: Per-tool exception enrichers. Subclasses override with a class-level tuple
+    #: (immutable). Empty tuple is the no-enricher default.
+    enrichers: tuple[Callable[[Exception], str | None], ...] = ()
     providers: tuple[Any, ...] = ()
 
     def __init__(self, name: str | None = None) -> None:

@@ -22,7 +22,7 @@ from .store import TrackerStore
 
 
 class ProjectsRouter(a2kit.Router):
-    enrichers = [tracker_404_enricher]  # noqa: RUF012
+    enrichers = (tracker_404_enricher,)
 
     @a2kit.list_("id", "name", "archived")
     async def list_projects(self, *, store: TrackerStore) -> list[Project]:
@@ -57,7 +57,7 @@ class ProjectsRouter(a2kit.Router):
 
 
 class TasksRouter(a2kit.Router):
-    enrichers = [tracker_404_enricher]  # noqa: RUF012
+    enrichers = (tracker_404_enricher,)
 
     @a2kit.list_("id", "title", "done", "assignee", page_size=20)
     async def list_tasks(

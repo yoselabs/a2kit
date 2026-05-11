@@ -1,17 +1,20 @@
-"""Container — typed providers, parameter-annotation chaining, per-call cache."""
+"""Synchronous DI container — typed providers, parameter-annotation chaining, per-call cache.
+
+v0.27: container is sync end-to-end; async factories are rejected at
+registration; ``"connection"`` is not a magic name (lives only in the
+consumer's dispatch hook).
+"""
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
-from a2kit.packages.connections.container import Container, UnresolvableType
+from a2kit.packages.di.container import Container, UnresolvableType
 
 
 class _Cfg:
-    def __init__(self, connection: str) -> None:
-        self.connection = connection
+    def __init__(self, host: str = "localhost") -> None:
+        self.host = host
 
 
 class _Store:
@@ -21,35 +24,28 @@ class _Store:
 
 def test_register_then_resolve_simple_chain() -> None:
     c = Container()
-    c.register(_Cfg, _Cfg)
+    c.register(_Cfg, lambda: _Cfg("h"))
     c.register(_Store, _Store)
-
-    async def _go() -> None:
-        store = await c.resolve(_Store, connection="foo")
-        assert isinstance(store, _Store)
-        assert isinstance(store.cfg, _Cfg)
-        assert store.cfg.connection == "foo"
-
-    asyncio.run(_go())
+    store = c.resolve(_Store)
+    assert isinstance(store, _Store)
+    assert store.cfg.host == "h"
 
 
 def test_class_as_factory_when_factory_omitted() -> None:
     c = Container()
     c.register(_Cfg)
     c.register(_Store)
-
-    async def _go() -> None:
-        store = await c.resolve(_Store, connection="bar")
-        assert store.cfg.connection == "bar"
-
-    asyncio.run(_go())
+    store = c.resolve(_Store)
+    assert isinstance(store, _Store)
+    # _Cfg default host applies because there's no provider for str.
+    assert store.cfg.host == "localhost"
 
 
 def test_per_call_cache_dedupes_within_one_resolution() -> None:
     seen: list[_Cfg] = []
 
-    def cfg_factory(connection: str) -> _Cfg:
-        cfg = _Cfg(connection)
+    def cfg_factory() -> _Cfg:
+        cfg = _Cfg("x")
         seen.append(cfg)
         return cfg
 
@@ -63,41 +59,52 @@ def test_per_call_cache_dedupes_within_one_resolution() -> None:
     c.register(_Store)
     c.register(_Audit)
 
-    async def _go() -> None:
-        cache: dict = {}
-        audit = await c.resolve(_Audit, connection="x", cache=cache)
-        # Both the direct cfg and the store.cfg are the same instance.
-        assert audit.cfg is audit.store.cfg
-        assert len(seen) == 1
-
-    asyncio.run(_go())
+    cache: dict = {}
+    audit = c.resolve(_Audit, cache=cache)
+    assert audit.cfg is audit.store.cfg
+    assert len(seen) == 1
 
 
 def test_unresolvable_raises_with_chain() -> None:
     c = Container()
-    c.register(_Store)  # but no _Cfg provider
-
-    async def _go() -> None:
-        with pytest.raises(UnresolvableType) as ei:
-            await c.resolve(_Store, connection="x")
-        assert ei.value.type_ is _Cfg
-
-    asyncio.run(_go())
+    c.register(_Store)  # no _Cfg provider
+    with pytest.raises(UnresolvableType) as ei:
+        c.resolve(_Store)
+    assert ei.value.type_ is _Cfg
 
 
-def test_async_factory_resolution() -> None:
-    async def afactory(connection: str) -> _Cfg:
-        return _Cfg(connection)
+def test_async_factory_rejected_at_registration() -> None:
+    async def afactory() -> _Cfg:
+        return _Cfg("a")
 
     c = Container()
-    c.register(_Cfg, afactory)
-    c.register(_Store)
+    with pytest.raises(ValueError, match="async"):
+        c.register(_Cfg, afactory)
 
-    async def _go() -> None:
-        s = await c.resolve(_Store, connection="zz")
-        assert s.cfg.connection == "zz"
 
-    asyncio.run(_go())
+def test_singleton_caches_across_resolves() -> None:
+    seen: list[_Cfg] = []
+
+    def factory() -> _Cfg:
+        cfg = _Cfg("s")
+        seen.append(cfg)
+        return cfg
+
+    c = Container()
+    c.register_singleton(_Cfg, factory)
+    a = c.resolve(_Cfg)
+    b = c.resolve(_Cfg)
+    assert a is b
+    assert len(seen) == 1
+
+
+def test_async_singleton_factory_rejected() -> None:
+    async def afactory() -> _Cfg:
+        return _Cfg()
+
+    c = Container()
+    with pytest.raises(ValueError, match="async"):
+        c.register_singleton(_Cfg, afactory)
 
 
 def test_partition_kwargs_distinguishes_wire_from_injectable() -> None:
@@ -108,22 +115,9 @@ def test_partition_kwargs_distinguishes_wire_from_injectable() -> None:
     def fn(*, store: _Store, task_id: str, limit: int = 10) -> None:  # noqa: ARG001
         return None
 
-    wire, inject, needs_conn = c.partition_kwargs(fn)
+    wire, inject = c.partition_kwargs(fn)
     assert wire == {"task_id", "limit"}
     assert inject == {"store"}
-    assert needs_conn is True
-
-
-def test_partition_no_injectables_no_connection() -> None:
-    c = Container()  # empty registry
-
-    def fn(*, x: int) -> None:  # noqa: ARG001
-        return None
-
-    wire, inject, needs_conn = c.partition_kwargs(fn)
-    assert wire == {"x"}
-    assert inject == set()
-    assert needs_conn is False
 
 
 def test_apply_kwargs_resolves_injectables() -> None:
@@ -134,24 +128,56 @@ def test_apply_kwargs_resolves_injectables() -> None:
     def fn(*, store: _Store, n: int) -> dict:  # noqa: ARG001
         return {}
 
-    async def _go() -> None:
-        out = await c.apply_kwargs(fn, {"connection": "abc", "n": 5})
-        assert isinstance(out["store"], _Store)
-        assert out["n"] == 5
-        # connection is wire-only when fn doesn't declare it
-        assert "connection" not in out
-
-    asyncio.run(_go())
+    out = c.apply_kwargs(fn, {"n": 5})
+    assert isinstance(out["store"], _Store)
+    assert out["n"] == 5
 
 
 def test_replace_provider_last_write_wins() -> None:
     c = Container()
-    c.register(_Cfg, lambda connection: _Cfg(f"first-{connection}"))
-    c.register(_Cfg, lambda connection: _Cfg(f"second-{connection}"))
+    c.register(_Cfg, lambda: _Cfg("first"))
+    c.register(_Cfg, lambda: _Cfg("second"))
     c.register(_Store)
+    s = c.resolve(_Store)
+    assert s.cfg.host == "second"
 
-    async def _go() -> None:
-        s = await c.resolve(_Store, connection="x")
-        assert s.cfg.connection == "second-x"
 
-    asyncio.run(_go())
+def test_wire_scope_registration_is_generic() -> None:
+    """Container tracks wire scopes by name; knows nothing about specific names."""
+    c = Container()
+    c.register_wire_scope("tenant", _Cfg)
+    scopes = c.wire_scopes()
+    assert "tenant" in scopes
+    assert _Cfg in scopes["tenant"]
+
+
+def test_wire_scopes_used_by_fn() -> None:
+    c = Container()
+    c.register(_Cfg)
+    c.register_wire_scope("connection", _Cfg)
+
+    def fn(*, cfg: _Cfg, n: int) -> None:  # noqa: ARG001
+        return None
+
+    assert c.wire_scopes_used_by(fn) == {"connection"}
+
+
+def test_container_source_has_no_feature_names() -> None:
+    """v0.27 contract: container module code is feature-agnostic.
+
+    Docstrings and comments may *mention* example scope names ("connection")
+    for clarity. The contract is about code identifiers / behavior, not prose.
+    Strip docstrings and comments before checking.
+    """
+    import pathlib
+    import re
+
+    src = pathlib.Path(__file__).parent.parent.parent.parent / "src/a2kit/packages/di/container.py"
+    text = src.read_text()
+    text = re.sub(r'""".*?"""', "", text, flags=re.DOTALL)
+    text = re.sub(r"'''.*?'''", "", text, flags=re.DOTALL)
+    # Strip single-line `#` comments (after stripping docstrings to avoid touching docstring contents).
+    text = re.sub(r"#[^\n]*", "", text)
+    assert "connection" not in text.lower(), "container.py code mentions 'connection'"
+    assert "tenant" not in text.lower(), "container.py code mentions 'tenant'"
+    assert "tracker" not in text.lower(), "container.py code mentions 'tracker'"

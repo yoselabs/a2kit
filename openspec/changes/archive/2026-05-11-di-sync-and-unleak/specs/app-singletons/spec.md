@@ -1,8 +1,5 @@
-# app-singletons Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpose after archive.
-## Requirements
 ### Requirement: App exposes `singleton(T, factory=None)` registration
 
 The `a2kit.App` class SHALL expose `singleton(type_: type[T], factory: Callable[..., T] | None = None)` that registers a typed factory whose result is cached on the `App` instance and shared across all dispatches that resolve `type_`. When `factory` is omitted, the call SHALL return a decorator that accepts the factory function and completes the registration. **Factories MUST be synchronous** (`def`, not `async def`); async factories raise `ValueError` at registration time.
@@ -60,3 +57,17 @@ The `App` class SHALL expose `has_singleton(type_) -> bool` and `singletons() ->
 - **GIVEN** `app.singleton(AppState, factory)` registered but not yet resolved
 - **WHEN** test code calls `app.has_singleton(AppState)`
 - **THEN** the call returns `True`
+
+## REMOVED Requirements
+
+### Requirement: Async factories supported with concurrency-safe initialization
+
+**Reason:** Async resource initialization moves out of DI factories into resource classes (the lazy-init pattern). The lock-coalescing concurrency-safe init logic moves into the resource class itself. The DI container becomes pure typed-map + chain-resolve, sync end-to-end.
+
+**Migration:** Convert async factories into sync factories that construct resource wrapper classes; move the async open logic into the resource class behind an `_ensure` accessor with its own internal lock.
+
+### Requirement: Singleton factories MUST NOT depend on `connection`
+
+**Reason:** The rule was a guard against an architectural mistake (connection-scoped state in an App-scoped cache). With `connection` no longer a magic name in the container or core, the rule's specific shape no longer applies. The replacement rule "singleton factories must be sync" transitively rejects connection-dependent factories, since connection loading is async and would force `async def`.
+
+**Migration:** None required. Factories that previously needed `connection` already had to be moved to `provide`; that path is unchanged.

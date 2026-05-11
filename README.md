@@ -88,12 +88,19 @@ uv pip install a2kit
 | `a2kit.packages.testing` | Thin pytest fixtures + `compute_schema` helper. |
 | `a2kit.packages.lint` | Static + runtime A2K rules. `a2kit lint static <path>` / `a2kit lint runtime --import pkg:app`. |
 
-### Dependency injection — typed, request-scoped
+### Dependency injection — typed, request-scoped, sync
 
 Tool methods declare their dependencies as typed kwargs. The container in
-`packages/connections` resolves them per call by reading `__init__`
-annotations. Connection-scoped state flows from the wire `connection: str`
-through the auto-installed `ConnectionConfig` provider.
+`packages/di` resolves them per call by reading `__init__` annotations.
+The container is **synchronous** — factories must be `def`, not `async def`.
+For async-opened resources (sqlite, browser pools, HTTP clients), use the
+[Resource pattern](#resource-pattern-lazy-init) described below.
+
+Connection-scoped state flows from the wire `connection: str` through the
+connections package's **dispatch hook** (not through the container). The
+hook awaits the typed `ConnectionConfig` from the configured store, then
+hands off to the synchronous container for the rest of DI. The container
+itself contains no reference to `"connection"`.
 
 ```python
 import a2kit
@@ -118,13 +125,106 @@ app.provide(TrackerStore)                  # class-as-factory (introspects __ini
 
 What the framework does:
 
-- `connections(TrackerConn)` returns a Router whose `install()` registers a typed provider for `TrackerConn` (`connection: str → TrackerConn`). `connections_cli(TrackerConn)` adds the matching Click subcommands.
+- `connections(TrackerConn)` returns a Router whose `install()` registers the **dispatch hook** (which awaits `store.load(connection)` and substitutes the typed `TrackerConn` into the per-call DI cache) and a stub provider for `TrackerConn` (so `container.has()` is True for schema-gen). `connections_cli(TrackerConn)` adds the matching Click subcommands.
 - `provide(TrackerStore)` registers `TrackerStore` as its own factory; the container reads `TrackerStore.__init__(conn: TrackerConn)` and chains.
-- At dispatch: `store: TrackerStore` is resolved per call from the wire `connection`. Two kwargs of the same type share one instance within a call (per-call cache). The wire schema strips `store`; agents only see `connection` + `task_id`.
-- For one-off non-trivial wiring, pass an explicit factory: `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.
+- At dispatch: the connections dispatch hook (async) awaits the connection load; the typed `TrackerConn` is seeded into the container's per-call cache; the rest of the chain resolves synchronously. The wire schema strips `store`; agents see only `connection` + `task_id`.
+- For one-off non-trivial wiring, pass an explicit sync factory: `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.
 
 No `Depends(...)`, no class-as-key markers, no plugin protocol. The
 `provide(...)` calls *are* the DI graph; you can grep for them.
+
+### Resource pattern (lazy-init)
+
+DI factories are sync. For resources that need an event loop to open
+(`aiosqlite.connect`, browser pools, async HTTP clients), encapsulate the
+open inside a resource class with its own internal lock. AppState holds
+resource handles as non-Optional fields; they self-initialize on first call:
+
+```python
+import asyncio
+import aiosqlite
+
+
+class SqliteResource:
+    """Opens lazily on first await; close from @on_shutdown."""
+
+    def __init__(self, settings: SqliteSettings) -> None:
+        self.settings = settings
+        self._conn: aiosqlite.Connection | None = None
+        self._lock = asyncio.Lock()
+
+    async def _ensure(self) -> aiosqlite.Connection:
+        if self._conn is not None:
+            return self._conn
+        async with self._lock:
+            if self._conn is None:
+                self._conn = await aiosqlite.connect(self.settings.path)
+            return self._conn
+
+    async def execute(self, sql: str, params: tuple = ()) -> aiosqlite.Cursor:
+        return await (await self._ensure()).execute(sql, params)
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+
+
+@dataclass(slots=True)
+class AppState:
+    settings: AppSettings
+    sqlite: SqliteResource          # never None
+    browser: BrowserPool            # never None
+    # locks live INSIDE the resources, never on AppState
+
+
+def build_state(settings: AppSettings) -> AppState:    # sync!
+    return AppState(
+        settings=settings,
+        sqlite=SqliteResource(settings.sqlite),
+        browser=BrowserPool(settings.browser),
+    )
+
+
+app = a2kit.App("my-app")
+app.singleton(AppState, build_state)
+
+@app.on_shutdown
+async def _close(state: AppState) -> None:
+    await state.sqlite.close()
+    await state.browser.close()
+
+
+# Optional fail-fast warm-up at startup:
+@app.on_startup
+async def _warm(state: AppState) -> None:
+    await state.sqlite._ensure()    # surface config errors at startup, not first call
+```
+
+What you get:
+- AppState fields never Optional. Every call site sees a real resource.
+- Locks live inside resources, not leaking into state.
+- DI stays sync. Composition is plain `__init__`.
+- Each resource owns its open + close idempotently.
+
+### Lifecycle hooks are DI-aware
+
+`@app.on_startup` and `@app.on_shutdown` resolve their typed kwargs through
+the container, the same way `@app.health_check` does. Handlers take
+whatever they need:
+
+```python
+@app.on_startup
+async def _open(state: AppState) -> None:       # DI-resolved
+    await state.sqlite._ensure()
+
+@app.on_shutdown
+async def _close(state: AppState, settings: AppSettings) -> None:
+    await state.sqlite.close()
+```
+
+No more `_app.container().resolve(AppState)` dance. Hooks read like any
+other DI-aware function.
 
 ### MCP tool annotations
 
@@ -151,8 +251,9 @@ fields a2kit doesn't model.
 
 ### Per-parameter descriptions
 
-`a2kit.Param(description=...)` attaches schema metadata to direct kwargs
-(non-model parameters):
+`a2kit.Param("Absolute URL.")` (positional shorthand) or
+`a2kit.Param(description="...")` (keyword form) attaches schema metadata to
+direct kwargs (non-model parameters):
 
 ```python
 from typing import Annotated
@@ -160,13 +261,33 @@ from typing import Annotated
 @a2kit.read()
 async def fetch(
     *,
-    url: Annotated[str, a2kit.Param(description="Absolute http(s) URL.")],
+    # Positional shorthand — cosmetically shorter for one-line descriptions.
+    url: Annotated[str, a2kit.Param("Absolute http(s) URL.")],
+    # Keyword form — clearer when the description is multi-line or you want
+    # to mix in other Field kwargs (examples=, ge=, le=, etc.).
+    include_links: Annotated[
+        bool,
+        a2kit.Param(
+            description=(
+                "Include the extracted `links` array in the response. "
+                "Default False — links are a large share of payload bytes "
+                "on aggregator pages."
+            ),
+        ),
+    ] = False,
 ) -> FetchResponse:
     """First line is the short description.
 
     The full body is the long help — markdown stripped on CLI, intact on MCP.
     """
 ```
+
+Long descriptions are intentional — MCP agents read them via `list_tools` to
+decide whether/how to call your tool. Use the kwarg form for prose;
+use the positional shorthand for short one-liners.
+
+Passing both the positional and the `description=` kwarg raises `TypeError`
+(Python's natural "got multiple values for argument 'description'").
 
 The description flows to both the MCP input schema (via pydantic) and
 click `--option HELP`. For kwargs that are Pydantic body models,
@@ -198,9 +319,10 @@ as free functions in `a2kit.ldd`.
 |---|---|---|
 | Process telemetry | `await ctx.info / warning / error / debug(msg, **kw)` | Free-form ambient logs |
 | Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — for progress bars |
-| **Narrative events** | `await event(ctx, name, **payload)` (from `a2kit.ldd`) | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
+| **Narrative events (kwargs)** | `await event(ctx, "name.string", **payload)` (from `a2kit.ldd`) | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
+| **Narrative events (typed)** | `await event(ctx, MyEvent(...))` — instance second positional | Pass a dataclass / pydantic model directly; name defaults to class name, fields serialize via `dataclasses.asdict` / `model_dump`. Enum fields coerced via `.value`. |
 | **Typed reports** | `await report(ctx, payload)` (requires stacked `@reports(ReportT)`) | Mid-flight result chunks with a declared schema |
-| **Typed event registry** | `app.ldd.events.register(MyEvent, progress=fn)` then `await app.ldd.events.emit_typed(ctx, evt)` | One-call emit: dump → event → progress |
+| **Typed event registry** | `app.ldd.events.register(MyEvent, progress=fn)` then `await app.ldd.events.emit_typed(ctx, evt)` | One-call emit: dump → event → progress (use this when you also need progress reporting) |
 
 ```python
 from pydantic import BaseModel
@@ -221,7 +343,9 @@ async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
     for i, item in enumerate(items):
         await ctx.report_progress(i, len(items))
         await report(ctx, BatchReport(batch=i, accepted=1))
-    await event(ctx, "import.complete", count=len(items))
+    # Typed form: pass an instance directly. Name = class name; payload serializes
+    # via model_dump / dataclasses.asdict.
+    await event(ctx, ImportComplete(count=len(items)))
     return {"imported": len(items)}
 ```
 
@@ -320,6 +444,23 @@ runs the value through `a2kit.packages.formatter` for wire-format checks.
 `client.tools()` returns descriptors matching what `list_tools` would
 advertise. `connection=` flows through the same DI chain as the CLI/MCP
 transports.
+
+### Null context for internal phase tests
+
+For unit tests of internal phase functions that bypass the dispatcher, use
+`a2kit.testing.null_context()` — a no-op `ToolContext`-shaped shim:
+
+```python
+from a2kit.testing import null_context
+
+async def test_phase() -> None:
+    ctx = null_context()                              # silent ToolContext shim
+    await fetch_tier(ctx, url="https://example.com")  # no-op event emit, no I/O
+```
+
+Production code can take `ctx: a2kit.ToolContext` (non-Optional) and the test
+constructs the shim instead of passing `None`. Every wire method (logging,
+progress, event emit, report, sample, list_*) is a silent no-op.
 
 ### Direct construction (lightweight unit tests)
 

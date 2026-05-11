@@ -94,12 +94,13 @@ async def run_checks(app: App) -> dict[str, Any]:
 
 
 async def _run_one_check(app: App, check: _RegisteredCheck) -> Any:
-    """Resolve check kwargs via the App's dispatch hook, then call the check."""
-    hook = app._dispatch_hook  # noqa: SLF001
-    resolved_any: Any = hook(check.fn, {})
-    if inspect.isawaitable(resolved_any):
-        resolved_any = await resolved_any
-    call_kwargs = dict(resolved_any)
+    """Resolve check kwargs via the container directly, then call the check.
+
+    Health checks are not tool dispatches; they don't have wire kwargs. They
+    bypass the dispatch hook and go straight to the DI container, which is
+    the same path lifecycle handlers use.
+    """
+    call_kwargs = app._container.apply_kwargs(check.fn, {})  # noqa: SLF001
     if inspect.iscoroutinefunction(check.fn):
         return await check.fn(**call_kwargs)
     result = check.fn(**call_kwargs)

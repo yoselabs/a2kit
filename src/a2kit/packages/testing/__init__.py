@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from a2kit.packages.testing.exceptions import SchemaSnapshotMismatch
 from a2kit.packages.testing.fixtures import app, cassette
+from a2kit.packages.testing.null_context import null_context
 from a2kit.packages.testing.snapshots import compute_schema
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 
 def peek(app_: App, type_: type) -> Any:
-    """Test-only sync container peek over :meth:`Container.resolve_sync`.
+    """Test-only container peek over :meth:`Container.resolve`.
 
     Production code should resolve via the container during dispatch (the
     request-scoped DI surface). ``peek`` exists to give a discoverable name
@@ -30,13 +31,10 @@ def peek(app_: App, type_: type) -> Any:
         state = a2kit.testing.peek(app, AppState)
         assert state.config.foo == "bar"
 
-    Raises :class:`SyncResolveUnavailable` when the chain is async-only.
+    Resolution is synchronous in v0.27+. Async resource opens belong inside
+    resource classes (lazy-init pattern), not in DI factories.
     """
-    container = app_.container()
-    if container is None:
-        msg = f"App {app_.name!r} has no container — register a provider or singleton before peeking."
-        raise RuntimeError(msg)
-    return container.resolve_sync(type_)
+    return app_.container().resolve(type_)
 
 
 __all__ = [
@@ -44,5 +42,6 @@ __all__ = [
     "app",
     "cassette",
     "compute_schema",
+    "null_context",
     "peek",
 ]

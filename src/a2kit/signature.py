@@ -86,30 +86,29 @@ def user_input_params(fn: Callable[..., Any]) -> dict[str, inspect.Parameter]:
 def wire_input_params(
     fn: Callable[..., Any],
     container: Any | None = None,
-) -> tuple[dict[str, inspect.Parameter], bool]:
-    """Return ``(wire_params, needs_connection)`` for ``fn``.
+) -> tuple[dict[str, inspect.Parameter], set[str]]:
+    """Return ``(wire_params, wire_scopes_needed)`` for ``fn``.
 
     Injectable kwargs (whose types match a registered container provider)
-    are filtered out. ``needs_connection`` is True when at least one
-    injectable's chain reaches a ``connection: str`` boundary; callers
-    (CLI/MCP schema gen) auto-add a wire ``connection: str`` option.
+    are filtered out. ``wire_scopes_needed`` is the set of scope names
+    (e.g. ``{"connection"}``) whose registered types appear in fn's
+    parameter annotations. Callers (CLI/MCP schema gen) auto-synthesize
+    one wire-side string param per scope. Core code is feature-name-free;
+    the scope names come from the container (registered by consumer
+    packages like ``a2kit.packages.connections``).
     """
     base = user_input_params(fn)
     if container is None:
-        return base, False
+        return base, set()
     hints = resolve_hints(fn)
     out: dict[str, inspect.Parameter] = {}
-    needs_conn = False
     for name, param in base.items():
         ann = hints.get(name, param.annotation)
         if container.has(ann):
-            if container._chain_reaches_connection(ann):  # noqa: SLF001
-                needs_conn = True
             continue
         out[name] = param
-    # If a tool method already declares ``connection: str`` itself, it's
-    # already in ``out``; needs_conn stays False from this loop and we
-    # don't synthesize a duplicate.
-    if "connection" in out:
-        needs_conn = False
-    return out, needs_conn
+    scopes_needed = container.wire_scopes_used_by(fn)
+    # If the tool already declares a scope-name parameter itself (e.g. the
+    # method takes ``connection: str`` directly), don't synthesize a duplicate.
+    scopes_needed = {s for s in scopes_needed if s not in out}
+    return out, scopes_needed

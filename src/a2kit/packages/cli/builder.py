@@ -197,7 +197,11 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
     short_help, long_help = _docstring_to_help(fn)
 
     container = app.container()
-    params, needs_connection = wire_input_params(fn, container)
+    params, wire_scopes_needed = wire_input_params(fn, container)
+    # Today only "connection" is registered as a wire scope; if more scope
+    # names get registered in the future, this is the site that maps each
+    # to a synthesized CLI option.
+    needs_connection = "connection" in wire_scopes_needed
     try:
         resolved_hints = get_type_hints(fn)
     except Exception:  # noqa: BLE001

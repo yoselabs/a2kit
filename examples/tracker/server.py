@@ -7,16 +7,15 @@ from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-# Canonical imperative composition. `connections(TrackerConn)` installs the
-# typed provider via Router; `connections_cli(TrackerConn)` adds the CLI
-# subcommands. Two explicit verbs, no hidden marker.
+# v0.27 composition: two explicit verbs for the connections plugin.
+# `connections(TrackerConn)` registers the connection dispatch hook + wire
+# scope on the container. `connections_cli(TrackerConn)` adds the CLI
+# subcommands (login/logout/list/show/delete). No hidden auto-install marker.
 app = a2kit.App("tracker-mcp")
 app.add_router(ProjectsRouter())
 app.add_router(TasksRouter())
 app.add_router(connections(TrackerConn))
-cli = connections_cli(TrackerConn)
-cli._a2kit_connections_types = None  # opt out of deprecated auto-install marker
-app.add_cli(cli)
+app.add_cli(connections_cli(TrackerConn))
 app.provide(TrackerStore)
 
 

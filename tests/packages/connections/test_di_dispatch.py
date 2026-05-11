@@ -1,16 +1,30 @@
-"""End-to-end DI dispatch — typed kwargs resolved per-call via App.provide()."""
+"""End-to-end DI dispatch — v0.27: connection-string resolution via dispatch hook.
+
+The container itself knows nothing about ``"connection"``. The connections
+package installs a dispatch hook that pulls ``connection: str`` out of wire
+kwargs, awaits the store load, and substitutes the typed config before the
+container resolves the rest synchronously.
+"""
 
 from __future__ import annotations
+
+from typing import Any
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
 import a2kit
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.packages.connections import connections
+from a2kit.packages.connections.config import ConnectionConfig
 
 
-class _Cfg:
-    def __init__(self, connection: str) -> None:
-        self.connection = connection
+class _Cfg(ConnectionConfig):
+    """Test connection config — its loaded instance carries 'name' from the
+    connection string the dispatch hook awaits via the store."""
+
+    key_fields: tuple[str, ...] = ("name",)
+    name: str = ""
 
 
 class _Store:
@@ -18,7 +32,7 @@ class _Store:
         self.cfg = cfg
 
     def hello(self) -> str:
-        return f"hello-from-{self.cfg.connection}"
+        return f"hello-from-{self.cfg.name}"
 
 
 class _Probe(a2kit.Router):
@@ -29,17 +43,28 @@ class _Probe(a2kit.Router):
         return {"hi": store.hello()}
 
 
+async def _fake_load(self: Any, *args: Any, **kwargs: Any) -> _Cfg:
+    """Fake ConnectionStore.load that constructs _Cfg from the connection
+    string without touching disk. Used by tests that need predictable
+    resolution without TOML files."""
+    name = args[0] if args else kwargs.get("name", "default")
+    return _Cfg(key=(name,), name=name)
+
+
 def test_di_resolves_store_per_call() -> None:
-    app = a2kit.App("app").add_router(_Probe()).provide(_Cfg).provide(_Store)
+    """Wire ``--connection alpha`` flows through the dispatch hook → typed _Cfg → _Store."""
+    app = a2kit.App("app").add_router(_Probe()).add_router(connections(_Cfg)).provide(_Store)
     cli = build_full_cli(app)
-    result = CliRunner().invoke(cli, ["probe", "ping", "--connection", "alpha", "--format", "json"])
+    with patch("a2kit.packages.connections.store.ConnectionStore.load", _fake_load):
+        result = CliRunner().invoke(cli, ["probe", "ping", "--connection", "alpha", "--format", "json"])
     assert result.exit_code == 0, result.output
     assert "hello-from-alpha" in result.output
 
 
 def test_di_strips_injectable_from_schema() -> None:
-    """The agent-facing wire schema must not include ``store``."""
-    app = a2kit.App("app").add_router(_Probe()).provide(_Cfg).provide(_Store)
+    """The agent-facing wire schema must not include injectable ``store``;
+    it should synthesize a wire ``connection: str``."""
+    app = a2kit.App("app").add_router(_Probe()).add_router(connections(_Cfg)).provide(_Store)
     from a2kit.packages.cli.schemas import compute_schema
 
     fn = next(iter(_Probe().tools()))
@@ -57,7 +82,7 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
         async def noop(self, *, n: int) -> dict[str, int]:
             return {"n": n}
 
-    app = a2kit.App("app").add_router(_Plain())  # no providers at all
+    app = a2kit.App("app").add_router(_Plain())
     from a2kit.packages.cli.schemas import compute_schema
 
     fn = next(iter(_Plain().tools()))
@@ -68,13 +93,14 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
 
 
 def test_di_replace_provider_overrides_factory() -> None:
-    app = a2kit.App("app").add_router(_Probe()).provide(_Cfg).provide(_Store)
+    app = a2kit.App("app").add_router(_Probe()).add_router(connections(_Cfg)).provide(_Store)
 
     def override_factory(cfg: _Cfg) -> _Store:
-        return _Store(_Cfg(f"override-{cfg.connection}"))
+        return _Store(_Cfg(key=(f"override-{cfg.name}",), name=f"override-{cfg.name}"))
 
     app.provide(_Store, override_factory)
     cli = build_full_cli(app)
-    result = CliRunner().invoke(cli, ["probe", "ping", "--connection", "beta", "--format", "json"])
+    with patch("a2kit.packages.connections.store.ConnectionStore.load", _fake_load):
+        result = CliRunner().invoke(cli, ["probe", "ping", "--connection", "beta", "--format", "json"])
     assert result.exit_code == 0, result.output
     assert "override-beta" in result.output

@@ -106,11 +106,11 @@ def test_lifecycle_hooks_fire() -> None:
     order: list[str] = []
 
     @app.on_startup
-    async def _start(_app: a2kit.App) -> None:
+    async def _start() -> None:
         order.append("startup")
 
     @app.on_shutdown
-    async def _stop(_app: a2kit.App) -> None:
+    async def _stop() -> None:
         order.append("shutdown")
 
     async def go() -> None:

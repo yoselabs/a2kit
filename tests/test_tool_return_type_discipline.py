@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 import a2kit
 from a2kit.exceptions import InvalidToolReturnTypeError
-from a2kit.packages.connections.container import SyncResolveUnavailable
+from a2kit.packages.di.container import UnresolvableType
 from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
 from a2kit.packages.lint.static import A2K_LOCAL_RETURN_MODEL
 from a2kit.testing import peek
@@ -311,18 +311,20 @@ def test_peek_resolves_registered_singleton() -> None:
     assert s is s2  # singleton
 
 
-def test_peek_raises_for_async_chain() -> None:
+def test_singleton_rejects_async_factory_at_registration() -> None:
+    """v0.27: singleton factories MUST be sync. Async resource opens belong in
+    resource classes (lazy-init pattern), not in DI factories."""
+
     async def factory() -> _State:
         return _State()
 
     app = a2kit.App("t")
-    app.singleton(_State, factory)
-    with pytest.raises(SyncResolveUnavailable):
-        peek(app, _State)
+    with pytest.raises(ValueError, match="async"):
+        app.singleton(_State, factory)
 
 
-def test_peek_raises_when_no_container() -> None:
-    """Peek on an App with no providers gives a clear error."""
+def test_peek_raises_when_no_provider() -> None:
+    """Peek on an App with no provider for the type gives an UnresolvableType."""
     app = a2kit.App("t")
-    with pytest.raises(RuntimeError, match="no container"):
+    with pytest.raises(UnresolvableType):
         peek(app, _State)

@@ -79,19 +79,19 @@ def test_two_apps_lifecycle_handlers_fire_independently() -> None:
     app_b = a2kit.App("b")
 
     @app_a.on_startup
-    async def _start_a(_app: a2kit.App) -> None:
+    async def _start_a() -> None:
         order.append("a-start")
 
     @app_a.on_shutdown
-    async def _stop_a(_app: a2kit.App) -> None:
+    async def _stop_a() -> None:
         order.append("a-stop")
 
     @app_b.on_startup
-    async def _start_b(_app: a2kit.App) -> None:
+    async def _start_b() -> None:
         order.append("b-start")
 
     @app_b.on_shutdown
-    async def _stop_b(_app: a2kit.App) -> None:
+    async def _stop_b() -> None:
         order.append("b-stop")
 
     class _R(a2kit.Router):

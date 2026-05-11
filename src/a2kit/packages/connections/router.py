@@ -1,18 +1,12 @@
-"""Router factory for connection-type providers.
+"""Router factory for the connections plugin.
 
 Pairs with :func:`a2kit.packages.connections.cli.connections_cli`:
 
 .. code-block:: python
 
     app = a2kit.App("tracker")
-    app.add_router(connections(TrackerConn))      # installs the provider honestly
-    app.add_cli(connections_cli(TrackerConn))     # adds the CLI subcommands
-
-Previously a single ``app.add_cli(connections_cli(TrackerConn))`` call did
-both — the provider install was a hidden side effect of an ``_a2kit_connections_types``
-marker on the returned Click group. The new shape makes the two installs
-explicit. The marker continues to work for one release with a deprecation
-warning; see :func:`a2kit.packages.connections.cli.connections_cli`.
+    app.add_router(connections(TrackerConn))      # dispatch hook + wire scope
+    app.add_cli(connections_cli(TrackerConn))     # CLI subcommands
 
 Future: when the connection-CLI subcommands are rewritten as a2kit-decorated
 tool methods (so they surface on MCP too, gated by :class:`Surface.CLI` for
@@ -38,25 +32,21 @@ def connections(*conn_types: type[ConnectionConfig]) -> Router:
     continue to ship as a Click group via :func:`connections_cli`. Call both
     factories for the full surface.
 
-    The provider plumbing routes through
-    :func:`a2kit.packages.connections.container.install_connection_providers`,
-    which wires the ``connection`` resolver chain (wire ``connection`` →
-    loaded TOML → ``ConnectionConfig`` subclass). The simpler default
-    ``app.provide(T)`` path would only handle classes whose ``__init__``
-    the container can introspect — connection configs need more.
+    The plumbing routes through
+    :func:`a2kit.packages.connections.dispatch.install_connection_dispatch`,
+    which installs an async pre-step on ``app._dispatch_hook`` that awaits
+    ``store.load(connection)`` and substitutes the typed ``ConnectionConfig``
+    into wire kwargs before the (sync) container resolves the rest. The
+    container itself contains no reference to ``"connection"``.
     """
 
     class _ConnectionsRouter(Router):
         name = "connections"
-        # providers stays empty: install() does the work below.
 
         def install(self, app: App) -> Any:
-            from a2kit.packages.connections.container import install_connection_providers
+            from a2kit.packages.connections.dispatch import install_connection_dispatch
 
-            app._ensure_container()  # noqa: SLF001 -- mirrors _auto_register_connections
-            container = app._container  # noqa: SLF001
-            assert container is not None  # _ensure_container guarantees this  # noqa: S101
-            install_connection_providers(container, conn_types)
+            install_connection_dispatch(app, conn_types)
 
     return _ConnectionsRouter()
 
