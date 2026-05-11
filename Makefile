@@ -10,17 +10,14 @@ lint:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run ty check src/
-	# A2K-TEST-MIRROR is wired but the tree has 18 mirror gaps awaiting
-	# Phase 3 of openspec/changes/test-quality-via-mutmut. Disabled here
-	# until that sweep lands; re-enable by removing the --disabled flag.
-	uv run a2kit lint static src/ tests/ examples/ --disabled=A2K-TEST-MIRROR
+	uv run a2kit lint static src/ tests/ examples/
 
 format:
 	uv run ruff format .
 	uv run ruff check --fix .
 
 a2kit-lint:
-	uv run a2kit lint static src/ tests/ examples/ --disabled=A2K-TEST-MIRROR
+	uv run a2kit lint static src/ tests/ examples/
 
 a2kit-check:
 	@echo "a2kit lint runtime requires --import path:server. Override per project."
