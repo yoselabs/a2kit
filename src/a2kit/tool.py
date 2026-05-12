@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
@@ -149,66 +148,6 @@ _RESERVED_TOOL_NAME_PREFIX = "_meta."
 _BUILTIN_RESERVED_TOOL_NAMES = frozenset({"_meta.health"})
 
 
-_AUGMENT_WARN_ONCE: set[str] = set()
-
-
-def _resolve_hints_for_augment(fn: Any, fn_name: str, get_type_hints: Any, logging_mod: Any) -> dict[str, Any]:
-    try:
-        return get_type_hints(fn, include_extras=True)
-    except Exception as exc:  # noqa: BLE001 -- broad catch is intentional: decoration must never raise
-        if fn_name not in _AUGMENT_WARN_ONCE:
-            _AUGMENT_WARN_ONCE.add(fn_name)
-            logging_mod.getLogger(__name__).warning(
-                "_augment_annotations_from_docstring: get_type_hints failed for %s: %s",
-                fn_name,
-                exc,
-            )
-        return {}
-
-
-def _augment_annotations_from_docstring(fn: Any) -> dict[str, str]:
-    """Inject ``Annotated[T, Param(description=...)]`` for params that
-    have a Google-style docstring entry but no explicit description.
-
-    Explicit ``Annotated[T, FieldInfo(description=...)]`` (or
-    ``a2kit.Param``, or bare ``pydantic.Field``) always wins.
-    Mutates ``fn.__annotations__`` in place at decoration time.
-    """
-    import logging
-    from typing import Annotated, get_type_hints
-
-    from a2kit._docstring import extract_param_descriptions
-    from a2kit.params import Param, description_of
-    from a2kit.signature import find_context_param
-
-    fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
-    descriptions = extract_param_descriptions(getattr(fn, "__doc__", None), fn_name=fn_name)
-    if not descriptions:
-        return {}
-    annotations = getattr(fn, "__annotations__", None)
-    if not annotations:
-        return dict(descriptions)
-    try:
-        sig = inspect.signature(fn)
-    except (TypeError, ValueError):
-        return dict(descriptions)
-    resolved = _resolve_hints_for_augment(fn, fn_name, get_type_hints, logging)
-    ctx_name = find_context_param(fn)
-    skip = {"self", ctx_name}
-    for pname, param in sig.parameters.items():
-        if pname in skip:
-            continue
-        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-            continue
-        if pname not in descriptions:
-            continue
-        existing = resolved.get(pname, param.annotation)
-        if existing is inspect.Parameter.empty or description_of(existing):
-            continue
-        annotations[pname] = Annotated[existing, Param(description=descriptions[pname])]
-    return dict(descriptions)
-
-
 def _check_reserved_name(tool_name: str) -> None:
     if tool_name in _BUILTIN_RESERVED_TOOL_NAMES:
         return
@@ -233,7 +172,6 @@ def _stamp(
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
-    param_descriptions = _augment_annotations_from_docstring(fn)
     pending: dict[str, Any] = dict(getattr(fn, PENDING_EXTRA_ATTR, None) or {})
     pending[SURFACE_META_KEY] = surfaces
     meta = A2KitMeta(
@@ -244,7 +182,6 @@ def _stamp(
         _annotations_explicit=annotations_explicit,
         context_param_name=find_context_param(fn),
         extra=pending,
-        param_descriptions=param_descriptions,
     )
     set_meta(fn, meta)
     if hasattr(fn, PENDING_EXTRA_ATTR):

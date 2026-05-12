@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.30.0 — drop docstring → param description auto-pull — 2026-05-12
+
+### Removed
+
+- **Google-style docstring → param description auto-pull** (shipped
+  v0.29.0, refined v0.29.1). The regex-based `Args:` parser in
+  `src/a2kit/_docstring.py` is deleted along with
+  `_augment_annotations_from_docstring` in `src/a2kit/tool.py`.
+  `_stamp` no longer mutates `fn.__annotations__` at decoration time.
+- **`A2KitMeta.param_descriptions`** field (added v0.29.1) — was only
+  populated from the now-removed parser.
+
+### Migration
+
+Tools that relied on docstring `Args:` blocks for parameter
+descriptions must add explicit
+`Annotated[T, a2kit.Param(description="...")]` or
+`pydantic.Field(description="...")`. The v0.28 surface returns: those
+two annotations are the only ways to attach parameter descriptions to
+the MCP schema and CLI option help.
+
+Tool-level descriptions (first docstring line + full body → MCP
+description + CLI long-help) are unchanged.
+
 ## 0.29.1 — round-5/6 cleanup bundle — 2026-05-12
 
 Two paired cleanups against round-5/6 contracts (no new features).

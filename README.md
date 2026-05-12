@@ -551,12 +551,6 @@ tool that omitted `ctx`) raises
 `a2kit.exceptions.AmbientContextMissing`. See
 [OPERATIONAL_CONTRACTS.md](OPERATIONAL_CONTRACTS.md) Q8.
 
-#### Param descriptions from docstrings
-
-Google-style `Args:` blocks become MCP parameter `description` fields
-and CLI `--help` option strings automatically. Explicit
-`Annotated[T, a2kit.Param(description=...)]` always wins. See the
-`tool-description-contract` spec under `openspec/specs/`.
 
 ## Migration from v0.x
 

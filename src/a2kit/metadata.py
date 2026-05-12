@@ -1,16 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from mcp.types import ToolAnnotations
-
-
-_EMPTY_PARAM_DESCRIPTIONS: Mapping[str, str] = MappingProxyType({})
 
 
 Verb = Literal["read", "write", "list", "tool"]
@@ -49,14 +43,6 @@ class A2KitMeta:
     _annotations_explicit: Any = None
     context_param_name: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
-    #: Per-parameter descriptions resolved from the tool's Google-style
-    #: docstring at decoration time (``Args:`` block). Empty mapping when
-    #: the docstring has no ``Args:`` section or no entry for a given
-    #: param. Authoritative source for downstream readers (middleware,
-    #: introspection tooling); the equivalent ``Annotated[T, Param(...)]``
-    #: mutation on ``fn.__annotations__`` continues to feed FastMCP's
-    #: schema generator.
-    param_descriptions: Mapping[str, str] = field(default_factory=lambda: _EMPTY_PARAM_DESCRIPTIONS)
 
     @property
     def annotations(self) -> ToolAnnotations:

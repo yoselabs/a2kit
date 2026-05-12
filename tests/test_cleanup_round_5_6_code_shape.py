@@ -1,23 +1,21 @@
 """Tests — cleanup-round-5-6-code-shape bundle.
 
-Covers items A (LDD ctx binding consistency), B (Container._override),
-F (shorthand error fidelity is exercised in test_ambient_ldd_ctx.py),
-and L (WARN_ONCE on docstring/get_type_hints failures).
+Covers items A (LDD ctx binding consistency) and B (Container._override).
+F (shorthand error fidelity) is exercised in test_ambient_ldd_ctx.py.
+Item L (WARN_ONCE on docstring failures) was removed in v0.30.0 along
+with the docstring-pull feature itself.
 """
 
 from __future__ import annotations
 
 import asyncio
-import logging
+
 import pytest
 
 import a2kit
-from a2kit._docstring import _WARN_ONCE as _DOC_WARN_ONCE
-from a2kit._docstring import extract_param_descriptions
 from a2kit.exceptions import AmbientContextMissing
 from a2kit.ldd import event as ldd_event
 from a2kit.packages.di.container import Container
-from a2kit.tool import _AUGMENT_WARN_ONCE, _augment_annotations_from_docstring
 
 
 # --- A. LDD ctx binding consistency — CLI + TestClient must not synthesize --- #
@@ -112,51 +110,3 @@ def test_override_then_restore_returns_to_pre_snapshot_state() -> None:
     fresh = c.resolve(_Greeter)
     assert fresh is not fake
     assert fresh.name == "real"
-
-
-# --- L. WARN_ONCE on docstring / get_type_hints failures --- #
-
-
-def test_extract_warn_once_per_fn_name(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-    """A function whose docstring blows up the parser emits one WARN per name."""
-    _DOC_WARN_ONCE.discard("victim_tool")
-
-    # Force _parse to raise so the except branch triggers deterministically.
-    import a2kit._docstring as mod
-
-    def _boom(_doc: str) -> dict[str, str]:
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(mod, "_parse", _boom)
-
-    with caplog.at_level(logging.WARNING, logger="a2kit._docstring"):
-        out1 = extract_param_descriptions("Args:\n    x: y.", fn_name="victim_tool")
-        out2 = extract_param_descriptions("Args:\n    x: y.", fn_name="victim_tool")
-
-    assert out1 == {}
-    assert out2 == {}
-    relevant = [r for r in caplog.records if "victim_tool" in r.getMessage()]
-    assert len(relevant) == 1
-
-
-def test_augment_warn_once_per_qualname(caplog: pytest.LogCaptureFixture) -> None:
-    """A function with an unresolvable forward-ref annotation gets one WARN."""
-    _AUGMENT_WARN_ONCE.discard("victim_tool_2")
-
-    def victim_tool_2(x) -> None:  # noqa: ANN001
-        """Do nothing.
-
-        Args:
-            x: a thing.
-        """
-
-    # Force get_type_hints to fail by injecting an unresolvable forward ref.
-    victim_tool_2.__annotations__ = {"x": "DefinitelyNotAType"}
-    victim_tool_2.__qualname__ = "victim_tool_2"
-
-    with caplog.at_level(logging.WARNING, logger="a2kit.tool"):
-        _augment_annotations_from_docstring(victim_tool_2)
-        _augment_annotations_from_docstring(victim_tool_2)
-
-    relevant = [r for r in caplog.records if r.name == "a2kit.tool" and "victim_tool_2" in r.getMessage()]
-    assert len(relevant) == 1
