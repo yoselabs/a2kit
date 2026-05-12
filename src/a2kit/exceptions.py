@@ -49,3 +49,25 @@ class ReportTypeMismatch(A2KitError, TypeError):
         self.tool_name = tool_name
         suffix = f" (tool {tool_name!r})" if tool_name else ""
         super().__init__(f"`ctx.report(...)` payload is a {got.__name__!r}; declared `report=` is {expected.__name__!r}{suffix}.")
+
+
+class AmbientContextMissing(A2KitError, RuntimeError):
+    """Raised when an LDD primitive is called outside an active tool dispatch.
+
+    LDD primitives (`a2kit.ldd.event/report/log/info/warning/error/debug` and
+    `EventRegistry.emit_typed`) read their `ctx` from the ambient
+    `_LDD_STATE` ContextVar, which is set by the dispatcher for the duration
+    of one tool invocation. Calling these from a lifecycle hook, factory,
+    module-level code, or any pre-dispatch context raises this error
+    instead of silently no-opping — fail loud, fix the call site.
+    """
+
+    def __init__(self, fn_name: str) -> None:
+        self.fn_name = fn_name
+        super().__init__(
+            f"{fn_name} called outside an active tool dispatch. LDD "
+            "primitives only work inside a tool body (or any code "
+            "reached from one). Move the call into a tool, use the "
+            "test harness's ldd_state_for_call(ctx=...) context manager, "
+            "or remove the call."
+        )

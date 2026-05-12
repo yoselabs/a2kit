@@ -4,11 +4,11 @@ Gherkin scenarios (mirroring `specs/mcp-context-passthrough/spec.md` modified
 section "LDD event and report primitives are protocol-neutral functions"):
 
   Scenario: Kwargs form delivers an event
-    GIVEN a tool calling event(ctx, "api.fetched", count=30)
+    GIVEN a tool calling event("api.fetched", count=30)
     THEN the captured payload has name="api.fetched" and count=30
 
   Scenario: Typed form delivers an event by class
-    GIVEN @dataclass ApiFetched(count: int) and event(ctx, ApiFetched(30))
+    GIVEN @dataclass ApiFetched(count: int) and event(ApiFetched(30))
     THEN the captured payload has name="ApiFetched" and count=30
 
   Scenario: Typed form with pydantic BaseModel
@@ -20,11 +20,11 @@ section "LDD event and report primitives are protocol-neutral functions"):
     THEN the enum value (not the enum instance) appears in the payload
 
   Scenario: Explicit name override on typed form
-    GIVEN event(ctx, ApiFetched(30), name="api.custom_name")
+    GIVEN event(ApiFetched(30), name="api.custom_name")
     THEN the delivered name is "api.custom_name"
 
   Scenario: Legacy kwargs form is unaffected by name override path
-    GIVEN event(ctx, "X", name="Y")
+    GIVEN event("X", name="Y")
     THEN name="X" and payload={"name": "Y"} (legacy behavior preserved)
 """
 
@@ -68,18 +68,18 @@ def _kv(line: str) -> dict[str, str]:
 
 def test_kwargs_form_delivers_event() -> None:
     ctx = StderrToolContext()
-    with ldd_state_for_call(tool_name="t"):
-        out = _run(event(ctx, "api.fetched", count=30))
+    with ldd_state_for_call(ctx=ctx, tool_name="t"):
+        out = _run(event("api.fetched", count=30))
     assert "api.fetched" in out
     fields = _kv(out)
     assert fields["count"] == "30"
 
 
 def test_kwargs_form_name_key_goes_into_payload() -> None:
-    """Legacy: event(ctx, "X", name="Y") keeps name="X" and payload={"name": "Y"}."""
+    """Legacy: event("X", name="Y") keeps name="X" and payload={"name": "Y"}."""
     ctx = StderrToolContext()
-    with ldd_state_for_call(tool_name="t"):
-        out = _run(event(ctx, "thing.happened", name="custom-id"))
+    with ldd_state_for_call(ctx=ctx, tool_name="t"):
+        out = _run(event("thing.happened", name="custom-id"))
     # The event name is "thing.happened" (appears in the msg slot before kv).
     assert "thing.happened" in out
     # The payload kv carries name='custom-id'.
@@ -97,8 +97,8 @@ class ApiFetched:
 
 def test_dataclass_instance_emits_with_class_name() -> None:
     ctx = StderrToolContext()
-    with ldd_state_for_call(tool_name="t"):
-        out = _run(event(ctx, ApiFetched(count=30, url="https://x.test")))
+    with ldd_state_for_call(ctx=ctx, tool_name="t"):
+        out = _run(event(ApiFetched(count=30, url="https://x.test")))
     assert "ApiFetched" in out
     fields = _kv(out)
     assert fields["count"] == "30"
@@ -117,8 +117,8 @@ class TierStarted(BaseModel):
 
 def test_pydantic_basemodel_emits_via_model_dump() -> None:
     ctx = StderrToolContext()
-    with ldd_state_for_call(tool_name="t"):
-        out = _run(event(ctx, TierStarted(t_ms=42, step="raw", when=datetime(2026, 5, 11, 12, 0, tzinfo=UTC))))
+    with ldd_state_for_call(ctx=ctx, tool_name="t"):
+        out = _run(event(TierStarted(t_ms=42, step="raw", when=datetime(2026, 5, 11, 12, 0, tzinfo=UTC))))
     assert "TierStarted" in out
     fields = _kv(out)
     assert fields["t_ms"] == "42"
@@ -142,8 +142,8 @@ class TierEnded:
 
 def test_enum_field_coerced_to_value() -> None:
     ctx = StderrToolContext()
-    with ldd_state_for_call(tool_name="t"):
-        out = _run(event(ctx, TierEnded(step="raw", verdict=Verdict.OK)))
+    with ldd_state_for_call(ctx=ctx, tool_name="t"):
+        out = _run(event(TierEnded(step="raw", verdict=Verdict.OK)))
     # Should see 'ok' (the enum value), not 'Verdict.OK' (the enum repr).
     assert "verdict='ok'" in out
     assert "Verdict.OK" not in out
@@ -154,8 +154,8 @@ def test_enum_field_coerced_to_value() -> None:
 
 def test_name_override_on_instance_path() -> None:
     ctx = StderrToolContext()
-    with ldd_state_for_call(tool_name="t"):
-        out = _run(event(ctx, ApiFetched(count=1, url="u"), name="api.custom"))
+    with ldd_state_for_call(ctx=ctx, tool_name="t"):
+        out = _run(event(ApiFetched(count=1, url="u"), name="api.custom"))
     assert "api.custom" in out
     # The class name "ApiFetched" should NOT appear as the event name.
     # (It may appear elsewhere if msg cap leaks it, but we check the head.)
@@ -168,8 +168,8 @@ def test_name_override_on_instance_path() -> None:
 
 def test_extra_kwargs_merged_into_instance_payload() -> None:
     ctx = StderrToolContext()
-    with ldd_state_for_call(tool_name="t"):
-        out = _run(event(ctx, ApiFetched(count=1, url="u"), extra_field="bonus"))
+    with ldd_state_for_call(ctx=ctx, tool_name="t"):
+        out = _run(event(ApiFetched(count=1, url="u"), extra_field="bonus"))
     assert "ApiFetched" in out
     assert "extra_field='bonus'" in out
     # Original instance fields preserved.

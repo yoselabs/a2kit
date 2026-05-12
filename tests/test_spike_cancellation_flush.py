@@ -18,7 +18,7 @@ import anyio
 import pytest
 
 from a2kit.packages.cli.context import StderrToolContext
-from a2kit.packages.ldd import event as ldd_event
+from a2kit.packages.ldd import event as ldd_event, ldd_state_for_call
 
 
 @pytest.mark.parametrize("budget_s", [0.3])
@@ -28,11 +28,11 @@ def test_cli_stderr_flushes_emissions_before_timeout_fires(budget_s: float) -> N
 
     async def _body() -> None:
         for i in range(20):
-            await ldd_event(ctx, "tick", seq=i)
+            await ldd_event("tick", seq=i)
             await anyio.sleep(0.05)
 
     async def _run() -> None:
-        with anyio.fail_after(budget_s):
+        with anyio.fail_after(budget_s), ldd_state_for_call(ctx=ctx):
             await _body()
 
     with redirect_stderr(captured), pytest.raises(TimeoutError):

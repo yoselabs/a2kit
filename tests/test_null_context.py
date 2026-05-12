@@ -4,7 +4,7 @@ Gherkin scenarios (mirroring `specs/in-process-test-client/spec.md` ADDED
 section "Null context shim for unit-testing internal functions"):
 
   Scenario: Null context can be passed to a function expecting ToolContext
-    GIVEN an async fn taking ctx: a2kit.ToolContext that calls ldd.event(ctx, ...)
+    GIVEN an async fn taking ctx: a2kit.ToolContext that calls ldd.event(...)
     WHEN the fn is called with a2kit.testing.null_context()
     THEN no AttributeError, the call returns normally
 
@@ -78,8 +78,8 @@ def test_ldd_event_accepts_null_context() -> None:
     ctx = null_context()
 
     async def _go() -> None:
-        with ldd_state_for_call(tool_name="t"):
-            await event(ctx, "x", k=1)
+        with ldd_state_for_call(ctx=ctx, tool_name="t"):
+            await event("x", k=1)
 
     asyncio.run(_go())  # must not raise
 

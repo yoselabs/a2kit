@@ -50,25 +50,29 @@ def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
 def _wrap_with_ldd_state(
     fn: Any,
     *,
+    ctx_param_name: str,
     report_type: type | None,
     tool_name: str | None,
     reports_enabled: bool,
     events_enabled: bool,
     sinks: tuple[Any, ...] = (),
 ) -> Any:
-    """Set the per-call LDD contextvar before invoking ``fn``.
+    """Set the per-call LDD contextvar (including the ambient ``ctx``)
+    before invoking ``fn``.
 
-    Replaces the old ``bind_context`` adapter wrapping. The tool's signature is
-    preserved unchanged; ``ctx: a2kit.ToolContext`` (= ``fastmcp.Context``) is
-    injected directly by FastMCP. Free functions ``a2kit.ldd.event`` and
-    ``a2kit.ldd.report`` read the contextvar to honor enable flags, report
-    type, and in-process sink fan-out without needing to wrap the Context.
+    The tool's signature is preserved unchanged; ``ctx: a2kit.ToolContext``
+    (= ``fastmcp.Context``) is injected directly by FastMCP. The free
+    functions ``a2kit.ldd.event``/``report``/``log`` (and shorthands)
+    read the ambient ``_LDD_STATE`` set here — tool authors and helper
+    functions never pass ``ctx`` explicitly.
     """
     from a2kit.ldd import ldd_state_for_call
 
     @functools.wraps(fn)
     async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        ctx_obj = kwargs.get(ctx_param_name)
         with ldd_state_for_call(
+            ctx=ctx_obj,
             events_enabled=events_enabled,
             reports_enabled=reports_enabled,
             report_type=report_type,
@@ -294,6 +298,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 
         if meta.context_param_name:
             wrapped = _wrap_with_ldd_state(
                 wrapped,
+                ctx_param_name=meta.context_param_name,
                 report_type=meta.extra.get("a2kit.report_type"),
                 tool_name=meta.tool_name,
                 reports_enabled=reports_enabled,

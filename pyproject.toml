@@ -122,6 +122,11 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 "scripts/**" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201"]
 "bench/**" = ["T201", "BLE001", "S603", "ANN001", "ANN201", "PLR0915"]
 "examples/**" = [
+    # Examples declare ``ctx: a2kit.ToolContext`` to opt into Context
+    # injection from the framework. After the ambient-LDD-ctx-binding
+    # change, primitive calls no longer take ``ctx`` explicitly, so the
+    # parameter is declared but unused.
+    "ARG002",
     # Annotations relaxed: examples are tutorial code, not library code.
     "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN206",
     # TYPE_CHECKING shifts hurt readability in tutorial code.

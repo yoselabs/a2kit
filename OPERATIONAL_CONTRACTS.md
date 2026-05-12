@@ -317,6 +317,30 @@ to `_BUILTIN_RESERVED_TOOL_NAMES` in `src/a2kit/tool.py` and
 register it through an internal builder (see
 `packages/health/` for the pattern).
 
+## Q8. LDD primitives require an active tool dispatch
+
+`a2kit.ldd.event`, `report`, `log`, and the `info` / `warning` /
+`error` / `debug` shorthands (plus `EventRegistry.emit_typed`) read
+their `ctx` from an ambient `ContextVar` set by the dispatcher for the
+duration of one tool invocation. They take NO `ctx` argument.
+
+Calling any of them outside an active dispatch — from a lifecycle
+hook (`@on_startup`, `@on_shutdown`), a singleton/provider factory,
+module-level code, or any pre-dispatch context — raises
+`a2kit.exceptions.AmbientContextMissing`. The error names the
+primitive and points at the test seam. **There is no silent no-op
+fallback**; fail loud, fix the call site.
+
+Tests that want to exercise LDD primitives directly (without a full
+tool dispatch) wrap with the `ldd_state_for_call(ctx=stub, ...)`
+context manager — same seam the framework uses internally.
+
+`asyncio.gather`, `create_task`, and `TaskGroup` propagate the
+ambient ctx via Python's `contextvars` copy-on-task semantics, so
+sub-coroutines and background tasks spawned from a tool body inherit
+the binding automatically. Background tasks outliving the outer
+dispatch keep their captured snapshot until they themselves complete.
+
 ## See also
 
 - `CHANGELOG.md` — release-by-release history of behavioral changes.

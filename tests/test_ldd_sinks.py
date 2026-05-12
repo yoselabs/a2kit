@@ -67,8 +67,8 @@ def test_event_fan_out_calls_sink_with_emission() -> None:
 
     async def run() -> None:
         ctx = StderrToolContext()
-        with ldd_state_for_call(sinks=(sink,)):
-            await ldd_event(ctx, "x", k=1)
+        with ldd_state_for_call(ctx=ctx, sinks=(sink,)):
+            await ldd_event("x", k=1)
 
     anyio.run(run)
     assert len(seen) == 1
@@ -90,8 +90,8 @@ def test_report_fan_out_calls_sink_with_emission() -> None:
 
     async def run() -> None:
         ctx = StderrToolContext()
-        with ldd_state_for_call(sinks=(sink,), report_type=R):
-            await ldd_report(ctx, R(v=7))
+        with ldd_state_for_call(ctx=ctx, sinks=(sink,), report_type=R):
+            await ldd_report(R(v=7))
 
     anyio.run(run)
     assert len(seen) == 1
@@ -107,8 +107,8 @@ def test_sink_exception_does_not_break_dispatch(caplog) -> None:
 
     async def run() -> None:
         ctx = StderrToolContext()
-        with ldd_state_for_call(sinks=(bad_sink,)):
-            await ldd_event(ctx, "x")  # must complete without raising
+        with ldd_state_for_call(ctx=ctx, sinks=(bad_sink,)):
+            await ldd_event("x")  # must complete without raising
 
     with caplog.at_level(logging.ERROR, logger="a2kit.ldd.sinks"):
         anyio.run(run)
@@ -129,8 +129,8 @@ def test_sinks_fire_in_registration_order() -> None:
 
     async def run() -> None:
         ctx = StderrToolContext()
-        with ldd_state_for_call(sinks=(a, b, c)):
-            await ldd_event(ctx, "x")
+        with ldd_state_for_call(ctx=ctx, sinks=(a, b, c)):
+            await ldd_event("x")
 
     anyio.run(run)
     assert order == ["a", "b", "c"]
@@ -144,8 +144,8 @@ def test_kill_switch_gates_wire_and_sinks_symmetrically() -> None:
 
     async def run() -> None:
         ctx = StderrToolContext()
-        with ldd_state_for_call(sinks=(sink,), events_enabled=False):
-            await ldd_event(ctx, "x")  # disabled — no wire emit, no sink
+        with ldd_state_for_call(ctx=ctx, sinks=(sink,), events_enabled=False):
+            await ldd_event("x")  # disabled — no wire emit, no sink
 
     anyio.run(run)
     assert seen == []
@@ -157,12 +157,20 @@ def test_state_resets_after_context_exit() -> None:
     async def sink(e: LddEmission) -> None:
         seen.append(e)
 
+    from a2kit.exceptions import AmbientContextMissing
+
     async def run() -> None:
         ctx = StderrToolContext()
-        with ldd_state_for_call(sinks=(sink,)):
-            await ldd_event(ctx, "inside")
-        # Outside the context: no sinks should be called.
-        await ldd_event(ctx, "outside")
+        with ldd_state_for_call(ctx=ctx, sinks=(sink,)):
+            await ldd_event("inside")
+        # Outside the context: ambient ctx is gone → fail loud.
+        try:
+            await ldd_event("outside")
+        except AmbientContextMissing:
+            pass
+        else:
+            msg = "expected AmbientContextMissing outside ldd_state_for_call"
+            raise AssertionError(msg)
 
     anyio.run(run)
     assert len(seen) == 1
@@ -183,7 +191,7 @@ def test_in_process_client_propagates_sinks_to_dispatch() -> None:
         async def tick(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
             from a2kit.ldd import event
 
-            await event(ctx, "tickle", seq=1)
+            await event("tickle", seq=1)
             return {"ok": 1}
 
     app = a2kit.App("sinkstest")

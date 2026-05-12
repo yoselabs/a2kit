@@ -80,13 +80,18 @@ def test_error_with_extra_repr_quotes_strings_only() -> None:
 
 
 def test_ldd_kwarg_form_renders_through_stub() -> None:
-    """``a2kit.ldd.warning(ctx, "msg", k=v)`` is the canonical fielded form;
+    """``a2kit.ldd.warning("msg", k=v)`` is the canonical fielded form;
     on the CLI stub it lands through ``_emit`` and renders identically to the
     old widened ``ctx.warning("msg", k=v)`` shape."""
     from a2kit.ldd import warning as ldd_warning
 
     ctx = StderrToolContext()
-    out = _capture_stderr_async(lambda: ldd_warning(ctx, "stuck", retry=3, where="foo"))
+
+    async def go() -> None:
+        with ldd_state_for_call(ctx=ctx):
+            await ldd_warning("stuck", retry=3, where="foo")
+
+    out = _capture_stderr_async(go)
     assert "WARN" in out
     assert "stuck" in out
     assert "retry=3" in out
@@ -123,8 +128,8 @@ def test_event_emits_named_payload_via_free_function() -> None:
     ctx = StderrToolContext()
 
     def go() -> None:
-        with ldd_state_for_call():
-            asyncio.run(event(ctx, "api.fetched", count=30, source="primary"))
+        with ldd_state_for_call(ctx=ctx):
+            asyncio.run(event("api.fetched", count=30, source="primary"))
 
     out = _capture_stderr_sync(go)
     assert "event" in out
@@ -135,7 +140,12 @@ def test_event_emits_named_payload_via_free_function() -> None:
 
 def test_event_empty_payload_emits_name_only() -> None:
     ctx = StderrToolContext()
-    out = _capture_stderr_sync(lambda: asyncio.run(event(ctx, "phase.started")))
+
+    def go() -> None:
+        with ldd_state_for_call(ctx=ctx):
+            asyncio.run(event("phase.started"))
+
+    out = _capture_stderr_sync(go)
     assert "phase.started" in out
 
 
@@ -143,8 +153,8 @@ def test_event_disabled_emits_nothing() -> None:
     ctx = StderrToolContext()
 
     def go() -> None:
-        with ldd_state_for_call(events_enabled=False):
-            asyncio.run(event(ctx, "ignored"))
+        with ldd_state_for_call(ctx=ctx, events_enabled=False):
+            asyncio.run(event("ignored"))
 
     out = _capture_stderr_sync(go)
     assert out == ""
@@ -163,8 +173,8 @@ def test_report_happy_path() -> None:
     ctx = StderrToolContext()
 
     def go() -> None:
-        with ldd_state_for_call(report_type=BatchReport, tool_name="t"):
-            asyncio.run(report(ctx, BatchReport(batch=4, accepted=12, rejected=0)))
+        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t"):
+            asyncio.run(report(BatchReport(batch=4, accepted=12, rejected=0)))
 
     out = _capture_stderr_sync(go)
     assert "report" in out
@@ -177,8 +187,8 @@ def test_report_without_declared_type_raises() -> None:
     ctx = StderrToolContext()
 
     def go() -> None:
-        with ldd_state_for_call(tool_name="t"):
-            asyncio.run(report(ctx, {"any": "dict"}))
+        with ldd_state_for_call(ctx=ctx, tool_name="t"):
+            asyncio.run(report({"any": "dict"}))
 
     with pytest.raises(ReportTypeNotDeclared):
         go()
@@ -188,8 +198,8 @@ def test_report_type_mismatch_raises() -> None:
     ctx = StderrToolContext()
 
     def go() -> None:
-        with ldd_state_for_call(report_type=BatchReport, tool_name="t"):
-            asyncio.run(report(ctx, {"not": "a model"}))
+        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t"):
+            asyncio.run(report({"not": "a model"}))
 
     with pytest.raises(ReportTypeMismatch):
         go()
@@ -200,15 +210,15 @@ def test_report_disabled_still_validates() -> None:
     ctx = StderrToolContext()
 
     def emit_ok() -> None:
-        with ldd_state_for_call(report_type=BatchReport, tool_name="t", reports_enabled=False):
-            asyncio.run(report(ctx, BatchReport(batch=1, accepted=1, rejected=0)))
+        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t", reports_enabled=False):
+            asyncio.run(report(BatchReport(batch=1, accepted=1, rejected=0)))
 
     out = _capture_stderr_sync(emit_ok)
     assert out == ""
 
     def emit_bad() -> None:
-        with ldd_state_for_call(report_type=BatchReport, tool_name="t", reports_enabled=False):
-            asyncio.run(report(ctx, {"wrong": "shape"}))
+        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t", reports_enabled=False):
+            asyncio.run(report({"wrong": "shape"}))
 
     with pytest.raises(ReportTypeMismatch):
         emit_bad()

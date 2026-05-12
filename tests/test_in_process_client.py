@@ -13,7 +13,7 @@ Gherkin scenarios (mirroring `specs/in-process-test-client/spec.md`):
     THEN startup runs once before the first invoke, shutdown runs once on exit
 
   Scenario: events captured with payload and elapsed_ms
-    GIVEN a tool emitting `await event(ctx, "import.started", n=10)`
+    GIVEN a tool emitting `await event("import.started", n=10)`
     WHEN invoked through the client
     THEN client.events contains the event with payload and elapsed_ms
 
@@ -63,18 +63,18 @@ class _Router(a2kit.Router):
 
     @a2kit.read()
     async def emit_telemetry(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-        await info(ctx, "starting", batch=1)
-        await warning(ctx, "transient", attempt=2)
-        await event(ctx, "phase.started", n=10)
+        await info("starting", batch=1)
+        await warning("transient", attempt=2)
+        await event("phase.started", n=10)
         await ctx.report_progress(5, total=10)
-        await event(ctx, "phase.complete")
+        await event("phase.complete")
         return {"emitted": 4}
 
     @a2kit.read()
     @reports(_Report)
     async def emit_reports(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-        await report(ctx, _Report(batch=0, accepted=3))
-        await report(ctx, _Report(batch=1, accepted=7))
+        await report(_Report(batch=0, accepted=3))
+        await report(_Report(batch=1, accepted=7))
         return {"reports": 2}
 
 

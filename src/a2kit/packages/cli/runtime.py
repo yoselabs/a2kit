@@ -47,8 +47,10 @@ async def _invoke_tool_in_process(
 
     if ctx_param_name and ctx_param_name not in call_kwargs:
         call_kwargs[ctx_param_name] = StderrToolContext()
+    ctx_for_ldd: Any = call_kwargs.get(ctx_param_name) if ctx_param_name else StderrToolContext()
 
     with ldd_state_for_call(
+        ctx=ctx_for_ldd,
         events_enabled=events_enabled,
         reports_enabled=reports_enabled,
         report_type=report_type,

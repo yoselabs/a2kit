@@ -170,6 +170,7 @@ class TestClient:
         report_type = meta.extra.get("a2kit.report_type") if meta.extra else None
 
         with ldd_state_for_call(
+            ctx=ctx,
             events_enabled=True,
             reports_enabled=True,
             report_type=report_type,

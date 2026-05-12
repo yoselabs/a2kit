@@ -68,11 +68,11 @@ class JobsRouter(a2kit.Router):
         """Run ``steps`` fake work units, emitting typed events along the way."""
         for i in range(1, steps + 1):
             # Free-function typed emit (no registry needed).
-            await a2kit.ldd.event(ctx, StepStarted(step=i, total=steps, label=f"step-{i}"))
+            await a2kit.ldd.event(StepStarted(step=i, total=steps, label=f"step-{i}"))
             # Registered events that also report progress use the registry.
-            await app.ldd.events.emit_typed(ctx, StepProgressed(step=i, total=steps))
+            await app.ldd.events.emit_typed(StepProgressed(step=i, total=steps))
             await asyncio.sleep(0)
-            await app.ldd.events.emit_typed(ctx, StepCompleted(step=i, total=steps, elapsed_ms=1))
+            await app.ldd.events.emit_typed(StepCompleted(step=i, total=steps, elapsed_ms=1))
         return {"steps": steps}
 
 

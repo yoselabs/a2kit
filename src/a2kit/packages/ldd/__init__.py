@@ -1,14 +1,18 @@
 """LDD (logging / debug / diagnostic) primitives — protocol-neutral free functions.
 
-Tools that previously called ``ctx.event(...)`` and ``ctx.report(...)`` now use
-the module-level functions :func:`event` and :func:`report`, passing the live
-context as the first argument. Both functions accept any ``fastmcp.Context``-
-shaped object: the real ``fastmcp.Context`` (MCP transport) or the CLI stub.
+Tools call :func:`event`, :func:`report`, :func:`log` (and the
+``info`` / ``warning`` / ``error`` / ``debug`` shorthands) with **no**
+``ctx`` argument. The live context is bound to a
+:class:`contextvars.ContextVar` by the runtime dispatch site for the
+lifetime of one tool invocation; the primitives read it from there.
+Calling a primitive outside an active dispatch raises
+:exc:`a2kit.exceptions.AmbientContextMissing` — fail loud, never
+silently no-op.
 
-Per-call state (event/report kill-switches, report type, tool name, elapsed-ms
-basis) flows through a :class:`contextvars.ContextVar` set by the runtime
-dispatch site before the tool body runs and reset after — no wrapper layer
-needed, no monkey-patching of the Context class.
+Per-call state (event/report kill-switches, report type, tool name,
+elapsed-ms basis, sinks, AND the ``ctx`` itself) flows through that
+same ContextVar, set once at dispatch entry and reset at dispatch
+exit — no wrapper layer, no monkey-patching of the Context class.
 
 Wire format invariants (preserved across both transports):
 
@@ -37,7 +41,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from a2kit.exceptions import ReportTypeMismatch, ReportTypeNotDeclared
+from a2kit.exceptions import AmbientContextMissing, ReportTypeMismatch, ReportTypeNotDeclared
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -132,6 +136,7 @@ async def _dispatch_sinks(emission: LddEmission, sinks: tuple[LddSink, ...]) -> 
 
 @dataclass
 class _LddState:
+    ctx: Any = None
     events_enabled: bool = True
     reports_enabled: bool = True
     report_type: type | None = None
@@ -143,40 +148,48 @@ class _LddState:
 _LDD_STATE: contextvars.ContextVar[_LddState | None] = contextvars.ContextVar("_a2kit_ldd_state", default=None)
 
 
-def _current_state() -> _LddState:
-    """Return the active per-call LDD state (or a fresh default outside a call)."""
+def _require_ambient_state(fn_name: str) -> _LddState:
+    """Return the active LDD state or raise :exc:`AmbientContextMissing`.
+
+    LDD primitives only work inside a tool dispatch. Tests that exercise
+    primitives directly must wrap with ``ldd_state_for_call(ctx=stub, ...)``.
+    """
     state = _LDD_STATE.get()
-    if state is None:
-        return _LddState(start_monotonic=_APP_START_MONOTONIC)
+    if state is None or state.ctx is None:
+        raise AmbientContextMissing(fn_name)
     return state
 
 
-def _elapsed_ms() -> int:
-    """Integer milliseconds since the active call's basis (or process start)."""
-    return round((time.monotonic() - _current_state().start_monotonic) * 1000)
+def _elapsed_ms_from(state: _LddState) -> int:
+    return round((time.monotonic() - state.start_monotonic) * 1000)
 
 
 @contextlib.contextmanager
 def ldd_state_for_call(
     *,
+    ctx: Any,
     events_enabled: bool = True,
     reports_enabled: bool = True,
     report_type: type | None = None,
     tool_name: str | None = None,
     sinks: tuple[LddSink, ...] = (),
 ) -> Iterator[None]:
-    """Set the per-call LDD state for the lifetime of the wrapped block.
+    """Set the per-call LDD state (including the ambient ``ctx``) for the
+    lifetime of the wrapped block.
 
-    Used by the runtime dispatch sites (CLI ``invoke_tool_sync`` and MCP
-    middleware) to scope event/report semantics to a single tool invocation.
-    Resets on exit.
+    Called by every dispatcher (CLI runtime, MCP wrapper, in-process test
+    client) immediately before invoking the tool body. The ``ctx`` it
+    receives becomes the ambient context that LDD primitives
+    (:func:`event`, :func:`report`, :func:`log`, and shorthands) resolve
+    against — neither callers nor tool bodies pass ``ctx`` explicitly.
 
-    ``sinks`` is the tuple of in-process observers registered on the App via
-    ``app.ldd.add_sink(...)``; :func:`event` and :func:`report` fan out to
-    each after the wire emit.
+    ``sinks`` is the tuple of in-process observers registered on the App
+    via ``app.ldd.add_sink(...)``; the primitives fan out to each after
+    the wire emit.
     """
     token = _LDD_STATE.set(
         _LddState(
+            ctx=ctx,
             events_enabled=events_enabled,
             reports_enabled=reports_enabled,
             report_type=report_type,
@@ -242,49 +255,47 @@ def _typed_event_to_payload(instance: Any, extra: dict[str, Any]) -> tuple[str, 
     return name, payload_dict
 
 
-async def event(__ctx: Any, __name_or_payload: Any, /, **payload: Any) -> None:
-    """Emit a structured event on either transport.
+async def event(__name_or_payload: Any, /, **payload: Any) -> None:
+    """Emit a structured event on either transport. Reads ``ctx`` from the
+    ambient ``_LDD_STATE`` set by the dispatcher.
 
-    Two call shapes are accepted (positional-only ``ctx`` and the second arg
-    via ``/`` syntax keep ``**payload`` open for any key including ``name``):
+    Two call shapes:
 
-    1. **Kwargs form** (legacy): ``event(ctx, "name.string", key=value, ...)``.
-       Second positional is the event name string; remaining kwargs form the
-       payload.
-    2. **Typed form**: ``event(ctx, instance)``. Second positional is any
-       class instance. Name defaults to ``type(instance).__name__``. The
-       payload is derived from the instance:
+    1. **Kwargs form**: ``event("name.string", key=value, ...)``. First
+       positional is the event name string; kwargs form the payload.
+    2. **Typed form**: ``event(instance)``. First positional is any class
+       instance. Name defaults to ``type(instance).__name__``. The payload
+       is derived from the instance:
 
-       - ``instance.model_dump(mode="json")`` if it has ``model_dump``
-         (pydantic ``BaseModel``).
+       - ``instance.model_dump(mode="json")`` if it has ``model_dump``.
        - ``dataclasses.asdict(instance)`` if a dataclass instance.
        - ``vars(instance)`` as a fallback.
 
-       Any ``Enum`` value in the resulting dict is replaced by
-       ``value.value`` so wire payloads stay JSON-friendly.
-
-       An optional ``name=`` kwarg overrides the default class-name. Any
-       additional kwargs are merged into the payload after the instance
-       fields (caller wins on key collisions).
+       Any ``Enum`` value is replaced by ``.value``. An optional ``name=``
+       kwarg overrides the default class-name. Additional kwargs are
+       merged into the payload after the instance fields (caller wins on
+       key collisions).
 
     MCP path → ``ctx.log(level="info", extra={"a2kit_kind": "event", ...})``.
     CLI path → stderr line via :func:`format_ldd_line` (kind ``event``).
 
-    Honors the events kill-switch set via :func:`ldd_state_for_call` (CLI flag
-    ``--no-events``, env ``A2KIT_LDD=off``).
+    Honors the events kill-switch set via :func:`ldd_state_for_call`
+    (CLI flag ``--no-events``, env ``A2KIT_LDD=off``). Raises
+    :exc:`AmbientContextMissing` if called outside an active dispatch.
     """
-    state = _current_state()
+    state = _require_ambient_state("a2kit.ldd.event")
     if not state.events_enabled:
         return
-    elapsed = _elapsed_ms()
+    ctx = state.ctx
+    elapsed = _elapsed_ms_from(state)
 
     if isinstance(__name_or_payload, str):
         __name = __name_or_payload
         payload_dict = dict(payload)
     else:
         __name, payload_dict = _typed_event_to_payload(__name_or_payload, payload)
-    if _is_fastmcp_context(__ctx):
-        await __ctx.log(
+    if _is_fastmcp_context(ctx):
+        await ctx.log(
             message=_cap_text(__name),
             level="info",
             extra={
@@ -295,8 +306,7 @@ async def event(__ctx: Any, __name_or_payload: Any, /, **payload: Any) -> None:
             },
         )
     else:
-        # CLI stub — internal _emit; preserves the LDD wire format.
-        __ctx._emit("event", __name, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
+        ctx._emit("event", __name, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
     if state.sinks:
         await _dispatch_sinks(
             LddEmission(
@@ -305,27 +315,30 @@ async def event(__ctx: Any, __name_or_payload: Any, /, **payload: Any) -> None:
                 payload=payload_dict,
                 elapsed_ms=elapsed,
                 tool_name=state.tool_name,
-                ctx=__ctx,
+                ctx=ctx,
             ),
             state.sinks,
         )
 
 
-async def report(ctx: Any, payload: Any, /) -> None:
-    """Emit a typed structured report on either transport.
+async def report(payload: Any, /) -> None:
+    """Emit a typed structured report on either transport. Reads ``ctx``
+    from the ambient ``_LDD_STATE``.
 
     Validates the payload type against the tool's declared ``@reports(T)``
-    even when reports are disabled — keeps tests deterministic regardless of
-    LDD flag state.
+    even when reports are disabled — keeps tests deterministic regardless
+    of LDD flag state. Raises :exc:`AmbientContextMissing` if called
+    outside an active dispatch.
     """
-    state = _current_state()
+    state = _require_ambient_state("a2kit.ldd.report")
     if state.report_type is None:
         raise ReportTypeNotDeclared(state.tool_name)
     if not isinstance(payload, state.report_type):
         raise ReportTypeMismatch(state.report_type, type(payload), state.tool_name)
     if not state.reports_enabled:
         return
-    elapsed = _elapsed_ms()
+    ctx = state.ctx
+    elapsed = _elapsed_ms_from(state)
     body = payload.model_dump(mode="json") if hasattr(payload, "model_dump") else dict(payload)
     type_name = type(payload).__name__
     if _is_fastmcp_context(ctx):
@@ -359,38 +372,37 @@ _LOG_LEVEL_LABEL: dict[str, str] = {"debug": "DEBUG", "info": "INFO", "warning":
 
 
 async def log(
-    __ctx: Any,
     __level: Literal["debug", "info", "warning", "error"],
     __msg_or_instance: Any,
     /,
     **fields: Any,
 ) -> None:
-    """Emit a structured field-bearing log line on either transport.
+    """Emit a structured field-bearing log line on either transport. Reads
+    ``ctx`` from the ambient ``_LDD_STATE``.
 
-    Third sibling of :func:`event` and :func:`report`; the missing
-    protocol-neutral primitive for narrative-with-data logging. Two
-    call shapes (mirrors :func:`event` verbatim, shares the same
-    ``_typed_event_to_payload`` helper):
+    Two call shapes:
 
-    1. **String form**: ``log(ctx, "info", "msg", k=v, ...)``. Third
-       positional is the message; remaining kwargs are fields.
-    2. **Instance form**: ``log(ctx, "info", instance)``. Third positional
-       is a dataclass / pydantic ``BaseModel`` / object. Message defaults
-       to ``type(instance).__name__``; fields derive via ``model_dump``
-       (pydantic), ``dataclasses.asdict`` (dataclass), or ``vars(instance)``
-       (fallback). Enum values are unwrapped to ``.value``.
+    1. **String form**: ``log("info", "msg", k=v, ...)``. Second positional
+       is the message; remaining kwargs are fields.
+    2. **Instance form**: ``log("info", instance)``. Second positional is a
+       dataclass / pydantic ``BaseModel`` / object. Message defaults to
+       ``type(instance).__name__``; fields derive via ``model_dump``
+       (pydantic), ``dataclasses.asdict`` (dataclass), or
+       ``vars(instance)`` (fallback). Enum values are unwrapped to
+       ``.value``.
 
     MCP path → ``await ctx.log(level=..., message=msg_capped, extra={**fields, "elapsed_ms": ...})``.
-    CLI path → ``ctx._emit(LEVEL, msg, fields, elapsed_ms=...)`` (same backend
-    that ``StderrToolContext.info/warning/error/debug`` use).
+    CLI path → ``ctx._emit(LEVEL, msg, fields, elapsed_ms=...)`` (same
+    backend that ``StderrToolContext.info/warning/error/debug`` use).
 
-    Shares the events kill-switch (``--no-events`` / ``A2KIT_LDD=off``) so
-    a single flag silences all three LDD primitives consistently.
+    Shares the events kill-switch (``--no-events`` / ``A2KIT_LDD=off``).
+    Raises :exc:`AmbientContextMissing` if called outside an active dispatch.
     """
-    state = _current_state()
+    state = _require_ambient_state("a2kit.ldd.log")
     if not state.events_enabled:
         return
-    elapsed = _elapsed_ms()
+    ctx = state.ctx
+    elapsed = _elapsed_ms_from(state)
 
     if isinstance(__msg_or_instance, str):
         msg = __msg_or_instance
@@ -398,11 +410,11 @@ async def log(
     else:
         msg, payload_dict = _typed_event_to_payload(__msg_or_instance, dict(fields))
 
-    if _is_fastmcp_context(__ctx):
+    if _is_fastmcp_context(ctx):
         wire_extra = {**payload_dict, "elapsed_ms": elapsed}
-        await __ctx.log(level=__level, message=_cap_text(msg), extra=wire_extra)
+        await ctx.log(level=__level, message=_cap_text(msg), extra=wire_extra)
     else:
-        __ctx._emit(_LOG_LEVEL_LABEL[__level], msg, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
+        ctx._emit(_LOG_LEVEL_LABEL[__level], msg, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
 
     if state.sinks:
         await _dispatch_sinks(
@@ -412,30 +424,30 @@ async def log(
                 payload=payload_dict,
                 elapsed_ms=elapsed,
                 tool_name=state.tool_name,
-                ctx=__ctx,
+                ctx=ctx,
             ),
             state.sinks,
         )
 
 
-async def info(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
-    """``a2kit.ldd.log(ctx, "info", ...)`` shorthand."""
-    await log(__ctx, "info", __msg_or_instance, **fields)
+async def info(__msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log("info", ...)`` shorthand."""
+    await log("info", __msg_or_instance, **fields)
 
 
-async def warning(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
-    """``a2kit.ldd.log(ctx, "warning", ...)`` shorthand."""
-    await log(__ctx, "warning", __msg_or_instance, **fields)
+async def warning(__msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log("warning", ...)`` shorthand."""
+    await log("warning", __msg_or_instance, **fields)
 
 
-async def error(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
-    """``a2kit.ldd.log(ctx, "error", ...)`` shorthand."""
-    await log(__ctx, "error", __msg_or_instance, **fields)
+async def error(__msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log("error", ...)`` shorthand."""
+    await log("error", __msg_or_instance, **fields)
 
 
-async def debug(__ctx: Any, __msg_or_instance: Any, /, **fields: Any) -> None:
-    """``a2kit.ldd.log(ctx, "debug", ...)`` shorthand."""
-    await log(__ctx, "debug", __msg_or_instance, **fields)
+async def debug(__msg_or_instance: Any, /, **fields: Any) -> None:
+    """``a2kit.ldd.log("debug", ...)`` shorthand."""
+    await log("debug", __msg_or_instance, **fields)
 
 
 # --- Typed event registry --------------------------------------------------- #
@@ -477,14 +489,20 @@ class EventRegistry:
     def is_registered(self, model: type) -> bool:
         return model in self._progress
 
-    async def emit_typed(self, ctx: Any, evt: Any) -> None:
-        """Emit ``evt`` as a structured event + optional progress update."""
+    async def emit_typed(self, evt: Any) -> None:
+        """Emit ``evt`` as a structured event + optional progress update.
+
+        Reads ``ctx`` from the ambient ``_LDD_STATE``. The progress
+        callback path uses the same ambient ctx — call from inside a
+        tool dispatch only.
+        """
         dumped: dict[str, Any] = evt.model_dump(mode="json") if hasattr(evt, "model_dump") else dict(evt)
-        await event(ctx, type(evt).__name__, **dumped)
+        await event(type(evt).__name__, **dumped)
         progress_fn = self._progress.get(type(evt))
         if progress_fn is not None:
+            state = _require_ambient_state("EventRegistry.emit_typed")
             current, total = progress_fn(evt)
-            await ctx.report_progress(current, total)
+            await state.ctx.report_progress(current, total)
 
 
 class _AppLdd:
@@ -525,6 +543,7 @@ class _AppLdd:
 
 __all__ = [
     "TEXT_CAP",
+    "AmbientContextMissing",
     "EventRegistry",
     "LddEmission",
     "LddSink",

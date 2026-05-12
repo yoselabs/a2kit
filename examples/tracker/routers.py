@@ -111,11 +111,11 @@ class TasksRouter(a2kit.Router):
         batch_size: int = 5,
     ) -> dict[str, int]:
         """Import a batch of tasks; demonstrates all four LDD channels."""
-        await event(ctx, "import.started", project_id=project_id, n=len(titles))
+        await event("import.started", project_id=project_id, n=len(titles))
         projects, tasks = store.load_state()
         if not any(p.id == project_id for p in projects):
             raise KeyError(project_id)
-        await info(ctx, "loaded state", projects=len(projects), tasks=len(tasks))
+        await info("loaded state", projects=len(projects), tasks=len(tasks))
 
         accepted = 0
         rejected = 0
@@ -133,7 +133,6 @@ class TasksRouter(a2kit.Router):
             accepted += batch_accepted
             rejected += batch_rejected
             await report(
-                ctx,
                 BatchReport(
                     batch=i // batch_size,
                     accepted=batch_accepted,
@@ -144,5 +143,5 @@ class TasksRouter(a2kit.Router):
             await asyncio.sleep(0)
 
         store.replace(projects, tasks)
-        await event(ctx, "import.complete", accepted=accepted, rejected=rejected)
+        await event("import.complete", accepted=accepted, rejected=rejected)
         return {"accepted": accepted, "rejected": rejected}

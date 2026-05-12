@@ -91,12 +91,12 @@ def test_elapsed_ms_increases_across_events() -> None:
     elapsed_seen: list[int] = []
 
     async def go() -> None:
-        with ldd_state_for_call():
-            await event(ctx, "first")
+        with ldd_state_for_call(ctx=ctx):
+            await event("first")
             await asyncio.sleep(0.02)
-            await event(ctx, "second")
+            await event("second")
             await asyncio.sleep(0.02)
-            await event(ctx, "third")
+            await event("third")
 
     out = _capture_stderr(go)
     for line in out.strip().splitlines():
@@ -127,8 +127,8 @@ def test_emit_typed_renders_event_with_dumped_payload() -> None:
     ctx = StderrToolContext()
 
     async def go() -> None:
-        with ldd_state_for_call():
-            await reg.emit_typed(ctx, ProgressEvent(name="batch", done=3, total=10))
+        with ldd_state_for_call(ctx=ctx):
+            await reg.emit_typed(ProgressEvent(name="batch", done=3, total=10))
 
     out = _capture_stderr(go)
     assert "ProgressEvent" in out
@@ -142,8 +142,8 @@ def test_emit_typed_calls_progress_callback() -> None:
     ctx = StderrToolContext()
 
     async def go() -> None:
-        with ldd_state_for_call():
-            await reg.emit_typed(ctx, ProgressEvent(name="b", done=7, total=10))
+        with ldd_state_for_call(ctx=ctx):
+            await reg.emit_typed(ProgressEvent(name="b", done=7, total=10))
 
     out = _capture_stderr(go)
     assert "ProgressEvent" in out
@@ -159,8 +159,8 @@ def test_register_last_write_wins() -> None:
     ctx = StderrToolContext()
 
     async def go() -> None:
-        with ldd_state_for_call():
-            await reg.emit_typed(ctx, ProgressEvent(name="b", done=1, total=2))
+        with ldd_state_for_call(ctx=ctx):
+            await reg.emit_typed(ProgressEvent(name="b", done=1, total=2))
 
     out = _capture_stderr(go)
     # Only one line expected (the event itself), no progress line.
@@ -175,8 +175,8 @@ def test_emit_typed_dumps_datetime_as_iso() -> None:
     when = datetime(2026, 5, 10, 12, 0, 0, tzinfo=UTC)
 
     async def go() -> None:
-        with ldd_state_for_call():
-            await reg.emit_typed(ctx, TimedEvent(when=when, label="start"))
+        with ldd_state_for_call(ctx=ctx):
+            await reg.emit_typed(TimedEvent(when=when, label="start"))
 
     out = _capture_stderr(go)
     assert "TimedEvent" in out
