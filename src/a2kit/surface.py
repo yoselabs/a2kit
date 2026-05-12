@@ -13,9 +13,6 @@ from __future__ import annotations
 
 from enum import Flag, auto
 
-#: Metadata key under which the resolved Surface is stored on a tool's ``meta.extra``.
-SURFACE_META_KEY = "a2kit.surfaces"
-
 
 class Surface(Flag):
     """Transport surfaces a tool may be mounted on.
@@ -34,4 +31,4 @@ class Surface(Flag):
     ALL = CLI | MCP
 
 
-__all__ = ["SURFACE_META_KEY", "Surface"]
+__all__ = ["Surface"]

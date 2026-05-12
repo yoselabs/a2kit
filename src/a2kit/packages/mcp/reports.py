@@ -1,11 +1,11 @@
 """Stacked ``@reports(ReportT)`` decorator.
 
 Replaces the ``report=`` kwarg on the core verb decorator. Computes the
-pydantic JSON schema at decoration time and stamps two extra keys onto
-``A2KitMeta.extra``:
+pydantic JSON schema at decoration time and stamps two typed-extras
+attributes on ``A2KitMeta.extras``:
 
-- ``a2kit.report_type``  — the type itself (consumed at runtime by ctx.report)
-- ``a2kit.report_schema`` — JSON-serializable schema (consumed by adapters
+- ``report_type``   — the type itself (consumed at runtime by ctx.report)
+- ``report_schema`` — JSON-serializable schema (consumed by adapters
   that surface it on the wire / in ``--schema`` output).
 
 Pydantic is imported here, not in core, so ``import a2kit`` stays cold.
@@ -17,9 +17,6 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 
 from a2kit.metadata import stage_extra
-
-EXTRA_TYPE_KEY = "a2kit.report_type"
-EXTRA_SCHEMA_KEY = "a2kit.report_schema"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -37,12 +34,12 @@ def reports(report_type: type) -> Callable[[F], F]:
     schema = _compute_schema(report_type)
 
     def deco(fn: F) -> F:
-        stage_extra(fn, EXTRA_TYPE_KEY, report_type)
+        stage_extra(fn, "report_type", report_type)
         if schema is not None:
-            stage_extra(fn, EXTRA_SCHEMA_KEY, schema)
+            stage_extra(fn, "report_schema", schema)
         return fn
 
     return deco
 
 
-__all__ = ["EXTRA_SCHEMA_KEY", "EXTRA_TYPE_KEY", "reports"]
+__all__ = ["reports"]

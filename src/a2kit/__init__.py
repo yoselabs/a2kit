@@ -42,7 +42,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "ReportTypeNotDeclared": ("a2kit.exceptions", "ReportTypeNotDeclared"),
     "ReportTypeMismatch": ("a2kit.exceptions", "ReportTypeMismatch"),
     "HealthResult": ("a2kit.packages.health", "HealthResult"),
-    "Param": ("a2kit.params", "Param"),
 }
 
 
@@ -76,7 +75,6 @@ __all__ = [
     "HealthResult",
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
-    "Param",
     "ReportTypeMismatch",
     "ReportTypeNotDeclared",
     "Router",

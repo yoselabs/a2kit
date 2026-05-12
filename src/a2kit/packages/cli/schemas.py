@@ -112,9 +112,9 @@ def compute_schema(fn: Callable[..., Any], container: Any | None = None) -> dict
         out["tags"] = sorted(meta.tags)
         out["meta"] = {
             "verb": meta.verb,
-            "router": meta.extra.get("a2kit.router_slug"),
+            "router": meta.extras.router_slug,
         }
-        report_schema = meta.extra.get("a2kit.report_schema")
+        report_schema = meta.extras.report_schema
         if report_schema is not None:
             out["reportSchema"] = report_schema
     return out

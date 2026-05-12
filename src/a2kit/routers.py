@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-_ROUTER_SLUG_KEY = "a2kit.router_slug"
 _ROUTER_SUFFIX = "Router"
 
 
@@ -54,8 +53,8 @@ class Router:
         self._tools: list[Callable[..., Any]] = []
         for fn in self._collect_methods():
             meta = get_meta(fn)
-            if meta is not None:
-                meta.extra.setdefault(_ROUTER_SLUG_KEY, self.slug)
+            if meta is not None and meta.extras.router_slug is None:  # noqa: A2K-CORE-CLEAN
+                meta.extras.router_slug = self.slug  # noqa: A2K-CORE-CLEAN
             self._tools.append(fn)
 
     def _collect_methods(self) -> list[Callable[..., Any]]:

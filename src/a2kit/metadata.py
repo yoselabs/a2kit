@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from pydantic import BaseModel, ConfigDict
+
+from a2kit.surface import Surface  # noqa: TC001 — runtime ref for pydantic model field
+
 if TYPE_CHECKING:
     from mcp.types import ToolAnnotations
 
@@ -21,6 +25,28 @@ class ListViewSettings:
     default_fields: tuple[str, ...] = ()
     page_size: int | None = None
     selectable_fields: tuple[str, ...] = ()
+
+
+class A2KitMetaExtras(BaseModel):
+    """Typed open-extension slot on :class:`A2KitMeta`.
+
+    Verb decorators and routers stamp these fields directly via attribute
+    access. The names match what consumers used to read by string-key off
+    the legacy ``meta.extra`` dict (with the ``a2kit.`` prefix dropped).
+
+    ``arbitrary_types_allowed`` is required because ``report_type`` carries a
+    ``type`` object, ``surfaces`` carries the ``Surface`` flag-enum, and
+    ``list_view`` carries the frozen :class:`ListViewSettings` dataclass.
+    None of those round-trip through pydantic's native validation pipeline.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    report_type: type | None = None  # noqa: A2K-CORE-CLEAN
+    report_schema: dict[str, Any] | None = None  # noqa: A2K-CORE-CLEAN
+    router_slug: str | None = None  # noqa: A2K-CORE-CLEAN
+    surfaces: Surface | None = None  # noqa: A2K-CORE-CLEAN
+    list_view: ListViewSettings | None = None  # noqa: A2K-CORE-CLEAN
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +68,7 @@ class A2KitMeta:
     _annotations_kwargs: dict[str, Any] | None = None
     _annotations_explicit: Any = None
     context_param_name: str | None = None
-    extra: dict[str, Any] = field(default_factory=dict)
+    extras: A2KitMetaExtras = field(default_factory=A2KitMetaExtras)
 
     @property
     def annotations(self) -> ToolAnnotations:
@@ -90,14 +116,25 @@ def set_meta(fn: Any, meta: A2KitMeta) -> None:
     object.__setattr__(fn, META_ATTR, meta)
 
 
-def stage_extra(fn: Any, key: str, value: Any) -> None:
-    """Stage an extra key for the verb decorator to consume, or write directly if meta exists."""
+def stage_extra(fn: Any, attr_name: str, value: Any) -> None:
+    """Stage a typed-extras attribute for the verb decorator to consume.
+
+    ``attr_name`` is the attribute on :class:`A2KitMetaExtras` (e.g.
+    ``"report_type"``, ``"list_view"``). If meta is already stamped, the
+    attribute is set directly on the typed model; otherwise the
+    ``(attr_name, value)`` pair is queued on ``fn`` for ``_stamp`` to apply
+    when the verb decorator runs.
+
+    The sibling ``explicit-router-surface`` proposal removes this function;
+    until then it is the single bridge between verb-decorator-pre and
+    verb-decorator-post staging.
+    """
     meta = get_meta(fn)
     if meta is not None:
-        meta.extra[key] = value
+        setattr(meta.extras, attr_name, value)
         return
     pending: dict[str, Any] | None = getattr(fn, PENDING_EXTRA_ATTR, None)
     if pending is None:
         pending = {}
         object.__setattr__(fn, PENDING_EXTRA_ATTR, pending)
-    pending[key] = value
+    pending[attr_name] = value

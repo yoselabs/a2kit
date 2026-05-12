@@ -601,3 +601,33 @@ await info(ctx, "starting import", file=file, batch_size=batch_size)
 Citation: `src/a2kit/packages/ldd/__init__.py::log` (the dispatcher);
 `tests/test_context_surface.py::test_field_bearing_logging_is_only_on_ldd_not_on_ctx`
 (the architectural-invariant test that catches regressions).
+
+
+## 26. v0.31 — reaching into `A2KitMeta.extras` by string key
+
+Pre-v0.31, `A2KitMeta.extra` was a `dict[str, Any]` open extension slot.
+Verb decorators and routers wrote namespaced keys (`"a2kit.report_type"`,
+`"a2kit.router_slug"`, `"a2kit.list_view"`, `"a2kit.surfaces"`,
+`"a2kit.report_schema"`); consumers read them with `meta.extra.get(...)`.
+The open-dict shape carried no type guarantees and let typos go silent.
+
+The v0.31 surface is `A2KitMeta.extras: A2KitMetaExtras`, a pydantic
+`BaseModel` with named fields. Read and write by attribute access:
+
+```python
+# Before:
+report_type = meta.extra.get("a2kit.report_type")
+meta.extra["a2kit.router_slug"] = "tasks"
+
+# After:
+report_type = meta.extras.report_type
+meta.extras.router_slug = "tasks"
+```
+
+The wire-projection on `tool.meta["a2kit"]["extras"]` carries the same
+attribute names (without the `a2kit.` prefix). New extras land as new
+fields on `A2KitMetaExtras`, not as string keys.
+
+Citation: `src/a2kit/metadata.py::A2KitMetaExtras`;
+`src/a2kit/packages/lint/rules/purity.py::rule_extra_namespace`
+(enforces the attribute-name set).

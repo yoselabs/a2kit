@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.31.0 — unreleased
+
+Bundle of three breaking surfaces that ship together to keep the
+migration to a single upgrade event. Coordinated with sibling proposals
+`explicit-router-surface` and `lifespan-over-lifecycle-hooks` (their
+notes will append to this entry before release).
+
+### Breaking
+
+- **`a2kit.Param` removed.** The wrapper was a one-line forwarder to
+  `pydantic.Field`. Use `Annotated[T, pydantic.Field(description="...")]`
+  directly. Migration regex (positional form):
+  `s/a2kit\.Param\(("[^"]+")\)/pydantic.Field(description=\1)/`.
+  Keyword callers (`a2kit.Param(description="...", examples=[...])`)
+  rewrite to `pydantic.Field(description=..., examples=[...])` —
+  identity at the kwargs level. `description_of` (internal helper)
+  moves to `a2kit._field_introspect`.
+- **`A2KitMeta.extra: dict[str, Any]` → `A2KitMeta.extras: A2KitMetaExtras`.**
+  The open-dict extension slot becomes a typed pydantic `BaseModel`
+  with named fields (`report_type`, `report_schema`, `router_slug`,
+  `surfaces`, `list_view`). Read and write through attribute access;
+  the legacy `a2kit.<key>` string-key namespace is gone.
+  Migration:
+  `meta.extra.get("a2kit.report_type")` → `meta.extras.report_type`,
+  `meta.extra["a2kit.router_slug"] = slug` → `meta.extras.router_slug = slug`,
+  `meta.extra.get("a2kit.surfaces", Surface.ALL)` → `meta.extras.surfaces or Surface.ALL`.
+  The wire-projection on `tool.meta["a2kit"]["extras"]` carries the
+  same attribute names without the `a2kit.` prefix. The
+  `_EXTRA_DROP_FROM_WIRE` constant and the `_ROUTER_SLUG_KEY` /
+  `SURFACE_META_KEY` / `EXTRA_TYPE_KEY` / `EXTRA_SCHEMA_KEY` exports
+  delete with the dict shape.
+
+### Fixed
+
+- **`Container._param_cache` keyed by `id(factory)` was a latent
+  stale-cache bug** under CPython id recycling across nested test
+  scopes (same hazard documented for tool-signature caching in
+  `a2kit/signature.py`). Replaced with
+  `weakref.WeakKeyDictionary[Factory, list[_ParamSpec]]` keyed on the
+  live factory object. Internal-only; no migration.
+
 ## 0.30.0 — drop docstring → param description auto-pull — 2026-05-12
 
 ### Removed

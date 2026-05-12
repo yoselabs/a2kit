@@ -97,16 +97,16 @@ def test_listview_e2e_passthrough_for_non_list_dict_result() -> None:
 
 def test_list_view_settings_returns_none_for_missing_key() -> None:
     assert _list_view_settings({}) is None
-    assert _list_view_settings({"extra": {"a2kit.list_view": None}}) is None
+    assert _list_view_settings({"extras": {"list_view": None}}) is None
 
 
 def test_list_view_settings_returns_none_for_non_dict() -> None:
-    assert _list_view_settings({"extra": {"a2kit.list_view": "garbage"}}) is None
+    assert _list_view_settings({"extras": {"list_view": "garbage"}}) is None
 
 
 def test_list_view_settings_returns_dict_when_present() -> None:
     payload = {"default_fields": ("id",), "page_size": 5}
-    assert _list_view_settings({"extra": {"a2kit.list_view": payload}}) == payload
+    assert _list_view_settings({"extras": {"list_view": payload}}) == payload
 
 
 def test_project_row_passes_through_non_dict() -> None:

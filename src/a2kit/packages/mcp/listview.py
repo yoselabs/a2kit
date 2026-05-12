@@ -2,7 +2,7 @@
 
 Reads :class:`a2kit.metadata.ListViewSettings` (attached by the consolidated
 ``@a2kit.list_(...)`` decorator) from the registered tool's
-``meta["a2kit"]["extra"]["a2kit.list_view"]`` payload. If the tool author
+``meta["a2kit"]["extras"]["list_view"]`` payload. If the tool author
 declared ``default_fields`` and the result is a list of dicts, project each
 row down to those keys. If ``page_size`` is set, slice. Single objects,
 scalars, and non-list results pass through untouched.
@@ -20,8 +20,8 @@ from fastmcp.server.middleware import Middleware, MiddlewareContext
 
 
 def _list_view_settings(meta_a2kit: dict[str, Any]) -> dict[str, Any] | None:
-    extra = meta_a2kit.get("extra") if isinstance(meta_a2kit, dict) else None
-    lv = extra.get("a2kit.list_view") if isinstance(extra, dict) else None
+    extras = meta_a2kit.get("extras") if isinstance(meta_a2kit, dict) else None
+    lv = extras.get("list_view") if isinstance(extras, dict) else None
     if not lv:
         return None
     return lv if isinstance(lv, dict) else None

@@ -3,14 +3,19 @@
 - A2K-CORE-CLEAN — ``src/a2kit/*.py`` (excluding ``packages/``) MAY NOT reference
   feature-specific identifiers (``connection``, ``enricher``, ``list_view``,
   ``report_type``, ``report_schema``, ``router_slug``) by name.
-- A2K-EXTRA-NAMESPACE — keys written to ``A2KitMeta.extra`` must start with
-  ``a2kit.`` or a registered ``<package>.`` prefix.
+- A2K-EXTRA-NAMESPACE — attributes assigned through ``A2KitMeta.extras`` must
+  be one of the typed-extras field names declared on
+  :class:`a2kit.metadata.A2KitMetaExtras`.
+
+The post-R4 surface ``meta.extras.<attr> = ...`` no longer carries arbitrary
+string keys; the rule shifts from "namespace your key string" to "this
+attribute is declared on the typed extras model." Larger purity-rule rework
+lives in the sibling ``loud-degrade-everywhere`` proposal.
 """
 
 from __future__ import annotations
 
 import ast
-import re
 from typing import TYPE_CHECKING
 
 from a2kit.packages.lint.static import (
@@ -39,7 +44,16 @@ _FORBIDDEN_CORE_TOKENS = frozenset(
     }
 )
 
-_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]*\.")
+#: Permitted attribute names on ``A2KitMeta.extras`` / ``A2KitMetaExtras(...)``.
+_TYPED_EXTRAS_FIELDS = frozenset(
+    {
+        "report_type",
+        "report_schema",
+        "router_slug",
+        "surfaces",
+        "list_view",
+    }
+)
 
 
 def _is_core_path(filename: str) -> bool:
@@ -83,48 +97,48 @@ def rule_core_clean(tree: ast.AST, filename: str, source: str) -> Iterable[LintM
             A2K_CORE_CLEAN,
             filename,
             node,
-            f"core source MUST NOT reference feature identifier {ident!r}; move to a2kit.packages.* and attach via A2KitMeta.extra",
+            f"core source MUST NOT reference feature identifier {ident!r}; move to a2kit.packages.* and attach via A2KitMeta.extras",
         )
 
 
-def _extra_subscript_writes(tree: ast.AST) -> Iterable[tuple[ast.AST, str]]:
-    """Yield (node, key) for ``<x>.extra[<str-literal>] = ...`` assignments."""
+def _extras_attribute_writes(tree: ast.AST) -> Iterable[tuple[ast.AST, str]]:
+    """Yield (node, attr) for ``<x>.extras.<attr> = ...`` assignments.
+
+    Matches the post-R4 typed-extras write shape: an ``ast.Assign`` whose
+    target is an ``ast.Attribute`` chain ending in
+    ``Attribute(.value = Attribute(attr="extras"), attr=<name>)``.
+    """
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
         for tgt in node.targets:
-            if not isinstance(tgt, ast.Subscript):
+            if not isinstance(tgt, ast.Attribute):
                 continue
-            value = tgt.value
-            if not (isinstance(value, ast.Attribute) and value.attr == "extra"):
-                continue
-            slc = tgt.slice
-            if isinstance(slc, ast.Constant) and isinstance(slc.value, str):
-                yield tgt, slc.value
+            parent = tgt.value
+            if isinstance(parent, ast.Attribute) and parent.attr == "extras":
+                yield tgt, tgt.attr
 
 
-def _extra_dict_in_meta(tree: ast.AST) -> Iterable[tuple[ast.AST, str]]:
-    """Yield (node, key) for ``A2KitMeta(extra={<str-literal>: ...})`` constructor calls."""
+def _extras_kwarg_in_meta(tree: ast.AST) -> Iterable[tuple[ast.AST, str]]:
+    """Yield (node, kwarg) for ``A2KitMetaExtras(<kwarg>=...)`` constructor calls."""
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
         name = func.attr if isinstance(func, ast.Attribute) else (func.id if isinstance(func, ast.Name) else None)
-        if name != "A2KitMeta":
+        if name != "A2KitMetaExtras":
             continue
         for kw in node.keywords:
-            if kw.arg != "extra" or not isinstance(kw.value, ast.Dict):
+            if kw.arg is None:
                 continue
-            for k in kw.value.keys:
-                if isinstance(k, ast.Constant) and isinstance(k.value, str):
-                    yield k, k.value
+            yield kw, kw.arg
 
 
 def rule_extra_namespace(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
     noqa = parse_noqa(source)
-    sources = list(_extra_subscript_writes(tree)) + list(_extra_dict_in_meta(tree))
-    for node, key in sources:
-        if key.startswith("a2kit.") or _PREFIX_RE.match(key):
+    sources = list(_extras_attribute_writes(tree)) + list(_extras_kwarg_in_meta(tree))
+    for node, attr in sources:
+        if attr in _TYPED_EXTRAS_FIELDS:
             continue
         line = getattr(node, "lineno", 1)
         if suppressed(noqa, A2K_EXTRA_NAMESPACE, line):
@@ -133,7 +147,11 @@ def rule_extra_namespace(tree: ast.AST, filename: str, source: str) -> Iterable[
             A2K_EXTRA_NAMESPACE,
             filename,
             node,
-            f"A2KitMeta.extra key {key!r} must start with 'a2kit.' or a '<package>.' prefix",
+            (
+                f"A2KitMeta.extras attribute {attr!r} is not declared on "
+                "A2KitMetaExtras; add it to the typed model or stage via a "
+                "registered package extension"
+            ),
         )
 
 

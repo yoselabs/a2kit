@@ -246,7 +246,7 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
         }
         if has_default:
             opt_kwargs["default"] = default
-        from a2kit.params import description_of
+        from a2kit._field_introspect import description_of
 
         param_desc = description_of(annotated_hints.get(name))
         if param_desc:
@@ -326,7 +326,7 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
             call_kwargs["connection"] = kwargs["connection"]
 
         ctx_param = meta.context_param_name if meta is not None else None
-        report_type = meta.extra.get("a2kit.report_type") if meta is not None else None
+        report_type = meta.extras.report_type if meta is not None else None
 
         root_ctx = click.get_current_context().find_root()
         no_reports = bool(root_ctx.params.get("no_reports", False))
@@ -370,7 +370,7 @@ def _make_tool_command(fn: Callable[..., Any], app: App, router: Router | None =
 def _router_group(router: Router, app: App) -> click.Group:
     """Build a Click group containing one subcommand per tool on ``router``."""
     from a2kit.metadata import get_meta
-    from a2kit.surface import SURFACE_META_KEY, Surface
+    from a2kit.surface import Surface
 
     group = click.Group(
         name=router.slug,
@@ -379,7 +379,7 @@ def _router_group(router: Router, app: App) -> click.Group:
     for fn in router.tools():
         meta = get_meta(fn)
         if meta is not None:
-            tool_surfaces = meta.extra.get(SURFACE_META_KEY, Surface.ALL)
+            tool_surfaces = meta.extras.surfaces or Surface.ALL
             if Surface.CLI not in tool_surfaces:
                 continue
         group.add_command(_make_tool_command(fn, app, router=router))

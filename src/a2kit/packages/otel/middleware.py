@@ -79,8 +79,8 @@ class OTelMiddleware(Middleware):
         verb = meta_a2kit.get("verb")
         if isinstance(verb, str):
             attrs["a2kit.verb"] = verb
-        extra = meta_a2kit.get("extra") if isinstance(meta_a2kit, dict) else None
-        router = extra.get("a2kit.router_slug") if isinstance(extra, dict) else None
+        extras = meta_a2kit.get("extras") if isinstance(meta_a2kit, dict) else None
+        router = extras.get("router_slug") if isinstance(extras, dict) else None
         if isinstance(router, str):
             attrs["a2kit.router"] = router
         tags = meta_a2kit.get("tags")

@@ -55,9 +55,9 @@ def test_tools_registered_with_a2kit_meta(app: a2kit.App) -> None:
         assert a2kit_meta["verb"] == "read"
         assert a2kit_meta["tool_name"] == "ping"
         assert "read" in a2kit_meta["tags"]
-        assert a2kit_meta["extra"]["a2kit.router_slug"] == "sample"
+        assert a2kit_meta["extras"]["router_slug"] == "sample"
         # report_type is dropped from wire (non-JSON-serializable)
-        assert "a2kit.report_type" not in a2kit_meta["extra"]
+        assert "report_type" not in a2kit_meta["extras"]
         # annotations serialized via model_dump
         ann = a2kit_meta["annotations"]
         assert isinstance(ann, dict)
@@ -72,7 +72,7 @@ def test_list_view_settings_round_trip(app: a2kit.App) -> None:
         tools = {t.name: t for t in await server.list_tools()}
         rows = tools["rows"]
         a2kit_meta = (rows.meta or {})["a2kit"]
-        lv = a2kit_meta["extra"]["a2kit.list_view"]
+        lv = a2kit_meta["extras"]["list_view"]
         assert list(lv["default_fields"]) == ["id", "name"]
         assert lv["page_size"] == 2
 

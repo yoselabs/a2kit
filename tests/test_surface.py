@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import a2kit
 from a2kit.metadata import get_meta
-from a2kit.surface import SURFACE_META_KEY, Surface
+from a2kit.surface import Surface
 
 
 def test_flag_arithmetic_composes() -> None:
@@ -29,7 +29,7 @@ def test_default_decorator_surface_is_all() -> None:
 
     meta = get_meta(f)
     assert meta is not None
-    assert meta.extra[SURFACE_META_KEY] == Surface.ALL
+    assert meta.extras.surfaces == Surface.ALL
 
 
 def test_explicit_cli_only_preserved() -> None:
@@ -39,7 +39,7 @@ def test_explicit_cli_only_preserved() -> None:
 
     meta = get_meta(f)
     assert meta is not None
-    assert meta.extra[SURFACE_META_KEY] == Surface.CLI
+    assert meta.extras.surfaces == Surface.CLI
 
 
 def test_explicit_mcp_only_preserved() -> None:
@@ -49,7 +49,7 @@ def test_explicit_mcp_only_preserved() -> None:
 
     meta = get_meta(f)
     assert meta is not None
-    assert meta.extra[SURFACE_META_KEY] == Surface.MCP
+    assert meta.extras.surfaces == Surface.MCP
 
 
 def test_list_decorator_carries_surface() -> None:
@@ -59,7 +59,7 @@ def test_list_decorator_carries_surface() -> None:
 
     meta = get_meta(f)
     assert meta is not None
-    assert meta.extra[SURFACE_META_KEY] == Surface.CLI
+    assert meta.extras.surfaces == Surface.CLI
 
 
 def test_tool_decorator_carries_surface() -> None:
@@ -71,4 +71,4 @@ def test_tool_decorator_carries_surface() -> None:
 
     meta = get_meta(f)
     assert meta is not None
-    assert meta.extra[SURFACE_META_KEY] == Surface.MCP
+    assert meta.extras.surfaces == Surface.MCP

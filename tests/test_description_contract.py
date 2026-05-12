@@ -10,11 +10,11 @@ Gherkin scenarios (mirroring `specs/tool-description-contract/spec.md`):
     GIVEN a multi-paragraph docstring with **bold** and [link](url)
     THEN the click subcommand's help has bold→bold, link→"text (url)"
 
-  Scenario: a2kit.Param description forwarded to click option help
-    GIVEN url: Annotated[str, a2kit.Param(description="Absolute URL.")]
+  Scenario: pydantic.Field description forwarded to click option help
+    GIVEN url: Annotated[str, pydantic.Field(description="Absolute URL.")]
     THEN the click option's help is "Absolute URL."
 
-  Scenario: a2kit.Param description forwarded to schema (pydantic)
+  Scenario: pydantic.Field description forwarded to schema
     GIVEN the same annotation
     THEN typing.get_type_hints(fn, include_extras=True) carries a FieldInfo
          with description set
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import pydantic
 from click.testing import CliRunner
 
 import a2kit
@@ -85,8 +86,8 @@ class FetchRouter(a2kit.Router):
     async def fetch(
         self,
         *,
-        url: Annotated[str, a2kit.Param(description="Absolute http(s) URL to fetch.")],
-        timeout: Annotated[int, a2kit.Param(description="Per-call budget in seconds.")] = 30,
+        url: Annotated[str, pydantic.Field(description="Absolute http(s) URL to fetch.")],
+        timeout: Annotated[int, pydantic.Field(description="Per-call budget in seconds.")] = 30,
     ) -> dict[str, str]:
         """Fetch content from a URL.
 
@@ -133,7 +134,7 @@ def test_cli_param_description_forwarded() -> None:
 
 
 def test_param_returns_pydantic_field_info() -> None:
-    """`a2kit.Param(description=...)` returns a pydantic FieldInfo so MCP
+    """`pydantic.Field(description=...)` returns a pydantic FieldInfo so MCP
     schema generation (which delegates to pydantic) picks up the description
     automatically.
     """
@@ -141,7 +142,7 @@ def test_param_returns_pydantic_field_info() -> None:
 
     from pydantic.fields import FieldInfo
 
-    def fn(*, url: Annotated[str, a2kit.Param(description="The URL.")]) -> dict:
+    def fn(*, url: Annotated[str, pydantic.Field(description="The URL.")]) -> dict:
         return {}
 
     hints = typing.get_type_hints(fn, include_extras=True)

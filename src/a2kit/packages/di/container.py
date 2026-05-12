@@ -30,6 +30,7 @@ import asyncio
 import inspect
 import types
 import typing
+import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, get_origin
@@ -129,8 +130,14 @@ class Container:
         # Created lazily on first aresolve to avoid touching the running
         # loop at registration time.
         self._async_singleton_locks: dict[type, asyncio.Lock] = {}
-        # Cached parameter introspection per factory (keyed by id(factory)).
-        self._param_cache: dict[int, list[_ParamSpec]] = {}
+        # Cached parameter introspection per factory, keyed on the live factory
+        # object via a ``WeakKeyDictionary``. The id(factory)-keyed cache that
+        # preceded this would hit stale entries when CPython recycled function
+        # ids across nested test scopes — the same hazard documented for the
+        # tool-signature cache in ``a2kit/signature.py``'s design note.
+        # ``WeakKeyDictionary`` keys on the object identity and auto-vacates
+        # on GC, eliminating both the aliasing and the memory-growth modes.
+        self._param_cache: weakref.WeakKeyDictionary[Factory, list[_ParamSpec]] = weakref.WeakKeyDictionary()
         # Generic "wire-scoped string" registry. Consumer packages register
         # a scope name (e.g. ``"connection"``) and the types whose values
         # are populated from that wire string. The container holds the
@@ -521,12 +528,11 @@ class Container:
     # -- internal ------------------------------------------------------- #
 
     def _params_for(self, factory: Factory) -> list[_ParamSpec]:
-        key = id(factory)
-        cached = self._param_cache.get(key)
+        cached = self._param_cache.get(factory)
         if cached is not None:
             return cached
         params = _factory_params(factory)
-        self._param_cache[key] = params
+        self._param_cache[factory] = params
         return params
 
 

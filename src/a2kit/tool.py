@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from a2kit.exceptions import InvalidToolReturnTypeError
-from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, set_meta
+from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, A2KitMetaExtras, set_meta
 from a2kit.signature import find_context_param
-from a2kit.surface import SURFACE_META_KEY, Surface
+from a2kit.surface import Surface
 
 if TYPE_CHECKING:
     from mcp.types import ToolAnnotations
@@ -173,7 +173,8 @@ def _stamp(
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
     pending: dict[str, Any] = dict(getattr(fn, PENDING_EXTRA_ATTR, None) or {})
-    pending[SURFACE_META_KEY] = surfaces
+    pending["surfaces"] = surfaces  # noqa: A2K-CORE-CLEAN
+    extras = A2KitMetaExtras(**pending)
     meta = A2KitMeta(
         tool_name=resolved_name,
         verb=verb,
@@ -181,7 +182,7 @@ def _stamp(
         _annotations_kwargs=annotations_kwargs,
         _annotations_explicit=annotations_explicit,
         context_param_name=find_context_param(fn),
-        extra=pending,
+        extras=extras,
     )
     set_meta(fn, meta)
     if hasattr(fn, PENDING_EXTRA_ATTR):
@@ -376,7 +377,7 @@ def list_(
         )
         from a2kit.metadata import stage_extra
 
-        stage_extra(fn, "a2kit.list_view", settings)
+        stage_extra(fn, "list_view", settings)  # noqa: A2K-CORE-CLEAN
         return _stamp(
             fn,
             verb="list",

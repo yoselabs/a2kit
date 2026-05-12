@@ -251,26 +251,26 @@ fields a2kit doesn't model.
 
 ### Per-parameter descriptions
 
-`a2kit.Param("Absolute URL.")` (positional shorthand) or
-`a2kit.Param(description="...")` (keyword form) attaches schema metadata to
-direct kwargs (non-model parameters):
+Attach descriptions to direct kwargs via
+`Annotated[T, pydantic.Field(description="...")]`. This is the canonical
+pydantic pattern; a2kit reads the `FieldInfo` and forwards the description
+to both the MCP input schema and click `--option HELP`.
 
 ```python
 from typing import Annotated
 
+import pydantic
+
 @a2kit.read()
 async def fetch(
     *,
-    # Positional shorthand — cosmetically shorter for one-line descriptions.
-    url: Annotated[str, a2kit.Param("Absolute http(s) URL.")],
-    # Keyword form — clearer when the description is multi-line or you want
-    # to mix in other Field kwargs (examples=, ge=, le=, etc.).
+    url: Annotated[str, pydantic.Field(description="Absolute http(s) URL.")],
     include_links: Annotated[
         bool,
-        a2kit.Param(
+        pydantic.Field(
             description=(
                 "Include the extracted `links` array in the response. "
-                "Default False — links are a large share of payload bytes "
+                "Default False, links are a large share of payload bytes "
                 "on aggregator pages."
             ),
         ),
@@ -278,21 +278,13 @@ async def fetch(
 ) -> FetchResponse:
     """First line is the short description.
 
-    The full body is the long help — markdown stripped on CLI, intact on MCP.
+    The full body is the long help, markdown stripped on CLI, intact on MCP.
     """
 ```
 
-Long descriptions are intentional — MCP agents read them via `list_tools` to
-decide whether/how to call your tool. Use the kwarg form for prose;
-use the positional shorthand for short one-liners.
-
-Passing both the positional and the `description=` kwarg raises `TypeError`
-(Python's natural "got multiple values for argument 'description'").
-
-The description flows to both the MCP input schema (via pydantic) and
-click `--option HELP`. For kwargs that are Pydantic body models,
-`Field(description=...)` already works — `Param` is the sibling for
-direct kwargs.
+Long descriptions are intentional, MCP agents read them via `list_tools` to
+decide whether/how to call your tool. For kwargs that are Pydantic body
+models, `Field(description=...)` already works inside the model declaration.
 
 ### Health probe
 

@@ -230,7 +230,7 @@ class TestClient:
         # `_is_fastmcp_context` → CLI path → `ctx._emit("report", type_name, body)`.
         # The capturing context's `_emit` branch on `level == "report"` writes to
         # `self.reports`, so we don't need to monkey-patch the report function.
-        report_type = meta.extra.get("a2kit.report_type") if meta.extra else None
+        report_type = meta.extras.report_type
 
         with ldd_state_for_call(
             ctx=ctx,

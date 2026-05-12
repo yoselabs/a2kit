@@ -24,11 +24,15 @@ from a2kit.metadata import A2KitMeta, get_meta
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
 
-_EXTRA_DROP_FROM_WIRE = ("a2kit.report_type",)
-
 
 def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
-    """JSON-serializable projection of ``A2KitMeta`` for ``tool.meta`` wire output."""
+    """JSON-serializable projection of ``A2KitMeta`` for ``tool.meta`` wire output.
+
+    ``meta.extras`` is dumped via pydantic's ``model_dump(mode="json")``;
+    ``report_type`` (a ``type`` object, not JSON-safe) is excluded by name.
+    The typed model is never mutated by this projection — wire serialization
+    is the wire layer's job.
+    """
     d = asdict(meta)
     d["tags"] = sorted(meta.tags)
     # Skip the internal annotation-storage fields; project the wire shape via
@@ -37,13 +41,10 @@ def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
     d.pop("_annotations_kwargs", None)
     d.pop("_annotations_explicit", None)
     d["annotations"] = meta.annotations_as_dict()
-    extra = dict(d.get("extra") or {})
-    for key in _EXTRA_DROP_FROM_WIRE:
-        extra.pop(key, None)
-    list_view = extra.get("a2kit.list_view")
-    if list_view is not None and hasattr(list_view, "__dataclass_fields__"):
-        extra["a2kit.list_view"] = asdict(list_view)
-    d["extra"] = extra
+    # ``asdict`` on a frozen dataclass walks fields but does not descend into
+    # pydantic models — d["extras"] is the BaseModel instance itself. Replace
+    # it with a JSON-safe dump, excluding ``report_type`` (a ``type`` object).
+    d["extras"] = meta.extras.model_dump(mode="json", exclude={"report_type"})
     return d
 
 
@@ -279,7 +280,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 
     container = app.container() if hasattr(app, "container") else None
     dispatch_hook = app.dispatch_hook() if hasattr(app, "dispatch_hook") else None
 
-    from a2kit.surface import SURFACE_META_KEY, Surface
+    from a2kit.surface import Surface
     from a2kit.tool import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
     for fn in app.tools():
@@ -287,7 +288,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 
         if meta is None:
             continue
 
-        tool_surfaces = meta.extra.get(SURFACE_META_KEY, Surface.ALL)
+        tool_surfaces = meta.extras.surfaces or Surface.ALL
         if Surface.MCP not in tool_surfaces:
             continue
 
@@ -299,7 +300,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 
             wrapped = _wrap_with_ldd_state(
                 wrapped,
                 ctx_param_name=meta.context_param_name,
-                report_type=meta.extra.get("a2kit.report_type"),
+                report_type=meta.extras.report_type,
                 tool_name=meta.tool_name,
                 reports_enabled=reports_enabled,
                 events_enabled=events_enabled,
