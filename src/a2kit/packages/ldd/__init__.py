@@ -432,21 +432,25 @@ async def log(
 
 async def info(__msg_or_instance: Any, /, **fields: Any) -> None:
     """``a2kit.ldd.log("info", ...)`` shorthand."""
+    _require_ambient_state("a2kit.ldd.info")
     await log("info", __msg_or_instance, **fields)
 
 
 async def warning(__msg_or_instance: Any, /, **fields: Any) -> None:
     """``a2kit.ldd.log("warning", ...)`` shorthand."""
+    _require_ambient_state("a2kit.ldd.warning")
     await log("warning", __msg_or_instance, **fields)
 
 
 async def error(__msg_or_instance: Any, /, **fields: Any) -> None:
     """``a2kit.ldd.log("error", ...)`` shorthand."""
+    _require_ambient_state("a2kit.ldd.error")
     await log("error", __msg_or_instance, **fields)
 
 
 async def debug(__msg_or_instance: Any, /, **fields: Any) -> None:
     """``a2kit.ldd.log("debug", ...)`` shorthand."""
+    _require_ambient_state("a2kit.ldd.debug")
     await log("debug", __msg_or_instance, **fields)
 
 

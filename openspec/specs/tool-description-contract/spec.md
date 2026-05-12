@@ -77,9 +77,17 @@ Each entry within the section has the shape
 Continuation lines (indented further than the entry line) SHALL be
 joined with a single space.
 
-The resolved descriptions SHALL be stored on `A2KitMeta` (e.g. a
-`param_descriptions: Mapping[str, str]` field) so that no docstring
-parsing happens per request.
+The resolved descriptions SHALL be stored on `A2KitMeta` as a
+`param_descriptions: Mapping[str, str]` field so that no docstring
+parsing happens per request and middleware can read the descriptions
+without re-walking the function signature. The descriptions MAY also
+be mirrored onto `fn.__annotations__` (carried inside the existing
+`Annotated[...]` metadata for each parameter) so that downstream MCP
+schema generators that read annotations directly continue to see the
+descriptions. `A2KitMeta.param_descriptions` is the authoritative
+surface; the annotation mirror is an implementation detail that the
+spec permits but does not require any specific schema generator to
+honour.
 
 #### Scenario: Args section becomes parameter descriptions
 
@@ -137,6 +145,16 @@ parsing happens per request.
 
 - **GIVEN** a tool whose docstring documents `ctx`, `self`, `*args`, or `**kwargs`
 - **THEN** those entries SHALL be ignored even if present in the `Args:` block
+
+#### Scenario: Descriptions are stored on `A2KitMeta`
+
+- **GIVEN** the `fetch` tool from the "Args section becomes parameter descriptions" scenario above
+- **WHEN** the tool's `A2KitMeta` is read after decoration
+- **THEN** `meta.param_descriptions` is a `Mapping[str, str]` with
+  `meta.param_descriptions["url"] == "The absolute http(s) URL to fetch."`
+- **AND** `meta.param_descriptions["timeout"] == "Seconds to wait before giving up."`
+- **AND** reading `meta.param_descriptions` SHALL NOT re-parse the docstring
+  (the field is populated once at decoration time)
 
 ### Requirement: Explicit Param or Field description wins over the docstring
 

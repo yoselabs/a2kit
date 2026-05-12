@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.29.1 — round-5/6 cleanup bundle — 2026-05-12
+
+Two paired cleanups against round-5/6 contracts (no new features).
+
+### Added
+
+- `Container._override(type_, instance)` — test-seam method owning the
+  three-attribute mutation (`_providers`, `_singletons`,
+  `_async_factories`). `TestClient.override` delegates here, closing
+  three `# noqa: SLF001` leaks.
+- `A2KitMeta.param_descriptions: Mapping[str, str]` — Google-style
+  `Args:` resolution is now stored on meta in addition to the existing
+  `fn.__annotations__` mutation. Authoritative source for downstream
+  middleware / introspection tooling.
+
+### Changed
+
+- LDD ctx binding is uniform across MCP / CLI / TestClient: none of
+  them synthesize a fake context when a tool omits `ctx`. A no-ctx
+  tool that calls `await a2kit.ldd.event(...)` raises
+  `AmbientContextMissing` identically on every dispatcher (previously
+  worked silently on CLI and TestClient).
+- LDD shorthands (`a2kit.ldd.info/warning/error/debug`) surface their
+  own name in `AmbientContextMissing` instead of the delegated-to
+  `a2kit.ldd.log`.
+- `_docstring.extract_param_descriptions` and the `get_type_hints`
+  call in `_augment_annotations_from_docstring` log one WARN per
+  qualname on parse / resolution failure (was silent
+  `contextlib.suppress(Exception)`). Decoration still never raises.
+- OPERATIONAL_CONTRACTS Q8 reworded: "active dispatch" is the
+  conjunction of an `ldd_state_for_call` scope **and** a declared ctx
+  param. Lazy singleton factories instantiated during dispatch may
+  call LDD primitives (new paragraph + example).
+- README testing section updated: `TestClient.override`,
+  `call_wire`, async-singleton factories, ambient-LDD section,
+  docstring-pull note. Migration bullet points at `TestClient.override`
+  as the preferred test path.
+
 ## 0.29.0 — a2web round-5 + round-6 ergonomics — 2026-05-12
 
 Five changes closing every open ergonomic gap from a2web feedback

@@ -32,13 +32,13 @@ def _run(coro: asyncio.coroutines) -> None:
     ("expected_fragment", "call"),
     [
         ("a2kit.ldd.event", lambda: ldd_event("x")),
-        # All four shorthands delegate to `log`; the inner frame is the
-        # one that raises, so they share its fn_name in the message.
         ("a2kit.ldd.log", lambda: ldd_log("info", "x")),
-        ("a2kit.ldd.log", lambda: ldd_info("x")),
-        ("a2kit.ldd.log", lambda: ldd_warning("x")),
-        ("a2kit.ldd.log", lambda: ldd_error("x")),
-        ("a2kit.ldd.log", lambda: ldd_debug("x")),
+        # Each shorthand surfaces its own name in the error so the trace
+        # points at the actual call site rather than the inner `log` frame.
+        ("a2kit.ldd.info", lambda: ldd_info("x")),
+        ("a2kit.ldd.warning", lambda: ldd_warning("x")),
+        ("a2kit.ldd.error", lambda: ldd_error("x")),
+        ("a2kit.ldd.debug", lambda: ldd_debug("x")),
     ],
 )
 def test_primitive_outside_dispatch_raises_ambient_missing(expected_fragment: str, call) -> None:
@@ -69,7 +69,7 @@ def test_report_outside_dispatch_raises() -> None:
 
 class _PingRouter(a2kit.Router):
     @a2kit.read()
-    async def ping(self) -> dict[str, str]:
+    async def ping(self, ctx: a2kit.ToolContext) -> dict[str, str]:
         await ldd_info("hello", k="v")
         return {"ok": "yes"}
 

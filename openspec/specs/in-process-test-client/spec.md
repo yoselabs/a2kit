@@ -114,9 +114,11 @@ Overrides SHALL cover both DI registration paths:
 - types registered via `app.singleton(T, ...)` (cached singletons),
 - types registered via `app.provide(T, ...)` (per-call providers).
 
-Overrides SHALL also apply when `type_` was not previously registered (the fake is registered fresh for the duration of the session).
+Overrides SHALL also apply when `type_` was not previously registered (the fake is registered fresh for the duration of the session). Overrides SHALL also clear any async-factory marker on `type_` so synchronous resolve paths return the fake without blocking.
 
 Calling `override` more than once for the same `type_` within one session SHALL apply last-write-wins; only one restore happens at exit (to the pre-session state, not to intermediate values).
+
+The implementation SHALL delegate the three-attribute mutation to `Container._override(type_, fake)` (per the di-container-package capability) — it SHALL NOT reach into `_providers`, `_singletons`, or `_async_factories` directly. The TestClient retains responsibility for capturing the pre-session snapshot (via `Container._snapshot()`) on first call within a session and for restoring it on `__aexit__` (via `Container._restore(snapshot)`).
 
 #### Scenario: Override replaces a singleton-registered dependency
 
@@ -162,6 +164,11 @@ Calling `override` more than once for the same `type_` within one session SHALL 
 - **GIVEN** TestClient `c1` is inside an `async with` block on `app` and has called `c1.override(T, fake)`
 - **WHEN** a second TestClient `c2` enters `async with a2kit.testing.client(app) as c2:` and calls `c2.override(T, other_fake)`
 - **THEN** `c2.override(...)` raises `RuntimeError` indicating an override session is already active on this App
+
+#### Scenario: TestClient.override delegates to Container._override
+
+- **WHEN** the source of `TestClient.override` is read after this change
+- **THEN** the body delegates the three-attribute mutation to `container._override(type_, fake)` and contains no `# noqa: SLF001` lines reaching into `_providers`, `_singletons`, or `_async_factories` directly
 
 ### Requirement: Wire-encoded payload capture via call_wire
 

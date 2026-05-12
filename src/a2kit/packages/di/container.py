@@ -485,6 +485,18 @@ class Container:
 
     # -- test seam: snapshot/restore for TestClient.override -------------- #
 
+    def _override(self, type_: type, instance: object) -> None:
+        """Pin ``type_`` to ``instance`` across all resolution paths.
+
+        Test-only seam owning the three-attribute mutation: install a
+        constant factory in `_providers`, cache `instance` in
+        `_singletons`, and clear any async-factory marker on `type_` so
+        sync `resolve` no longer raises. Idempotent and feature-agnostic.
+        """
+        self._providers[type_] = lambda: instance
+        self._singletons[type_] = instance
+        self._async_factories.discard(type_)
+
     def _snapshot(self) -> _ContainerSnapshot:
         """Capture the registration + cache state for later restore.
 

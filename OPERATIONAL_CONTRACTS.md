@@ -324,12 +324,40 @@ register it through an internal builder (see
 their `ctx` from an ambient `ContextVar` set by the dispatcher for the
 duration of one tool invocation. They take NO `ctx` argument.
 
-Calling any of them outside an active dispatch — from a lifecycle
-hook (`@on_startup`, `@on_shutdown`), a singleton/provider factory,
-module-level code, or any pre-dispatch context — raises
-`a2kit.exceptions.AmbientContextMissing`. The error names the
-primitive and points at the test seam. **There is no silent no-op
-fallback**; fail loud, fix the call site.
+"Active dispatch" is the conjunction of two conditions: a tool body
+is currently running under an `ldd_state_for_call(ctx=...)` scope
+**and** the tool declared a `ctx: ToolContext` parameter that the
+dispatcher bound. Either missing — calling from module-level code,
+`@on_startup`, `@on_shutdown`, any other pre-dispatch context, or
+from inside a tool that omitted its `ctx` declaration — raises
+`a2kit.exceptions.AmbientContextMissing`.
+
+Lazy singleton factories instantiated **during** a dispatch are
+reachable from the active scope and may call LDD primitives. The
+ContextVar is set before the dispatcher resolves DI kwargs, so a
+factory whose first resolution happens on a tool's call inherits the
+ambient ctx:
+
+```python
+async def make_pool() -> Pool:
+    await a2kit.ldd.info("opening pool")  # legal: dispatch in flight
+    return Pool(...)
+
+app.singleton(Pool, make_pool)
+```
+
+What's still illegal is the same factory invoked from `@on_startup`
+(pre-dispatch) or from a warm-up script (no dispatch in flight at all). The shorthands surface
+their own name (`a2kit.ldd.info`, `…warning`, `…error`, `…debug`)
+in the error so the trace points at the actual call site rather than
+the delegated-to `a2kit.ldd.log`. The error names the primitive and
+points at the test seam. **There is no silent no-op fallback**; fail
+loud, fix the call site.
+
+The failure mode is uniform across all three transports (MCP / CLI /
+TestClient): none of them synthesize a fake context when the tool
+omits `ctx`. A no-ctx tool that calls `await a2kit.ldd.event(...)`
+raises identically on every dispatcher.
 
 Tests that want to exercise LDD primitives directly (without a full
 tool dispatch) wrap with the `ldd_state_for_call(ctx=stub, ...)`

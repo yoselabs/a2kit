@@ -17,13 +17,16 @@ parse anomalies return an empty mapping.
 
 from __future__ import annotations
 
-import contextlib
 import inspect
+import logging
 import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+_log = logging.getLogger(__name__)
+_WARN_ONCE: set[str] = set()
 
 _HEADER_RE = re.compile(r"^(args|arguments|parameters)\s*:\s*$", re.IGNORECASE)
 _STOP_RE = re.compile(
@@ -33,18 +36,25 @@ _STOP_RE = re.compile(
 _ENTRY_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s*:\s*(?P<desc>.*)$")
 
 
-def extract_param_descriptions(doc: str | None) -> Mapping[str, str]:
+def extract_param_descriptions(doc: str | None, *, fn_name: str | None = None) -> Mapping[str, str]:
     """Return ``{param_name: description}`` parsed from a Google-style docstring.
 
     Returns an empty mapping if ``doc`` is None/empty, if no ``Args:``
-    section is found, or on any parse anomaly. Never raises.
+    section is found, or on any parse anomaly. Never raises. Parse
+    anomalies are logged at WARN level, deduped by ``fn_name`` (when
+    supplied) so each offender produces at most one line per process.
     """
     if not doc:
         return {}
-    with contextlib.suppress(Exception):
+    try:
         cleaned = inspect.cleandoc(doc)
         return _parse(cleaned)
-    return {}
+    except Exception as exc:  # noqa: BLE001 -- broad catch is intentional: parser must never raise
+        key = fn_name or "<anonymous>"
+        if key not in _WARN_ONCE:
+            _WARN_ONCE.add(key)
+            _log.warning("extract_param_descriptions failed for %s: %s", key, exc)
+        return {}
 
 
 def _parse(doc: str) -> dict[str, str]:

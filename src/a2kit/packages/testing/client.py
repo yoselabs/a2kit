@@ -156,10 +156,7 @@ class TestClient:
         container = self.app.container()
         if self._override_snapshot is None:
             self._override_snapshot = container._snapshot()  # noqa: SLF001 -- test seam
-        container._providers[type_] = lambda: fake  # noqa: SLF001
-        container._singletons[type_] = fake  # noqa: SLF001
-        # An async-factory marker would block sync resolve; clear it.
-        container._async_factories.discard(type_)  # noqa: SLF001
+        container._override(type_, fake)  # noqa: SLF001 -- test seam
 
     def tools(self) -> list[ToolDescriptor]:
         """Return tool descriptors, sorted by name."""
@@ -215,12 +212,14 @@ class TestClient:
         fn = descriptor.fn
         meta = _meta_for(fn)
 
-        ctx = _CapturingContext(
-            events=self.events,
-            progress=self.progress,
-            logs=self.logs,
-            reports=self.reports,
-        )
+        ctx: _CapturingContext | None = None
+        if meta.context_param_name:
+            ctx = _CapturingContext(
+                events=self.events,
+                progress=self.progress,
+                logs=self.logs,
+                reports=self.reports,
+            )
         kwargs_for_call: dict[str, Any] = dict(kwargs)
         if connection is not None and "connection" not in kwargs_for_call:
             kwargs_for_call["connection"] = connection

@@ -495,6 +495,69 @@ Provider override is just `app.provide(T, fake)` — last-write-wins. No
 `dependency_overrides` map, no `make_test_app` helper. The `app` pytest
 fixture in `a2kit.packages.testing` returns a fresh `a2kit.App("test")`.
 
+### Full-dispatch tests with `a2kit.testing.client`
+
+For tests that should exercise the real dispatcher (DI resolution,
+schema, ctx wiring, formatter), use `a2kit.testing.client(app)`:
+
+```python
+from a2kit.testing import client
+
+
+async def test_full_dispatch() -> None:
+    async with client(app) as c:
+        # Override a DI binding for the session; restored on exit.
+        c.override(TrackerStore, FakeStore())
+        # invoke → Python value
+        value = await c.invoke("tasks.get", id="t1")
+        # call_wire → formatter-encoded payload (JSON / TSV / page-tsv)
+        wire = await c.call_wire("tasks.get", id="t1")
+```
+
+`c.invoke` returns the tool's Python return value. `c.call_wire` runs
+the same call through the formatter the production transports use, so
+`Page[T]`, TSV-encoded lists, and other type-driven format choices can
+be pinned without spawning a server. Use `invoke` for value-shape
+assertions, `call_wire` when the assertion needs the wire shape.
+
+`c.override(T, fake)` is the recommended override path for full-dispatch
+tests: it pins both the singleton cache and the per-call provider for
+`T`, and restores the container state on session exit. It delegates to
+the same `app.provide(T, fake)` last-write-wins mechanism for direct-
+construction tests above.
+
+#### Async singleton factories
+
+`app.singleton(T, factory)` accepts an `async def` factory. First
+resolution awaits inside the dispatcher (or `@on_startup`); subsequent
+resolves return the cached value:
+
+```python
+async def build_pool(settings: AppSettings) -> Pool:
+    pool = await Pool.open(settings.dsn)
+    return pool
+
+app.singleton(Pool, build_pool)
+```
+
+#### Ambient LDD context
+
+`a2kit.ldd.event` / `report` / `log` / `info` / `warning` / `error` /
+`debug` read their `ctx` from a `ContextVar` set by the dispatcher.
+Tool authors declare `ctx: a2kit.ToolContext` on the tool signature
+and call the primitives with no `ctx` argument. Calling a primitive
+outside an active dispatch (lifecycle hook, module-level code, or a
+tool that omitted `ctx`) raises
+`a2kit.exceptions.AmbientContextMissing`. See
+[OPERATIONAL_CONTRACTS.md](OPERATIONAL_CONTRACTS.md) Q8.
+
+#### Param descriptions from docstrings
+
+Google-style `Args:` blocks become MCP parameter `description` fields
+and CLI `--help` option strings automatically. Explicit
+`Annotated[T, a2kit.Param(description=...)]` always wins. See the
+`tool-description-contract` spec under `openspec/specs/`.
+
 ## Migration from v0.x
 
 See [CHANGELOG.md](CHANGELOG.md) for the v0.20 break notes. From the
@@ -510,7 +573,7 @@ v0.19 / `v1-thin-core` intermediate shapes:
 - `def __init__(self, get_store: GetStore)` factory closure → declare `store: TrackerStore` directly on tool methods; `app.provide(TrackerStore)` registers the class
 - `name = "tasks"` ceremonial line → derived from class name automatically (`class TasksRouter` → `"tasks"`); explicit `name = "..."` still wins
 - `from a2kit.exceptions import WriteNotAllowed` → `from a2kit.packages.connections.exceptions import WriteNotAllowed`
-- `make_test_app(routers, overrides=...)` → construct App + routers directly; override providers via `app.provide(T, fake)` (last-write-wins)
+- `make_test_app(routers, overrides=...)` → construct App + routers directly; for full-dispatch tests prefer `a2kit.testing.client(app)` with `c.override(T, fake)`, or use `app.provide(T, fake)` for direct-construction tests (last-write-wins)
 - `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage; `add_cli(connections_cli(ConfigT))` auto-installs the `ConfigT` provider
 
 See [ANTIPATTERNS.md](ANTIPATTERNS.md) for a2kit-specific patterns to avoid.
