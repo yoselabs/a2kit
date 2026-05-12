@@ -288,6 +288,35 @@ chunk serialization, backpressure) and on the MCP transport layer.
 For visibility-during-execution use cases, the heartbeat + add_sink
 pattern above is the canonical answer.
 
+## Q7. The `_meta.*` tool namespace
+
+The `_meta.*` tool-name prefix is **closed** — reserved for
+framework-internal protocol tools (currently `_meta.health`,
+registered via `App(name, health_tool=True)`). User-registered
+tools with this prefix are rejected, both at decoration time
+(`@a2kit.read(name="_meta.foo")`) and at server-build time
+(metadata-mutation paths); the error names the reserved namespace.
+
+The namespace is split deliberately across transports:
+
+- **MCP transport.** `_meta.*` tools are excluded from default
+  `list_tools` AND not callable via `call_tool`. FastMCP 3's
+  visibility transform (`server.disable(tags={"_meta"})`) hides
+  them on both axes. Agent-facing clients see a clean tool
+  surface and cannot accidentally invoke diagnostic tools.
+- **CLI transport.** `_meta.*` tools surface under a `_meta`
+  subcommand group in `<app> --help` and are callable
+  (`<app> _meta health`, or the shorthand `<app> health`).
+  The CLI runner iterates `app.tools()` directly and never
+  consults the MCP visibility filter, so this is the supported
+  surface for human operators driving health checks and
+  diagnostics.
+
+To extend the framework's `_meta.*` surface, add the tool name
+to `_BUILTIN_RESERVED_TOOL_NAMES` in `src/a2kit/tool.py` and
+register it through an internal builder (see
+`packages/health/` for the pattern).
+
 ## See also
 
 - `CHANGELOG.md` — release-by-release history of behavioral changes.

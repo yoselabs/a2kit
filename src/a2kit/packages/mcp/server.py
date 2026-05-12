@@ -276,6 +276,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 
     dispatch_hook = app.dispatch_hook() if hasattr(app, "dispatch_hook") else None
 
     from a2kit.surface import SURFACE_META_KEY, Surface
+    from a2kit.tool import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
     for fn in app.tools():
         meta = get_meta(fn)
@@ -302,12 +303,18 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 
         if app_debug:
             wrapped = _wrap_with_debug_traceback(wrapped)
 
-        # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — keep them
-        # out of agent-facing `list_tools` by tagging with `_meta` and disabling
-        # them at registration; clients can still invoke them by name.
-        from a2kit.tool import _RESERVED_TOOL_NAME_PREFIX
-
+        # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — tagged so
+        # the post-loop `server.disable(tags={"_meta"})` filter excludes them
+        # from default `list_tools` while keeping them callable by name.
         is_meta = meta.tool_name.startswith(_RESERVED_TOOL_NAME_PREFIX)
+        if is_meta and meta.tool_name not in _BUILTIN_RESERVED_TOOL_NAMES:
+            msg = (
+                f"tool {meta.tool_name!r} uses reserved namespace "
+                f"{_RESERVED_TOOL_NAME_PREFIX!r}; this prefix is reserved for "
+                "built-in protocol-meta tools (e.g. `_meta.health`). See "
+                "OPERATIONAL_CONTRACTS.md → 'The _meta.* tool namespace'."
+            )
+            raise ValueError(msg)
         tool_tags = {*meta.tags, "_meta"} if is_meta else set(meta.tags)
         tool = FunctionTool.from_function(
             wrapped,
@@ -316,9 +323,12 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 
             annotations=meta.annotations,
             meta={"a2kit": _meta_to_dict(meta)},
         )
-        if is_meta:
-            tool.disable()
         server.add_tool(tool)
+
+    # Hide `_meta.*` tools from default `list_tools` output via FastMCP 3's
+    # visibility-transform API. Selector is the `"_meta"` tag stamped above,
+    # so future `_meta.*` additions inherit the rule.
+    server.disable(tags={"_meta"})
 
     # Built-in middleware first; user-attached middlewares (via add_mcp_middleware) after.
     server.add_middleware(ListViewMiddleware())

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.28.1 — FastMCP 3 `_meta` disable fix — 2026-05-12
+
+### Fixed
+
+- **`build_mcp_server` no longer crashes on FastMCP ≥ 3.0.** The
+  per-tool `tool.disable()` call site was removed in FastMCP 3 and
+  raised `NotImplementedError` on every `App(health_tool=True)`
+  serve. Replaced with a single post-loop
+  `server.disable(tags={"_meta"})` using FastMCP 3's visibility
+  transform API; the `_meta` tag is already stamped on every
+  `_meta.*` tool, so future additions inherit the rule.
+
+### Changed
+
+- `_meta.*` tools are now also rejected at `build_mcp_server`
+  time (not just at decoration), closing the metadata-mutation
+  bypass.
+
+### Documentation
+
+- `OPERATIONAL_CONTRACTS.md` Q7: the `_meta.*` tool namespace
+  contract (closed namespace, MCP-hidden / CLI-visible split,
+  rejection rule).
+
 ## 0.28.0 — a2kit.ldd.log primitive (Context-shape divergence repair) — 2026-05-12
 
 `ctx.info("msg", k=v)` — the kwargs-emit pattern shown in
