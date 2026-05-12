@@ -75,6 +75,10 @@ class App:
         from a2kit.packages.health import HealthRegistry
 
         self._health: HealthRegistry = HealthRegistry(enabled=health_tool)
+        # Test-seam: TestClient sessions claim this slot via __aenter__ so
+        # overlapping sessions on the same App fail loud. Production code
+        # never touches this attribute.
+        self._test_override_owner: Any = None
         if health_tool:
             self._install_health_tool()
 

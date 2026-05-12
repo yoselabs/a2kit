@@ -31,6 +31,7 @@ import inspect
 import types
 import typing
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, TypeVar, get_origin
 
 T = TypeVar("T")
@@ -482,6 +483,29 @@ class Container:
     def has_any_async_singletons(self) -> bool:
         return bool(self._async_factories)
 
+    # -- test seam: snapshot/restore for TestClient.override -------------- #
+
+    def _snapshot(self) -> _ContainerSnapshot:
+        """Capture the registration + cache state for later restore.
+
+        Test-only seam — `TestClient.override` uses this to roll back
+        DI mutations at the end of a test session. Hot path resolution
+        never consults a snapshot.
+        """
+        return _ContainerSnapshot(
+            providers=dict(self._providers),
+            singletons=dict(self._singletons),
+            async_factories=set(self._async_factories),
+        )
+
+    def _restore(self, snapshot: _ContainerSnapshot) -> None:
+        """Restore the registration + cache state from a prior snapshot."""
+        self._providers = dict(snapshot.providers)
+        self._singletons = dict(snapshot.singletons)
+        self._async_factories = set(snapshot.async_factories)
+        # Locks are rebuilt lazily; drop any held by overridden types.
+        self._async_singleton_locks = {t: lock for t, lock in self._async_singleton_locks.items() if t in self._async_factories}
+
     # -- internal ------------------------------------------------------- #
 
     def _params_for(self, factory: Factory) -> list[_ParamSpec]:
@@ -502,6 +526,15 @@ class _Unresolved:
 
 
 _UNRESOLVED: Any = _Unresolved()
+
+
+@dataclass(frozen=True, slots=True)
+class _ContainerSnapshot:
+    """Opaque snapshot of container state for the test-override seam."""
+
+    providers: dict[type, Factory] = field(default_factory=dict)
+    singletons: dict[type, Any] = field(default_factory=dict)
+    async_factories: set[type] = field(default_factory=set)
 
 
 class _Missing:

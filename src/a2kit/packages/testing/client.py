@@ -22,7 +22,7 @@ Example::
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from a2kit.packages.cli.context import StderrToolContext
 from a2kit.packages.formatter import FormatHint, format_response
@@ -95,6 +95,9 @@ class _CapturingContext(StderrToolContext):
             self._logs.append(record)
 
 
+_OverrideT = TypeVar("_OverrideT")
+
+
 class TestClient:
     """In-process test client — capture-only ToolContext, full dispatcher."""
 
@@ -105,8 +108,18 @@ class TestClient:
         self.logs: list[dict[str, Any]] = []
         self.reports: list[dict[str, Any]] = []
         self._lifecycle_started = False
+        self._override_snapshot: Any = None
 
     async def __aenter__(self) -> TestClient:
+        owner = getattr(self.app, "_test_override_owner", None)
+        if owner is not None:
+            msg = (
+                "Another TestClient session is already holding override "
+                "ownership on this App. TestClient sessions are not "
+                "reentrant — wrap them sequentially, not concurrently."
+            )
+            raise RuntimeError(msg)
+        self.app._test_override_owner = self  # noqa: SLF001 -- test seam owner flag
         if self.app.has_lifecycle_handlers() and not self.app._lifecycle_started:  # noqa: SLF001
             from a2kit.app import dispatch_startup
 
@@ -116,11 +129,37 @@ class TestClient:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        if self._lifecycle_started:
-            from a2kit.app import dispatch_shutdown
+        try:
+            if self._lifecycle_started:
+                from a2kit.app import dispatch_shutdown
 
-            await dispatch_shutdown(self.app)
-            self.app._lifecycle_started = False  # noqa: SLF001 -- reset for re-entry
+                await dispatch_shutdown(self.app)
+                self.app._lifecycle_started = False  # noqa: SLF001 -- reset for re-entry
+            if self._override_snapshot is not None:
+                self.app.container()._restore(self._override_snapshot)  # noqa: SLF001 -- test seam
+                self._override_snapshot = None
+        finally:
+            self.app._test_override_owner = None  # noqa: SLF001 -- test seam owner flag
+
+    def override(self, type_: type[_OverrideT], fake: _OverrideT) -> None:
+        """Replace the DI binding for ``type_`` with ``fake`` for this session.
+
+        Pins both the singleton cache and the per-call provider for
+        ``type_`` so every resolution path (singleton fast-path, fresh
+        ``resolve``, ``peek``) returns ``fake``. The original container
+        state is captured on first call and restored on ``__aexit__``,
+        whether normal or exceptional.
+
+        Complement of :func:`a2kit.testing.peek` — peek reads, override
+        writes. Last-write-wins within a session.
+        """
+        container = self.app.container()
+        if self._override_snapshot is None:
+            self._override_snapshot = container._snapshot()  # noqa: SLF001 -- test seam
+        container._providers[type_] = lambda: fake  # noqa: SLF001
+        container._singletons[type_] = fake  # noqa: SLF001
+        # An async-factory marker would block sync resolve; clear it.
+        container._async_factories.discard(type_)  # noqa: SLF001
 
     def tools(self) -> list[ToolDescriptor]:
         """Return tool descriptors, sorted by name."""
