@@ -108,6 +108,7 @@ class TestClient:
         self.logs: list[dict[str, Any]] = []
         self.reports: list[dict[str, Any]] = []
         self._lifecycle_started = False
+        self._lifespan_cm: Any = None
         self._override_snapshot: Any = None
 
     async def __aenter__(self) -> TestClient:
@@ -120,21 +121,21 @@ class TestClient:
             )
             raise RuntimeError(msg)
         self.app._test_override_owner = self  # noqa: SLF001 -- test seam owner flag
-        if self.app.has_lifecycle_handlers() and not self.app._lifecycle_started:  # noqa: SLF001
-            from a2kit.app import dispatch_startup
-
+        if self.app.has_lifespan() and not self.app._lifecycle_started:  # noqa: SLF001
             self.app._lifecycle_started = True  # noqa: SLF001
             self._lifecycle_started = True
-            await dispatch_startup(self.app)
+            self._lifespan_cm = self.app.lifespan_cm()
+            await self._lifespan_cm.__aenter__()
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         try:
-            if self._lifecycle_started:
-                from a2kit.app import dispatch_shutdown
-
-                await dispatch_shutdown(self.app)
-                self.app._lifecycle_started = False  # noqa: SLF001 -- reset for re-entry
+            if self._lifecycle_started and self._lifespan_cm is not None:
+                try:
+                    await self._lifespan_cm.__aexit__(exc_type, exc, tb)
+                finally:
+                    self._lifespan_cm = None
+                    self.app._lifecycle_started = False  # noqa: SLF001 -- reset for re-entry
             if self._override_snapshot is not None:
                 self.app.container()._restore(self._override_snapshot)  # noqa: SLF001 -- test seam
                 self._override_snapshot = None

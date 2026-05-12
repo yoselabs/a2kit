@@ -13,7 +13,8 @@ The pattern:
 - ``async def _ensure(self) -> Handle`` — opens the underlying connection
   under the lock if not yet open.
 - Async business methods that await ``_ensure`` internally.
-- Idempotent ``async def close(self)`` — called from ``@on_shutdown``.
+- Idempotent ``async def close(self)`` — called from the App lifespan's
+  shutdown branch (the body after ``yield``).
 
 Run::
 
@@ -25,6 +26,7 @@ Run::
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
@@ -120,23 +122,24 @@ class FakeShopRouter(a2kit.Router):
 # --------------------------------------------------------------------- #
 
 
-app = a2kit.App("resource-pattern-demo")
+@asynccontextmanager
+async def lifespan(app: a2kit.App):
+    """Resolve the singleton state and close it on shutdown.
+
+    Optional: fail-fast warm-up so misconfig surfaces at startup instead
+    of the first tool call. Uncomment the ``_ensure`` line to enable.
+    """
+    state = await app.container().aresolve(AppState)
+    # await state.counter._ensure()  # uncomment for fail-fast warm-up
+    try:
+        yield
+    finally:
+        await state.counter.close()
+
+
+app = a2kit.App("resource-pattern-demo", lifespan=lifespan)
 app.add_router(FakeShopRouter())
 app.singleton(AppState, build_state)
-
-
-@app.on_shutdown
-async def _close(state: AppState) -> None:
-    """DI-aware shutdown hook — state is resolved by the container."""
-    await state.counter.close()
-
-
-# Optional: fail-fast warm-up so misconfig surfaces at startup instead of
-# the first tool call. Uncomment to enable:
-#
-# @app.on_startup
-# async def _warm(state: AppState) -> None:
-#     await state.counter._ensure()
 
 
 def main() -> None:

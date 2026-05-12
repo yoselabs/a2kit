@@ -76,25 +76,28 @@ def test_two_apps_have_isolated_singletons() -> None:
 
 
 def test_two_apps_lifecycle_handlers_fire_independently() -> None:
+    from contextlib import asynccontextmanager
+
     order: list[str] = []
-    app_a = a2kit.App("a")
-    app_b = a2kit.App("b")
 
-    @app_a.on_startup
-    async def _start_a() -> None:
+    @asynccontextmanager
+    async def lifespan_a(app):
         order.append("a-start")
+        try:
+            yield
+        finally:
+            order.append("a-stop")
 
-    @app_a.on_shutdown
-    async def _stop_a() -> None:
-        order.append("a-stop")
-
-    @app_b.on_startup
-    async def _start_b() -> None:
+    @asynccontextmanager
+    async def lifespan_b(app):
         order.append("b-start")
+        try:
+            yield
+        finally:
+            order.append("b-stop")
 
-    @app_b.on_shutdown
-    async def _stop_b() -> None:
-        order.append("b-stop")
+    app_a = a2kit.App("a", lifespan=lifespan_a)
+    app_b = a2kit.App("b", lifespan=lifespan_b)
 
     class _R(a2kit.Router):
         slug = "_r"

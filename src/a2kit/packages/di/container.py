@@ -19,7 +19,7 @@ The container has NO feature-specific knowledge. Per-call ``provide``
 factories MUST be synchronous; singleton factories MAY be async (first
 resolution awaits; subsequent resolves return the cached value). The
 sync ``resolve`` path raises on an unresolved async singleton, directing
-the caller to ``aresolve`` or ``@on_startup`` warm-up. Wire-input
+the caller to ``aresolve`` or ``warm_async_singletons`` warm-up. Wire-input
 transformation (e.g. ``connection: str`` → typed config) lives in the
 consumer's dispatch hook, before the container sees kwargs.
 """
@@ -179,7 +179,7 @@ class Container:
         The factory may be sync (``def``) or async (``async def``). First
         resolution of an async-factory singleton requires :meth:`aresolve`
         (or any code path running inside an event loop, e.g. tool dispatch
-        and ``@on_startup``); subsequent resolves on either path return the
+        and ``warm_async_singletons``); subsequent resolves on either path return the
         cached value. Sync :meth:`resolve` on an unresolved async singleton
         raises a precise error pointing at the async path.
         """
@@ -268,10 +268,11 @@ class Container:
             if type_ in self._async_factories:
                 msg = (
                     f"singleton {type_!r} has an async factory and has not been "
-                    "resolved yet. Use the async resolve path (the dispatcher and "
-                    "@on_startup both run async, so depending on this type from "
-                    "either is fine), or warm it up via @on_startup so sync "
-                    "resolve sees a cached value."
+                    "resolved yet. Use the async resolve path (the dispatcher "
+                    "runs async, so depending on this type from a tool body is "
+                    "fine), or warm it up by calling "
+                    "`await app.warm_async_singletons()` from inside the "
+                    "App's lifespan body so sync resolve sees a cached value."
                 )
                 raise ValueError(msg)
         if type_ in cache:

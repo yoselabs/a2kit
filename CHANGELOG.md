@@ -1,16 +1,20 @@
 # Changelog
 
-## 0.30.1 — unreleased
+## 0.31.0 — bundled breaking minor — 2026-05-13
 
-Observability-only patch — no API change, no behavioural change on the
-success path, no change to the failure-path return value at any of the
-five sites covered. The only change is that five framework-internal
-introspection sites that previously swallowed `Exception` silently now
-emit one WARN-level log line per offender per process on first failure
-and proceed with the documented fallback. Extends the `_WARN_ONCE`
-recipe shipped in `src/a2kit/signature.py:resolve_hints` (round 5/6).
+A single release bundles four coordinated changes so consumers migrate
+once, not four times. Coordinated proposals
+`align-with-pydantic-and-stdlib`, `loud-degrade-everywhere`,
+`explicit-router-surface`, and `lifespan-over-lifecycle-hooks` all ship
+here.
 
-### Changed (observability only)
+### Changed (observability only) — WARN_ONCE on five swallowed sites
+
+Five framework-internal introspection sites that previously swallowed
+`Exception` silently now emit one WARN-level log line per offender per
+process on first failure and proceed with the documented fallback.
+Extends the `_WARN_ONCE` recipe shipped in
+`src/a2kit/signature.py:resolve_hints` (round 5/6).
 
 - **L1** `src/a2kit/packages/mcp/server.py:_wrap_with_dispatch_hook` —
   return-annotation copy onto the wrapper now WARNs once per
@@ -47,14 +51,7 @@ recipe shipped in `src/a2kit/signature.py:resolve_hints` (round 5/6).
   introspection failures and indexing the six sites the policy covers
   today.
 
-## 0.31.0 — unreleased
-
-Bundle of three breaking surfaces that ship together to keep the
-migration to a single upgrade event. Coordinated with sibling proposals
-`explicit-router-surface` and `lifespan-over-lifecycle-hooks` (their
-notes will append to this entry before release).
-
-### Breaking
+### Breaking — Param/MetaExtras/Container cache (`align-with-pydantic-and-stdlib`)
 
 - **`a2kit.Param` removed.** The wrapper was a one-line forwarder to
   `pydantic.Field`. Use `Annotated[T, pydantic.Field(description="...")]`
@@ -161,6 +158,92 @@ class TasksRouter(a2kit.Router):
             await store.close()
 
     tools = (get_task, bulk_import)
+```
+
+### Breaking — lifespan over lifecycle hooks (`lifespan-over-lifecycle-hooks`)
+
+`@app.on_startup` / `@app.on_shutdown` are gone. The App accepts a
+single `lifespan=` async-context-manager callable. FastMCP's `lifespan=`
+slot is the canonical hook for this work; a2kit no longer maintains a
+parallel handler registry.
+
+- **`App(name, ..., lifespan=lifespan)`** accepts a callable returning
+  an async context manager. Signature is fixed at exactly one
+  positional parameter, the App instance:
+  `async def lifespan(app: a2kit.App)`. The framework does NOT
+  introspect the signature and does NOT auto-resolve typed kwargs.
+  Resolve singletons inside the body via
+  `await app.container().aresolve(T)`.
+- **Sync `def` lifespans rejected at construction** with `TypeError`.
+  Sync setup work goes inside the async body as plain statements.
+- **`@app.on_startup` / `@app.on_shutdown` removed.** No shim.
+- **`App.warm_async_singletons()`** is the explicit replacement for the
+  implicit `@on_startup` warm-up of async-factory singletons. Call it
+  from inside the lifespan body before `yield` when you want sync
+  `container.resolve(T)` to see resolved values later.
+- **`a2kit.lifespan.compose(*lifespans)`** composes multiple lifespans
+  into one via `contextlib.AsyncExitStack`. Startup runs in declared
+  order; shutdown unwinds LIFO. Each shutdown leg is shielded — an
+  exception is logged at ERROR under `a2kit.lifecycle` with traceback
+  and sibling legs continue to unwind.
+- **`App.add_router(r)`** composes `r.lifespan` into the App's final
+  lifespan via the same compose helper. The previous in-App
+  `AsyncExitStack` bridge that the sibling `explicit-router-surface`
+  shipped is now routed through `a2kit.lifespan.compose`.
+- **FastMCP integration** — `build_mcp_server(app)` wraps
+  `app.lifespan_cm()` in an adapter matching FastMCP's
+  `lifespan(server)` slot. The adapter sets `server._a2kit_app = app`
+  as a back-reference so middleware and other power-user code can
+  recover the App from the FastMCP server.
+- **Test client** — `a2kit.testing.client(app).__aenter__` enters
+  `app.lifespan_cm()`; `__aexit__` exits it. Observable behaviour
+  matches today; the underlying mechanism replaces `dispatch_startup` /
+  `dispatch_shutdown`.
+- **`dispatch_startup` / `dispatch_shutdown` removed** from
+  `a2kit.app`. Public test harnesses that called them directly switch
+  to `async with app.lifespan_cm():`.
+- **Error message update** — `container.resolve(T)` on an unresolved
+  async-factory singleton now directs callers to
+  `await app.warm_async_singletons()` from the App's lifespan body
+  (the message no longer mentions `@on_startup`).
+
+Migration recipe (per call site):
+
+```python
+# Before
+@app.on_startup
+async def _open(state: AppState):
+    await state.open()
+
+@app.on_shutdown
+async def _close(state: AppState):
+    await state.close()
+
+# After
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    state = await app.container().aresolve(AppState)
+    await state.open()
+    try:
+        yield
+    finally:
+        await state.close()
+
+app = a2kit.App("name", lifespan=lifespan)
+```
+
+For multi-component apps (App + several Router.lifespan
+contributions), compose via:
+
+```python
+app_lifespan = a2kit.lifespan.compose(
+    my_app_lifespan,
+    router_a.lifespan,
+    router_b.lifespan,
+)
+app = a2kit.App("name", lifespan=app_lifespan)
 ```
 
 ## 0.30.0 — drop docstring → param description auto-pull — 2026-05-12

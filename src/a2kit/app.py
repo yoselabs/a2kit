@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 from a2kit.packages.di.container import (
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
 UNRESOLVED: Any = _UNRESOLVED
 
 
+_LIFECYCLE_LOG = logging.getLogger("a2kit.lifecycle")
+
+
 class App:
     """Composition root.
 
@@ -39,9 +43,32 @@ class App:
     transformation (e.g. ``connection: str`` → typed config) happens at
     the dispatch-hook seam in the consumer package (e.g. connections),
     not inside the container.
+
+    Lifecycle:
+
+    Pass a ``lifespan`` callable to ``__init__``. It MUST be defined
+    with ``async def`` and SHOULD be decorated with
+    ``@contextlib.asynccontextmanager``. The signature is fixed at
+    exactly one positional parameter, the :class:`App` instance.
+    Startup work goes before ``yield``; shutdown work goes after
+    ``yield`` (typically in a ``finally`` block). Resolve startup
+    dependencies inside the body via
+    ``await app.container().aresolve(T)``.
+
+    Multiple lifespans (e.g. App + per-Router contributions) compose
+    via :func:`a2kit.lifespan.compose`. Routers contribute via
+    ``Router.lifespan``; ``App.add_router`` composes them into the
+    final lifespan returned by :meth:`lifespan_cm`.
     """
 
-    def __init__(self, name: str, *, health_tool: bool = False, debug: bool = False) -> None:
+    def __init__(
+        self,
+        name: str,
+        *,
+        health_tool: bool = False,
+        debug: bool = False,
+        lifespan: Callable[[Any], Any] | None = None,
+    ) -> None:
         self.name = name
         self.debug = debug
         self._routers = RouterRegistry()
@@ -61,16 +88,22 @@ class App:
         env_off = os.environ.get("A2KIT_LDD", "").lower() == "off"
         self._ldd_reports = not env_off
         self._ldd_events = not env_off
-        # Lifecycle handlers (DI-aware).
-        self._startup_handlers: list[Callable[..., Any]] = []
-        self._shutdown_handlers: list[Callable[..., Any]] = []
+        # Lifespan plumbing. Reject sync ``def`` at construction.
+        if lifespan is not None and not _is_async_callable(lifespan):
+            msg = (
+                f"App({name!r}, lifespan=...): lifespan callable "
+                f"{lifespan!r} MUST be defined with 'async def' (and "
+                "decorated with @contextlib.asynccontextmanager). Sync "
+                "'def' lifespans are not supported; move sync setup work "
+                "inside the async body as plain statements."
+            )
+            raise TypeError(msg)
+        self._lifespan: Callable[[Any], Any] | None = lifespan
         self._lifecycle_started: bool = False
-        # Router-declared lifespan context managers, composed in
-        # registration order at startup and unwound LIFO at shutdown.
-        # Replaced by ``a2kit.lifespan.compose`` after the sibling
-        # ``lifespan-over-lifecycle-hooks`` proposal lands.
+        # Router-declared lifespan context managers, composed into the
+        # final lifespan returned by ``lifespan_cm`` via
+        # ``a2kit.lifespan.compose``. Order matches ``add_router`` calls.
         self._router_lifespans: list[Router] = []
-        self._router_lifespan_stack: Any = None
         # Typed event registry. Lazy import keeps the cold-start path off
         # `a2kit.packages.ldd` for apps that never touch typed events.
         from a2kit.packages.ldd import _AppLdd
@@ -154,26 +187,13 @@ class App:
                 self.provide(ptype, pfactory)
             else:
                 self.provide(entry)
-        # Router-declared lifespan composes into App lifecycle. The Router
-        # exposes a single ``@asynccontextmanager async def lifespan(self):``
-        # method (or omits the attribute). When present, register it as a
-        # combined startup/shutdown pair so existing dispatch_startup/_shutdown
-        # plumbing carries the work; the sibling ``lifespan-over-lifecycle-hooks``
-        # proposal will replace this bridge with ``a2kit.lifespan.compose``.
+        # Router-declared lifespan composes into the App's final
+        # ``lifespan_cm`` via ``a2kit.lifespan.compose``. Stored in
+        # ``add_router`` order; reverse-unwound on shutdown.
         cls = type(router)
         if "lifespan" in cls.__dict__:
-            self._register_router_lifespan(router)
+            self._router_lifespans.append(router)
         return self
-
-    def _register_router_lifespan(self, router: Router) -> None:
-        """Bridge a Router's ``lifespan`` context manager into App lifecycle.
-
-        Minimal bridge until the sibling ``lifespan-over-lifecycle-hooks``
-        proposal lands ``a2kit.lifespan.compose``. Stores the lifespan method
-        on the App so dispatch_startup/dispatch_shutdown enter/exit it in
-        registration order.
-        """
-        self._router_lifespans.append(router)
 
     def add_cli(self, command: click.Command) -> App:
         self._cli_extras.append(command)
@@ -232,8 +252,10 @@ class App:
         return the cached instance. Concurrent first-resolution calls
         coalesce on a per-type ``asyncio.Lock`` — the factory runs at
         most once. Sync ``container.resolve(T)`` on an unresolved async
-        singleton raises a clear error; warm-up via ``@on_startup`` (or
-        any first call from inside the event loop) primes the cache.
+        singleton raises a clear error; warm-up via
+        :meth:`warm_async_singletons` called from the App's lifespan
+        body (or any first call from inside the event loop) primes the
+        cache.
 
         This is the primary path for async-opened resources (DB pools,
         HTTP clients, browser handles). Hand-rolled lazy-init resource
@@ -257,54 +279,64 @@ class App:
         """Snapshot of registered singletons; unresolved entries carry :data:`UNRESOLVED`."""
         return self._container.singletons()
 
-    # --- Lifecycle handlers (DI-aware) ---------------------------------- #
+    async def warm_async_singletons(self) -> None:
+        """Resolve every registered async-factory singleton through the container.
 
-    def on_startup(
-        self,
-        handler: Callable[..., Any] | None = None,
-    ) -> Any:
-        """Register a startup handler invoked once before the first tool dispatch.
+        Iterates the App's singleton registry, awaits each entry whose
+        factory is async (sync entries are left alone), and populates the
+        container cache. Idempotent: subsequent calls observe cached
+        instances and do not re-await the factory. Concurrent callers
+        coalesce on the per-type lock already provided by the container,
+        so the factory runs at most once across the App.
 
-        Handlers may take arbitrary DI-resolvable kwargs (e.g. ``state: AppState``)
-        which are resolved through ``container.apply_kwargs`` at dispatch time.
-        Sync and async handlers both supported.
+        The canonical call site is the App's lifespan body before
+        ``yield``::
+
+            @asynccontextmanager
+            async def lifespan(app):
+                await app.warm_async_singletons()
+                yield
         """
-        if handler is None:
+        container = self._container
+        # Snapshot keys so concurrent registration does not perturb the
+        # iteration; the container's per-type lock handles the rest.
+        for type_ in list(container.singletons()):
+            if container.has_async_singleton(type_):
+                await container.aresolve(type_)
 
-            def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-                self._startup_handlers.append(fn)
-                return fn
+    def lifespan_cm(self) -> Any:
+        """Return the App's composed lifespan as an async context manager.
 
-            return _decorator
-        self._startup_handlers.append(handler)
-        return handler
+        Composes (in order) the user-supplied ``lifespan=`` callable
+        followed by every Router's ``lifespan`` method via
+        :func:`a2kit.lifespan.compose`. If the App has no user lifespan
+        and no Router contributes one, returns a
+        :class:`contextlib.nullcontext` (no-op enter, no-op exit). The
+        callable returned is already bound to ``self``; enter via
+        ``async with app.lifespan_cm():``.
 
-    def on_shutdown(
-        self,
-        handler: Callable[..., Any] | None = None,
-    ) -> Any:
-        """Register a shutdown handler invoked once after the last tool dispatch.
-
-        Handlers are DI-aware (same model as ``on_startup``). Shutdown handlers
-        run in reverse registration order. A raised exception is logged but
-        does not abort sibling handlers.
+        Used by the CLI runner, the test client, and the FastMCP
+        adapter to obtain a single async-with for the whole App
+        lifecycle.
         """
-        if handler is None:
+        from a2kit.lifespan import compose as _compose
 
-            def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-                self._shutdown_handlers.append(fn)
-                return fn
+        legs: list[Callable[[Any], Any]] = []
+        if self._lifespan is not None:
+            legs.append(self._lifespan)
+        legs.extend(_router_lifespan_factory(r) for r in self._router_lifespans)
+        if not legs:
+            return nullcontext()
+        composed = _compose(*legs)
+        return composed(self)
 
-            return _decorator
-        self._shutdown_handlers.append(handler)
-        return handler
+    def has_lifespan(self) -> bool:
+        """True iff this App contributes startup or shutdown work.
 
-    def has_lifecycle_handlers(self) -> bool:
-        return (
-            bool(self._startup_handlers)
-            or bool(self._shutdown_handlers)
-            or bool(self._router_lifespans)
-        )
+        Used by the CLI runner and FastMCP adapter to decide whether to
+        wire a lifespan context manager at all.
+        """
+        return self._lifespan is not None or bool(self._router_lifespans)
 
     def dispatch_hook(self) -> Callable[..., Any]:
         return self._dispatch_hook
@@ -364,85 +396,43 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
     return out
 
 
-_LIFECYCLE_LOG = logging.getLogger("a2kit.lifecycle")
+def _is_async_callable(fn: Any) -> bool:
+    """True iff ``fn`` is an async-def callable or ``@asynccontextmanager``-wrapped.
 
+    ``@asynccontextmanager`` wraps an async generator; the resulting
+    callable has ``__wrapped__`` pointing at the original async
+    generator function, which :func:`inspect.iscoroutinefunction` and
+    :func:`inspect.isasyncgenfunction` detect via the wrapper's own
+    ``_recreate_cm``-style shape. We accept any of:
 
-def _call_lifecycle_handler(app: App, handler: Callable[..., Any]) -> Any:
-    """Resolve handler kwargs via DI, then invoke. Awaitable if handler is async."""
-    kwargs = app._container.apply_kwargs(handler, {})
-    return handler(**kwargs)
-
-
-async def dispatch_startup(app: App) -> None:
-    """Invoke registered startup handlers in registration order (DI-resolved).
-
-    A handler that raises aborts the sequence; remaining startup handlers do
-    NOT run, and shutdown handlers MUST NOT run (the caller enforces this by
-    catching here and skipping shutdown). The first raised exception
-    propagates unchanged.
-
-    After explicit startup handlers, Router-declared ``lifespan`` context
-    managers are entered in ``add_router`` registration order on a shared
-    ``AsyncExitStack`` stored on the App. The stack is unwound LIFO from
-    :func:`dispatch_shutdown`.
+    - ``inspect.iscoroutinefunction(fn)`` — bare ``async def``
+    - ``inspect.isasyncgenfunction(fn)`` — bare ``async def`` generator
+    - ``inspect.iscoroutinefunction(fn.__wrapped__)`` or
+      ``inspect.isasyncgenfunction(fn.__wrapped__)`` —
+      ``@asynccontextmanager``-decorated, ``@functools.wraps``-preserving
     """
-    for handler in app._startup_handlers:
-        result = _call_lifecycle_handler(app, handler)
-        if inspect.isawaitable(result):
-            await result
-    if app._router_lifespans:
-        from contextlib import AsyncExitStack
-
-        stack = AsyncExitStack()
-        try:
-            for router in app._router_lifespans:
-                cm = _resolve_router_lifespan_cm(app, router)
-                await stack.enter_async_context(cm)
-        except BaseException:
-            await stack.aclose()
-            raise
-        app._router_lifespan_stack = stack
+    if inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn):
+        return True
+    wrapped = getattr(fn, "__wrapped__", None)
+    return wrapped is not None and (
+        inspect.iscoroutinefunction(wrapped) or inspect.isasyncgenfunction(wrapped)
+    )
 
 
-async def dispatch_shutdown(app: App) -> None:
-    """Invoke registered shutdown handlers in reverse registration order (DI-resolved).
+def _router_lifespan_factory(router: Router) -> Callable[[Any], Any]:
+    """Wrap a Router's ``lifespan`` method as a ``lifespan(app)`` callable.
 
-    A handler that raises is logged via ``a2kit.lifecycle`` and swallowed; the
-    remaining handlers continue to run.
-
-    Router-declared ``lifespan`` context managers are unwound LIFO before the
-    explicit shutdown handlers run.
+    The Router-side surface is ``async def lifespan(self):`` (no ``app``
+    parameter — Routers already hold their dependencies). The composed
+    lifespan callable shape is ``async def lifespan(app):``; this
+    adapter discards the ``app`` argument and calls ``router.lifespan()``.
     """
-    stack = app._router_lifespan_stack
-    if stack is not None:
-        app._router_lifespan_stack = None
-        try:
-            await stack.aclose()
-        except Exception:  # noqa: BLE001
-            _LIFECYCLE_LOG.exception(
-                "Router lifespan stack raised on shutdown; continuing"
-            )
-    for handler in reversed(app._shutdown_handlers):
-        try:
-            result = _call_lifecycle_handler(app, handler)
-            if inspect.isawaitable(result):
-                await result
-        except Exception:  # noqa: BLE001
-            _LIFECYCLE_LOG.exception(
-                "shutdown handler %r raised; continuing",
-                getattr(handler, "__name__", repr(handler)),
-            )
 
+    def _adapter(_app: Any) -> Any:
+        return router.lifespan()  # type: ignore[attr-defined]
 
-def _resolve_router_lifespan_cm(app: App, router: Router) -> Any:
-    """Call a Router's ``lifespan`` method with DI-resolved kwargs.
-
-    Returns the async context manager the method produced. Typed kwargs
-    (e.g. ``store: TrackerStore``) flow through ``container.apply_kwargs``
-    so the lifespan body sees fully-resolved dependencies, matching the
-    DI behaviour the previous ``on_startup`` / ``on_shutdown`` decorators
-    provided.
-    """
-    method = router.lifespan  # type: ignore[attr-defined]
-    kwargs = app._container.apply_kwargs(method, {})
-    return method(**kwargs)
+    _adapter.__qualname__ = (
+        f"{type(router).__name__}.lifespan"  # for log labels
+    )
+    _adapter.__name__ = f"{type(router).__name__}.lifespan"
+    return _adapter

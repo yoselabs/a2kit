@@ -44,19 +44,27 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "HealthResult": ("a2kit.packages.health", "HealthResult"),
 }
 
+_LAZY_MODULES: dict[str, str] = {
+    "lifespan": "a2kit.lifespan",
+}
+
 
 def __getattr__(name: str) -> Any:
+    from importlib import import_module
+
+    mod_target = _LAZY_MODULES.get(name)
+    if mod_target is not None:
+        return import_module(mod_target)
     target = _LAZY_ATTRS.get(name)
     if target is None:
         raise AttributeError(f"module 'a2kit' has no attribute {name!r}")
-    from importlib import import_module
 
     mod, attr = target
     return getattr(import_module(mod), attr)
 
 
 def __dir__() -> list[str]:
-    return sorted({*globals(), *_LAZY_ATTRS})
+    return sorted({*globals(), *_LAZY_ATTRS, *_LAZY_MODULES})
 
 
 def run(app: App, argv: list[str] | None = None) -> Any:

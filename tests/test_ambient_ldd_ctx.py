@@ -95,20 +95,21 @@ def test_dispatch_provides_ambient_ctx_to_primitives() -> None:
     asyncio.run(go())
 
 
-def test_on_startup_hook_using_ldd_primitive_raises() -> None:
-    """Lifecycle hooks run BEFORE any dispatch; primitives must fail loud."""
+def test_lifespan_body_using_ldd_primitive_raises() -> None:
+    """Lifespan body runs BEFORE any dispatch; primitives must fail loud."""
+    from contextlib import asynccontextmanager
 
-    app = a2kit.App("noctx")
+    @asynccontextmanager
+    async def lifespan(app):
+        await ldd_info("from-lifespan")  # no ambient ctx — must raise
+        yield
 
-    @app.on_startup
-    async def _boot() -> None:
-        await ldd_info("from-startup")  # no ambient ctx — must raise
+    app = a2kit.App("noctx", lifespan=lifespan)
 
     async def go() -> None:
-        from a2kit.app import dispatch_startup
-
         with pytest.raises(AmbientContextMissing):
-            await dispatch_startup(app)
+            async with app.lifespan_cm():
+                pass
 
     asyncio.run(go())
 

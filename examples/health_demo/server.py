@@ -12,6 +12,7 @@ Run::
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import a2kit
@@ -24,7 +25,17 @@ class _State:
 
 _state = _State()
 
-app = a2kit.App("health-demo", health_tool=True)
+
+@asynccontextmanager
+async def lifespan(app: a2kit.App):
+    _state.sqlite_open = True
+    try:
+        yield
+    finally:
+        _state.sqlite_open = False
+
+
+app = a2kit.App("health-demo", health_tool=True, lifespan=lifespan)
 
 
 @app.health_check
@@ -39,16 +50,6 @@ async def _sqlite_open() -> a2kit.HealthResult:
     if not _state.sqlite_open:
         return a2kit.HealthResult.fail("sqlite not opened yet (lifecycle hasn't run)")
     return a2kit.HealthResult.ok()
-
-
-@app.on_startup
-async def _open_sqlite() -> None:
-    _state.sqlite_open = True
-
-
-@app.on_shutdown
-async def _close_sqlite() -> None:
-    _state.sqlite_open = False
 
 
 def main() -> None:

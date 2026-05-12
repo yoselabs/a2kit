@@ -75,13 +75,12 @@ def test_router_lifespan_raises_during_startup_unwinds_stack() -> None:
     app.add_router(_Good())
     app.add_router(_Bad())
 
-    from a2kit.app import dispatch_startup
-
     async def _go() -> None:
         import contextlib
 
         with contextlib.suppress(RuntimeError):
-            await dispatch_startup(app)
+            async with app.lifespan_cm():
+                pass
 
     anyio.run(_go)
     # Good lifespan entered, then unwound when Bad raised.
@@ -105,12 +104,10 @@ def test_router_lifespan_post_yield_raise_logged_and_continues() -> None:
     app = a2kit.App("t")
     app.add_router(_R())
 
-    from a2kit.app import dispatch_shutdown, dispatch_startup
-
     async def _go() -> None:
-        await dispatch_startup(app)
         # Shutdown should swallow the exception and log it.
-        await dispatch_shutdown(app)
+        async with app.lifespan_cm():
+            pass
 
     anyio.run(_go)
 
@@ -136,11 +133,9 @@ def test_router_lifespan_composes_into_app_lifecycle() -> None:
     app = a2kit.App("t")
     app.add_router(_R())
 
-    from a2kit.app import dispatch_shutdown, dispatch_startup
-
     async def _go() -> None:
-        await dispatch_startup(app)
-        await dispatch_shutdown(app)
+        async with app.lifespan_cm():
+            pass
 
     anyio.run(_go)
     assert calls == ["up", "down"]

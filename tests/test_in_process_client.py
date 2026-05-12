@@ -7,10 +7,10 @@ Gherkin scenarios (mirroring `specs/in-process-test-client/spec.md`):
     WHEN the test calls await client.invoke("list_projects")
     THEN the call returns the same value the tool body returned
 
-  Scenario: lifecycle hooks fire around the test session
-    GIVEN @app.on_startup and @app.on_shutdown handlers
+  Scenario: lifespan fires around the test session
+    GIVEN a `lifespan=` callable recording enter/exit
     WHEN entering and exiting `async with client(app)`
-    THEN startup runs once before the first invoke, shutdown runs once on exit
+    THEN enter runs once before the first invoke, exit runs once on exit
 
   Scenario: events captured with payload and elapsed_ms
     GIVEN a tool emitting `await event("import.started", n=10)`
@@ -102,16 +102,20 @@ def test_invoke_returns_value() -> None:
 
 
 def test_lifecycle_hooks_fire() -> None:
-    app = _build_app()
+    from contextlib import asynccontextmanager
+
     order: list[str] = []
 
-    @app.on_startup
-    async def _start() -> None:
+    @asynccontextmanager
+    async def lifespan(app):
         order.append("startup")
+        try:
+            yield
+        finally:
+            order.append("shutdown")
 
-    @app.on_shutdown
-    async def _stop() -> None:
-        order.append("shutdown")
+    app = a2kit.App("client-test", lifespan=lifespan)
+    app.add_router(_Router())
 
     async def go() -> None:
         async with client(app) as c:

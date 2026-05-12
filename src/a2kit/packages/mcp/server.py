@@ -232,46 +232,58 @@ def _router_for_tool(app: Any, fn: Any) -> Any | None:
     return None
 
 
-def _merge_lifespan(app: Any, user_lifespan: Any | None) -> Any:
-    """Build an async context manager that runs a2kit lifecycle around ``user_lifespan``.
+def _build_fastmcp_lifespan(app: Any, user_lifespan: Any | None) -> Any:
+    """Build a FastMCP-shaped ``lifespan(server)`` adapter for the App.
 
-    Order: dispatch_startup(app) → user_lifespan(server).__aenter__ → yield →
-    user_lifespan(server).__aexit__ → dispatch_shutdown(app). If ``user_lifespan``
-    is None, only the a2kit handlers run.
+    FastMCP passes its server instance to ``lifespan=`` callbacks. a2kit's
+    user-facing surface is ``async def lifespan(app)``. This adapter:
+
+    - sets ``server._a2kit_app = app`` as a back-reference so middleware
+      and other power-user code can recover the :class:`a2kit.App` from
+      the FastMCP server,
+    - enters the App's composed lifespan (user ``lifespan=`` plus every
+      ``Router.lifespan``, via :func:`a2kit.lifespan.compose`) by calling
+      ``app.lifespan_cm()``,
+    - inside that, also enters any FastMCP-shaped ``user_lifespan(server)``
+      the caller passed through ``build_mcp_server(lifespan=...)`` so
+      power users can still plug in FastMCP-native lifespans.
+
+    If the App has no a2kit lifespan, this only wraps the
+    ``user_lifespan`` (or yields ``None`` if absent).
     """
     from contextlib import asynccontextmanager
 
-    from a2kit.app import dispatch_shutdown, dispatch_startup
-
     @asynccontextmanager
     async def _lifespan(server: Any) -> Any:
-        await dispatch_startup(app)
-        try:
+        server._a2kit_app = app  # noqa: SLF001 -- framework wiring back-reference
+        async with app.lifespan_cm():
             if user_lifespan is None:
                 yield None
             else:
                 async with user_lifespan(server) as user_state:
                     yield user_state
-        finally:
-            await dispatch_shutdown(app)
 
     return _lifespan
 
 
-def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:  # noqa: C901 -- Surface filter adds one branch; extracting per-tool body would reduce clarity
+def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     """Build a FastMCP server from an ``a2kit.App``.
 
     All ``fastmcp_kwargs`` flow straight to ``FastMCP.__init__`` — auth,
     providers, transforms, lifespan, tasks, sampling_handler, etc. a2kit owns
     no auth abstraction; FastMCP plugins work directly.
 
-    When ``app`` has registered ``on_startup`` / ``on_shutdown`` handlers, this
-    function derives a ``lifespan`` async context manager and merges it with
-    any user-supplied ``lifespan=`` kwarg. Order: a2kit-startup → user-lifespan
-    enter → user body → user-lifespan exit → a2kit-shutdown.
+    The App's composed lifespan (its ``lifespan=`` callable plus every
+    ``Router.lifespan``) is wrapped in a FastMCP-shaped adapter that
+    sets ``server._a2kit_app = app`` as a back-reference and enters the
+    a2kit lifespan + any caller-supplied FastMCP ``lifespan=`` in nested
+    ``async with`` order: a2kit-enter → user-lifespan enter → user body
+    → user-lifespan exit → a2kit-exit. The adapter is always installed
+    (even when neither side contributes) so the back-reference is
+    available unconditionally.
     """
-    if hasattr(app, "has_lifecycle_handlers") and app.has_lifecycle_handlers():
-        fastmcp_kwargs["lifespan"] = _merge_lifespan(app, fastmcp_kwargs.get("lifespan"))
+    user_lifespan = fastmcp_kwargs.get("lifespan")
+    fastmcp_kwargs["lifespan"] = _build_fastmcp_lifespan(app, user_lifespan)
     # `App(debug=True)` unmasks error details so the tool's exception message
     # reaches the wire. Tool wrappers further down append the traceback to
     # `str(exc)` when debug is on (see `_wrap_with_debug_traceback`).
