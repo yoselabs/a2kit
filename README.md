@@ -16,7 +16,7 @@ management, schema dump, and `serve`:
 ```python
 # tracker/server.py — canonical imperative composition
 import a2kit
-from a2kit.packages.connections import connections, connections_cli
+from a2kit.packages.connections import connections_cli, install_connections
 
 from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
@@ -25,7 +25,7 @@ from .store import TrackerStore
 app = a2kit.App("tracker")
 app.add_router(ProjectsRouter())
 app.add_router(TasksRouter())
-app.add_router(connections(TrackerConn))   # installs TrackerConn provider via Router
+install_connections(app, TrackerConn)      # dispatch hook + typed wire scope
 app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
 app.provide(TrackerStore)                  # class-as-factory; container reads __init__
 
@@ -104,7 +104,7 @@ itself contains no reference to `"connection"`.
 
 ```python
 import a2kit
-from a2kit.packages.connections import connections_cli
+from a2kit.packages.connections import connections_cli, install_connections
 
 from .connection import TrackerConn          # subclass of ConnectionConfig
 from .store import TrackerStore              # def __init__(self, conn: TrackerConn)
@@ -118,14 +118,14 @@ class TasksRouter(a2kit.Router):
 
 app = a2kit.App("tracker")
 app.add_router(TasksRouter())
-app.add_router(connections(TrackerConn))   # installs TrackerConn provider
+install_connections(app, TrackerConn)      # dispatch hook + typed wire scope
 app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
 app.provide(TrackerStore)                  # class-as-factory (introspects __init__)
 ```
 
 What the framework does:
 
-- `connections(TrackerConn)` returns a Router whose `install()` registers the **dispatch hook** (which awaits `store.load(connection)` and substitutes the typed `TrackerConn` into the per-call DI cache) and a stub provider for `TrackerConn` (so `container.has()` is True for schema-gen). `connections_cli(TrackerConn)` adds the matching Click subcommands.
+- `install_connections(app, TrackerConn)` registers the **dispatch hook** (which awaits `store.load(connection)` and substitutes the typed `TrackerConn` into the per-call DI cache) and a stub provider for `TrackerConn` (so `container.has()` is True for schema-gen). `connections_cli(TrackerConn)` adds the matching Click subcommands.
 - `provide(TrackerStore)` registers `TrackerStore` as its own factory; the container reads `TrackerStore.__init__(conn: TrackerConn)` and chains.
 - At dispatch: the connections dispatch hook (async) awaits the connection load; the typed `TrackerConn` is seeded into the container's per-call cache; the rest of the chain resolves synchronously. The wire schema strips `store`; agents see only `connection` + `task_id`.
 - For one-off non-trivial wiring, pass an explicit sync factory: `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.

@@ -185,6 +185,7 @@ def test_in_process_client_propagates_sinks_to_dispatch() -> None:
     from a2kit.packages.testing import client as test_client
 
     class _R(a2kit.Router):
+        slug = "rs"
         name = "rs"
 
         @a2kit.read()
@@ -193,6 +194,7 @@ def test_in_process_client_propagates_sinks_to_dispatch() -> None:
 
             await event("tickle", seq=1)
             return {"ok": 1}
+        tools = (tick,)
 
     app = a2kit.App("sinkstest")
     app.add_router(_R())

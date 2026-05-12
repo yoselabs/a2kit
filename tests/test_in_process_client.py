@@ -42,7 +42,6 @@ from pydantic import BaseModel
 
 import a2kit
 from a2kit.ldd import event, info, report, warning
-from a2kit.packages.mcp.reports import reports
 from a2kit.testing import client
 
 
@@ -57,6 +56,7 @@ class _Report(BaseModel):
 
 
 class _Router(a2kit.Router):
+    slug = "_"
     @a2kit.read()
     async def list_items(self) -> list[_Item]:
         return [_Item(id=1, name="alpha"), _Item(id=2, name="beta")]
@@ -70,12 +70,12 @@ class _Router(a2kit.Router):
         await event("phase.complete")
         return {"emitted": 4}
 
-    @a2kit.read()
-    @reports(_Report)
+    @a2kit.read(reports=_Report)
     async def emit_reports(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
         await report(_Report(batch=0, accepted=3))
         await report(_Report(batch=1, accepted=7))
         return {"reports": 2}
+    tools = (list_items, emit_telemetry, emit_reports,)
 
 
 def _build_app() -> a2kit.App:

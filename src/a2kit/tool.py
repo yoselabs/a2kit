@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from a2kit.exceptions import InvalidToolReturnTypeError
-from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, A2KitMetaExtras, set_meta
+from a2kit.metadata import A2KitMeta, A2KitMetaExtras, set_meta
 from a2kit.signature import find_context_param
 from a2kit.surface import Surface
 
@@ -177,13 +177,21 @@ def _stamp(
     annotations_kwargs: dict[str, Any] | None = None,
     annotations_explicit: Any = None,
     surfaces: Surface = Surface.ALL,
+    reports: type | None = None,
+    list_view: Any | None = None,
 ) -> F:
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
-    pending: dict[str, Any] = dict(getattr(fn, PENDING_EXTRA_ATTR, None) or {})
-    pending["surfaces"] = surfaces  # noqa: A2K-CORE-CLEAN
-    extras = A2KitMetaExtras(**pending)
+    extras_kwargs: dict[str, Any] = {"surfaces": surfaces}  # noqa: A2K-CORE-CLEAN
+    if reports is not None:
+        extras_kwargs["report_type"] = reports  # noqa: A2K-CORE-CLEAN
+        schema = _compute_report_schema(reports)
+        if schema is not None:
+            extras_kwargs["report_schema"] = schema  # noqa: A2K-CORE-CLEAN
+    if list_view is not None:
+        extras_kwargs["list_view"] = list_view  # noqa: A2K-CORE-CLEAN
+    extras = A2KitMetaExtras(**extras_kwargs)
     meta = A2KitMeta(
         tool_name=resolved_name,
         verb=verb,
@@ -194,12 +202,24 @@ def _stamp(
         extras=extras,
     )
     set_meta(fn, meta)
-    if hasattr(fn, PENDING_EXTRA_ATTR):
-        import contextlib
-
-        with contextlib.suppress(AttributeError):
-            delattr(fn, PENDING_EXTRA_ATTR)
     return fn
+
+
+def _compute_report_schema(report_type: type) -> dict[str, Any] | None:
+    """Best-effort JSON schema for a report type, used by adapters.
+
+    Returns ``None`` when the type isn't pydantic-compatible — the runtime
+    contract checks the type itself, not the schema, so missing schema is
+    not fatal.
+    """
+    try:
+        from pydantic import TypeAdapter
+    except ImportError:
+        return None
+    try:
+        return TypeAdapter(report_type).json_schema()
+    except Exception:  # noqa: BLE001 -- decoration must not raise
+        return None
 
 
 def _kwargs_for(pair: tuple[dict[str, Any] | None, Any | None]) -> dict[str, Any]:
@@ -256,6 +276,7 @@ def tool(
     destructive: bool | None = None,
     title: str | None = None,
     surfaces: Surface = Surface.ALL,
+    reports: type | None = None,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
@@ -276,6 +297,7 @@ def tool(
                 )
             ),
             surfaces=surfaces,
+            reports=reports,
         )
 
     return deco
@@ -290,6 +312,7 @@ def read(
     destructive: bool | None = None,
     title: str | None = None,
     surfaces: Surface = Surface.ALL,
+    reports: type | None = None,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
@@ -310,6 +333,7 @@ def read(
                 )
             ),
             surfaces=surfaces,
+            reports=reports,
         )
 
     return deco
@@ -324,6 +348,7 @@ def write(
     destructive: bool | None = None,
     title: str | None = None,
     surfaces: Surface = Surface.ALL,
+    reports: type | None = None,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
         return _stamp(
@@ -344,6 +369,7 @@ def write(
                 )
             ),
             surfaces=surfaces,
+            reports=reports,
         )
 
     return deco
@@ -356,6 +382,7 @@ def list_(
     page_size: int | None = None,
     selectable_fields: tuple[str, ...] | None = None,
     surfaces: Surface = Surface.ALL,
+    reports: type | None = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Absorbs list-view projection/pagination.
 
@@ -384,9 +411,6 @@ def list_(
             page_size=page_size,
             selectable_fields=tuple(derived_selectable or ()),
         )
-        from a2kit.metadata import stage_extra
-
-        stage_extra(fn, "list_view", settings)  # noqa: A2K-CORE-CLEAN
         return _stamp(
             fn,
             verb="list",
@@ -394,6 +418,8 @@ def list_(
             tags=frozenset({"read", "list", *(tags or set())}),
             annotations_kwargs={"readOnlyHint": True, "destructiveHint": False},
             surfaces=surfaces,
+            reports=reports,
+            list_view=settings,
         )
 
     return deco

@@ -67,11 +67,13 @@ def test_e2e_required_param_missing_errors(app):
 
 def test_e2e_complex_param_decoded_as_json():
     class R(a2kit.Router):
+        slug = "demo"
         name = "demo"
 
         @a2kit.read()
         def echo_dict(self, *, payload: dict) -> dict:
             return {"got": payload}
+        tools = (echo_dict,)
 
     a = a2kit.App("demo").add_router(R())
     cli = build_full_cli(a)

@@ -40,6 +40,8 @@ async def _scalar_thing() -> dict[str, int]:
 
 def _build_app() -> a2kit.App:
     class R(a2kit.Router):
+        tools = ()
+        slug = "things"
         name = "things"
 
     r = R()

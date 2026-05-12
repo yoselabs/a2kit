@@ -56,17 +56,19 @@ def test_enricher_wraps_exceptions() -> None:
         return None
 
     class R(a2kit.Router):
+        slug = "r"
         enrichers = [enrich]
 
         @a2kit.read()
         def boom(self, *, x: int) -> dict:
             raise BoomError("ugly")
+        tools = (boom,)
 
     # Builder applies enrichers; here we apply manually using the same wrapper.
     from a2kit.packages.cli.builder import _wrap_with_enricher
 
     router = R()
-    bound = router.tools()[0]
+    bound = router.bound_tools()[0]
     enriched = _wrap_with_enricher(bound, router)
 
     with pytest.raises(BoomError, match="nicer message"):

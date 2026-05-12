@@ -28,6 +28,7 @@ def test_cancellation_propagates_to_tool_body() -> None:
     cleanup_ran: list[bool] = []
 
     class _R(a2kit.Router):
+        slug = "_r"
         @a2kit.read()
         async def slow(self) -> dict:
             try:
@@ -36,6 +37,7 @@ def test_cancellation_propagates_to_tool_body() -> None:
             except asyncio.CancelledError:
                 cleanup_ran.append(True)
                 raise
+        tools = (slow,)
 
     app = a2kit.App("cancel").add_router(_R())
 
@@ -95,9 +97,11 @@ def test_two_apps_lifecycle_handlers_fire_independently() -> None:
         order.append("b-stop")
 
     class _R(a2kit.Router):
+        slug = "_r"
         @a2kit.read()
         async def t(self) -> dict:
             return {"ok": True}
+        tools = (t,)
 
     app_a.add_router(_R())
     app_b.add_router(_R())
@@ -119,9 +123,11 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
     """The dispatcher does not swallow tool exceptions — they reach the caller."""
 
     class _R(a2kit.Router):
+        slug = "_r"
         @a2kit.read()
         async def boom(self) -> dict:
             raise ValueError("explicit failure")
+        tools = (boom,)
 
     app = a2kit.App("err").add_router(_R())
 
@@ -148,9 +154,11 @@ def test_cli_error_no_traceback_when_debug_false() -> None:
     from a2kit.packages.cli.builder import build_full_cli
 
     class _R(a2kit.Router):
+        slug = "_r"
         @a2kit.read()
         async def boom(self) -> dict:
             raise ValueError("plain failure")
+        tools = (boom,)
 
     app = a2kit.App("cli-err").add_router(_R())
     cli = build_full_cli(app)
@@ -167,9 +175,11 @@ def test_cli_error_includes_traceback_when_debug_true() -> None:
     from a2kit.packages.cli.builder import build_full_cli
 
     class _R(a2kit.Router):
+        slug = "_r"
         @a2kit.read()
         async def boom(self) -> dict:
             raise ValueError("detailed failure")
+        tools = (boom,)
 
     app = a2kit.App("cli-err-dbg", debug=True).add_router(_R())
     cli = build_full_cli(app)

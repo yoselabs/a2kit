@@ -84,9 +84,11 @@ def test_lazy_serve_does_not_load_fastmcp_at_build_time():
         "from a2kit.packages.cli.builder import build_full_cli\n"
         "from click.testing import CliRunner\n"
         "class T(a2kit.Router):\n"
+        "    slug = 't'\n"
         "    @a2kit.read('list_tasks')\n"
         "    def list_tasks(self, *, limit: int = 10) -> dict:\n"
         "        return {}\n"
+        "    tools = (list_tasks,)\n"
         "app = a2kit.App('demo').add_router(T())\n"
         "CliRunner().invoke(build_full_cli(app), ['--help'])\n"
         "print('fastmcp' in sys.modules)\n"
@@ -124,11 +126,13 @@ def test_optional_int_maps_to_integer_click_option():
     from a2kit.packages.cli.builder import build_full_cli
 
     class Probe(a2kit.Router):
+        slug = "probe"
         name = "probe"
 
         @a2kit.read("get")
         def get(self, *, project_id: int | None = None) -> dict:
             return {"project_id": project_id}
+        tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
     cli = build_full_cli(app)
@@ -144,12 +148,14 @@ def test_optional_str_invokes_with_string_value():
     seen: dict = {}
 
     class Probe(a2kit.Router):
+        slug = "probe"
         name = "probe"
 
         @a2kit.read("get")
         def get(self, *, query: str | None = None) -> dict:
             seen["query"] = query
             return {"query": query}
+        tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--query", "hello"])
@@ -162,11 +168,13 @@ def test_optional_bool_maps_to_flag():
     from a2kit.packages.cli.builder import build_full_cli
 
     class Probe(a2kit.Router):
+        slug = "probe"
         name = "probe"
 
         @a2kit.read("get")
         def get(self, *, verbose: bool | None = None) -> dict:
             return {"verbose": verbose}
+        tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--help"])
@@ -183,12 +191,14 @@ def test_nonprimitive_nullable_still_json_decodes():
     seen: dict = {}
 
     class Probe(a2kit.Router):
+        slug = "probe"
         name = "probe"
 
         @a2kit.read("get")
         def get(self, *, ids: list[int] | None = None) -> dict:
             seen["ids"] = ids
             return {"ids": ids}
+        tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--ids", "[1,2,3]"])

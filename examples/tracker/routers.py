@@ -14,14 +14,13 @@ import uuid
 
 import a2kit
 from a2kit.ldd import event, info, report
-from a2kit.packages.mcp.reports import reports
-
 from .enrichers import tracker_404_enricher
 from .models import BatchReport, Project, Task
 from .store import TrackerStore
 
 
 class ProjectsRouter(a2kit.Router):
+    slug = "projects"
     enrichers = (tracker_404_enricher,)
 
     @a2kit.list_("id", "name", "archived")
@@ -54,9 +53,11 @@ class ProjectsRouter(a2kit.Router):
                 store.replace(projects, tasks)
                 return projects[i]
         raise KeyError(project_id)
+    tools = (list_projects, get_project, create_project, archive_project,)
 
 
 class TasksRouter(a2kit.Router):
+    slug = "tasks"
     enrichers = (tracker_404_enricher,)
 
     @a2kit.list_("id", "title", "done", "assignee", page_size=20)
@@ -99,8 +100,7 @@ class TasksRouter(a2kit.Router):
                 return tasks[i]
         raise KeyError(task_id)
 
-    @a2kit.write()
-    @reports(BatchReport)
+    @a2kit.write(reports=BatchReport)
     async def bulk_import_tasks(
         self,
         *,
@@ -145,3 +145,4 @@ class TasksRouter(a2kit.Router):
         store.replace(projects, tasks)
         await event("import.complete", accepted=accepted, rejected=rejected)
         return {"accepted": accepted, "rejected": rejected}
+    tools = (list_tasks, get_task, create_task, complete_task, bulk_import_tasks,)

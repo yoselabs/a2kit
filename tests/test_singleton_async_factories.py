@@ -29,9 +29,11 @@ class _DispatchStore:
 
 
 class _DispatchRouter(a2kit.Router):
+    slug = "_dispatch"
     @a2kit.read()
     async def whoami(self, store: _DispatchStore) -> dict[str, str]:
         return {"label": store.label}
+    tools = (whoami,)
 
 
 def test_register_singleton_accepts_async_factory() -> None:

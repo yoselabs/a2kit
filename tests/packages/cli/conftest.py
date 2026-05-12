@@ -8,6 +8,7 @@ import a2kit
 
 
 class TasksRouter(a2kit.Router):
+    slug = "tasks"
     name = "tasks"
 
     @a2kit.read()
@@ -24,6 +25,7 @@ class TasksRouter(a2kit.Router):
     def create_task(self, *, title: str, done: bool = False) -> dict:
         """Create a task."""
         return {"title": title, "done": done}
+    tools = (get_task, list_tasks, create_task,)
 
 
 @pytest.fixture

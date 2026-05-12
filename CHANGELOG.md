@@ -88,6 +88,81 @@ notes will append to this entry before release).
   `weakref.WeakKeyDictionary[Factory, list[_ParamSpec]]` keyed on the
   live factory object. Internal-only; no migration.
 
+### Breaking — explicit Router surface (`explicit-router-surface`)
+
+The four contracts a Router exposes — `slug`, `tools`, `providers`,
+`lifespan` — are now the closed discovery surface. The framework
+reads what you wrote; it never invents what's missing.
+
+- **`slug: ClassVar[str]` is required.** The auto-derivation rule
+  (strip `Router` suffix, lowercase) is removed; `_derive_slug` is
+  gone from `src/a2kit/routers.py`. Missing slug raises `TypeError`
+  at `Router.__init__` time naming the subclass. The legacy `name`
+  constructor arg / `name` class attribute no longer drives the
+  slug; leave `name` off or treat it as a plain attribute.
+  Migration: add `slug = "<derived>"` to every Router subclass.
+- **`tools: ClassVar[tuple[Callable, ...]]` is required.** The
+  `dir(self)` walk in `Router._collect_methods` is gone. Each
+  Router lists every `@a2kit.read/write/list_/tool`-decorated
+  method in a tuple placed AFTER the method definitions in the
+  class body. `Router.__init__` iterates the tuple, binds each
+  entry via `getattr(self, fn.__name__)`, and stamps router-slug
+  on the bound method's `_a2kit` meta. Missing meta on a listed
+  entry raises `TypeError`; a decorated-but-unlisted method
+  silently does NOT register (a follow-up lint rule will flag this
+  drift statically). The instance-method `Router.tools()` is
+  renamed to `Router.bound_tools()`; `RouterRegistry.tools()` →
+  `RouterRegistry.bound_tools()`. `App.tools()` is unchanged.
+- **`@reports(T)` folded into verb kwargs.** The standalone
+  `@a2kit.packages.mcp.reports.reports(T)` decorator is gone;
+  `a2kit/packages/mcp/reports.py` is deleted. Use the
+  `reports=T` kwarg on `@a2kit.read/write/list_/tool` directly.
+  `stage_extra` and `PENDING_EXTRA_ATTR` are removed from
+  `a2kit.metadata`; verb decorators write the typed extras
+  (`report_type`, `report_schema`, `list_view`) directly on
+  `A2KitMetaExtras`.
+- **`Router.install(self, app)` hook removed.** The
+  `getattr(router, "install", None)` call site in
+  `App.add_router` is deleted. Routers expose contracts via
+  `slug` / `tools` / `providers` / `lifespan` only; anything the
+  hook did belongs in `providers` or `lifespan`.
+- **`Router.on_startup` / `Router.on_shutdown` auto-bridge removed.**
+  The `App.add_router` loop that scanned `cls.__dict__` for these
+  method names and registered them as App lifecycle handlers is
+  gone. Routers expose lifecycle via a single
+  `@contextlib.asynccontextmanager async def lifespan(self):`
+  method. `App.add_router(r)` composes `r.lifespan` into the App's
+  top-level lifecycle so the pre-`yield` body runs at startup (in
+  `add_router` order) and the post-`yield` body runs at shutdown
+  (LIFO). Composition uses a small in-App `AsyncExitStack` bridge
+  that the sibling `lifespan-over-lifecycle-hooks` proposal will
+  replace with `a2kit.lifespan.compose`.
+
+Migration (per Router subclass):
+
+```python
+class TasksRouter(a2kit.Router):
+    slug = "tasks"
+    providers = (TrackerStore,)
+    enrichers = (tracker_404_enricher,)
+
+    @a2kit.read()
+    async def get_task(self, *, store: TrackerStore, task_id: str) -> Task: ...
+
+    @a2kit.write(reports=BatchReport)
+    async def bulk_import(self, *, ctx: a2kit.ToolContext, ...) -> dict: ...
+
+    @asynccontextmanager
+    async def lifespan(self, *, store: TrackerStore):
+        await store.open()
+        try:
+            yield
+        finally:
+            await store.close()
+
+    tools = (get_task, bulk_import)
+```
+
 ## 0.30.0 — drop docstring → param description auto-pull — 2026-05-12
 
 ### Removed

@@ -22,8 +22,8 @@ from click.testing import CliRunner
 def tracker_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("A2KIT_CONFIG_HOME", str(tmp_path / "connections"))
 
-    # Reload the server module so its `connections(TrackerConn)` router and
-    # `connections_cli(TrackerConn)` register against a fresh container under
+    # Reload the server module so its `install_connections(app, TrackerConn)`
+    # call and `connections_cli(TrackerConn)` register against a fresh container under
     # the patched config home.
     import examples.tracker.connection as conn_mod
     import examples.tracker.routers as routers_mod

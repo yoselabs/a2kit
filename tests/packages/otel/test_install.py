@@ -10,11 +10,13 @@ from a2kit.packages.otel import OTelMiddleware, install
 
 
 class _R(a2kit.Router):
+    slug = "demo"
     name = "demo"
 
     @a2kit.read("ping")
     async def ping(self) -> dict[str, int]:
         return {"x": 1}
+    tools = (ping,)
 
 
 def _build_server() -> FastMCP:

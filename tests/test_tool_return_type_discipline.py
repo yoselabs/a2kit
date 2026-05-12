@@ -194,9 +194,11 @@ def _build_in_function_basemodel_router() -> None:
         ok: bool
 
     class R(a2kit.Router):
+        slug = "r"
         @a2kit.read()
         async def t(self) -> LocalResult:  # noqa: A2K-LOCAL-RETURN-MODEL
             return LocalResult(ok=True)
+        tools = (t,)
 
 
 def test_decoration_raises_for_in_function_basemodel() -> None:
@@ -211,9 +213,11 @@ def test_decoration_passes_for_module_scope_basemodel() -> None:
     """Sanity: module-scope class still works."""
 
     class R(a2kit.Router):
+        slug = "r"
         @a2kit.read()
         async def t(self) -> GoodResult:
             return GoodResult(ok=True)
+        tools = (t,)
 
     # No exception means pass; quick assertion to use the symbol
     assert R is not None
@@ -224,9 +228,11 @@ def _build_generic_carrier_router() -> None:
         n: int
 
     class R(a2kit.Router):
+        slug = "r"
         @a2kit.read()
         async def t(self) -> list[Inner]:  # noqa: A2K-LOCAL-RETURN-MODEL
             return []
+        tools = (t,)
 
 
 def test_decoration_raises_for_generic_carrier_with_local_basemodel() -> None:
@@ -240,9 +246,11 @@ def test_str_return_still_raises_existing_error() -> None:
     with pytest.raises(InvalidToolReturnTypeError) as ei:
 
         class R(a2kit.Router):
+            slug = "r"
             @a2kit.read()
             async def t(self) -> str:
                 return "hi"
+            tools = (t,)
 
     assert "antipattern #1" in str(ei.value) or "str" in str(ei.value)
 
@@ -288,9 +296,11 @@ def test_decoration_passes_for_dict_return() -> None:
     """Dict returns aren't BaseModel subclasses, so the new check is a no-op."""
 
     class R(a2kit.Router):
+        slug = "r"
         @a2kit.read()
         async def t(self) -> dict:
             return {"ok": True}
+        tools = (t,)
 
     assert R is not None
 

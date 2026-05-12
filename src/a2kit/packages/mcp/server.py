@@ -226,7 +226,7 @@ def _has_injectables(fn: Any, container: Any) -> bool:
 
 def _router_for_tool(app: Any, fn: Any) -> Any | None:
     for r in app.routers():
-        for tool_fn in r.tools():
+        for tool_fn in r.bound_tools():
             if tool_fn is fn or getattr(tool_fn, "__func__", None) is getattr(fn, "__func__", None):
                 return r
     return None

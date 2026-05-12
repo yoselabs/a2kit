@@ -18,7 +18,6 @@ from pydantic import BaseModel
 
 import a2kit
 from a2kit.ldd import error, event, info, report, warning
-from a2kit.packages.mcp.reports import reports
 
 
 class ImportStarted(BaseModel):
@@ -70,6 +69,7 @@ async def _persist(_batch: list[dict[str, str]]) -> None:
 
 
 class TasksRouter(a2kit.Router):
+    slug = "tasks"
     @a2kit.read()
     async def import_csv(
         self,
@@ -126,8 +126,7 @@ class TasksRouter(a2kit.Router):
         # Unreachable in practice; included so type checkers see a return.
         return {"attempts": attempts, "ok": 0}
 
-    @a2kit.read()
-    @reports(BatchReport)
+    @a2kit.read(reports=BatchReport)
     async def import_csv_with_reports(
         self,
         *,
@@ -166,3 +165,4 @@ class TasksRouter(a2kit.Router):
         fast operations.
         """
         return {"status": "ok"}
+    tools = (import_csv, long_running, import_csv_with_reports, quick_status,)

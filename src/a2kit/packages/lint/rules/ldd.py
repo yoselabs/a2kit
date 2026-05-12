@@ -1,8 +1,8 @@
 """A2K-LDD-REPORT-TYPE — declaration discipline for ``ctx.report(...)`` calls.
 
 Fires when:
-1. A tool body calls ``await ctx.report(...)`` but the function has no
-   stacked ``@reports(ReportT)`` decorator. Without it, the runtime raises
+1. A tool body calls ``await ctx.report(...)`` but the verb decorator has
+   no ``reports=ReportT`` kwarg. Without it, the runtime raises
    ``ReportTypeNotDeclared`` at call time.
 2. The declared report type is defined inside a function or class body
    (not at module scope). Pydantic forward-ref resolution constraint —
@@ -36,15 +36,16 @@ def _is_a2kit_verb_decorator(dec: ast.expr) -> bool:
     return False
 
 
-def _reports_decorator_call(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Call | None:
-    """Match ``@reports(ReportT)`` (bare name or attribute access)."""
+def _reports_kwarg(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.keyword | None:
+    """Match ``reports=ReportT`` kwarg on a verb decorator call."""
     for d in fn.decorator_list:
         if not isinstance(d, ast.Call):
             continue
-        func = d.func
-        name = func.attr if isinstance(func, ast.Attribute) else (func.id if isinstance(func, ast.Name) else None)
-        if name == "reports":
-            return d
+        if not _is_a2kit_verb_decorator(d):
+            continue
+        for kw in d.keywords:
+            if kw.arg == "reports":
+                return kw
     return None
 
 
@@ -97,9 +98,9 @@ def rule_ldd_report_type(tree: ast.AST, filename: str, _source: str) -> Iterable
             continue
 
         report_calls = _calls_ctx_report(node)
-        reports_dec = _reports_decorator_call(node)
+        reports_kw = _reports_kwarg(node)
 
-        if report_calls and reports_dec is None:
+        if report_calls and reports_kw is None:
             for call in report_calls:
                 yield LintMessage(
                     rule=A2K_LDD_REPORT_TYPE,
@@ -107,14 +108,14 @@ def rule_ldd_report_type(tree: ast.AST, filename: str, _source: str) -> Iterable
                     line=call.lineno,
                     col=call.col_offset,
                     message=(
-                        "ctx.report(...) called but no @reports(ReportT) decorator is stacked. "
-                        "Add `@reports(YourReportModel)` (from a2kit.packages.mcp.reports) or use ctx.event(...) "
-                        "for free-form narration."
+                        "ctx.report(...) called but no `reports=ReportT` kwarg on the verb decorator. "
+                        "Add `reports=YourReportModel` to @a2kit.read/write/list_/tool, or use "
+                        "ctx.event(...) for free-form narration."
                     ),
                 )
 
-        if reports_dec is not None and reports_dec.args:
-            arg = reports_dec.args[0]
+        if reports_kw is not None:
+            arg = reports_kw.value
             if isinstance(arg, ast.Name) and arg.id not in module_names:
                 yield LintMessage(
                     rule=A2K_LDD_REPORT_TYPE,
@@ -122,7 +123,7 @@ def rule_ldd_report_type(tree: ast.AST, filename: str, _source: str) -> Iterable
                     line=arg.lineno,
                     col=arg.col_offset,
                     message=(
-                        f"`@reports({arg.id})` references a non-module-scope type. "
+                        f"`reports={arg.id}` references a non-module-scope type. "
                         "Pydantic forward-ref resolution requires module-scope. Hoist the model out."
                     ),
                 )

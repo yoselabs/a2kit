@@ -82,6 +82,7 @@ def test_docstring_empty_returns_empty_strings() -> None:
 
 
 class FetchRouter(a2kit.Router):
+    slug = "fetch"
     @a2kit.read()
     async def fetch(
         self,
@@ -96,6 +97,7 @@ class FetchRouter(a2kit.Router):
         See [the docs](https://example.com) for tier details.
         """
         return {"url": url, "timeout": str(timeout)}
+    tools = (fetch,)
 
 
 def _build_cli() -> object:

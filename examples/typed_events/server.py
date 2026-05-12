@@ -63,6 +63,7 @@ app.ldd.events.register(StepCompleted, progress=lambda e: (e.step, e.total))
 
 
 class JobsRouter(a2kit.Router):
+    slug = "jobs"
     @a2kit.read()
     async def run(self, *, ctx: a2kit.ToolContext, steps: int = 3) -> dict[str, int]:
         """Run ``steps`` fake work units, emitting typed events along the way."""
@@ -74,6 +75,7 @@ class JobsRouter(a2kit.Router):
             await asyncio.sleep(0)
             await app.ldd.events.emit_typed(StepCompleted(step=i, total=steps, elapsed_ms=1))
         return {"steps": steps}
+    tools = (run,)
 
 
 app.add_router(JobsRouter())

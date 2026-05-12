@@ -100,6 +100,7 @@ class TickResponse(BaseModel):
 
 
 class FakeShopRouter(a2kit.Router):
+    slug = "fakeshop"
     @a2kit.read()
     async def tick(
         self,
@@ -111,6 +112,7 @@ class FakeShopRouter(a2kit.Router):
         count = await state.counter.tick()
         history = await state.counter.history() if include_history else []
         return TickResponse(count=count, history=history)
+    tools = (tick,)
 
 
 # --------------------------------------------------------------------- #

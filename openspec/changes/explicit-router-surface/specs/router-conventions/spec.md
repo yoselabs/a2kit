@@ -226,10 +226,25 @@ every provider it installs.
 
 - **WHEN** `App.add_router(r)` runs
 - **THEN** the only attributes it reads from `r` to drive
-  registration are exactly `slug`, `tools`, `providers`, and
-  `lifespan` — no other framework side-channels, no
+  registration are exactly these four — `slug`, `tools`,
+  `providers`, and `lifespan` — and no fifth. No
   `install(self, app)` hook, no `__init_subclass__` registry,
-  no `dir()` walk
+  no `dir()` walk, no marker-attribute side-channel (e.g.
+  `_a2kit_attach`) on the Router class or its type.
+
+#### Scenario: Underscored marker attribute is not auto-invoked
+
+- **GIVEN** a Router subclass that defines a class attribute
+  `_a2kit_attach = staticmethod(some_callable)` (or any other
+  underscore-prefixed marker)
+- **WHEN** `App.add_router(r)` is called on this Router
+- **THEN** the framework SHALL NOT read or invoke the marker;
+  registration completes using only `slug` / `tools` / `providers`
+  / `lifespan`. First-party plugins requiring side effects (e.g.
+  the connections plugin's dispatch-hook + wire-scope wiring)
+  SHALL expose an imperative install function called by the
+  consumer (e.g. `install_connections(app, *conn_types)`), not a
+  marker on a Router subclass.
 
 ## REMOVED Requirements
 

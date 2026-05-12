@@ -68,10 +68,12 @@ def test_report_outside_dispatch_raises() -> None:
 
 
 class _PingRouter(a2kit.Router):
+    slug = "_ping"
     @a2kit.read()
     async def ping(self, ctx: a2kit.ToolContext) -> dict[str, str]:
         await ldd_info("hello", k="v")
         return {"ok": "yes"}
+    tools = (ping,)
 
 
 def test_dispatch_provides_ambient_ctx_to_primitives() -> None:

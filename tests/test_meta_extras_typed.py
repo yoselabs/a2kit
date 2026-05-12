@@ -8,7 +8,7 @@ routers stamp named attributes; readers access them by name.
 from __future__ import annotations
 
 import a2kit
-from a2kit.metadata import A2KitMetaExtras, get_meta, stage_extra
+from a2kit.metadata import A2KitMetaExtras, get_meta
 from a2kit.surface import Surface
 
 
@@ -45,35 +45,57 @@ def test_list_decorator_stamps_list_view() -> None:
 
 def test_router_stamps_router_slug() -> None:
     class SampleRouter(a2kit.Router):
+        slug = "sample"
+
         @a2kit.read()
         async def ping(self) -> dict[str, int]:
             return {"x": 1}
 
+        tools = (ping,)
+
     router = SampleRouter()
-    fn = router.tools()[0]
+    fn = router.bound_tools()[0]
     meta = get_meta(fn)
     assert meta is not None
     assert meta.extras.router_slug == "sample"
 
 
-def test_stage_extra_writes_attribute_when_meta_already_stamped() -> None:
-    @a2kit.read()
+def test_reports_kwarg_stamps_report_type() -> None:
+    from pydantic import BaseModel
+
+    class _Report(BaseModel):
+        ok: bool
+
+    @a2kit.read(reports=_Report)
     async def f() -> dict[str, int]:
         return {"k": 1}
 
-    stage_extra(f, "report_type", int)
     meta = get_meta(f)
     assert meta is not None
-    assert meta.extras.report_type is int
+    assert meta.extras.report_type is _Report
+    assert isinstance(meta.extras.report_schema, dict)
 
 
-def test_stage_extra_queues_when_no_meta_yet() -> None:
+def test_reports_kwarg_handles_unschemable_type() -> None:
+    """``_compute_report_schema`` swallows TypeAdapter failures.
+
+    The runtime contract checks the type itself, not the schema, so missing
+    schema is not fatal. Using a non-pydantic class that TypeAdapter cannot
+    introspect (a function-scoped class with no annotations) triggers the
+    fallback to ``None``.
+    """
+
+    class _NotSchemable:
+        # No annotations, defined in function scope — TypeAdapter raises.
+        def __init__(self) -> None:
+            self.x = 1
+
+    @a2kit.read(reports=_NotSchemable)  # type: ignore[arg-type]
     async def f() -> dict[str, int]:
         return {"k": 1}
 
-    stage_extra(f, "report_schema", {"type": "object"})
-    # The pending dict is private; decorate to flush.
-    decorated = a2kit.read()(f)
-    meta = get_meta(decorated)
+    meta = get_meta(f)
     assert meta is not None
-    assert meta.extras.report_schema == {"type": "object"}
+    assert meta.extras.report_type is _NotSchemable
+    # Schema may be present or None depending on TypeAdapter's leniency; the
+    # important thing is decoration did not raise.

@@ -105,7 +105,6 @@ class A2KitMeta:
 
 
 META_ATTR = "_a2kit"
-PENDING_EXTRA_ATTR = "_a2kit_pending_extra"
 
 
 def get_meta(fn: Any) -> A2KitMeta | None:
@@ -114,27 +113,3 @@ def get_meta(fn: Any) -> A2KitMeta | None:
 
 def set_meta(fn: Any, meta: A2KitMeta) -> None:
     object.__setattr__(fn, META_ATTR, meta)
-
-
-def stage_extra(fn: Any, attr_name: str, value: Any) -> None:
-    """Stage a typed-extras attribute for the verb decorator to consume.
-
-    ``attr_name`` is the attribute on :class:`A2KitMetaExtras` (e.g.
-    ``"report_type"``, ``"list_view"``). If meta is already stamped, the
-    attribute is set directly on the typed model; otherwise the
-    ``(attr_name, value)`` pair is queued on ``fn`` for ``_stamp`` to apply
-    when the verb decorator runs.
-
-    The sibling ``explicit-router-surface`` proposal removes this function;
-    until then it is the single bridge between verb-decorator-pre and
-    verb-decorator-post staging.
-    """
-    meta = get_meta(fn)
-    if meta is not None:
-        setattr(meta.extras, attr_name, value)
-        return
-    pending: dict[str, Any] | None = getattr(fn, PENDING_EXTRA_ATTR, None)
-    if pending is None:
-        pending = {}
-        object.__setattr__(fn, PENDING_EXTRA_ATTR, pending)
-    pending[attr_name] = value

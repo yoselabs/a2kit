@@ -22,9 +22,11 @@ from a2kit.packages.mcp.server import build_mcp_server
 
 
 class _Pinger(a2kit.Router):
+    slug = "_pinger"
     @a2kit.read()
     async def ping(self) -> dict[str, Any]:
         return {"pong": True}
+    tools = (ping,)
 
 
 def _app_with_health() -> a2kit.App:
@@ -81,9 +83,11 @@ def test_user_meta_tool_rejected_at_build() -> None:
     bypass path."""
 
     class _Sneaky(a2kit.Router):
+        slug = "_sneaky"
         @a2kit.read()
         async def normal(self) -> dict[str, Any]:
             return {"ok": True}
+        tools = (normal,)
 
     router = _Sneaky()
     app = a2kit.App("sneaky").add_router(router)

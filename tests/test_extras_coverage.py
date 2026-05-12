@@ -326,7 +326,8 @@ def test_router_slug_derived_from_class() -> None:
     import a2kit
 
     class MyTrackerRouter(a2kit.Router):
-        pass
+        tools = ()
+        slug = "mytracker"
 
     r = MyTrackerRouter()
     assert r.slug == "mytracker"
@@ -336,7 +337,8 @@ def test_router_slug_no_router_suffix() -> None:
     import a2kit
 
     class Tasks(a2kit.Router):
-        pass
+        tools = ()
+        slug = "tasks"
 
     r = Tasks()
     assert r.slug == "tasks"
@@ -346,10 +348,12 @@ def test_router_slug_collision_raises() -> None:
     import a2kit
 
     class TasksRouter(a2kit.Router):
-        pass
+        tools = ()
+        slug = "tasks"
 
     class Tasks(a2kit.Router):
-        pass
+        tools = ()
+        slug = "tasks"
 
     app = a2kit.App("a").add_router(TasksRouter())
 
@@ -361,20 +365,23 @@ def test_router_slug_class_attr_wins() -> None:
     import a2kit
 
     class XYZ(a2kit.Router):
+        tools = ()
+        slug = "custom_slug"
         name = "custom_slug"
 
     r = XYZ()
     assert r.slug == "custom_slug"
 
 
-def test_router_slug_constructor_arg_wins() -> None:
+def test_router_slug_attribute_pinned_at_class_level() -> None:
     import a2kit
 
     class _R(a2kit.Router):
-        pass
+        tools = ()
+        slug = "_r_fixed"
 
-    r = _R("Override")
-    assert r.slug == "Override"
+    r = _R()
+    assert r.slug == "_r_fixed"
 
 
 def test_router_registry_round_trip() -> None:
@@ -386,14 +393,15 @@ def test_router_registry_round_trip() -> None:
         return {"x": 1}
 
     class R(a2kit.Router):
-        name = "r"
+        tools = ()
+        slug = "r"
 
     r = R()
     r._tools.append(ping)
     reg = RouterRegistry()
     reg.add(r)
     assert reg.all() == [r]
-    assert reg.tools() == [ping]
+    assert reg.bound_tools() == [ping]
 
 
 # --------------------------- connections CLI multi-type listing --------------------------- #

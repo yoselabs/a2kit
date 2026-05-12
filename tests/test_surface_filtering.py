@@ -8,6 +8,7 @@ from a2kit.surface import Surface
 
 
 class _SurfRouter(Router):
+    slug = "surf"
     name = "surf"
 
     @a2kit.read(surfaces=Surface.CLI)
@@ -21,6 +22,7 @@ class _SurfRouter(Router):
     @a2kit.read()
     async def both(self) -> dict[str, int]:
         return {"k": 1}
+    tools = (cli_only, mcp_only, both,)
 
 
 def _app() -> a2kit.App:

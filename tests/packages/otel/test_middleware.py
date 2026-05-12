@@ -62,6 +62,7 @@ class _FakeMiddlewareContext:
 
 def _build_server() -> Any:
     class _R(a2kit.Router):
+        slug = "things"
         name = "things"
 
         @a2kit.read("ping", tags={"alpha", "beta"})
@@ -71,6 +72,7 @@ def _build_server() -> Any:
         @a2kit.write("boom")
         async def boom(self) -> dict[str, int]:
             raise RuntimeError("kaboom")
+        tools = (ping, boom,)
 
     app = a2kit.App("demo-app").add_router(_R())
     return build_mcp_server(app)

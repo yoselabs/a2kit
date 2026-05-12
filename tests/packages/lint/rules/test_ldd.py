@@ -32,13 +32,11 @@ def test_silent_when_reports_decorator_present_and_module_scope() -> None:
     src = """
     from pydantic import BaseModel
     import a2kit
-    from a2kit.packages.mcp.reports import reports
 
     class BatchReport(BaseModel):
         n: int
 
-    @a2kit.read()
-    @reports(BatchReport)
+    @a2kit.read(reports=BatchReport)
     async def get_thing(*, ctx) -> dict:
         await ctx.report(BatchReport(n=1))
         return {}
@@ -50,14 +48,12 @@ def test_fires_when_reportt_is_not_module_scope() -> None:
     src = """
     from pydantic import BaseModel
     import a2kit
-    from a2kit.packages.mcp.reports import reports
 
     def make_decorator():
         class InnerReport(BaseModel):
             n: int
 
-        @a2kit.read()
-        @reports(InnerReport)
+        @a2kit.read(reports=InnerReport)
         async def get_thing(*, ctx) -> dict:
             return {}
         return get_thing

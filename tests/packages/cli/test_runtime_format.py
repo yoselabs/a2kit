@@ -29,11 +29,13 @@ def _runner() -> CliRunner:
 class TestAutoRouting:
     def test_list_of_scalar_only_model_outputs_tsv(self):
         class TR(a2kit.Router):
+            slug = "tr"
             name = "tr"
 
             @a2kit.list_("id", "title")
             async def list_x(self) -> list[Task]:
                 return [Task(id="a", title="x"), Task(id="b", title="y")]
+            tools = (list_x,)
 
         app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x"])
@@ -46,11 +48,13 @@ class TestAutoRouting:
 
     def test_list_of_model_with_list_field_outputs_json(self):
         class TR(a2kit.Router):
+            slug = "tr"
             name = "tr"
 
             @a2kit.list_("id")
             async def list_x(self) -> list[TaskWithLabels]:
                 return [TaskWithLabels(id="a", labels=["x", "y"])]
+            tools = (list_x,)
 
         app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x"])
@@ -60,11 +64,13 @@ class TestAutoRouting:
 
     def test_page_of_scalar_only_outputs_hybrid(self):
         class TR(a2kit.Router):
+            slug = "tr"
             name = "tr"
 
             @a2kit.read()
             async def page_x(self) -> Page[Task]:
                 return Page[Task](items=[Task(id="a", title="x")], next_cursor="c")
+            tools = (page_x,)
 
         app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "page_x"])
@@ -75,11 +81,13 @@ class TestAutoRouting:
 
     def test_single_basemodel_outputs_json(self):
         class TR(a2kit.Router):
+            slug = "tr"
             name = "tr"
 
             @a2kit.read()
             async def get(self, *, id: str = "a") -> Task:
                 return Task(id=id, title="x")
+            tools = (get,)
 
         app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "get"])
@@ -91,11 +99,13 @@ class TestAutoRouting:
 class TestExplicitOverride:
     def test_explicit_json_overrides_tsv_default(self):
         class TR(a2kit.Router):
+            slug = "tr"
             name = "tr"
 
             @a2kit.list_("id")
             async def list_x(self) -> list[Task]:
                 return [Task(id="a", title="x")]
+            tools = (list_x,)
 
         app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x", "--format", "json"])
@@ -105,11 +115,13 @@ class TestExplicitOverride:
 
     def test_toon_format_no_longer_offered(self):
         class TR(a2kit.Router):
+            slug = "tr"
             name = "tr"
 
             @a2kit.read()
             async def get(self, *, id: str = "a") -> Task:
                 return Task(id=id, title="x")
+            tools = (get,)
 
         app = a2kit.App("t").add_router(TR())
         # click.Choice rejects the value at parse time

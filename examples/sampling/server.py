@@ -19,6 +19,7 @@ import a2kit
 
 
 class TextRouter(a2kit.Router):
+    slug = "text"
     @a2kit.read(open_world=True, title="Summarize via LLM Sampling")
     async def summarize(self, *, ctx: a2kit.ToolContext, text: str) -> dict[str, str]:
         """Summarize ``text`` by asking the MCP client to sample its LLM.
@@ -31,6 +32,7 @@ class TextRouter(a2kit.Router):
         # ``ctx.sample`` returns a ``SamplingResult`` on MCP — extract its text.
         summary = getattr(result, "text", None) or getattr(result, "result", None) or str(result)
         return {"summary": summary}
+    tools = (summarize,)
 
 
 app = a2kit.App("sampling-demo")

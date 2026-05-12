@@ -15,7 +15,7 @@ from click.testing import CliRunner
 
 import a2kit
 from a2kit.packages.cli.builder import build_full_cli
-from a2kit.packages.connections import connections
+from a2kit.packages.connections import install_connections
 from a2kit.packages.connections.config import ConnectionConfig
 
 
@@ -36,11 +36,13 @@ class _Store:
 
 
 class _Probe(a2kit.Router):
+    slug = "probe"
     name = "probe"
 
     @a2kit.read("ping")
     async def ping(self, *, store: _Store) -> dict[str, str]:
         return {"hi": store.hello()}
+    tools = (ping,)
 
 
 async def _fake_load(self: Any, *args: Any, **kwargs: Any) -> _Cfg:
@@ -53,7 +55,8 @@ async def _fake_load(self: Any, *args: Any, **kwargs: Any) -> _Cfg:
 
 def test_di_resolves_store_per_call() -> None:
     """Wire ``--connection alpha`` flows through the dispatch hook → typed _Cfg → _Store."""
-    app = a2kit.App("app").add_router(_Probe()).add_router(connections(_Cfg)).provide(_Store)
+    app = a2kit.App("app").add_router(_Probe()).provide(_Store)
+    install_connections(app, _Cfg)
     cli = build_full_cli(app)
     with patch("a2kit.packages.connections.store.ConnectionStore.load", _fake_load):
         result = CliRunner().invoke(cli, ["probe", "ping", "--connection", "alpha", "--format", "json"])
@@ -64,10 +67,11 @@ def test_di_resolves_store_per_call() -> None:
 def test_di_strips_injectable_from_schema() -> None:
     """The agent-facing wire schema must not include injectable ``store``;
     it should synthesize a wire ``connection: str``."""
-    app = a2kit.App("app").add_router(_Probe()).add_router(connections(_Cfg)).provide(_Store)
+    app = a2kit.App("app").add_router(_Probe()).provide(_Store)
+    install_connections(app, _Cfg)
     from a2kit.packages.cli.schemas import compute_schema
 
-    fn = next(iter(_Probe().tools()))
+    fn = next(iter(_Probe().bound_tools()))
     schema = compute_schema(fn, container=app.container())
     props = schema["inputSchema"].get("properties", {})
     assert "store" not in props
@@ -76,16 +80,18 @@ def test_di_strips_injectable_from_schema() -> None:
 
 def test_di_omits_connection_when_no_chain_reaches_it() -> None:
     class _Plain(a2kit.Router):
+        slug = "plain"
         name = "plain"
 
         @a2kit.read("noop")
         async def noop(self, *, n: int) -> dict[str, int]:
             return {"n": n}
+        tools = (noop,)
 
     app = a2kit.App("app").add_router(_Plain())
     from a2kit.packages.cli.schemas import compute_schema
 
-    fn = next(iter(_Plain().tools()))
+    fn = next(iter(_Plain().bound_tools()))
     schema = compute_schema(fn, container=app.container())
     props = schema["inputSchema"].get("properties", {})
     assert "connection" not in props
@@ -93,7 +99,8 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
 
 
 def test_di_replace_provider_overrides_factory() -> None:
-    app = a2kit.App("app").add_router(_Probe()).add_router(connections(_Cfg)).provide(_Store)
+    app = a2kit.App("app").add_router(_Probe()).provide(_Store)
+    install_connections(app, _Cfg)
 
     def override_factory(cfg: _Cfg) -> _Store:
         return _Store(_Cfg(key=(f"override-{cfg.name}",), name=f"override-{cfg.name}"))

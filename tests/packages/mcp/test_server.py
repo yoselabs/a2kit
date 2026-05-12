@@ -12,6 +12,7 @@ from a2kit.packages.mcp import build_mcp_server
 
 
 class _SampleRouter(a2kit.Router):
+    slug = "sample"
     name = "sample"
 
     @a2kit.read("ping")
@@ -25,6 +26,7 @@ class _SampleRouter(a2kit.Router):
             {"id": 2, "name": "b", "extra": "drop"},
             {"id": 3, "name": "c", "extra": "drop"},
         ]
+    tools = (ping, rows,)
 
 
 @pytest.fixture
@@ -100,12 +102,14 @@ def test_enricher_fires_before_registration() -> None:
         return f"enriched: {exc!s}"
 
     class R(a2kit.Router):
+        slug = "r"
         name = "r"
         enrichers = [my_enricher]
 
         @a2kit.read("boom")
         async def boom(self) -> dict[str, str]:
             raise RuntimeError("kaboom")
+        tools = (boom,)
 
     app = a2kit.App("e").add_router(R())
     server = build_mcp_server(app)
@@ -122,6 +126,7 @@ def test_enricher_fires_before_registration() -> None:
 
 def test_sync_and_async_tools_both_register() -> None:
     class R(a2kit.Router):
+        slug = "r"
         name = "r"
 
         @a2kit.read("sync_one")
@@ -131,6 +136,7 @@ def test_sync_and_async_tools_both_register() -> None:
         @a2kit.read("async_one")
         async def async_one(self) -> dict[str, int]:
             return {"x": 2}
+        tools = (sync_one, async_one,)
 
     app = a2kit.App("a").add_router(R())
     server = build_mcp_server(app)

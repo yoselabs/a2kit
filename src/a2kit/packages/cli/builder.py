@@ -376,7 +376,7 @@ def _router_group(router: Router, app: App) -> click.Group:
         name=router.slug,
         help=f"Tools in router {router.slug!r}.",
     )
-    for fn in router.tools():
+    for fn in router.bound_tools():
         meta = get_meta(fn)
         if meta is not None:
             tool_surfaces = meta.extras.surfaces or Surface.ALL
