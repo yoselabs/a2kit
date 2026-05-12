@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
@@ -148,6 +149,49 @@ _RESERVED_TOOL_NAME_PREFIX = "_meta."
 _BUILTIN_RESERVED_TOOL_NAMES = frozenset({"_meta.health"})
 
 
+def _augment_annotations_from_docstring(fn: Any) -> None:
+    """Inject ``Annotated[T, Param(description=...)]`` for params that
+    have a Google-style docstring entry but no explicit description.
+
+    Explicit ``Annotated[T, FieldInfo(description=...)]`` (or
+    ``a2kit.Param``, or bare ``pydantic.Field``) always wins.
+    Mutates ``fn.__annotations__`` in place at decoration time.
+    """
+    import contextlib as _ctxlib
+    from typing import Annotated, get_type_hints
+
+    from a2kit._docstring import extract_param_descriptions
+    from a2kit.params import Param, description_of
+    from a2kit.signature import find_context_param
+
+    descriptions = extract_param_descriptions(getattr(fn, "__doc__", None))
+    if not descriptions:
+        return
+    annotations = getattr(fn, "__annotations__", None)
+    if not annotations:
+        return
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return
+    resolved: dict[str, Any] = {}
+    with _ctxlib.suppress(Exception):
+        resolved = get_type_hints(fn, include_extras=True)
+    ctx_name = find_context_param(fn)
+    skip = {"self", ctx_name}
+    for pname, param in sig.parameters.items():
+        if pname in skip:
+            continue
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        if pname not in descriptions:
+            continue
+        existing = resolved.get(pname, param.annotation)
+        if existing is inspect.Parameter.empty or description_of(existing):
+            continue
+        annotations[pname] = Annotated[existing, Param(description=descriptions[pname])]
+
+
 def _check_reserved_name(tool_name: str) -> None:
     if tool_name in _BUILTIN_RESERVED_TOOL_NAMES:
         return
@@ -172,6 +216,7 @@ def _stamp(
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
+    _augment_annotations_from_docstring(fn)
     pending: dict[str, Any] = dict(getattr(fn, PENDING_EXTRA_ATTR, None) or {})
     pending[SURFACE_META_KEY] = surfaces
     meta = A2KitMeta(
