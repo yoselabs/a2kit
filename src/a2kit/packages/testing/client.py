@@ -170,6 +170,31 @@ class TestClient:
         response = format_response(value, format_hint=cast("FormatHint", fmt))
         return response.data
 
+    async def call_wire(
+        self,
+        tool_name: str,
+        *,
+        connection: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Invoke ``tool_name`` and return the **wire-encoded** payload.
+
+        Composes :meth:`invoke` (which returns the tool's Python value)
+        with the same formatter the production transports use, reading
+        the cached ``descriptor.format_hint`` so the test-observed
+        format and production wire format flip in lockstep when the
+        tool's return annotation changes.
+
+        Use this when an assertion needs to pin the JSON / TSV /
+        page-tsv shape (e.g. ``Page[T]`` pagination, list→TSV
+        formatting). For value-shape assertions, :meth:`invoke` is
+        cheaper.
+        """
+        descriptor = self._descriptor(tool_name)
+        value = await self.invoke(tool_name, connection=connection, **kwargs)
+        response = format_response(value, format_hint=descriptor.format_hint)
+        return response.data
+
     async def invoke(
         self,
         tool_name: str,
