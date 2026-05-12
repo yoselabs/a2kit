@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.28.0 — a2kit.ldd.log primitive (Context-shape divergence repair) — 2026-05-12
+
+`ctx.info("msg", k=v)` — the kwargs-emit pattern shown in
+`examples/streaming_logger` and `examples/tracker` — crashed under real
+MCP transport with TypeError, masked as "Error calling tool 'X'" under
+`App(debug=False)`. `fastmcp.Context.info` has a narrow signature
+(`message, logger_name=None, extra=None`); `StderrToolContext` had silently
+widened it to `(msg, **fields)`, and the in-process test client hid the
+divergence from every test path.
+
+Repairs the contract by finishing the LDD free-function pattern that
+`event` / `report` already used:
+
+### Added
+
+- **`a2kit.ldd.log(ctx, level, msg_or_instance, **fields)`** — plus
+  `info` / `warning` / `error` / `debug` aliases. Both forms (string +
+  typed instance) share the `_typed_event_to_payload` helper with
+  `event`, so coercion rules can't drift.
+
+### Changed (breaking)
+
+- **`StderrToolContext.info/warning/error/debug` narrowed** to fastmcp's
+  exact signature — kwargs form removed. Migrate to `a2kit.ldd.log(...)`
+  or wrap kwargs in `extra=`.
+
+### Test gate
+
+- Two-axis contract test (`tests/test_context_surface.py`): name
+  coverage (legacy) + signature-binding registry `CTX_CALL_SHAPES` (new,
+  load-bearing). Every call shape in `tests/` + `examples/` binds
+  against both Context impls.
+- End-to-end repro (`tests/test_field_logging_mcp_path.py`) using real
+  `fastmcp.Client(transport=server)` — today's bug fails this; new code
+  passes.
+- `ty check examples/` joins `make lint` (0 errors after migration, was 14).
+- 723 → 728 tests (+2 MCP-path probes, +1 ldd kwarg render, +2
+  architectural invariants).
+
+Tier 2/3/4 of the Context-shape divergence (13 more drifting methods)
+captured as follow-ups in `openspec/changes/align-context-method-signatures/`
+and `openspec/changes/rebuild-test-client-on-real-context/`.
+
 ## 0.27.2 — CLI cold-start: schema gen no longer triggers mcp.types — 2026-05-12
 
 The previous release deferred `mcp.types` from module-load time but `--schema`
