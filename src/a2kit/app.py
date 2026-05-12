@@ -4,7 +4,12 @@ import inspect
 import logging
 from typing import TYPE_CHECKING, Any
 
-from a2kit.packages.di.container import _UNRESOLVED, Container, container_dispatch
+from a2kit.packages.di.container import (
+    _UNRESOLVED,
+    Container,
+    container_dispatch,
+    container_dispatch_async,
+)
 from a2kit.routers import Router, RouterRegistry
 from a2kit.tool import ToolDescriptor
 
@@ -77,8 +82,16 @@ class App:
         self,
         fn: Callable[..., Any],
         wire_kwargs: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Sync dispatch hook backed by the container. Default for apps with no consumer hook installed."""
+    ) -> Any:
+        """Default dispatch hook backed by the container.
+
+        Switches to the async resolution path if any singleton has an
+        async factory, so async-factory singletons are awaited on first
+        resolution. Otherwise stays synchronous (existing hot path,
+        identical behaviour for apps that never touch async factories).
+        """
+        if self._container.has_any_async_singletons():
+            return container_dispatch_async(fn, wire_kwargs, self._container)
         return container_dispatch(fn, wire_kwargs, self._container)
 
     def _install_health_tool(self) -> None:
@@ -196,8 +209,17 @@ class App:
         - Decorator: ``@app.singleton(T)`` decorates the factory and returns it
           unchanged after registering.
 
-        Factories MUST be synchronous. Async resource initialization belongs
-        in resource classes (see README "Resource pattern" appendix).
+        The factory MAY be sync (``def``) or async (``async def``). An
+        async factory is awaited on first resolution; subsequent resolves
+        return the cached instance. Concurrent first-resolution calls
+        coalesce on a per-type ``asyncio.Lock`` — the factory runs at
+        most once. Sync ``container.resolve(T)`` on an unresolved async
+        singleton raises a clear error; warm-up via ``@on_startup`` (or
+        any first call from inside the event loop) primes the cache.
+
+        This is the primary path for async-opened resources (DB pools,
+        HTTP clients, browser handles). Hand-rolled lazy-init resource
+        classes are no longer necessary for the common case.
         """
         if factory is None:
 

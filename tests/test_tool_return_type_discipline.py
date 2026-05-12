@@ -311,16 +311,16 @@ def test_peek_resolves_registered_singleton() -> None:
     assert s is s2  # singleton
 
 
-def test_singleton_rejects_async_factory_at_registration() -> None:
-    """v0.27: singleton factories MUST be sync. Async resource opens belong in
-    resource classes (lazy-init pattern), not in DI factories."""
+def test_singleton_accepts_async_factory_at_registration() -> None:
+    """Async singleton factories are accepted; awaited on first resolution.
+    See `tests/test_singleton_async_factories.py` for full coverage."""
 
     async def factory() -> _State:
         return _State()
 
     app = a2kit.App("t")
-    with pytest.raises(ValueError, match="async"):
-        app.singleton(_State, factory)
+    app.singleton(_State, factory)
+    assert app.has_singleton(_State)
 
 
 def test_peek_raises_when_no_provider() -> None:

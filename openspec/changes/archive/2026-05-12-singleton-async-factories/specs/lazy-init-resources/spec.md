@@ -1,8 +1,5 @@
-# lazy-init-resources Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change di-sync-and-unleak. Update Purpose after archive.
-## Requirements
 ### Requirement: Async-opened resources are encapsulated in resource classes
 
 The system SHALL document `App.singleton(T, async_factory)` as the **primary** path for resources that need async initialization (database connections, browser pools, HTTP clients, LLM clients). An app SHOULD register such resources with an `async def` factory whose body performs the open and returns a constructed instance; the container awaits the factory exactly once on first resolution and caches the result, with concurrent first-touches coalesced under a per-type lock (see the `app-singletons` capability). The previously-documented hand-rolled "lazy-init resource" class pattern (sync `__init__`, internal `asyncio.Lock`, async `_ensure`, every method `await self._ensure()` first) is repositioned as an **escape hatch** for resources that legitimately need per-method re-entry guards (e.g. reconnect-on-failure semantics, partial pool re-initialization, resources whose `close()` lifecycle is not aligned with `@on_shutdown`). The framework SHALL NOT ship either pattern as a base class, mixin, or decorator.
@@ -33,36 +30,6 @@ The system SHALL document `App.singleton(T, async_factory)` as the **primary** p
 - **WHEN** `await resource.close()` is called twice on a hand-rolled resource class
 - **THEN** the second call is a no-op and does not raise
 
-### Requirement: AppState fields stay non-Optional
-
-App state classes that follow the lazy-init pattern SHALL hold resource instances as non-`Optional` fields. The pattern explicitly forbids `state.sqlite: SqliteResource | None`. The resource handle exists from construction; only the *underlying* connection is lazy.
-
-#### Scenario: State construction is sync and total
-
-- **WHEN** `build_state(settings)` is called (a sync function)
-- **THEN** every resource field on the returned `AppState` is populated with a constructed resource instance
-- **AND** no field is `None`
-
-### Requirement: Cleanup goes through `@on_shutdown`
-
-The pattern SHALL document `@app.on_shutdown` as the cleanup site for resources. Each registered shutdown handler takes `state: AppState` (via DI) and awaits the resource's `close()` method.
-
-#### Scenario: Shutdown closes resources
-
-- **GIVEN** an app with `@on_shutdown async def _close(state: AppState): await state.sqlite.close()`
-- **WHEN** the lifecycle dispatches shutdown
-- **THEN** the resource's `close` runs once and the underlying connection is released
-
-### Requirement: Optional fail-fast warm-up via `@on_startup`
-
-The pattern SHALL document an optional `@app.on_startup` warm-up that triggers `_ensure` early to surface configuration errors at startup rather than at first tool call.
-
-#### Scenario: Warm-up triggers init
-
-- **GIVEN** an app with `@on_startup async def _warm(state: AppState): await state.sqlite._ensure()`
-- **WHEN** the lifecycle dispatches startup
-- **THEN** the underlying `aiosqlite.connect` is awaited before any tool is served
-
 ### Requirement: No framework primitive for the pattern
 
 Neither the primary async-factory-singleton path nor the escape-hatch hand-rolled resource pattern SHALL be shipped as a base class, mixin, or decorator inside `a2kit`. Specifically, the framework SHALL NOT introduce `@app.async_resource`, `@app.lazy`, `LazyResource`, `AsyncResource`, or any sibling name. The framework provides the surface (sync DI, async-factory-aware `singleton`, DI-aware lifecycle) on which both patterns compose; it does not own either pattern itself.
@@ -77,4 +44,3 @@ Neither the primary async-factory-singleton path nor the escape-hatch hand-rolle
 - **WHEN** code attempts `@app.async_resource(SqliteResource)` or `from a2kit import async_resource`
 - **THEN** the attribute does not exist on `App` and the import fails
 - **AND** the documented async-resource path is `app.singleton(SqliteResource, build_sqlite_async)` with an `async def` factory
-

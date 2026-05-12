@@ -5,7 +5,7 @@ TBD - created by archiving change de-magic-3. Update Purpose after archive.
 ## Requirements
 ### Requirement: App provides typed factories via `App.provide(T, factory=None)`
 
-The `App` class SHALL expose `provide(type_: type[T], factory: Callable[..., T] | None = None) -> Self` that registers a typed factory in a request-scoped DI container. When `factory` is omitted, the class `type_` itself SHALL be used as the factory and the container SHALL introspect `type_.__init__` to resolve constructor parameters. Calling `provide` with the same type twice SHALL replace the earlier factory (last-write-wins). `provide` constructs a fresh instance per dispatch; for App-scoped caching use `App.singleton(...)` instead. **Factories MUST be synchronous** (`def`, not `async def`); async factories raise `ValueError` at registration time.
+The `App` class SHALL expose `provide(type_: type[T], factory: Callable[..., T] | None = None) -> Self` that registers a typed factory in a request-scoped DI container. When `factory` is omitted, the class `type_` itself SHALL be used as the factory and the container SHALL introspect `type_.__init__` to resolve constructor parameters. Calling `provide` with the same type twice SHALL replace the earlier factory (last-write-wins). `provide` constructs a fresh instance per dispatch; for App-scoped caching use `App.singleton(...)` instead. **`provide` factories MUST be synchronous** (`def`, not `async def`); async factories on `provide` raise `ValueError` at registration time. This restriction applies only to `provide`; `singleton` accepts both sync and async factories (see the `app-singletons` capability).
 
 #### Scenario: Class-as-factory shorthand
 - **WHEN** an app is built with `app.provide(TrackerStore)` and `TrackerStore.__init__` is `def __init__(self, cfg: TrackerConfig)`
@@ -15,10 +15,10 @@ The `App` class SHALL expose `provide(type_: type[T], factory: Callable[..., T] 
 - **WHEN** an app is built with `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`
 - **THEN** the type `SearchIndex` is resolvable; the container resolves `store` via the chain and calls the lambda
 
-#### Scenario: Async factory rejected at registration
+#### Scenario: Async factory rejected on `provide`
 
 - **WHEN** `app.provide(Foo, async_factory)` is called with `async_factory` being an `async def`
-- **THEN** `ValueError` is raised at registration naming the factory and pointing the user at the lazy-init resource pattern
+- **THEN** `ValueError` is raised at registration naming the factory and directing the user to `app.singleton(...)` for App-scoped async-initialized resources
 
 #### Scenario: Primitive constructor param without default raises at registration
 - **WHEN** `app.provide(BadStore)` is called and `BadStore.__init__` requires a non-default `int` parameter that no provider can supply
@@ -29,6 +29,7 @@ The `App` class SHALL expose `provide(type_: type[T], factory: Callable[..., T] 
 - **WHEN** `app.provide(AppState, factory_a)` is called and then `app.singleton(AppState, factory_b)` is called
 - **THEN** the singleton registration replaces the per-dispatch one
 - **AND** subsequent resolves use the cached singleton
+- **AND** `factory_b` MAY be sync or async per the `app-singletons` capability
 
 ### Requirement: Container chains providers by parameter annotation
 
@@ -130,3 +131,4 @@ Lint rule `A2K-DI-PROVIDER` SHALL fail when any tool method declares an injectab
 - **GIVEN** a tool method declaring only `ctx: a2kit.ToolContext` as an injectable
 - **WHEN** `make lint` runs
 - **THEN** `A2K-DI-PROVIDER` does not report `fastmcp.Context` as missing
+

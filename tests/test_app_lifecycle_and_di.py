@@ -104,15 +104,18 @@ def test_two_apps_independent_singletons() -> None:
     assert sb.label == "B"
 
 
-def test_singleton_async_factory_rejected_at_registration() -> None:
-    """v0.27: factories must be sync. Async opens belong in resource classes."""
+def test_singleton_async_factory_accepted_at_registration() -> None:
+    """Async singleton factories are accepted; awaited on first resolution.
+
+    See `tests/test_singleton_async_factories.py` for the full behaviour
+    suite — this pins the registration-side contract only."""
 
     async def factory() -> _State:
         return _State("async")
 
     app = App("t")
-    with pytest.raises(ValueError, match="async"):
-        app.singleton(_State, factory)
+    app.singleton(_State, factory)
+    assert app.has_singleton(_State)
 
 
 def test_provide_async_factory_rejected() -> None:

@@ -1,29 +1,32 @@
-"""Synchronous typed DI container — feature-agnostic.
+"""Typed DI container — feature-agnostic, sync + async resolution paths.
 
 Resolution flow per tool call::
 
     wire kwargs
         │
         ▼
-    Container.apply_kwargs(fn, wire_kwargs)
+    Container.apply_kwargs / apply_kwargs_async(fn, wire_kwargs)
         │
         ▼
     For each fn kwarg whose type is a registered provider:
-        Container.resolve(T) walks the chain (factories' parameter
-        annotations) with per-call cache.
+        Container.resolve / aresolve(T) walks the chain (factories'
+        parameter annotations) with per-call cache.
         │
         ▼
     fn called with merged dict (wire + resolved injectables)
 
-The container has NO feature-specific knowledge. Factories MUST be
-synchronous; async resource initialization belongs in resource classes
-(lazy-init pattern) or at the composition root (lifespan pattern).
-Wire-input transformation (e.g. ``connection: str`` → typed config) lives
-in the consumer's dispatch hook, before the container sees kwargs.
+The container has NO feature-specific knowledge. Per-call ``provide``
+factories MUST be synchronous; singleton factories MAY be async (first
+resolution awaits; subsequent resolves return the cached value). The
+sync ``resolve`` path raises on an unresolved async singleton, directing
+the caller to ``aresolve`` or ``@on_startup`` warm-up. Wire-input
+transformation (e.g. ``connection: str`` → typed config) lives in the
+consumer's dispatch hook, before the container sees kwargs.
 """
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import types
 import typing
@@ -118,6 +121,13 @@ class Container:
         self._providers: dict[type, Factory] = {}
         # Singleton cache: type → cached instance.
         self._singletons: dict[type, Any] = {}
+        # Types whose singleton factory is async. First aresolve awaits;
+        # sync resolve raises a precise error while the cache is unresolved.
+        self._async_factories: set[type] = set()
+        # Per-type asyncio.Lock for concurrent first-resolution coalescing.
+        # Created lazily on first aresolve to avoid touching the running
+        # loop at registration time.
+        self._async_singleton_locks: dict[type, asyncio.Lock] = {}
         # Cached parameter introspection per factory (keyed by id(factory)).
         self._param_cache: dict[int, list[_ParamSpec]] = {}
         # Generic "wire-scoped string" registry. Consumer packages register
@@ -158,16 +168,16 @@ class Container:
     def register_singleton(self, type_: type, factory: Factory) -> None:
         """Register a factory whose result is cached on this Container.
 
-        First :meth:`resolve` call invokes the factory and caches the result;
-        subsequent calls return the cached value. Factory MUST be sync.
+        The factory may be sync (``def``) or async (``async def``). First
+        resolution of an async-factory singleton requires :meth:`aresolve`
+        (or any code path running inside an event loop, e.g. tool dispatch
+        and ``@on_startup``); subsequent resolves on either path return the
+        cached value. Sync :meth:`resolve` on an unresolved async singleton
+        raises a precise error pointing at the async path.
         """
-        if inspect.iscoroutinefunction(factory):
-            msg = (
-                f"singleton factory for {type_!r}: factory is `async def`, but "
-                "singleton factories must be synchronous. Async resource opens belong "
-                "inside resource classes (lazy-init pattern)."
-            )
-            raise ValueError(msg)
+        is_async = inspect.iscoroutinefunction(factory)
+        if is_async:
+            self._async_factories.add(type_)
         # Sentinel: registered but not yet resolved.
         if type_ not in self._singletons:
             self._singletons[type_] = _UNRESOLVED
@@ -247,6 +257,15 @@ class Container:
             cached = self._singletons[type_]
             if cached is not _UNRESOLVED:
                 return cached
+            if type_ in self._async_factories:
+                msg = (
+                    f"singleton {type_!r} has an async factory and has not been "
+                    "resolved yet. Use the async resolve path (the dispatcher and "
+                    "@on_startup both run async, so depending on this type from "
+                    "either is fine), or warm it up via @on_startup so sync "
+                    "resolve sees a cached value."
+                )
+                raise ValueError(msg)
         if type_ in cache:
             return cache[type_]
         if type_ in chain:
@@ -264,6 +283,102 @@ class Container:
             self._singletons[type_] = result
         cache[type_] = result
         return result
+
+    async def aresolve(
+        self,
+        type_: type,
+        *,
+        cache: dict[type, Any] | None = None,
+        chain: list[type] | None = None,
+    ) -> Any:
+        """Resolve ``type_`` from within an event loop.
+
+        Hot path is identical to :meth:`resolve` (cached lookup). Cold path
+        for async-factory singletons takes the per-type lock, double-checks
+        the cache, awaits the factory, and caches the result. Two concurrent
+        first-resolution calls for the same type coalesce on the lock; the
+        factory runs at most once. Resolving sub-dependencies of an async
+        factory uses this same path, so an async factory may depend on
+        other async singletons.
+        """
+        if cache is None:
+            cache = {}
+        if chain is None:
+            chain = []
+        cached = self._cached_or_none(type_, cache)
+        if cached is not _MISSING:
+            return cached
+        if type_ in chain:
+            msg = f"provider cycle: {[*chain, type_]}"
+            raise ValueError(msg)
+        factory = self._providers.get(type_)
+        if factory is None:
+            raise UnresolvableType(type_, [*chain])
+
+        new_chain = [*chain, type_]
+        if type_ in self._singletons and type_ in self._async_factories:
+            return await self._aresolve_async_singleton(type_, factory, cache, new_chain)
+        kwargs = await self._aresolve_factory_kwargs(factory, cache, new_chain)
+        result = factory(**kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+        if type_ in self._singletons:
+            self._singletons[type_] = result
+        cache[type_] = result
+        return result
+
+    def _cached_or_none(self, type_: type, cache: dict[type, Any]) -> Any:
+        """Return cached value (singleton or per-call) or ``_MISSING``."""
+        if type_ in self._singletons:
+            cached = self._singletons[type_]
+            if cached is not _UNRESOLVED:
+                return cached
+        if type_ in cache:
+            return cache[type_]
+        return _MISSING
+
+    async def _aresolve_async_singleton(
+        self,
+        type_: type,
+        factory: Factory,
+        cache: dict[type, Any],
+        new_chain: list[type],
+    ) -> Any:
+        lock = self._async_singleton_locks.get(type_)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._async_singleton_locks[type_] = lock
+        async with lock:
+            cached = self._singletons.get(type_, _UNRESOLVED)
+            if cached is not _UNRESOLVED:
+                return cached
+            kwargs = await self._aresolve_factory_kwargs(factory, cache, new_chain)
+            result = factory(**kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            self._singletons[type_] = result
+            cache[type_] = result
+            return result
+
+    async def _aresolve_factory_kwargs(
+        self,
+        factory: Factory,
+        cache: dict[type, Any],
+        new_chain: list[type],
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        for spec in self._params_for(factory):
+            if self.has(spec.annotation):
+                kwargs[spec.name] = await self.aresolve(
+                    spec.annotation,
+                    cache=cache,
+                    chain=new_chain,
+                )
+                continue
+            if spec.has_default:
+                continue
+            raise UnresolvableType(spec.annotation, new_chain)
+        return kwargs
 
     def _resolve_factory_kwargs(
         self,
@@ -308,7 +423,10 @@ class Container:
         """Resolve injectable kwargs for ``fn`` and merge with ``wire_kwargs``.
 
         Wire kwargs are passed through; injectable kwargs are resolved via
-        :meth:`resolve`. Synchronous; no coroutines are awaited.
+        :meth:`resolve`. Synchronous; no coroutines are awaited. Raises
+        on unresolved async-factory singletons — use
+        :meth:`apply_kwargs_async` from any caller that already runs in
+        an event loop.
 
         ``pre_resolved`` is an optional ``{type → instance}`` map. Consumer
         dispatch hooks that do async work upstream (e.g. awaiting a
@@ -332,6 +450,38 @@ class Container:
                 out[k] = v
         return out
 
+    async def apply_kwargs_async(
+        self,
+        fn: Callable[..., Any],
+        wire_kwargs: dict[str, Any],
+        *,
+        pre_resolved: dict[type, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Async variant of :meth:`apply_kwargs` that awaits async-factory
+        singletons on first resolution. Hot path (cached singletons + sync
+        providers) is functionally identical to the sync variant."""
+        params = _params_for_method(fn)
+        param_names = {p.name for p in params}
+        cache: dict[type, Any] = dict(pre_resolved) if pre_resolved else {}
+        out: dict[str, Any] = {}
+        for spec in params:
+            if spec.name in wire_kwargs:
+                out[spec.name] = wire_kwargs[spec.name]
+                continue
+            if self.has(spec.annotation):
+                out[spec.name] = await self.aresolve(spec.annotation, cache=cache)
+                continue
+        for k, v in wire_kwargs.items():
+            if k in param_names and k not in out:
+                out[k] = v
+        return out
+
+    def has_async_singleton(self, type_: type) -> bool:
+        return type_ in self._async_factories
+
+    def has_any_async_singletons(self) -> bool:
+        return bool(self._async_factories)
+
     # -- internal ------------------------------------------------------- #
 
     def _params_for(self, factory: Factory) -> list[_ParamSpec]:
@@ -352,6 +502,16 @@ class _Unresolved:
 
 
 _UNRESOLVED: Any = _Unresolved()
+
+
+class _Missing:
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<MISSING>"
+
+
+_MISSING: Any = _Missing()
 
 
 def _params_for_method(fn: Callable[..., Any]) -> list[_ParamSpec]:
@@ -382,7 +542,7 @@ def container_dispatch(
 ) -> dict[str, Any]:
     """Resolve a tool method's kwargs through ``container`` (sync).
 
-    The default dispatch hook for apps with at least one registered provider.
+    The default dispatch hook for apps with no async-factory singletons.
     Connection-aware apps install a different hook (in
     ``a2kit.packages.connections.dispatch``) that runs an async pre-step
     before delegating to this function.
@@ -390,9 +550,23 @@ def container_dispatch(
     return container.apply_kwargs(fn, wire_kwargs)
 
 
+async def container_dispatch_async(
+    fn: Callable[..., Any],
+    wire_kwargs: dict[str, Any],
+    container: Container,
+) -> dict[str, Any]:
+    """Async resolve a tool method's kwargs through ``container``.
+
+    The default dispatch hook for apps with at least one async-factory
+    singleton. Hot path is identical to the sync variant.
+    """
+    return await container.apply_kwargs_async(fn, wire_kwargs)
+
+
 __all__ = [
     "Container",
     "Factory",
     "UnresolvableType",
     "container_dispatch",
+    "container_dispatch_async",
 ]

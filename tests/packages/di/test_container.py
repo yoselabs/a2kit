@@ -98,13 +98,19 @@ def test_singleton_caches_across_resolves() -> None:
     assert len(seen) == 1
 
 
-def test_async_singleton_factory_rejected() -> None:
+def test_async_singleton_factory_accepted() -> None:
+    """Singleton factories may be async; first aresolve awaits the factory.
+
+    See `tests/test_singleton_async_factories.py` for the full async-singleton
+    behaviour suite; this just pins that registration no longer raises."""
+
     async def afactory() -> _Cfg:
         return _Cfg()
 
     c = Container()
-    with pytest.raises(ValueError, match="async"):
-        c.register_singleton(_Cfg, afactory)
+    c.register_singleton(_Cfg, afactory)
+    assert c.has_singleton(_Cfg)
+    assert c.has_async_singleton(_Cfg)
 
 
 def test_partition_kwargs_distinguishes_wire_from_injectable() -> None:
