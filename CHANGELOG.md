@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.30.1 — unreleased
+
+Observability-only patch — no API change, no behavioural change on the
+success path, no change to the failure-path return value at any of the
+five sites covered. The only change is that five framework-internal
+introspection sites that previously swallowed `Exception` silently now
+emit one WARN-level log line per offender per process on first failure
+and proceed with the documented fallback. Extends the `_WARN_ONCE`
+recipe shipped in `src/a2kit/signature.py:resolve_hints` (round 5/6).
+
+### Changed (observability only)
+
+- **L1** `src/a2kit/packages/mcp/server.py:_wrap_with_dispatch_hook` —
+  return-annotation copy onto the wrapper now WARNs once per
+  `fn.__qualname__` on `get_type_hints` failure instead of using
+  `contextlib.suppress(Exception)`. Fallback unchanged: the wrapped fn
+  keeps its current annotation-less state, FastMCP's output schema for
+  that tool is absent.
+- **L2** `src/a2kit/tool.py:_resolve_return_annotation` — WARNs once
+  per `fn.__qualname__` on `get_type_hints` failure instead of
+  silently returning `None`. Fallback unchanged: returns `None`.
+- **L3** `src/a2kit/tool.py:_derive_selectable_fields` — outer
+  `get_type_hints` failure WARNs once per `fn.__qualname__` instead of
+  silently returning `()`. The inner
+  `with contextlib.suppress(Exception):` around the dataclass branch
+  was verified dead by running the full test suite after removal
+  (788 tests green, including the dataclass-fields regression test);
+  the suppress is gone, the branch is unguarded.
+- **L4** `src/a2kit/packages/mcp/listview.py:ListViewMiddleware` —
+  both `except Exception: return result` sites now WARN once per
+  composite key (`f"{tool_name}::get_tool"` for the registry lookup,
+  `f"{tool_name}::project"` for the result-reconstruction site) via a
+  single module-local `_WARN_ONCE: set[str]`. Fallback unchanged: the
+  unprojected `result` is returned.
+- **L5** `src/a2kit/packages/otel/middleware.py:_meta_a2kit` — WARNs
+  once per `tool_name` on `server.get_tool` failure instead of
+  silently returning `{}`. Fallback unchanged: span construction
+  proceeds with only `a2kit.tool_name` set; `a2kit.verb`,
+  `a2kit.router`, `a2kit.tags` are absent.
+
+### Documentation
+
+- `OPERATIONAL_CONTRACTS.md` gains a new Q9 section codifying the
+  "fail-observable, not silent" policy for framework-internal
+  introspection failures and indexing the six sites the policy covers
+  today.
+
 ## 0.31.0 — unreleased
 
 Bundle of three breaking surfaces that ship together to keep the

@@ -12,6 +12,7 @@ friendly :class:`ImportError` if the optional extras are missing.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
@@ -20,6 +21,9 @@ from a2kit.packages.otel.tracer import get_meter, get_tracer
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
+
+_log = logging.getLogger(__name__)
+_WARN_ONCE: set[str] = set()
 
 
 async def _meta_a2kit(fastmcp_ctx: Any, tool_name: str | None) -> dict[str, Any]:
@@ -31,7 +35,10 @@ async def _meta_a2kit(fastmcp_ctx: Any, tool_name: str | None) -> dict[str, Any]
         return {}
     try:
         tool = await server.get_tool(tool_name)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- middleware must not raise; degrade observably
+        if tool_name not in _WARN_ONCE:
+            _WARN_ONCE.add(tool_name)
+            _log.warning("otel._meta_a2kit: server.get_tool failed for %s: %s", tool_name, exc)
         return {}
     meta_full = getattr(tool, "meta", None) or {}
     if not isinstance(meta_full, dict):

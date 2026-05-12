@@ -14,9 +14,13 @@ truth, so it round-trips identically to what middleware reads here.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
+
+_log = logging.getLogger(__name__)
+_WARN_ONCE: set[str] = set()
 
 
 def _list_view_settings(meta_a2kit: dict[str, Any]) -> dict[str, Any] | None:
@@ -71,7 +75,11 @@ class ListViewMiddleware(Middleware):
 
         try:
             tool = await server.get_tool(tool_name)
-        except Exception:
+        except Exception as exc:  # middleware must not raise; degrade observably
+            key = f"{tool_name}::get_tool"
+            if key not in _WARN_ONCE:
+                _WARN_ONCE.add(key)
+                _log.warning("ListViewMiddleware: server.get_tool failed for %s: %s", tool_name, exc)
             return result
 
         meta_full = getattr(tool, "meta", None) or {}
@@ -93,7 +101,11 @@ class ListViewMiddleware(Middleware):
                     structured_content=new_structured,
                     meta=getattr(result, "meta", None),
                 )
-            except Exception:
+            except Exception as exc:  # middleware must not raise; degrade observably
+                key = f"{tool_name}::project"
+                if key not in _WARN_ONCE:
+                    _WARN_ONCE.add(key)
+                    _log.warning("ListViewMiddleware: result reconstruction failed for %s: %s", tool_name, exc)
                 return result
 
         return result

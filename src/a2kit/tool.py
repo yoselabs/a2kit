@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
@@ -8,6 +9,10 @@ from a2kit.exceptions import InvalidToolReturnTypeError
 from a2kit.metadata import PENDING_EXTRA_ATTR, A2KitMeta, A2KitMetaExtras, set_meta
 from a2kit.signature import find_context_param
 from a2kit.surface import Surface
+
+_log = logging.getLogger(__name__)
+_WARN_ONCE_RESOLVE_RETURN: set[str] = set()
+_WARN_ONCE_SELECTABLE: set[str] = set()
 
 if TYPE_CHECKING:
     from mcp.types import ToolAnnotations
@@ -94,7 +99,11 @@ def _resolve_return_annotation(fn: Callable[..., Any]) -> Any:
         return ret
     try:
         return typing.get_type_hints(fn).get("return")
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- decoration must not raise; degrade observably
+        name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
+        if name not in _WARN_ONCE_RESOLVE_RETURN:
+            _WARN_ONCE_RESOLVE_RETURN.add(name)
+            _log.warning("_resolve_return_annotation: get_type_hints failed for %s: %s", name, exc)
         return None
 
 
@@ -392,13 +401,16 @@ def list_(
 
 def _derive_selectable_fields(fn: Callable[..., Any]) -> tuple[str, ...]:
     """Walk ``list[T]`` return annotation; return ``T``'s fields, or ()."""
-    import contextlib
     import typing
     from typing import get_type_hints
 
     try:
         hints = get_type_hints(fn)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- decoration must not raise; degrade observably
+        name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
+        if name not in _WARN_ONCE_SELECTABLE:
+            _WARN_ONCE_SELECTABLE.add(name)
+            _log.warning("_derive_selectable_fields: get_type_hints failed for %s: %s", name, exc)
         return ()
     ret = hints.get("return")
     origin = typing.get_origin(ret) if ret is not None else None
@@ -411,9 +423,8 @@ def _derive_selectable_fields(fn: Callable[..., Any]) -> tuple[str, ...]:
     fields_attr = getattr(inner, "__pydantic_fields__", None)
     if fields_attr is not None:
         return tuple(fields_attr.keys())
-    with contextlib.suppress(Exception):
-        import dataclasses
+    import dataclasses
 
-        if dataclasses.is_dataclass(inner):
-            return tuple(f.name for f in dataclasses.fields(inner))
+    if dataclasses.is_dataclass(inner):
+        return tuple(f.name for f in dataclasses.fields(inner))
     return ()

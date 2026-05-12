@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import logging
 from dataclasses import asdict
 from typing import Any
 
@@ -23,6 +24,9 @@ from fastmcp.tools import FunctionTool
 from a2kit.metadata import A2KitMeta, get_meta
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
+
+_log = logging.getLogger(__name__)
+_WARN_ONCE: set[str] = set()
 
 
 def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
@@ -194,9 +198,7 @@ def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
     # suppression marker.
     setattr(_wrapped, "__signature__", inspect.Signature(parameters=new_params))  # noqa: B010
     # Preserve return annotation for output-schema gen.
-    import contextlib
-
-    with contextlib.suppress(Exception):
+    try:
         from typing import get_type_hints
 
         ret = get_type_hints(fn).get("return")
@@ -204,6 +206,11 @@ def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
             ann = dict(getattr(_wrapped, "__annotations__", {}))
             ann["return"] = ret
             _wrapped.__annotations__ = ann
+    except Exception as exc:  # noqa: BLE001 -- decoration must not raise; degrade observably
+        name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
+        if name not in _WARN_ONCE:
+            _WARN_ONCE.add(name)
+            _log.warning("_wrap_with_dispatch_hook: failed to copy return annotation for %s: %s", name, exc)
     return _wrapped
 
 

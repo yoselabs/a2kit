@@ -369,6 +369,63 @@ sub-coroutines and background tasks spawned from a tool body inherit
 the binding automatically. Background tasks outliving the outer
 dispatch keep their captured snapshot until they themselves complete.
 
+## Q9. Framework-internal introspection failures are observable, not silent
+
+**Policy.** Any introspection performed by a2kit itself during tool
+decoration or middleware dispatch (`typing.get_type_hints`,
+return-annotation copy, FastMCP `server.get_tool` metadata lookup,
+list-view payload projection / reconstruction, OTel span-metadata lookup)
+SHALL emit one WARN-level log line per offender per process on failure
+and proceed with the documented fallback for that site. Bare
+`contextlib.suppress(Exception)` and `except Exception: pass` (or
+equivalent `except Exception: return <fallback>` with no observability
+hook) SHALL NOT be used on any code path reachable from tool decoration
+or middleware dispatch.
+
+**Dedupe key.**
+
+- Decoration-time sites operating on a callable: `fn.__qualname__`.
+- Middleware sites operating on a registered tool: the FastMCP
+  `tool_name` string. When a single module has more than one distinct
+  failure site naturally keyed by `tool_name`, the dedupe key is
+  composed as `f"{tool_name}::{site_tag}"` (e.g.
+  `f"{tool_name}::get_tool"` for the registry lookup site and
+  `f"{tool_name}::project"` for the projection site) so a single
+  module-level `_WARN_ONCE: set[str]` can hold keys for multiple sites
+  without collision.
+
+**Per-module dedupe set.** Each module owns its own `_WARN_ONCE` set at
+module scope. No cross-module sharing.
+
+**Semantic outcome unchanged.** Decoration / middleware does not raise;
+the user-visible surface degrades the same way as before the policy
+landed. Only the silence is replaced with one observable WARN line per
+offender per process.
+
+**Sites covered today** (in commit order):
+
+- `src/a2kit/signature.py:resolve_hints` — five-call collapse for the
+  `get_type_hints` fast path (cleanup-round-5-6-code-shape, reference
+  implementation).
+- `src/a2kit/packages/mcp/server.py:_wrap_with_dispatch_hook` —
+  return-annotation copy onto the dispatch-hook wrapper (L1).
+- `src/a2kit/tool.py:_resolve_return_annotation` — return-annotation
+  resolution for PEP 563 stringified annotations (L2).
+- `src/a2kit/tool.py:_derive_selectable_fields` — outer
+  `get_type_hints(fn)` call when walking `list[T]` return annotations
+  (L3).
+- `src/a2kit/packages/mcp/listview.py:ListViewMiddleware.on_call_tool` —
+  registry lookup (`f"{tool_name}::get_tool"`) and result
+  reconstruction (`f"{tool_name}::project"`) sites (L4).
+- `src/a2kit/packages/otel/middleware.py:_meta_a2kit` — span-attribute
+  metadata lookup via `server.get_tool` (L5).
+
+**Regression test.** `tests/test_decoration_warn_once.py` — one test
+per site asserts (a) the documented fallback still applies on failure,
+(b) exactly one WARN line is emitted per offender, (c) a second failure
+for the same offender in the same process does not emit a second line.
+The signature-level test lives in `tests/test_resolve_hints.py`.
+
 ## See also
 
 - `CHANGELOG.md` — release-by-release history of behavioral changes.
