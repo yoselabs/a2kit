@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.29.0 — a2web round-5 + round-6 ergonomics — 2026-05-12
+
+Five changes closing every open ergonomic gap from a2web feedback
+rounds 5 and 6. Two are breaking; the rest are additive.
+
+### Added
+
+- **`app.singleton(T, async_factory)`** — singleton factories may now
+  be `async def`. First resolution awaits via the new
+  `container.aresolve` path; subsequent resolves return the cached
+  instance synchronously. Concurrent first resolutions coalesce on a
+  per-type `asyncio.Lock`. Replaces the hand-rolled double-checked-
+  locking resource pattern (~80 LOC of boilerplate per a2web
+  resource).
+- **`TestClient.override(type_: type[T], fake: T)`** — type-safe DI
+  override on the in-process test client. Snapshot/restore on the
+  App's container; auto-cleans on `__aexit__` (normal or
+  exceptional). Replaces ad-hoc `monkeypatch.setattr` patterns.
+  Overlapping TestClient sessions on the same App raise
+  `RuntimeError`.
+- **`TestClient.call_wire(tool, **kwargs)`** — returns the
+  formatter-encoded wire payload (JSON / TSV / page-tsv) instead of
+  the Python value `invoke` returns. Reads the cached
+  `descriptor.format_hint` so test-observed format and production
+  wire format flip in lockstep when a tool's return annotation
+  changes.
+- **Docstring → param description auto-pull** — Google-style
+  docstring `Args:` / `Arguments:` / `Parameters:` sections feed
+  per-parameter descriptions into the tool's annotations at
+  decoration time. Explicit `Annotated[T, a2kit.Param(...)]` /
+  `pydantic.Field(...)` always wins. Numpy and Sphinx/reST formats
+  are explicit non-goals.
+- **`a2kit.exceptions.AmbientContextMissing`** — raised when an LDD
+  primitive is called outside an active tool dispatch.
+
+### Changed (breaking)
+
+- **LDD primitives drop the `ctx` argument.** `a2kit.ldd.event`,
+  `report`, `log`, `info`, `warning`, `error`, `debug`, and
+  `EventRegistry.emit_typed` no longer accept `ctx`. They read it
+  from the ambient `_LDD_STATE` ContextVar bound by the dispatcher
+  for the lifetime of one tool invocation. Migration: drop the
+  first positional argument at every call site. Calling outside
+  an active dispatch raises `AmbientContextMissing` — fail loud,
+  no silent no-op fallback.
+- **`ldd_state_for_call(...)`** now takes a required keyword
+  `ctx=...` argument. Tests that exercise LDD primitives directly
+  (without a full tool dispatch) wrap with this — same seam the
+  framework uses internally.
+
+### Documentation
+
+- `OPERATIONAL_CONTRACTS.md` Q8: LDD primitives require an active
+  tool dispatch.
+
 ## 0.28.1 — FastMCP 3 `_meta` disable fix — 2026-05-12
 
 ### Fixed
