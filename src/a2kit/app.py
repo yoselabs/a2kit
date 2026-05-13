@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     import click
 
 
-#: Public singleton-not-yet-resolved sentinel exported as ``a2kit.UNRESOLVED``.
+#: Singleton-not-yet-resolved sentinel. Importable as ``from a2kit.app import UNRESOLVED``.
 UNRESOLVED: Any = _UNRESOLVED
 
 

@@ -6,36 +6,24 @@ if TYPE_CHECKING:
     from fastmcp import Context as ToolContext  # noqa: A2K-IMPORT-DISCIPLINE
 
     from a2kit.app import App
-    from a2kit.exceptions import (
-        A2KitError,
-        InvalidFilterExpression,
-        InvalidToolReturnTypeError,
-        ReportTypeMismatch,
-        ReportTypeNotDeclared,
-        ToolCallContamination,
-    )
-    from a2kit.metadata import A2KitMeta
-    from a2kit.routers import Router, RouterRegistry
+    from a2kit.exceptions import A2KitError
+    from a2kit.routers import Router
     from a2kit.tool import list_, read, tool, write
 
 
+# Top-level re-exports. The 95% authoring surface only — introspection
+# types (A2KitMeta, RouterRegistry, UNRESOLVED), non-umbrella exception
+# subclasses, and sink-author types live in their owning modules and are
+# importable from there directly.
 _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "App": ("a2kit.app", "App"),
-    "UNRESOLVED": ("a2kit.app", "UNRESOLVED"),
     "Router": ("a2kit.routers", "Router"),
-    "RouterRegistry": ("a2kit.routers", "RouterRegistry"),
     "tool": ("a2kit.tool", "tool"),
     "read": ("a2kit.tool", "read"),
     "write": ("a2kit.tool", "write"),
     "list_": ("a2kit.tool", "list_"),
     "ToolContext": ("fastmcp", "Context"),
-    "A2KitMeta": ("a2kit.metadata", "A2KitMeta"),
     "A2KitError": ("a2kit.exceptions", "A2KitError"),
-    "ToolCallContamination": ("a2kit.exceptions", "ToolCallContamination"),
-    "InvalidToolReturnTypeError": ("a2kit.exceptions", "InvalidToolReturnTypeError"),
-    "InvalidFilterExpression": ("a2kit.exceptions", "InvalidFilterExpression"),
-    "ReportTypeNotDeclared": ("a2kit.exceptions", "ReportTypeNotDeclared"),
-    "ReportTypeMismatch": ("a2kit.exceptions", "ReportTypeMismatch"),
     "HealthResult": ("a2kit.packages.health", "HealthResult"),
 }
 
@@ -71,18 +59,10 @@ def run(app: App, argv: list[str] | None = None) -> Any:
 
 
 __all__ = [
-    "UNRESOLVED",
     "A2KitError",
-    "A2KitMeta",
     "App",
     "HealthResult",
-    "InvalidFilterExpression",
-    "InvalidToolReturnTypeError",
-    "ReportTypeMismatch",
-    "ReportTypeNotDeclared",
     "Router",
-    "RouterRegistry",
-    "ToolCallContamination",
     "ToolContext",
     "list_",
     "read",

@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from a2kit.packages.ldd import (
     EventRegistry,
-    LddEmission,
-    LddSink,
     debug,
     error,
     event,
@@ -23,10 +21,11 @@ from a2kit.packages.ldd import (
     warning,
 )
 
+# Sink-author types (LddEmission, LddSink) demoted from this re-export;
+# import them from `a2kit.packages.ldd` directly when implementing sinks.
+
 __all__ = [
     "EventRegistry",
-    "LddEmission",
-    "LddSink",
     "debug",
     "error",
     "event",
