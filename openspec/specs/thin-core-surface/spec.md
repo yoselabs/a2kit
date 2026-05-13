@@ -25,23 +25,17 @@ The library SHALL declare `fastmcp>=3.2,<4` as a required dependency in `pyproje
 
 ### Requirement: a2kit does not re-export external library symbols
 
-a2kit SHALL NOT re-export symbols owned by external libraries (FastMCP, the MCP SDK, `uncalled_for`, structlog, OTel, cel-python, vcrpy, syrupy, pydantic-settings, etc.). Users import external symbols directly from the owning library. a2kit's public surface contains only what a2kit owns.
+The top-level `a2kit.*` namespace SHALL re-export only first-party
+symbols. It SHALL NOT include `a2kit.Cap` or `a2kit.capabilities`
+(removed).
 
-#### Scenario: No FastMCP re-exports
-- **WHEN** `a2kit/__init__.py` is inspected
-- **THEN** it does NOT export `Depends`, `Dependency`, `Shared`, `SharedContext`, `Context`, `CurrentContext`, `CurrentFastMCP`, `Middleware`, or any other FastMCP/`uncalled_for` symbol
+#### Scenario: `a2kit.Cap` no longer importable
+- **WHEN** `import a2kit; a2kit.Cap` is evaluated
+- **THEN** `AttributeError` is raised
 
-#### Scenario: No MCP SDK re-exports
-- **WHEN** `a2kit/__init__.py` is inspected
-- **THEN** it does NOT export `ToolAnnotations` or any other `mcp.types` symbol
-
-#### Scenario: No structlog/OTel/etc. re-exports
-- **WHEN** `a2kit/__init__.py` and any plugin package's `__init__.py` are inspected
-- **THEN** they export only symbols defined in their own source files; no `from structlog import ...`, `from opentelemetry import ...`, `from cel-python import ...`, etc., re-exports
-
-#### Scenario: a2kit's public surface contains only what a2kit owns
-- **WHEN** an external symbol is needed in user code
-- **THEN** the user imports it from the owning library directly (e.g. `from fastmcp import Depends`, not `from a2kit import Depends`)
+#### Scenario: `a2kit.capabilities` no longer importable
+- **WHEN** `import a2kit; a2kit.capabilities` is evaluated
+- **THEN** `AttributeError` is raised
 
 ### Requirement: Verb decorators map to MCP `ToolAnnotations` + tags
 
@@ -54,18 +48,6 @@ a2kit SHALL NOT re-export symbols owned by external libraries (FastMCP, the MCP 
 #### Scenario: write maps to readOnlyHint=False, destructiveHint=True
 - **WHEN** a function is decorated with `@a2kit.write`
 - **THEN** the underlying FastMCP tool registration receives `ToolAnnotations(readOnlyHint=False, destructiveHint=True)` (or equivalent semantic)
-
-### Requirement: Capabilities map to FastMCP `tags`
-
-a2kit's capability tagging system SHALL use FastMCP's native `tags: set[str]` parameter on `tool()`. The `Cap` enum (or equivalent registry) SHALL produce string tags compatible with FastMCP's tag system.
-
-#### Scenario: Capability tag round-trips
-- **WHEN** a tool is decorated with a capability `Cap.WRITE`
-- **THEN** the registered FastMCP tool's `tags` set contains the corresponding string token
-
-#### Scenario: Select grammar filters by FastMCP tags
-- **WHEN** a `--select` expression evaluates against the registered tools
-- **THEN** the evaluator reads `tags` from FastMCP's tool registry, not from a separate a2kit metadata store
 
 ### Requirement: In-house select grammar replaced by cel-python directly
 

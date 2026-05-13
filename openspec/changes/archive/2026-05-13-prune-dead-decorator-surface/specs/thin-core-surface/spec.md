@@ -15,3 +15,14 @@ symbols. It SHALL NOT include `a2kit.Cap` or `a2kit.capabilities`
 #### Scenario: `a2kit.capabilities` no longer importable
 - **WHEN** `import a2kit; a2kit.capabilities` is evaluated
 - **THEN** `AttributeError` is raised
+
+## REMOVED Requirements
+
+### Requirement: Capabilities map to FastMCP `tags`
+
+The capability registry SHALL be removed entirely. `a2kit.Cap` and
+`a2kit.capabilities` SHALL NOT exist after this change.
+
+#### Scenario: Capability surface gone
+- **WHEN** `import a2kit; a2kit.Cap` is evaluated
+- **THEN** `AttributeError` is raised

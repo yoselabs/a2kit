@@ -19,17 +19,3 @@ author-configurable.
 - **WHEN** a tool is decorated `@a2kit.read()`
 - **THEN** `meta.tags == frozenset({"read"})`
 
-## REMOVED Requirements
-
-### Requirement: Capabilities map to FastMCP `tags`
-
-The capability registry MUST be removed entirely. `a2kit.Cap` and
-`a2kit.capabilities` SHALL NOT exist after this change.
-
-#### Scenario: Capability surface gone
-- **WHEN** `import a2kit; a2kit.Cap` is evaluated
-- **THEN** `AttributeError` is raised
-
-#### Scenario: Migration is delete-only
-- **WHEN** a consumer imports `from a2kit import Cap`
-- **THEN** the import fails and the consumer deletes the import (no replacement is needed)
