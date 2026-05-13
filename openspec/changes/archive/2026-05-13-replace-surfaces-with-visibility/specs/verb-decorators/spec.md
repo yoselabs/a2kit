@@ -39,17 +39,3 @@ attribute (default `"all"`)". Tier semantics:
 - **WHEN** the tool is registered on an App
 - **THEN** its effective `meta.extras.visibility == "all"`
 
-## REMOVED Requirements
-
-### Requirement: `surfaces=` kwarg gates per-transport mounting
-
-The `surfaces=` kwarg and `a2kit.Surface` `Flag` enum SHALL be
-removed entirely. Authors MUST use `visibility=` instead.
-
-#### Scenario: `surfaces=` kwarg rejected
-- **WHEN** a tool is decorated `@a2kit.read(surfaces=Surface.CLI)`
-- **THEN** `TypeError` is raised (unexpected keyword argument)
-
-#### Scenario: `a2kit.Surface` no longer importable
-- **WHEN** `import a2kit; a2kit.Surface` is evaluated
-- **THEN** `AttributeError` is raised

@@ -2,25 +2,27 @@
 
 ## Purpose
 TBD - created by archiving change di-sync-and-unleak. Update Purpose after archive.
-
 ## Requirements
 ### Requirement: Connection-string resolution runs at the dispatch hook seam
 
-The connections package SHALL provide a factory that builds an async dispatch hook resolving `wire_kwargs["connection"]` to a typed `ConnectionConfig` instance via the registered `ConnectionStore`. Substitution happens before the DI container resolves any other kwarg. The container itself SHALL NOT receive a `connection` keyword and SHALL NOT know about the `"connection"` name.
+The `install_connections(app, *conn_types)` function SHALL be the
+single public entry point for plugin consumers. It MUST install the
+dispatch hook, register the wire scope on the container, AND
+register the CLI subcommand group via `app.add_cli(...)`. The
+standalone `connections_cli(...)` factory SHALL NOT be exported
+from `a2kit.packages.connections.__all__`.
 
-#### Scenario: Hook awaits store load and substitutes
+#### Scenario: One-call wiring
+- **GIVEN** a plugin consumer writing `install_connections(app, TrackerConn)` (and nothing else)
+- **WHEN** the App's CLI is built
+- **THEN** `<app> connections login --help` works
+- **AND** the dispatch hook resolves `connection: str` → `TrackerConn` correctly
+- **AND** the wire scope `"connection"` is registered on the container
 
-- **GIVEN** an app with `Connections.install(app, ConnConfig)` and a tool method declaring `cfg: ConnConfig`
-- **WHEN** the tool is dispatched with wire kwargs `{"connection": "prod"}`
-- **THEN** the dispatch hook awaits `store.load("prod")`, substitutes the resulting `ConnConfig` into wire kwargs under the parameter name `cfg`, removes `"connection"` from the wire dict
-- **AND** then calls `container.apply_kwargs(fn, wire_kwargs)` synchronously to fill any remaining injectables
-
-#### Scenario: No connection, hook falls through
-
-- **GIVEN** a connection-aware app
-- **WHEN** a tool with no `ConnConfig` dependency is dispatched and `"connection"` is not in wire kwargs
-- **THEN** the hook does not await the store
-- **AND** the call falls through to `container.apply_kwargs(fn, wire_kwargs)` synchronously
+#### Scenario: `connections_cli` removed from public surface
+- **WHEN** `from a2kit.packages.connections import connections_cli`
+- **THEN** the import succeeds (the symbol remains internally accessible) but it is absent from `__all__`
+- **AND** documentation directs authors to `install_connections` only
 
 ### Requirement: The string `"connection"` lives only in the connections package
 
@@ -40,3 +42,4 @@ The default `app._dispatch_hook` for apps that never call `Connections.install(a
 - **GIVEN** an app with `app.singleton(AppState, build_state)` and no `Connections.install` call
 - **WHEN** a tool is dispatched
 - **THEN** `app._dispatch_hook` returns a dict (not an awaitable), and the runtime invokes it without `await`
+
