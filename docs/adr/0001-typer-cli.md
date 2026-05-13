@@ -2,126 +2,184 @@
 
 ## Status
 
-Accepted. Implemented in change `replace-cli-builder-with-typer`.
+Accepted. Implemented in `replace-cli-builder-with-typer` (2026-05-13).
 
-## Context
+## The problem
 
-`src/a2kit/packages/cli/builder.py` was the single largest reflection module
-in the project: roughly 350 lines walking tool signatures via
-`inspect.signature`, reading `pydantic.FieldInfo` from
-`Annotated[T, Field(...)]`, synthesizing one `click.Option` per parameter,
-flattening `BaseModel` body params, injecting `--connection`, and
-threading the format-routing wrapper.
+`src/a2kit/packages/cli/builder.py` had grown into ~480 LOC whose sole
+job was: "look at a Python function signature, build a Click command
+that matches it." Every line of it was a parallel re-implementation of
+what `typer` already does, but worse — because every new pydantic /
+typing pattern we wanted to support required *another* conditional in
+`_make_tool_command`.
 
-The pre-v0.32 FastMCP-magic-ceiling audit flagged this file as the
-largest single non-orthogonal seam in the package. Every new wire-scope
-or annotation pattern landed there; every new option required hand-wired
-Click plumbing. The same logic — "type hints in, CLI out" — has a
-canonical Python solution (Typer, FastAPI's CLI sibling) that we were
-re-implementing badly.
+Concretely, by the time of the v0.31.0 bundle, the per-parameter loop
+inside `_make_tool_command` was branching on six shapes:
 
-A timeboxed spike (`spike-typer-cli-replacement`, archived
-2026-05-13) tested seven sub-questions against the existing CLI
-contract: pydantic-Field-as-help, body-model handling, format routing,
-connection synthesis, cold-start delta, exception pipeline, and
-tool-author ergonomics. All seven PASSed, two with small workarounds
-documented as `--help`-adapter (~10 LOC) and the body-model JSON-string
-divergence (Q2). Spike decision: PROCEED.
+1. `bool` → synthesize `--flag / --no-flag` Click switch.
+2. `int | float | str` (or `Optional[...]` of one) → primitive `click.Option`.
+3. `list[X] | dict[X, Y] | tuple[...]` → `click.STRING` + a JSON-decode
+   path in the callback.
+4. `Annotated[T, pydantic.FieldInfo(description=...)]` → extract the
+   description, lift it to Click's `help` kwarg.
+5. `body: SomeBaseModel` → walk the model's fields, synthesize one
+   Click option per field, reassemble the BaseModel in the callback
+   (~50 LOC of code that did nothing pydantic didn't already do).
+6. Required-but-no-default → mark in a `required_names` set, check in
+   the callback, raise `UsageError` with a hand-formatted message.
+
+Plus a 40-LOC `LazyGroup` class whose only purpose was to defer the
+`fastmcp` import until `<app> serve` was actually invoked, because
+otherwise `<app> --help` paid for fastmcp's ~1s startup.
+
+The audit pattern was unmistakable. Every cleanup round found new
+conditionals in this file. Every new pydantic v2 feature (StrEnum,
+`Annotated` stacking, `TypeAdapter`) was another conditional. The
+LazyGroup cache logic existed because the construction itself was
+expensive enough to need lazy materialization.
+
+`builder.py` was a magnet. The work it was doing — read signatures,
+emit a CLI — has a canonical Python solution that ships maintained,
+tested, and on the same Click foundation we already depend on.
+
+## What Typer absorbs for free
+
+| Old `builder.py` code path | Typer equivalent |
+|---|---|
+| `_click_type_for(int / float / str / bool)` | Native: Typer reads the annotation. |
+| `--flag / --no-flag` synthesis for `bool` | Native: bool params get the switch shape. |
+| `Optional[T]` unwrap + nullable handling | Native: `T \| None` is understood. |
+| Required-options check in callback | Native: `default=...` means required, with a clean error. |
+| Default rendering in `--help` | Native: `[default: X]`. |
+| `LazyGroup` cache for `serve` | Unneeded: callback bodies run on invocation, not on help. |
+| Hand-rolled `--help` formatter (`format_commands`) | Native: progressive disclosure for free. |
+
+What Typer *doesn't* absorb:
+
+- Lifting `pydantic.FieldInfo.description` into the option's `--help`
+  text. (Typer reads `typer.Option(help=...)`, not pydantic's
+  `Field(description=...)`.) → a 30-LOC adapter at
+  `src/a2kit/packages/cli/_field_to_typer.py`.
+- The body-model flattening UX. We decided to drop it (see below).
+- Format routing + LDD wiring + enricher chain + dispatch hook. These
+  stay in the per-tool callback exactly as before. ~80 LOC, unchanged
+  in shape.
 
 ## Decision
 
-Replace `src/a2kit/packages/cli/builder.py` with a Typer-driven
-implementation. Each tool function is registered through
-`typer.Typer.command()` with a synthesized `__signature__` and
-`__annotations__` derived from the wire params. A ~30 LOC adapter at
-`src/a2kit/packages/cli/_field_to_typer.py` rewrites
-`Annotated[T, pydantic.FieldInfo(description=...)]` into
-`Annotated[T, typer.Option(help=...)]` so Typer surfaces the description
-as the option's `--help` text.
+Replace `builder.py` on top of `typer.Typer`. Each tool gets a
+synthesized function with `__signature__` and `__annotations__`
+matching its wire params; that function goes through
+`typer_app.command()`. The Annotated rewrite lives in one place
+(`_field_to_typer.py`). LazyGroup is deleted; `<app> serve` is a
+normal Typer command whose callback body imports fastmcp on first
+invocation.
 
-Add `typer>=0.25,<1` as a runtime dependency. `import a2kit` continues
-to NOT trigger `import typer` (the import lives at the top of
-`a2kit.packages.cli.builder`, and `a2kit.__init__` only loads that
-module from inside `run()`).
+`compute_schema` moves out of `cli/schemas.py` (it never belonged
+under `cli/` — pure pydantic + typing, no Click) to a top-level
+`a2kit.schema` lazy-imported via `_LAZY_MODULES`. `cli/schemas.py` is
+deleted.
 
-Body-model parameters (`body: SomeBaseModel`) are exposed on the CLI as
-a single JSON-string flag `--body '<json>'` and decoded via
-`SomeBaseModel.model_validate_json`. MCP wire shape is unchanged. The
-previous flattened-flag-per-field UX is removed; in-repo blast radius
-is zero (no in-repo tool ships this shape today).
+`typer>=0.25,<1` is a runtime dep. `import a2kit` does NOT trigger
+`import typer` (the import lives at the top of `builder.py`, and
+`a2kit.__init__` only loads that module from `a2kit.run`).
 
-Move `compute_schema` from `a2kit.packages.cli.schemas` to a new
-transport-neutral core module `a2kit.schema`, lazy-imported via
-`_LAZY_MODULES`. Delete `a2kit.packages.cli.schemas`. Public re-export
-`a2kit.testing.compute_schema` is preserved.
+### Body-model UX: drop the flattening, take the JSON-string divergence
+
+The pre-Typer code path for `body: SomeBaseModel` walked the model
+fields and synthesized one Click option per field
+(`--name`, `--qty`, `--description`, …), then reassembled the
+BaseModel before calling the tool. That was the ~50 LOC of pydantic
+introspection that wasn't paying for itself.
+
+Under Typer, the equivalent code path is essentially the same line
+count — re-implementing pydantic walking inside a Typer plugin — so
+the migration would save nothing. We picked the alternative the spike
+explicitly opened up: expose `body` as a single
+`--body '<json>'` string flag, decoded via
+`SomeBaseModel.model_validate_json(value)`.
+
+In-repo blast radius: zero. No tool in the codebase declares
+`body: BaseModel` as a kwonly parameter today; every "structured input"
+tool already takes explicit kwonly fields (`title: str, priority: int`)
+because that's also the shape the MCP wire wants.
+
+The trade-off: future tool authors who *want* a flattened-flag CLI for
+a structured input write the fields explicitly in the signature, not
+as a `BaseModel` body. Same shape on both transports, no per-tool mode
+selector. Documented in the `tool-description-contract` and
+`verb-decorators` spec deltas.
 
 ## Consequences
 
 Positive:
 
-- Roughly 250 LOC net deleted from the CLI package, with the saved code
-  being the boring "construct a click.Option per parameter" plumbing.
-- Alignment with the FastAPI-ecosystem standard: future tool-authors and
-  contributors recognise the Typer idiom.
-- The Rust and TypeScript SDK ports can each pick their language's
-  native CLI library independently rather than carrying a custom
-  reflection layer ported three times.
-- `compute_schema` lives in `a2kit.schema` where it always belonged:
-  transport-neutral, no `click` import, no `mcp` coupling.
-- LazyGroup goes away; `serve` cold-start invariant is preserved by the
-  fact that Typer command callbacks only execute their body on
-  invocation.
+- ~480 LOC of `builder.py` becomes ~530 LOC of *Typer-driven*
+  `builder.py`, but the *meaningful* delta is different: the 350 LOC
+  of click-Option-per-parameter plumbing is gone; what remains is
+  callback logic that was always going to exist (format routing,
+  LDD, enricher chain, dispatch hook). Future pydantic / typing
+  features land in Typer, not here.
+- `cli/schemas.py` (179 LOC) drops to `a2kit/schema.py` (122 LOC) —
+  pure compute_schema with no Click dependency; the `build_schema_command`
+  factory is replaced by a 25-line Typer subcommand inline in `builder.py`.
+- Three SDK ports coming (Python now, Rust, TypeScript). With Typer
+  in place, each port picks its language's native CLI library
+  (`clap` for Rust, `commander` or `oclif` for TS) instead of porting
+  350 LOC of reflection logic three times. The reflection contract
+  becomes "introspect a function signature and emit a CLI" — language
+  primitive, not framework primitive.
+- LazyGroup goes away. Cold-start for `<app> --help` is unchanged —
+  the deferral now comes from Typer command callbacks not executing
+  their bodies during help rendering.
 
 Negative:
 
-- Typer is a new runtime dependency (`typer>=0.25,<1`). Click is already
-  a runtime dep and Typer is built on Click; `import typer` adds ~70ms
-  cold-start cost, deferred until `build_full_cli(app)` is called.
-- Pydantic-`BaseModel` body parameters lose their flattened-flag CLI UX
-  and become `--body '<json>'`. Authors who want flat-flag CLI ergonomics
-  decompose the body into explicit kwonly params in the tool signature.
-- Container-of-BaseModel parameters (e.g. `list[Item]`, `dict[str, Item]`)
-  go through the same JSON-decode path as primitives — the tool callback
-  receives `list[dict]` / `dict[str, dict]`, NOT the validated pydantic
-  model instances. MCP delivers the same untyped shape, so the two
-  transports stay consistent; tool authors who need validation should
-  call `TypeAdapter(<ann>).validate_python(value)` explicitly or
-  decompose the container into a `BaseModel` body. Single-`BaseModel`
-  parameters (`body: Item`) DO get validated via `model_validate_json`.
-- Typer's `--install-completion` / `--show-completion` shell-completion
-  subcommands are disabled (`add_completion=False`). They would
-  otherwise add two entries to every `<app> --help`, breaking the
-  progressive-disclosure contract. Users who want shell completion can
-  install Click's standard `_<APP>_COMPLETE` env-var pattern; future
-  work may re-enable Typer's completion under a flag.
-- The Typer 1.0 breaking-change window is open; the `<1` upper pin
-  guards. Revisit on Typer 1.0 release.
+- Typer is a new runtime dep. `import typer` adds ~70ms on first import,
+  deferred until `build_full_cli(app)` runs. `import a2kit` stays free.
+- Pydantic `BaseModel` body params lose flattened-flag CLI UX
+  (`--body '<json>'` now). MCP wire shape unchanged. Zero in-repo
+  callers; new authors choose explicit kwonly fields for flat-flag UX.
+- Container-of-BaseModel params (`list[Item]`, `dict[str, Item]`) go
+  through raw JSON decode — the tool callback receives
+  `list[dict]` / `dict[str, dict]`, NOT validated pydantic instances.
+  MCP delivers the same untyped shape (consistency over magic). Tool
+  authors who want validation call `TypeAdapter(<ann>).validate_python`
+  themselves or decompose into a `BaseModel` body.
+- Typer's `--install-completion` / `--show-completion` subcommands are
+  disabled (`add_completion=False`). They would otherwise pollute every
+  `<app> --help` with two entries that 95% of users will never use.
+  Future work may re-enable under an opt-in flag.
+- Typer 1.0 is in pre-release. The `typer>=0.25,<1` upper pin guards
+  against the breaking-change window; revisit on Typer 1.0 release.
 
 ## Alternatives considered
 
-**Keep `builder.py` as-is.** Rejected: the spike showed Typer is mature
-enough to absorb the work, and every new wire-scope or annotation
-pattern landed in this file. The maintenance trajectory was bad.
+**Keep `builder.py` as-is.** The shape that pushed us off this path: the
+file grew with every cleanup round, and three SDK ports coming meant
+re-implementing the same accidental complexity in two more languages.
 
-**argparse / cleo / cyclopts.** Rejected: Typer is the established
-FastAPI sibling, aligns with pydantic idioms, and is what an ecosystem
-contributor coming from the FastAPI / FastMCP world expects to see.
+**argparse / cleo / cyclopts.** Typer is the established FastAPI sibling
+on top of Click. We already depend on Click; Typer is the smallest jump
+that absorbs the most reflection code. Other libraries would either
+require a Click → other migration (more breakage) or duplicate Click's
+ecosystem coverage (worse story for shell integration, plugin authors,
+testing helpers).
 
-**Build a thinner in-house shim.** Rejected: doesn't address the
-ecosystem-standard alignment goal. A custom shim is a custom shim no
-matter how thin; the cost of explaining "why not Typer?" never goes
-away.
+**A thinner in-house shim.** A shim is a shim no matter how thin; the
+maintenance cost of explaining "why not Typer?" doesn't go away. The
+spike confirmed Typer absorbs the work cleanly.
 
 **Walk `BaseModel` fields at command-build time** (preserve flattened
-flags). Rejected: re-implements the current `builder.py` body-model
-flattening logic inside the Typer adapter, paying the same maintenance
-cost the migration is supposed to eliminate. The single-mode JSON-string
-UX is the actual simplification.
+flags). Same code, just behind a Typer adapter. Saves no LOC, asks every
+author to pick a mode. The single-mode JSON-string UX is the actual
+simplification.
 
 ## References
 
-- Spike: `openspec/changes/archive/2026-05-13-spike-typer-cli-replacement/design.md`
-- Implementation: `openspec/changes/replace-cli-builder-with-typer/`
-  (proposal.md, design.md, tasks.md, specs/)
+- Spike (decision: PROCEED, all 7 sub-questions PASS):
+  `openspec/changes/archive/2026-05-13-spike-typer-cli-replacement/design.md`
+- Implementation:
+  `openspec/changes/archive/2026-05-13-replace-cli-builder-with-typer/`
 - Code: `src/a2kit/packages/cli/builder.py`,
   `src/a2kit/packages/cli/_field_to_typer.py`, `src/a2kit/schema.py`
