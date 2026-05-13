@@ -80,6 +80,20 @@ Negative:
 - Pydantic-`BaseModel` body parameters lose their flattened-flag CLI UX
   and become `--body '<json>'`. Authors who want flat-flag CLI ergonomics
   decompose the body into explicit kwonly params in the tool signature.
+- Container-of-BaseModel parameters (e.g. `list[Item]`, `dict[str, Item]`)
+  go through the same JSON-decode path as primitives — the tool callback
+  receives `list[dict]` / `dict[str, dict]`, NOT the validated pydantic
+  model instances. MCP delivers the same untyped shape, so the two
+  transports stay consistent; tool authors who need validation should
+  call `TypeAdapter(<ann>).validate_python(value)` explicitly or
+  decompose the container into a `BaseModel` body. Single-`BaseModel`
+  parameters (`body: Item`) DO get validated via `model_validate_json`.
+- Typer's `--install-completion` / `--show-completion` shell-completion
+  subcommands are disabled (`add_completion=False`). They would
+  otherwise add two entries to every `<app> --help`, breaking the
+  progressive-disclosure contract. Users who want shell completion can
+  install Click's standard `_<APP>_COMPLETE` env-var pattern; future
+  work may re-enable Typer's completion under a flag.
 - The Typer 1.0 breaking-change window is open; the `<1` upper pin
   guards. Revisit on Typer 1.0 release.
 

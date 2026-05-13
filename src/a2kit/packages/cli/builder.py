@@ -1,9 +1,10 @@
 """Build the top-level CLI for an :class:`a2kit.App` (Typer-driven).
 
-Cold-start invariant: importing this module must NOT trigger ``fastmcp``
-or ``typer``. Typer is imported inside :func:`build_full_cli`; fastmcp
-is imported inside the ``serve`` callback body so ``<app> --help`` never
-pays for it.
+Cold-start invariant: ``import a2kit`` must NOT trigger ``import typer``
+or ``import fastmcp``. Typer is imported at the top of this module, so
+the invariant is upheld by ``a2kit.__init__`` not loading this module
+eagerly (``a2kit.run`` lazy-imports it). ``fastmcp`` is imported inside
+the ``serve`` callback body so ``<app> --help`` never pays for it.
 
 Composition: top-level ``--help`` lists one entry per Router plus the
 ``schema`` / ``serve`` / (optional) ``health`` subcommands. The user runs
@@ -149,13 +150,22 @@ def _needs_json_decode(ann: Any) -> bool:
     Primitives (str/int/float/bool) and BaseModel parameters are handled
     elsewhere; everything else is exposed as a single ``--flag '<json>'``
     string and JSON-decoded inside the callback.
-    """
-    inner = _strip_optional(ann)
-    if hasattr(inner, "__metadata__"):
-        from typing import get_args as _ga
 
-        inner = _ga(inner)[0]
-        inner = _strip_optional(inner)
+    Walks through nested ``Annotated[...]`` and ``Optional[...]`` layers to a
+    fixed point — pathological wrappings like
+    ``Optional[Annotated[Optional[list[int]], ...]]`` still reach the inner
+    container type.
+    """
+    from typing import get_args as _ga
+
+    inner = ann
+    for _ in range(8):  # bounded; pathological depth is rejected by Python's typing layer anyway
+        next_inner = _strip_optional(inner)
+        if hasattr(next_inner, "__metadata__"):
+            next_inner = _ga(next_inner)[0]
+        if next_inner is inner:
+            break
+        inner = next_inner
     if inner is inspect.Parameter.empty or inner is Any:
         return False
     return inner not in (bool, int, float, str)
@@ -313,8 +323,9 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
         report_type = meta.extras.report_type if meta is not None else None
 
         root_ctx = _click.get_current_context().find_root()
-        no_reports = bool(root_ctx.params.get("no_reports", False))
-        no_events = bool(root_ctx.params.get("no_events", False))
+        store = root_ctx.obj if isinstance(root_ctx.obj, dict) else {}
+        no_reports = bool(store.get("no_reports", False))
+        no_events = bool(store.get("no_events", False))
         reports_enabled = app.ldd_reports and not no_reports
         events_enabled = app.ldd_events and not no_events
 
@@ -508,12 +519,15 @@ def build_full_cli(app: App) -> click.Command:
 
     @main.callback(invoke_without_command=True)
     def _root(
+        ctx: typer.Context,
         no_reports: Annotated[bool, typer.Option("--no-reports", help="Disable ctx.report emission.")] = False,
         no_events: Annotated[bool, typer.Option("--no-events", help="Disable ctx.event emission.")] = False,
     ) -> None:
-        # Stored on the root click.Context.params via Typer; consumed by tool callbacks.
-        _ = no_reports
-        _ = no_events
+        # Stash on ctx.obj so tool callbacks read from a stable contract,
+        # not from typer-callback-name-shaped ctx.params keys.
+        store = ctx.ensure_object(dict)
+        store["no_reports"] = no_reports
+        store["no_events"] = no_events
 
     for router in routers:
         _register_router(main, router, app)
@@ -524,9 +538,18 @@ def build_full_cli(app: App) -> click.Command:
         _register_health(main, app)
 
     command = typer.main.get_command(main)
-    # User-registered Click commands (e.g. ``connections``) attach to the root group.
-    for cmd in app.cli_extras():
-        command.add_command(cmd)  # type: ignore[union-attr]
+    extras = list(app.cli_extras())
+    if extras:
+        # cli_extras are click.Command objects; we need a Group to attach them.
+        # Typer always returns a Group when commands are registered (schema/serve
+        # are unconditional, so this is invariant for our build). Guard anyway.
+        import click as _click
+
+        if not isinstance(command, _click.Group):
+            msg = "build_full_cli: root Typer command is not a click.Group; cannot attach cli_extras"
+            raise TypeError(msg)
+        for cmd in extras:
+            command.add_command(cmd)
     return command
 
 
