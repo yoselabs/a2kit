@@ -5,15 +5,23 @@ TBD - created by archiving change de-magic-3. Update Purpose after archive.
 ## Requirements
 ### Requirement: `@a2kit.list_(...)` consolidates list-view settings
 
-`@a2kit.list_(*default_fields: str, page_size: int | None = None, selectable_fields: tuple[str, ...] | None = None, name: str | None = None, tags: frozenset[str] = ..., annotations: ToolAnnotations | None = None)` SHALL accept default fields as positional varargs and list-view kwargs directly. The standalone `@lists(...)` decorator and the `a2kit.packages.mcp.lists` module SHALL be removed.
+`@a2kit.list_(*default_fields: str, page_size: int | None = None, selectable_fields: tuple[str, ...] | None = None, name: str | None = None, reports: type | None = None, visibility: Literal["hidden","cli","all"] | None = None, idempotent: bool = False, open_world: bool = False, title: str | None = None)` SHALL accept the same semantic-flag and routing kwargs as the other three verb decorators (`read`, `write`, `tool`), in addition to its list-shape-specific kwargs (`*default_fields`, `page_size`, `selectable_fields`).
 
-#### Scenario: Positional default fields
-- **WHEN** a tool is decorated `@a2kit.list_("id", "title", "status", page_size=20)`
-- **THEN** the resulting `A2KitMeta.extra["a2kit.list_view"]` carries `default_fields=("id", "title", "status")` and `page_size=20`
+`destructive=` SHALL NOT be accepted on `@a2kit.list_` (list is a read shape; matches the `@a2kit.read` contract — passing `destructive=True` raises `TypeError`).
 
-#### Scenario: Old `@lists(...)` decorator removed
-- **WHEN** lint scans the repo
-- **THEN** the import path `a2kit.packages.mcp.lists` is reported as removed and any usage triggers `A2K-CORE-CLEAN` or an import error
+#### Scenario: `title=` and `idempotent=` propagate to ToolAnnotations
+- **WHEN** a tool is decorated `@a2kit.list_("id", title="Projects", idempotent=True)`
+- **THEN** `meta.annotations.title == "Projects"`
+- **AND** `meta.annotations.idempotentHint is True`
+- **AND** `meta.annotations.readOnlyHint is True`
+
+#### Scenario: `visibility=` is honored
+- **WHEN** a tool is decorated `@a2kit.list_("id", visibility="cli")`
+- **THEN** `meta.extras.visibility == "cli"`
+
+#### Scenario: `destructive=True` is rejected
+- **WHEN** a tool is decorated `@a2kit.list_("id", destructive=True)`
+- **THEN** `TypeError` is raised (list is read-shaped)
 
 ### Requirement: `selectable_fields` is derived from return-type annotation
 
