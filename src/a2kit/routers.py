@@ -51,6 +51,14 @@ class Router:
     enrichers: ClassVar[tuple[Callable[[Exception], str | None], ...]] = ()
     providers: ClassVar[tuple[Any, ...]] = ()
 
+    #: Default visibility tier for this Router's tools. Per-tool ``visibility=``
+    #: kwarg overrides this. Resolution: per-tool kwarg (if explicitly set)
+    #: → Router class attr → ``"all"`` baseline. See ADR 0003 vs. visibility:
+    #: ``"hidden"`` = CLI-invokable but absent from --help; ``"cli"`` =
+    #: visible in --help, hidden from MCP/API/GraphQL; ``"all"`` =
+    #: everywhere (default).
+    visibility: ClassVar[str] = "all"
+
     def __init__(self) -> None:
         cls = type(self)
         # --- slug check ---------------------------------------------------- #
@@ -101,6 +109,10 @@ class Router:
                 raise TypeError(msg)
             if meta.extras.router_slug is None:  # noqa: A2K-CORE-CLEAN
                 meta.extras.router_slug = self.slug  # noqa: A2K-CORE-CLEAN
+            # Resolve effective visibility: per-tool kwarg (if explicitly set)
+            # → Router class attr → "all" baseline. Per-tool None means inherit.
+            if meta.extras.visibility is None:  # noqa: A2K-CORE-CLEAN
+                meta.extras.visibility = type(self).visibility  # noqa: A2K-CORE-CLEAN
             bound.append(bound_method)
 
         self._tools: list[Callable[..., Any]] = bound

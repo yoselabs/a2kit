@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 from a2kit.exceptions import InvalidToolReturnTypeError
 from a2kit.metadata import A2KitMeta, A2KitMetaExtras, set_meta
 from a2kit.signature import find_context_param
-from a2kit.surface import Surface
+
+Visibility = Literal["hidden", "cli", "all"]
 
 _log = logging.getLogger(__name__)
 _WARN_ONCE_RESOLVE_RETURN: set[str] = set()
@@ -176,14 +177,14 @@ def _stamp(
     tags: frozenset[str],
     annotations_kwargs: dict[str, Any] | None = None,
     annotations_explicit: Any = None,
-    surfaces: Surface = Surface.ALL,
+    visibility: Visibility | None = None,
     reports: type | None = None,
     list_view: Any | None = None,
 ) -> F:
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
-    extras_kwargs: dict[str, Any] = {"surfaces": surfaces}  # noqa: A2K-CORE-CLEAN
+    extras_kwargs: dict[str, Any] = {"visibility": visibility}  # noqa: A2K-CORE-CLEAN
     if reports is not None:
         extras_kwargs["report_type"] = reports  # noqa: A2K-CORE-CLEAN
         schema = _compute_report_schema(reports)
@@ -274,7 +275,7 @@ def tool(
     open_world: bool = False,
     destructive: bool | None = None,
     title: str | None = None,
-    surfaces: Surface = Surface.ALL,
+    visibility: Visibility | None = None,
     reports: type | None = None,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
@@ -295,7 +296,7 @@ def tool(
                     explicit=annotations,
                 )
             ),
-            surfaces=surfaces,
+            visibility=visibility,
             reports=reports,
         )
 
@@ -309,7 +310,7 @@ def read(
     open_world: bool = False,
     destructive: bool | None = None,
     title: str | None = None,
-    surfaces: Surface = Surface.ALL,
+    visibility: Visibility | None = None,
     reports: type | None = None,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
@@ -330,7 +331,7 @@ def read(
                     explicit=None,
                 )
             ),
-            surfaces=surfaces,
+            visibility=visibility,
             reports=reports,
         )
 
@@ -344,7 +345,7 @@ def write(
     open_world: bool = False,
     destructive: bool | None = None,
     title: str | None = None,
-    surfaces: Surface = Surface.ALL,
+    visibility: Visibility | None = None,
     reports: type | None = None,
 ) -> Callable[[F], F]:
     def deco(fn: F) -> F:
@@ -365,7 +366,7 @@ def write(
                     explicit=None,
                 )
             ),
-            surfaces=surfaces,
+            visibility=visibility,
             reports=reports,
         )
 
@@ -377,7 +378,7 @@ def list_(
     name: str | None = None,
     page_size: int | None = None,
     selectable_fields: tuple[str, ...] | None = None,
-    surfaces: Surface = Surface.ALL,
+    visibility: Visibility | None = None,
     reports: type | None = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Absorbs list-view projection/pagination.
@@ -413,7 +414,7 @@ def list_(
             name=name,
             tags=frozenset({"read", "list"}),
             annotations_kwargs={"readOnlyHint": True, "destructiveHint": False},
-            surfaces=surfaces,
+            visibility=visibility,
             reports=reports,
             list_view=settings,
         )

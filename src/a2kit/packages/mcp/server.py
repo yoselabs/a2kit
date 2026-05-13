@@ -299,7 +299,6 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     container = app.container() if hasattr(app, "container") else None
     dispatch_hook = app.dispatch_hook() if hasattr(app, "dispatch_hook") else None
 
-    from a2kit.surface import Surface
     from a2kit.tool import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
     for fn in app.tools():
@@ -307,8 +306,10 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
         if meta is None:
             continue
 
-        tool_surfaces = meta.extras.surfaces or Surface.ALL
-        if Surface.MCP not in tool_surfaces:
+        # `"hidden"` and `"cli"` are CLI-only tiers; only `"all"` registers
+        # on programmatic surfaces (MCP / future REST / future GraphQL).
+        visibility = meta.extras.visibility or "all"
+        if visibility != "all":
             continue
 
         router = _router_for_tool(app, fn)

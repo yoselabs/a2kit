@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from a2kit.surface import Surface  # noqa: TC001 — runtime ref for pydantic model field
-
 if TYPE_CHECKING:
     from mcp.types import ToolAnnotations
 
@@ -35,9 +33,9 @@ class A2KitMetaExtras(BaseModel):
     the legacy ``meta.extra`` dict (with the ``a2kit.`` prefix dropped).
 
     ``arbitrary_types_allowed`` is required because ``report_type`` carries a
-    ``type`` object, ``surfaces`` carries the ``Surface`` flag-enum, and
-    ``list_view`` carries the frozen :class:`ListViewSettings` dataclass.
-    None of those round-trip through pydantic's native validation pipeline.
+    ``type`` object and ``list_view`` carries the frozen
+    :class:`ListViewSettings` dataclass. Neither round-trips through
+    pydantic's native validation pipeline.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -45,7 +43,7 @@ class A2KitMetaExtras(BaseModel):
     report_type: type | None = None  # noqa: A2K-CORE-CLEAN
     report_schema: dict[str, Any] | None = None  # noqa: A2K-CORE-CLEAN
     router_slug: str | None = None  # noqa: A2K-CORE-CLEAN
-    surfaces: Surface | None = None  # noqa: A2K-CORE-CLEAN
+    visibility: str | None = None  # noqa: A2K-CORE-CLEAN
     list_view: ListViewSettings | None = None  # noqa: A2K-CORE-CLEAN
 
 

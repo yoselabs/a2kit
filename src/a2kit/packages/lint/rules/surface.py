@@ -1,13 +1,14 @@
-"""A2K-SURFACE-EXPLICIT — credential-named tools SHOULD declare ``surfaces=``.
+"""A2K-SURFACE-EXPLICIT — credential-named tools SHOULD declare ``visibility=``.
 
 Fires when a function decorated with ``@a2kit.read``/``write``/``list_``/``tool``
 has a name matching a credential-related heuristic AND the decorator call
-does NOT pass an explicit ``surfaces=`` kwarg.
+does NOT pass an explicit ``visibility=`` kwarg.
 
-The default ``Surface.ALL`` exposes credential-management tools (``login``,
-``logout``, etc.) on every transport, including MCP. Agents have no business
-calling ``login`` — the plugin author should declare ``surfaces=Surface.CLI``
-explicitly (or ``Surface.ALL`` to suppress the lint).
+The default ``visibility="all"`` exposes credential-management tools
+(``login``, ``logout``, etc.) on every transport, including MCP/programmatic
+surfaces. Agents have no business calling ``login`` — the plugin author
+should declare ``visibility="cli"`` explicitly (or ``visibility="all"`` to
+suppress the lint).
 
 Rule code: ``A2K-SURFACE-EXPLICIT``.
 """
@@ -58,8 +59,8 @@ def _is_a2kit_verb_decorator(dec: ast.expr) -> ast.Call | None:
     return None
 
 
-def _has_surfaces_kwarg(call: ast.Call) -> bool:
-    return any(kw.arg == "surfaces" for kw in call.keywords)
+def _has_visibility_kwarg(call: ast.Call) -> bool:
+    return any(kw.arg == "visibility" for kw in call.keywords)
 
 
 def _name_triggers(name: str) -> bool:
@@ -81,7 +82,7 @@ def rule_surface_explicit(tree: ast.AST, filename: str, source: str) -> Iterable
             call = _is_a2kit_verb_decorator(dec)
             if call is None:
                 continue
-            if _has_surfaces_kwarg(call):
+            if _has_visibility_kwarg(call):
                 continue
             yield LintMessage(
                 rule=A2K_SURFACE_EXPLICIT,
@@ -89,9 +90,9 @@ def rule_surface_explicit(tree: ast.AST, filename: str, source: str) -> Iterable
                 line=getattr(dec, "lineno", node.lineno),
                 col=getattr(dec, "col_offset", node.col_offset),
                 message=(
-                    f"tool {node.name!r} defaults to Surface.ALL. Credential-named tools "
-                    "SHOULD declare `surfaces=Surface.CLI` explicitly (or `Surface.ALL` "
-                    "to suppress)."
+                    f"tool {node.name!r} defaults to visibility=\"all\". Credential-named "
+                    "tools SHOULD declare `visibility=\"cli\"` explicitly (or "
+                    "`visibility=\"all\"` to suppress)."
                 ),
             )
 

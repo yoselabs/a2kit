@@ -367,7 +367,6 @@ def _register_router(typer_app: Any, router: Router, app: App) -> None:
     import typer
 
     from a2kit.metadata import get_meta
-    from a2kit.surface import Surface
 
     sub = typer.Typer(
         name=router.slug,
@@ -377,14 +376,16 @@ def _register_router(typer_app: Any, router: Router, app: App) -> None:
     )
     for fn in router.bound_tools():
         meta = get_meta(fn)
+        hidden = False
         if meta is not None:
-            surfaces = meta.extras.surfaces or Surface.ALL
-            if Surface.CLI not in surfaces:
-                continue
+            visibility = meta.extras.visibility or "all"
+            # All three tiers ("hidden", "cli", "all") mount on CLI.
+            # Only "hidden" omits from --help listing.
+            hidden = visibility == "hidden"
         cb = _build_tool_callback(fn, app, router=router)
         tool_name = meta.tool_name if meta is not None else getattr(fn, "__name__", "tool")
         short = getattr(cb, "_a2kit_short_help", "") or None
-        sub.command(name=tool_name, help=cb.__doc__, short_help=short)(cb)
+        sub.command(name=tool_name, help=cb.__doc__, short_help=short, hidden=hidden)(cb)
     typer_app.add_typer(sub)
 
 

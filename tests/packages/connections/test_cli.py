@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from a2kit.packages.connections import connections_cli
+from a2kit.packages.connections.cli import connections_cli
 
 from .conftest import WidgetConfig
 

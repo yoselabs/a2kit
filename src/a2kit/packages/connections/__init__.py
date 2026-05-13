@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from a2kit.packages.connections.cli import connections_cli
+from a2kit.packages.connections.cli import connections_cli as _connections_cli
 from a2kit.packages.connections.config import ConnectionConfig, default_config_dir
 from a2kit.packages.connections.dispatch import install_connection_dispatch
 from a2kit.packages.connections.exceptions import (
@@ -25,25 +25,26 @@ if TYPE_CHECKING:
 
 
 def install_connections(app: App, *conn_types: type[ConnectionConfig]) -> App:
-    """Install the connections dispatch hook + typed wire scope on ``app``.
+    """Install the connections plugin on ``app`` — single entry point.
 
-    Pairs with :func:`connections_cli`:
+    Wires three things in one call:
 
-    .. code-block:: python
+    1. The connection-string dispatch hook (resolves ``connection: str``
+       wire input into typed ``ConnectionConfig`` instances).
+    2. The ``"connection"`` wire scope on the App's DI container.
+    3. The ``connections`` Click subcommand group on the CLI
+       (``login`` / ``logout`` / ``list`` / ``show`` / ``delete``).
+
+    Usage::
 
         app = a2kit.App("tracker")
-        install_connections(app, TrackerConn)        # dispatch hook + wire scope
-        app.add_cli(connections_cli(TrackerConn))    # CLI subcommands
+        install_connections(app, TrackerConn)   # complete wiring
 
-    Imperative replacement for the previous ``connections(*types)`` Router
-    factory. The Router carried no tools — only an attach hook — so it
-    failed the explicit-router-surface invariant (``slug`` / ``tools`` /
-    ``providers`` / ``lifespan`` only). This function performs the same
-    wiring with one call instead of a fake Router.
-
-    Returns ``app`` to allow fluent chaining.
+    No separate ``add_cli`` call needed. The plugin owns its CLI shape
+    end-to-end. Returns ``app`` for fluent chaining.
     """
     install_connection_dispatch(app, conn_types)
+    app.add_cli(_connections_cli(*conn_types))
     return app
 
 
@@ -60,7 +61,6 @@ __all__ = [
     "OpResolutionError",
     "TokenResolutionError",
     "WriteNotAllowed",
-    "connections_cli",
     "default_config_dir",
     "install_connections",
     "scope_filter",

@@ -5,6 +5,10 @@ factory was deleted because the Router-as-marker pattern leaks a hidden
 fifth attribute (``_a2kit_attach``) on top of the closed
 slug/tools/providers/lifespan surface. The replacement is an imperative
 :func:`install_connections` call.
+
+Post-Q2 single-call wiring: ``install_connections`` registers dispatch hook
++ wire scope AND adds the ``connections`` CLI subcommand group. No
+separate ``add_cli(connections_cli(...))`` call required.
 """
 
 from __future__ import annotations
@@ -12,7 +16,6 @@ from __future__ import annotations
 import a2kit
 from a2kit.packages.connections import (
     ConnectionConfig,
-    connections_cli,
     install_connections,
 )
 
@@ -40,21 +43,24 @@ def test_install_connections_registers_connection_wire_scope() -> None:
     assert _DummyConn in scopes["connection"]
 
 
+def test_install_connections_registers_cli_group() -> None:
+    """install_connections also adds the `connections` Click subcommand group."""
+    app = a2kit.App("t")
+    install_connections(app, _DummyConn)
+    cli_extras = app.cli_extras()
+    assert any(getattr(c, "name", None) == "connections" for c in cli_extras)
+
+
 def test_add_cli_does_not_auto_install_provider() -> None:
-    """add_cli does not auto-register providers via hidden markers. Consumers
-    explicitly call install_connections(app, X) + add_cli(connections_cli(X)).
+    """add_cli alone (without install_connections) does not register providers.
+    Regression guard: there is no Router-as-marker pattern.
     """
+    from a2kit.packages.connections.cli import connections_cli
+
     app = a2kit.App("t")
     cli = connections_cli(_DummyConn)
     app.add_cli(cli)
     assert not app.has_provider(_DummyConn)
-
-
-def test_canonical_two_call_form() -> None:
-    app = a2kit.App("t")
-    install_connections(app, _DummyConn)
-    app.add_cli(connections_cli(_DummyConn))
-    assert app.has_provider(_DummyConn)
 
 
 def test_add_router_ignores_underscore_marker() -> None:

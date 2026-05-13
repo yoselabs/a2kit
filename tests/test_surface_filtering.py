@@ -1,28 +1,33 @@
-"""Transport mounters filter tools by declared Surface."""
+"""Transport mounters filter tools by declared `visibility` tier.
+
+`visibility="all"` (default) — registered on CLI and MCP.
+`visibility="cli"` — registered on CLI, skipped on MCP.
+`visibility="hidden"` — registered on CLI but absent from --help; skipped on MCP.
+"""
 
 from __future__ import annotations
 
 import a2kit
 from a2kit.routers import Router
-from a2kit.surface import Surface
 
 
 class _SurfRouter(Router):
     slug = "surf"
     name = "surf"
 
-    @a2kit.read(surfaces=Surface.CLI)
+    @a2kit.read(visibility="cli")
     async def cli_only(self) -> dict[str, int]:
         return {"k": 1}
 
-    @a2kit.read(surfaces=Surface.MCP)
-    async def mcp_only(self) -> dict[str, int]:
+    @a2kit.read(visibility="hidden")
+    async def hidden_op(self) -> dict[str, int]:
         return {"k": 1}
 
     @a2kit.read()
     async def both(self) -> dict[str, int]:
         return {"k": 1}
-    tools = (cli_only, mcp_only, both,)
+
+    tools = (cli_only, hidden_op, both)
 
 
 def _app() -> a2kit.App:
@@ -31,18 +36,35 @@ def _app() -> a2kit.App:
     return app
 
 
-def test_cli_builder_skips_mcp_only_tools() -> None:
+def test_cli_builder_mounts_all_tiers() -> None:
+    """CLI mounts all three tiers; visibility only affects --help and MCP."""
     from a2kit.packages.cli.builder import build_full_cli
 
     cli = build_full_cli(_app())
     surf_group = cli.commands["surf"]
     cmd_names = set(surf_group.commands.keys())
     assert "cli-only" in cmd_names or "cli_only" in cmd_names
+    assert "hidden-op" in cmd_names or "hidden_op" in cmd_names
     assert "both" in cmd_names
-    assert "mcp-only" not in cmd_names and "mcp_only" not in cmd_names
 
 
-def test_mcp_server_skips_cli_only_tools() -> None:
+def test_cli_hidden_tier_marked_hidden_in_click() -> None:
+    """`visibility="hidden"` propagates to Click's `hidden=True`."""
+    from a2kit.packages.cli.builder import build_full_cli
+
+    cli = build_full_cli(_app())
+    surf_group = cli.commands["surf"]
+    # Resolve name (Typer kebab-cases by default).
+    hidden_cmd_name = "hidden-op" if "hidden-op" in surf_group.commands else "hidden_op"
+    hidden_cmd = surf_group.commands[hidden_cmd_name]
+    assert hidden_cmd.hidden is True
+    cli_cmd_name = "cli-only" if "cli-only" in surf_group.commands else "cli_only"
+    assert surf_group.commands[cli_cmd_name].hidden is False
+    assert surf_group.commands["both"].hidden is False
+
+
+def test_mcp_server_skips_cli_and_hidden_tools() -> None:
+    """MCP only registers `visibility="all"` tools."""
     import asyncio
 
     from a2kit.packages.mcp.server import build_mcp_server
@@ -53,13 +75,13 @@ def test_mcp_server_skips_cli_only_tools() -> None:
         return {t.name for t in await server.list_tools()}
 
     names = asyncio.run(_names())
-    assert "mcp_only" in names
     assert "both" in names
     assert "cli_only" not in names
+    assert "hidden_op" not in names
 
 
-def test_default_surface_all_visible_on_both() -> None:
-    """Tool with default Surface.ALL appears on every transport."""
+def test_default_visibility_visible_on_both() -> None:
+    """Tool with no `visibility=` (resolves to "all") appears on every transport."""
     import asyncio
 
     from a2kit.packages.cli.builder import build_full_cli

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import a2kit
 from a2kit.metadata import A2KitMetaExtras, get_meta
-from a2kit.surface import Surface
 
 
 def test_default_extras_has_all_fields_none() -> None:
@@ -17,18 +16,18 @@ def test_default_extras_has_all_fields_none() -> None:
     assert extras.report_type is None
     assert extras.report_schema is None
     assert extras.router_slug is None
-    assert extras.surfaces is None
+    assert extras.visibility is None
     assert extras.list_view is None
 
 
-def test_verb_decorator_stamps_surfaces() -> None:
-    @a2kit.read(surfaces=Surface.MCP)
+def test_verb_decorator_stamps_visibility() -> None:
+    @a2kit.read(visibility="cli")
     async def f() -> dict[str, int]:
         return {"k": 1}
 
     meta = get_meta(f)
     assert meta is not None
-    assert meta.extras.surfaces == Surface.MCP
+    assert meta.extras.visibility == "cli"
 
 
 def test_list_decorator_stamps_list_view() -> None:

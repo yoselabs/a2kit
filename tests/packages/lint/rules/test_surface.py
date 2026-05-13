@@ -12,7 +12,7 @@ def _findings(source: str) -> list[str]:
     return [m.message for m in rule_surface_explicit(tree, "f.py", source)]
 
 
-def test_login_without_surfaces_fires() -> None:
+def test_login_without_visibility_fires() -> None:
     src = """
 import a2kit
 @a2kit.read()
@@ -22,25 +22,23 @@ async def login() -> dict:
     out = _findings(src)
     assert len(out) == 1
     assert "'login'" in out[0]
-    assert "Surface.CLI" in out[0]
+    assert 'visibility="cli"' in out[0]
 
 
-def test_login_with_explicit_surface_does_not_fire() -> None:
+def test_login_with_explicit_visibility_does_not_fire() -> None:
     src = """
 import a2kit
-from a2kit.surface import Surface
-@a2kit.read(surfaces=Surface.CLI)
+@a2kit.read(visibility="cli")
 async def login() -> dict:
     return {}
 """
     assert _findings(src) == []
 
 
-def test_explicit_surface_all_suppresses() -> None:
+def test_explicit_visibility_all_suppresses() -> None:
     src = """
 import a2kit
-from a2kit.surface import Surface
-@a2kit.read(surfaces=Surface.ALL)
+@a2kit.read(visibility="all")
 async def login() -> dict:
     return {}
 """

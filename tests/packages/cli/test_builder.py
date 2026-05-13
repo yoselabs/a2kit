@@ -32,7 +32,7 @@ def test_connections_subgroup_only_when_added(tasks_router):
     """`<app> connections ...` appears iff `app.add_cli(connections_cli(...))` is wired."""
     from tests.packages.connections.conftest import WidgetConfig
 
-    from a2kit.packages.connections import connections_cli
+    from a2kit.packages.connections.cli import connections_cli
 
     # Without add_cli: no connections subgroup.
     bare = a2kit.App("bare").add_router(tasks_router)
