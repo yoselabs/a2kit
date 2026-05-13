@@ -23,7 +23,7 @@ class _BodyRouter(a2kit.Router):
     slug = "items"
     name = "items"
 
-    @a2kit.write("create_item")
+    @a2kit.write()
     async def create_item(self, *, body: _Item) -> dict:
         return {"name": body.name, "qty": body.qty}
 
@@ -86,7 +86,7 @@ def test_pretty_exceptions_disabled_plain_text_traceback() -> None:
         slug = "boom"
         name = "boom"
 
-        @a2kit.read("explode")
+        @a2kit.read()
         async def explode(self) -> dict:
             raise RuntimeError("kaboom")
 

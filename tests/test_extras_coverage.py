@@ -242,36 +242,20 @@ def test_listview_middleware_returns_result_when_tool_name_missing() -> None:
 # --------------------------- connections.exceptions instantiation --------------------------- #
 
 
-# --------------------------- a2kit.tool() generic decorator --------------------------- #
+# --------------------------- @a2kit.tool removed in v0.33 --------------------------- #
 
 
-def test_tool_generic_decorator_stamps_meta() -> None:
-    """`@tool(...)` stamps `A2KitMeta`."""
-    from a2kit.metadata import get_meta
-    from a2kit.tool import tool
+def test_a2kit_tool_function_removed_from_submodule() -> None:
+    """The ``tool()`` function was deleted from ``a2kit.tool`` in v0.33.
 
-    @tool(name="manual")
-    async def fn() -> dict[str, int]:
-        return {"a": 1}
+    Note: ``a2kit.tool`` itself is still importable as a submodule (internal
+    code imports from it). The user-facing breakage is the missing function —
+    ``from a2kit.tool import tool`` raises ImportError.
+    """
+    import pytest
 
-    meta = get_meta(fn)
-    assert meta is not None
-    assert meta.tool_name == "manual"
-    assert meta.verb == "tool"
-    assert meta.tags == frozenset()
-
-
-def test_tool_generic_decorator_defaults_to_function_name() -> None:
-    from a2kit.metadata import get_meta
-    from a2kit.tool import tool
-
-    @tool()
-    async def auto_named() -> dict[str, int]:
-        return {"a": 1}
-
-    meta = get_meta(auto_named)
-    assert meta is not None
-    assert meta.tool_name == "auto_named"
+    with pytest.raises(ImportError):
+        from a2kit.tool import tool  # noqa: F401
 
 
 # --------------------------- a2kit.exceptions edges --------------------------- #
@@ -388,7 +372,7 @@ def test_router_registry_round_trip() -> None:
     import a2kit
     from a2kit.routers import RouterRegistry
 
-    @a2kit.read("ping")
+    @a2kit.read()
     async def ping() -> dict[str, int]:
         return {"x": 1}
 

@@ -138,17 +138,24 @@ class App:
         return container_dispatch(fn, wire_kwargs, self._container)
 
     def _install_health_tool(self) -> None:
-        """Synthesize a built-in router carrying ``_meta.health``."""
+        """Synthesize a built-in router carrying ``_meta.health``.
+
+        Idempotent — if the ``_meta`` router is already installed, this is a
+        no-op so ``App(health_tool=True)`` + ``@app.health_check`` does not
+        double-install.
+        """
+        if any(r.slug == "_meta" for r in self._routers.all()):
+            return
         from a2kit.packages.health import HEALTH_TOOL_NAME, run_checks
         from a2kit.routers import Router as _Router
-        from a2kit.tool import read as _read
+        from a2kit.tool import _read_internal
 
         app_ref = self
 
         class _MetaRouter(_Router):
             slug = "_meta"
 
-            @_read(name=HEALTH_TOOL_NAME, title="Health probe")
+            @_read_internal(HEALTH_TOOL_NAME, title="Health probe")
             async def aggregated_health(self) -> dict[str, Any]:
                 """Aggregated health status. Hidden from agent-facing list_tools."""
                 return await run_checks(app_ref)
@@ -163,7 +170,15 @@ class App:
         ``fn`` may be sync or async, take any DI-resolvable kwargs (e.g.
         ``state: AppState``), and SHOULD return a :class:`HealthResult`.
         Returns the function unchanged for ``@app.health_check`` use.
+
+        v0.33: the first ``@app.health_check`` call auto-installs the
+        ``_meta.health`` synthetic router. ``App(health_tool=True)`` remains
+        accepted (no-op when checks are also registered) for explicit-eager
+        registration and apps that want the tool present with zero checks.
         """
+        if not self._health.enabled:
+            self._health.enabled = True
+        self._install_health_tool()
         return self._health.register(fn)
 
     # --- Composition verbs ---------------------------------------------- #
@@ -238,14 +253,19 @@ class App:
         self,
         type_: type,
         factory: Callable[..., Any] | None = None,
-    ) -> Any:
+    ) -> App:
         """Register a factory whose result is cached for the lifetime of this App.
 
-        Two forms:
+        Method-call form is the only path (v0.33): the decorator form
+        ``@app.singleton(T)`` was removed to free the signature for the
+        upcoming ``teardown=`` parameter and to mirror ``app.provide``.
 
-        - Method: ``app.singleton(T, factory)`` returns ``self`` for chaining.
-        - Decorator: ``@app.singleton(T)`` decorates the factory and returns it
-          unchanged after registering.
+        - ``app.singleton(T, factory)`` registers ``factory`` and returns
+          ``self`` for chaining.
+        - ``app.singleton(T)`` (no factory) registers ``T`` as its own
+          class-as-factory — the container introspects ``T.__init__`` at
+          resolve time. Same semantics as ``app.provide(T)``, just
+          App-cached.
 
         The factory MAY be sync (``def``) or async (``async def``). An
         async factory is awaited on first resolution; subsequent resolves
@@ -261,15 +281,8 @@ class App:
         HTTP clients, browser handles). Hand-rolled lazy-init resource
         classes are no longer necessary for the common case.
         """
-        if factory is None:
-
-            def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-                self.singleton(type_, fn)
-                return fn
-
-            return _decorator
-
-        self._container.register_singleton(type_, factory)
+        target = factory if factory is not None else type_
+        self._container.register_singleton(type_, target)
         return self
 
     def has_singleton(self, type_: type) -> bool:
@@ -363,11 +376,24 @@ class App:
     def routers(self) -> list[Router]:
         return self._routers.all()
 
-    def tools(self) -> list[Callable[..., Any]]:
-        return self._routers.bound_tools()
+    def tools(self) -> list[ToolDescriptor]:
+        """Typed descriptors materialized at ``add_router`` time. One per tool.
+
+        v0.33: collapsed surface — previously this returned bound callables
+        and the descriptor list lived on ``tool_descriptors()``. Both now
+        funnel through this single accessor, which returns ``ToolDescriptor``
+        objects. Consumers that need raw callables compute
+        ``[d.fn for d in app.tools()]``.
+        """
+        return list(self._descriptors)
 
     def tool_descriptors(self) -> list[ToolDescriptor]:
-        """Typed descriptors materialized at ``add_router`` time. One per tool."""
+        """Deprecated alias for :meth:`tools`. Removed in a future minor.
+
+        v0.33 keeps this as a one-line shim so internal call sites and
+        downstream consumers have a quiet migration window. The README and
+        public docs reference ``tools()`` exclusively.
+        """
         return list(self._descriptors)
 
 
@@ -414,9 +440,7 @@ def _is_async_callable(fn: Any) -> bool:
     if inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn):
         return True
     wrapped = getattr(fn, "__wrapped__", None)
-    return wrapped is not None and (
-        inspect.iscoroutinefunction(wrapped) or inspect.isasyncgenfunction(wrapped)
-    )
+    return wrapped is not None and (inspect.iscoroutinefunction(wrapped) or inspect.isasyncgenfunction(wrapped))
 
 
 def _router_lifespan_factory(router: Router) -> Callable[[Any], Any]:
@@ -431,8 +455,6 @@ def _router_lifespan_factory(router: Router) -> Callable[[Any], Any]:
     def _adapter(_app: Any) -> Any:
         return router.lifespan()  # type: ignore[attr-defined]
 
-    _adapter.__qualname__ = (
-        f"{type(router).__name__}.lifespan"  # for log labels
-    )
+    _adapter.__qualname__ = f"{type(router).__name__}.lifespan"  # for log labels
     _adapter.__name__ = f"{type(router).__name__}.lifespan"
     return _adapter

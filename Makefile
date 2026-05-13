@@ -12,6 +12,7 @@ lint:
 	uv run ty check src/
 	uv run ty check examples/
 	uv run a2kit lint static src/ tests/ examples/
+	uv run pytest tests/test_readme_symbol_drift.py --no-cov -q
 
 format:
 	uv run ruff format .

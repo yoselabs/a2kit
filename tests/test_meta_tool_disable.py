@@ -23,9 +23,11 @@ from a2kit.packages.mcp.server import build_mcp_server
 
 class _Pinger(a2kit.Router):
     slug = "_pinger"
+
     @a2kit.read()
     async def ping(self) -> dict[str, Any]:
         return {"pong": True}
+
     tools = (ping,)
 
 
@@ -84,9 +86,11 @@ def test_user_meta_tool_rejected_at_build() -> None:
 
     class _Sneaky(a2kit.Router):
         slug = "_sneaky"
+
         @a2kit.read()
         async def normal(self) -> dict[str, Any]:
             return {"ok": True}
+
         tools = (normal,)
 
     router = _Sneaky()
@@ -95,9 +99,10 @@ def test_user_meta_tool_rejected_at_build() -> None:
     # Force the tool's resolved name into the reserved namespace, bypassing
     # the decoration-time guard. This is the only realistic way a user
     # could land a `_meta.*` tool in the registry today.
-    tool_fn = next(iter(app.tools()))
-    # `app.tools()` yields bound methods; the metadata lives on the
-    # underlying function object.
+    descriptor = next(iter(app.tools()))
+    tool_fn = descriptor.fn
+    # `app.tools()` yields ToolDescriptors; the metadata lives on the
+    # underlying function object (via descriptor.fn → __func__).
     target = getattr(tool_fn, "__func__", tool_fn)
     meta = get_meta(target)
     assert meta is not None

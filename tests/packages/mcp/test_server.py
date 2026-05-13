@@ -15,18 +15,22 @@ class _SampleRouter(a2kit.Router):
     slug = "sample"
     name = "sample"
 
-    @a2kit.read("ping")
+    @a2kit.read()
     async def ping(self, *, name: str = "world") -> dict[str, str]:
         return {"hello": name}
 
-    @a2kit.list_("id", "name", page_size=2, name="rows")
+    @a2kit.list_("id", "name", page_size=2)
     async def rows(self) -> list[dict[str, Any]]:
         return [
             {"id": 1, "name": "a", "extra": "drop"},
             {"id": 2, "name": "b", "extra": "drop"},
             {"id": 3, "name": "c", "extra": "drop"},
         ]
-    tools = (ping, rows,)
+
+    tools = (
+        ping,
+        rows,
+    )
 
 
 @pytest.fixture
@@ -106,9 +110,10 @@ def test_enricher_fires_before_registration() -> None:
         name = "r"
         enrichers = [my_enricher]
 
-        @a2kit.read("boom")
+        @a2kit.read()
         async def boom(self) -> dict[str, str]:
             raise RuntimeError("kaboom")
+
         tools = (boom,)
 
     app = a2kit.App("e").add_router(R())
@@ -129,14 +134,18 @@ def test_sync_and_async_tools_both_register() -> None:
         slug = "r"
         name = "r"
 
-        @a2kit.read("sync_one")
+        @a2kit.read()
         def sync_one(self) -> dict[str, int]:
             return {"x": 1}
 
-        @a2kit.read("async_one")
+        @a2kit.read()
         async def async_one(self) -> dict[str, int]:
             return {"x": 2}
-        tools = (sync_one, async_one,)
+
+        tools = (
+            sync_one,
+            async_one,
+        )
 
     app = a2kit.App("a").add_router(R())
     server = build_mcp_server(app)

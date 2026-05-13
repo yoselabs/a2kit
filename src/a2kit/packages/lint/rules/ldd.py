@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     from a2kit.packages.lint.static import LintMessage
 
-_VERB_NAMES = {"read", "write", "list_", "tool"}
+_VERB_NAMES = {"read", "write", "list_"}
 
 
 def _is_a2kit_verb_decorator(dec: ast.expr) -> bool:

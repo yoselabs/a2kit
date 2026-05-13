@@ -101,7 +101,7 @@ def test_a2kit_tool_decorator_also_covered() -> None:
     src = """
     import a2kit
 
-    @a2kit.tool()
+    @a2kit.write()
     async def t(*, ctx) -> dict:
         await ctx.report(a=1)
         return {}

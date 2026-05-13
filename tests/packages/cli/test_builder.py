@@ -86,7 +86,7 @@ def test_lazy_serve_does_not_load_fastmcp_at_build_time():
         "from click.testing import CliRunner\n"
         "class T(a2kit.Router):\n"
         "    slug = 't'\n"
-        "    @a2kit.read('list_tasks')\n"
+        "    @a2kit.read()\n"
         "    def list_tasks(self, *, limit: int = 10) -> dict:\n"
         "        return {}\n"
         "    tools = (list_tasks,)\n"
@@ -130,9 +130,10 @@ def test_optional_int_maps_to_integer_click_option():
         slug = "probe"
         name = "probe"
 
-        @a2kit.read("get")
+        @a2kit.read()
         def get(self, *, project_id: int | None = None) -> dict:
             return {"project_id": project_id}
+
         tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
@@ -152,10 +153,11 @@ def test_optional_str_invokes_with_string_value():
         slug = "probe"
         name = "probe"
 
-        @a2kit.read("get")
+        @a2kit.read()
         def get(self, *, query: str | None = None) -> dict:
             seen["query"] = query
             return {"query": query}
+
         tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
@@ -172,9 +174,10 @@ def test_optional_bool_maps_to_flag():
         slug = "probe"
         name = "probe"
 
-        @a2kit.read("get")
+        @a2kit.read()
         def get(self, *, verbose: bool | None = None) -> dict:
             return {"verbose": verbose}
+
         tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
@@ -195,10 +198,11 @@ def test_nonprimitive_nullable_still_json_decodes():
         slug = "probe"
         name = "probe"
 
-        @a2kit.read("get")
+        @a2kit.read()
         def get(self, *, ids: list[int] | None = None) -> dict:
             seen["ids"] = ids
             return {"ids": ids}
+
         tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())

@@ -70,6 +70,7 @@ async def _persist(_batch: list[dict[str, str]]) -> None:
 
 class TasksRouter(a2kit.Router):
     slug = "tasks"
+
     @a2kit.read()
     async def import_csv(
         self,
@@ -165,4 +166,10 @@ class TasksRouter(a2kit.Router):
         fast operations.
         """
         return {"status": "ok"}
-    tools = (import_csv, long_running, import_csv_with_reports, quick_status,)
+
+    tools = (
+        import_csv,
+        long_running,
+        import_csv_with_reports,
+        quick_status,
+    )

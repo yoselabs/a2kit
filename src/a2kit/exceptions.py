@@ -52,22 +52,40 @@ class ReportTypeMismatch(A2KitError, TypeError):
 
 
 class AmbientContextMissing(A2KitError, RuntimeError):
-    """Raised when an LDD primitive is called outside an active tool dispatch.
+    """Raised when an LDD primitive cannot find a usable ambient ``ctx``.
 
-    LDD primitives (`a2kit.ldd.event/report/log/info/warning/error/debug` and
-    `EventRegistry.emit_typed`) read their `ctx` from the ambient
-    `_LDD_STATE` ContextVar, which is set by the dispatcher for the duration
-    of one tool invocation. Calling these from a lifecycle hook, factory,
-    module-level code, or any pre-dispatch context raises this error
-    instead of silently no-opping — fail loud, fix the call site.
+    Two failure modes share this class (v0.33 splits the message):
+
+    - **Mode A — no active dispatch.** The ``_LDD_STATE`` ContextVar is unset.
+      Happens when LDD primitives are called from module-import-time code,
+      lifecycle hooks, or any pre-dispatch context.
+    - **Mode B — dispatch active, tool missing ``ctx`` parameter.** The
+      ContextVar IS set (the dispatcher entered a scope), but the running
+      tool's signature does not declare ``ctx: a2kit.ToolContext``, so
+      ``state.ctx is None``.
+
+    The message identifies which mode fired and points at the actionable
+    fix at the call site.
     """
 
-    def __init__(self, fn_name: str) -> None:
+    MODE_NO_DISPATCH = "no_dispatch"
+    MODE_MISSING_CTX_PARAM = "missing_ctx_param"
+
+    def __init__(self, fn_name: str, *, mode: str = MODE_NO_DISPATCH) -> None:
         self.fn_name = fn_name
-        super().__init__(
-            f"{fn_name} called outside an active tool dispatch. LDD "
-            "primitives only work inside a tool body (or any code "
-            "reached from one). Move the call into a tool, use the "
-            "test harness's ldd_state_for_call(ctx=...) context manager, "
-            "or remove the call."
-        )
+        self.mode = mode
+        if mode == self.MODE_MISSING_CTX_PARAM:
+            super().__init__(
+                f"{fn_name} called from a tool body that did not declare "
+                "`ctx: a2kit.ToolContext` as a parameter. Add the parameter "
+                "to the tool signature (the dispatcher will bind it ambient), "
+                "or remove the LDD call."
+            )
+        else:
+            super().__init__(
+                f"{fn_name} called outside an active tool dispatch. LDD "
+                "primitives only work inside a tool body (or any code "
+                "reached from one). Move the call into a tool, use the "
+                "test harness's ldd_state_for_call(ctx=...) context manager, "
+                "or remove the call."
+            )

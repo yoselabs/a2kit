@@ -39,6 +39,7 @@ def _build_app() -> a2kit.App:
 
     class R(a2kit.Router):
         slug = "r"
+
         @a2kit.read()
         async def emit_string(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
             await ldd.info("starting", batch=2, file="/x.csv")  # type: ignore[attr-defined]
@@ -48,7 +49,11 @@ def _build_app() -> a2kit.App:
         async def emit_instance(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
             await ldd.info(ImportStarted(file="/x.csv", batch=2))  # type: ignore[attr-defined]
             return {"ok": 1}
-        tools = (emit_string, emit_instance,)
+
+        tools = (
+            emit_string,
+            emit_instance,
+        )
 
     app = a2kit.App("field-logging-probe")
     app.add_router(R())

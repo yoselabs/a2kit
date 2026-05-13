@@ -57,6 +57,7 @@ class _Report(BaseModel):
 
 class _Router(a2kit.Router):
     slug = "_"
+
     @a2kit.read()
     async def list_items(self) -> list[_Item]:
         return [_Item(id=1, name="alpha"), _Item(id=2, name="beta")]
@@ -75,7 +76,12 @@ class _Router(a2kit.Router):
         await report(_Report(batch=0, accepted=3))
         await report(_Report(batch=1, accepted=7))
         return {"reports": 2}
-    tools = (list_items, emit_telemetry, emit_reports,)
+
+    tools = (
+        list_items,
+        emit_telemetry,
+        emit_reports,
+    )
 
 
 def _build_app() -> a2kit.App:

@@ -25,6 +25,8 @@ from a2kit.packages.di.container import Container
 class _DataRow:
     a: int
     b: str
+
+
 from a2kit.packages.mcp import listview as listview_module
 from a2kit.packages.mcp import server as server_module
 from a2kit.packages.otel import middleware as otel_middleware_module

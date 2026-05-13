@@ -39,9 +39,10 @@ class _Probe(a2kit.Router):
     slug = "probe"
     name = "probe"
 
-    @a2kit.read("ping")
+    @a2kit.read()
     async def ping(self, *, store: _Store) -> dict[str, str]:
         return {"hi": store.hello()}
+
     tools = (ping,)
 
 
@@ -83,9 +84,10 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
         slug = "plain"
         name = "plain"
 
-        @a2kit.read("noop")
+        @a2kit.read()
         async def noop(self, *, n: int) -> dict[str, int]:
             return {"n": n}
+
         tools = (noop,)
 
     app = a2kit.App("app").add_router(_Plain())

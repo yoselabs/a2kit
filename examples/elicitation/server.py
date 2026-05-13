@@ -21,7 +21,8 @@ import a2kit
 
 class UsersRouter(a2kit.Router):
     slug = "users"
-    @a2kit.read(idempotent=True, title="Greet User")
+
+    @a2kit.read(title="Greet User")
     async def greet(self, *, ctx: a2kit.ToolContext) -> dict[str, str]:
         """Ask for a username and respond with a greeting.
 
@@ -34,6 +35,7 @@ class UsersRouter(a2kit.Router):
         if not isinstance(result, AcceptedElicitation):
             return {"status": "no name", "kind": result.action}
         return {"status": "ok", "greeting": f"hello {result.data}"}
+
     tools = (greet,)
 
 

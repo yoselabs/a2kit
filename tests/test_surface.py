@@ -49,10 +49,10 @@ def test_list_decorator_carries_visibility() -> None:
     assert meta.extras.visibility == "cli"
 
 
-def test_tool_decorator_carries_visibility() -> None:
-    from a2kit.tool import tool as tool_decorator
+def test_write_decorator_carries_visibility() -> None:
+    """v0.33: `@a2kit.tool` removed; same surface check now on `@write`."""
 
-    @tool_decorator(visibility="hidden")
+    @a2kit.write(visibility="hidden")
     async def f() -> dict[str, int]:
         return {"k": 1}
 

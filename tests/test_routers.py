@@ -169,6 +169,7 @@ def test_router_tool_in_tuple_without_meta_raises() -> None:
 
         async def not_decorated(self) -> dict[str, int]:
             return {"k": 1}
+
         tools = (not_decorated,)
 
     with pytest.raises(TypeError, match="not_decorated"):
@@ -224,7 +225,7 @@ def test_decorated_method_not_in_tuple_is_not_registered() -> None:
 
     app = a2kit.App("t")
     app.add_router(_R())
-    tool_names = {getattr(fn, "__name__", "") for fn in app.tools()}
+    tool_names = {d.name for d in app.tools()}
     assert "listed" in tool_names
     assert "unlisted" not in tool_names
 
@@ -239,6 +240,7 @@ def test_plain_router_unchanged() -> None:
         @a2kit.read()
         async def ping(self) -> dict[str, int]:
             return {"k": 1}
+
         tools = (ping,)
 
     app = a2kit.App("t")

@@ -81,6 +81,4 @@ def test_add_router_ignores_underscore_marker() -> None:
 
     app = a2kit.App("t")
     app.add_router(_Sneaky())
-    assert sentinel["called"] is False, (
-        "App.add_router must not invoke _a2kit_attach or any underscored marker"
-    )
+    assert sentinel["called"] is False, "App.add_router must not invoke _a2kit_attach or any underscored marker"

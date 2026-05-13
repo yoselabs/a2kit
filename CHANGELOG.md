@@ -1,5 +1,133 @@
 # Changelog
 
+## 0.33.0 — Prettification: footguns + dead surface + README rescue — 2026-05-13
+
+Tightens the v0.32 consumption interface before the next wave of consumer
+migrations (a2atlassian, a2db). Every change follows the "loud failure
+with embedded migration hint" convention. The five footgun guards, four
+dead-surface removals, one collapse, and the README-drift CI gate land
+together as a single coordinated breaking release.
+
+Migration table:
+
+| before                                          | after                                          |
+|-------------------------------------------------|------------------------------------------------|
+| `@a2kit.tool(...)`                              | `@a2kit.read` / `@a2kit.write` / `@a2kit.list_` per semantics |
+| `@a2kit.read/write/list_(name="x")`             | rename the method — auto-derived from `fn.__name__` |
+| `@a2kit.read(idempotent=...)`                   | drop — reads are spec-idempotent (raises `TypeError`) |
+| `@a2kit.list_(idempotent=...)`                  | drop — list is read-shaped (raises `TypeError`) |
+| `@a2kit.list_(destructive=...)`                 | drop — list is read-shaped (already raised) |
+| `@a2kit.list_(...)` on `-> dict` etc.           | annotate `-> list[T]` (raises `TypeError` at decoration) |
+| `@a2kit.list_(page_size=0)` or `<=0`            | use a positive integer or omit (raises `ValueError`) |
+| `@a2kit.write(annotations=..., idempotent=...)` | pick one path (raises `TypeError` on conflict) |
+| `@app.singleton(T)` (decorator form)            | `app.singleton(T, factory)` method-call form  |
+| `from a2kit.tool import tool`                   | `from a2kit.tool import read` / `write` / `list_` |
+| `app.tool_descriptors()`                        | `app.tools()` (now returns `list[ToolDescriptor]`) |
+| `app.tools()` returning callables               | `[d.fn for d in app.tools()]`                  |
+| `App(health_tool=True)` + checks                | drop the flag — `@app.health_check` auto-installs the tool |
+
+### Fixed — `<app> health` crashed on fresh non-dev installs
+
+`a2kit.packages.cli.builder._register_health` imported
+`a2kit.packages.testing.client`, which transitively imported `pytest`.
+Any consumer installing the app via `pipx` / `uv tool install` / `uvx`
+hit `ModuleNotFoundError: pytest` on first invocation of
+`<app> health`. The CLI health subcommand now calls
+`a2kit.packages.health.run_checks(app)` directly under the App's
+`lifespan_cm()` — no test client, no pytest import. Defense in depth:
+`packages.testing.fixtures` also guards the pytest import so the testing
+package itself stays importable without pytest installed (fixtures
+degrade to plain callables when pytest is absent).
+
+### Breaking — `@a2kit.tool` removed
+
+Zero consumer usage. Choose `@a2kit.read` (read-shaped), `@a2kit.write`
+(write-shaped), or `@a2kit.list_` (list-shaped). Accessing `a2kit.tool`
+on a fresh `import a2kit` raises `AttributeError` with the migration hint
+embedded.
+
+### Breaking — `name=` removed from public verb decorators
+
+Tool name derives from `fn.__name__` automatically; the rare custom-name
+case is handled by the framework-internal `_read_internal` helper used
+only for `_meta.health`. Calling `@a2kit.read(name="x")` (or `write` /
+`list_`) raises `TypeError`.
+
+### Breaking — `@app.singleton(T)` decorator form removed
+
+Method-call form `app.singleton(T, factory)` is the only path. When
+`factory` is omitted, the type itself is the factory (class-as-factory
+semantics, same as `app.provide(T)`). Frees the signature for the
+upcoming `teardown=` parameter.
+
+### Breaking — `app.tools()` returns `list[ToolDescriptor]`
+
+Collapses the previous two-accessor split (`tools()` for callables vs.
+`tool_descriptors()` for descriptors) into one. `app.tool_descriptors()`
+remains as a one-line alias in v0.33 for soft migration; removed in a
+later minor. Consumers that wanted callables: `[d.fn for d in app.tools()]`.
+
+### Breaking — MCP-spec-derived constraints enforced
+
+- `@a2kit.read(idempotent=...)` and `@a2kit.list_(idempotent=...)` →
+  `TypeError`. Per MCP spec, `idempotentHint` is meaningful only when
+  `readOnlyHint=false`; reads are spec-idempotent by definition. Mirror
+  of the existing `destructive=` rejection.
+- `@a2kit.list_(destructive=...)` → `TypeError` (was already true on
+  `@read`; symmetric on `@list_` now).
+- `@a2kit.list_` requires a `list[T]` / `tuple[T,...]` / `set[T]` /
+  `frozenset[T]` return annotation at decoration time. Non-collection
+  returns raise `TypeError` with the actual annotation in the message.
+  Bare `list` (no type parameter) decorates but emits a
+  `RuntimeWarning` (selectable-field derivation will be empty).
+- `@a2kit.list_(page_size=0)` (or `<= 0`) → `ValueError` at decoration.
+- `annotations=ToolAnnotations(...)` mixed with any flag kwarg
+  (`idempotent`, `open_world`, `destructive`, `title`) → `TypeError`.
+  No silent winner; pick one path.
+
+### Changed — `@app.health_check` auto-enables the health tool
+
+First `@app.health_check` call auto-installs the `_meta.health`
+synthetic router (idempotent — subsequent calls just register checks).
+`App(health_tool=True)` remains accepted (no-op when checks are also
+registered) for apps that want the tool present with zero checks.
+
+### Changed — `AmbientContextMissing` message split
+
+Two distinct failure modes get distinct messages (same exception class):
+
+- **Mode A** — primitive called with no active dispatch (ContextVar
+  unset): "called outside an active tool dispatch" (existing wording).
+- **Mode B** — primitive called from a tool body whose signature omits
+  `ctx: a2kit.ToolContext`: "called from a tool body that did not
+  declare `ctx: a2kit.ToolContext` as a parameter; add the parameter to
+  the tool signature, or remove the LDD call."
+
+`AmbientContextMissing.mode` exposes
+`MODE_NO_DISPATCH` / `MODE_MISSING_CTX_PARAM` for programmatic checks.
+
+### Added — README ↔ live-code parity CI gate
+
+New `tests/test_readme_symbol_drift.py` parses `README.md` and asserts
+every claimed public symbol (`a2kit.X`, `@a2kit.X`, `App.X`,
+`Router.X`, submodule paths) resolves on the live module surface.
+Wired into `make lint`. Initial run flagged ~10 stale references to
+the v0.31-removed `@app.on_startup` / `@app.on_shutdown` decorators
+and the never-shipped `Surface` Flag enum; all corrected in this pass.
+
+### README
+
+Substantial rewrite: removed phantom `@app.on_startup` /
+`@app.on_shutdown` (use `App(lifespan=cm)`), removed the `Surface` enum
+claim (the code shape is `visibility: Literal["hidden", "cli", "all"]`),
+removed `@a2kit.tool` references, simplified the verb-decorator kwarg
+tables to reflect the v0.33 surface, spelled out the **LDD** acronym
+("Logging / Data / Diagnostics") at first mention, documented the
+default connection-store path (`~/.config/a2kit/connections/` or
+`$A2KIT_CONFIG_HOME`), noted the `list_` trailing-underscore convention.
+
+---
+
 ## 0.32.0 — Typer CLI + consumption-interface audit — 2026-05-13
 
 A coordinated breaking bundle: the Typer CLI rewrite plus the five-change

@@ -34,9 +34,11 @@ class _FakeLLM:
 
 class _SingletonRouter(a2kit.Router):
     slug = "_singleton"
+
     @a2kit.read()
     async def whoami(self, llm: _LLM) -> dict[str, str]:
         return {"model": llm.name()}
+
     tools = (whoami,)
 
 

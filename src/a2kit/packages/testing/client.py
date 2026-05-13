@@ -161,7 +161,7 @@ class TestClient:
 
     def tools(self) -> list[ToolDescriptor]:
         """Return tool descriptors, sorted by name."""
-        return sorted(self.app.tool_descriptors(), key=lambda d: d.name)
+        return sorted(self.app.tools(), key=lambda d: d.name)
 
     def render_as(self, fmt: str, value: Any) -> Any:
         """Render ``value`` through the same formatter the transports use."""
@@ -251,10 +251,10 @@ class TestClient:
     # --- internals ----------------------------------------------------- #
 
     def _descriptor(self, tool_name: str) -> ToolDescriptor:
-        for d in self.app.tool_descriptors():
+        for d in self.app.tools():
             if d.name == tool_name or _qualified(d) == tool_name:
                 return d
-        available = sorted(d.name for d in self.app.tool_descriptors())
+        available = sorted(d.name for d in self.app.tools())
         raise KeyError(f"tool {tool_name!r} not found. Available: {available}")
 
 

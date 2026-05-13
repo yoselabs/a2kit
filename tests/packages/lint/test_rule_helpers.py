@@ -26,18 +26,18 @@ def _codes(findings: object) -> set[str]:
 # --------------------------- rules/__init__.py decorator helpers --------------------------- #
 
 
-def test_decorator_helpers_recognize_bare_tool_name() -> None:
-    """`@tool` (Name form) is recognized — covers `is_a2kit_tool_decorator` Name branch."""
+def test_decorator_helpers_recognize_bare_write_name() -> None:
+    """`@write` (Name form) is recognized — covers `is_a2kit_tool_decorator` Name branch."""
     import ast
 
     from a2kit.packages.lint.rules import is_a2kit_tool_decorator, is_server_tool_decorator, is_tool_function
 
-    src = "@tool\ndef f():\n    pass\n"
+    src = "@write\ndef f():\n    pass\n"
     tree = ast.parse(src)
     fn = tree.body[0]
     dec = fn.decorator_list[0]
     assert is_a2kit_tool_decorator(dec) is True
-    # `@tool` is a Name (not Attribute) — server detector returns False.
+    # `@write` is a Name (not Attribute) — server detector returns False.
     assert is_server_tool_decorator(dec) is False
     assert is_tool_function(fn) is True
 

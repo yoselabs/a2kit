@@ -39,7 +39,7 @@ _CREDENTIAL_NAME_SUBSTRINGS: tuple[str, ...] = (
     "revoke_token",  # why: token revoke
 )
 
-_VERB_NAMES = frozenset({"read", "write", "list_", "tool"})
+_VERB_NAMES = frozenset({"read", "write", "list_"})
 
 
 def _is_a2kit_verb_decorator(dec: ast.expr) -> ast.Call | None:
@@ -90,9 +90,9 @@ def rule_surface_explicit(tree: ast.AST, filename: str, source: str) -> Iterable
                 line=getattr(dec, "lineno", node.lineno),
                 col=getattr(dec, "col_offset", node.col_offset),
                 message=(
-                    f"tool {node.name!r} defaults to visibility=\"all\". Credential-named "
-                    "tools SHOULD declare `visibility=\"cli\"` explicitly (or "
-                    "`visibility=\"all\"` to suppress)."
+                    f'tool {node.name!r} defaults to visibility="all". Credential-named '
+                    'tools SHOULD declare `visibility="cli"` explicitly (or '
+                    '`visibility="all"` to suppress).'
                 ),
             )
 

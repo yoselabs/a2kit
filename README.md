@@ -64,12 +64,13 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, and `set_ldd(...)` for the LDD kill-switch. `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)`, `on_startup`/`on_shutdown` methods, and a custom `install(self, app)` hook for plugins. |
-| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Slug auto-derives (`TasksRouter` → `"tasks"`); explicit `name = "..."` overrides. Optional class attributes: `enrichers = [...]` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`). Optional methods: `on_startup`/`on_shutdown` (lifecycle), `install(self, app)` (custom plumbing). |
+| `a2kit.App(name, *, lifespan=cm, health_tool=False)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, `singleton(T, factory)` for App-cached factories, and `set_ldd(...)` for the LDD kill-switch. Lifecycle: pass `lifespan=async_cm` at construction. `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and a `lifespan` classmethod that composes into the App's outer lifespan. |
+| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
-| `a2kit.Surface` | `Flag` — `CLI`, `MCP`, `ALL`. Pass to any verb decorator (`@a2kit.read(surfaces=Surface.CLI)`) to constrain which transports the tool mounts on. Default `Surface.ALL`. Credential-management tools should declare `Surface.CLI` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
-| `@a2kit.read / write / tool` | Verb decorators. Kwargs: `name?, tags?, annotations?, surfaces?`. |
-| `@a2kit.list_` | Specialized list verb. `@a2kit.list_(*default_fields, page_size=None, selectable_fields=None, name=None, tags=None)`. Selectable derived from `list[T]` return annotation when omitted. |
+| `visibility=` kwarg | Verb decorators accept `visibility: Literal["hidden", "cli", "all"]`. Defaults to inherit from the Router's `visibility` class attribute (default `"all"`). Tier semantics: `"hidden"` — CLI-invokable but absent from `--help` and not on programmatic transports; `"cli"` — visible in `--help`, not on MCP / future REST; `"all"` — registered everywhere. Credential-management tools should declare `visibility="cli"` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
+| `@a2kit.read` | Read-shaped verb. Kwargs: `open_world?, title?, visibility?, reports?, annotations?`. Reads are spec-idempotent and non-destructive — `idempotent=` and `destructive=` raise `TypeError`. |
+| `@a2kit.write` | Write-shaped verb. Kwargs: `idempotent?, open_world?, destructive?, title?, visibility?, reports?, annotations?`. Defaults to `destructiveHint=True`. |
+| `@a2kit.list_` | Specialized list verb (trailing underscore to avoid shadowing the built-in `list`). `@a2kit.list_(*default_fields, page_size=None, selectable_fields=None, open_world=False, title=None, visibility=None, reports=None)`. Requires a `list[T]` (or tuple/set/frozenset of T) return annotation at decoration time. `page_size` must be a positive integer or None. Selectable fields derive from `T` when omitted. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). Feature decorators write namespaced keys into `meta.extra`. |
 | `a2kit.ToolContext` | Lazy alias for `fastmcp.Context` — tools annotate `ctx: a2kit.ToolContext` and receive the live FastMCP Context on the MCP transport, or a Context-shaped CLI stub on the CLI transport. Bare `import a2kit` doesn't pull fastmcp; the alias resolves on first access. |
 | `a2kit.Cap` | Built-in capability `StrEnum`. `a2kit.capabilities.register(...)` for custom tags. |
@@ -186,19 +187,24 @@ def build_state(settings: AppSettings) -> AppState:    # sync!
     )
 
 
-app = a2kit.App("my-app")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Warm-up — surface config errors at startup, not first call.
+    state = app.container().resolve(AppState)
+    await state.sqlite._ensure()
+    try:
+        yield
+    finally:
+        # Reverse-of-open order; each close is idempotent.
+        await state.browser.close()
+        await state.sqlite.close()
+
+
+app = a2kit.App("my-app", lifespan=lifespan)
 app.singleton(AppState, build_state)
-
-@app.on_shutdown
-async def _close(state: AppState) -> None:
-    await state.sqlite.close()
-    await state.browser.close()
-
-
-# Optional fail-fast warm-up at startup:
-@app.on_startup
-async def _warm(state: AppState) -> None:
-    await state.sqlite._ensure()    # surface config errors at startup, not first call
 ```
 
 What you get:
@@ -207,20 +213,27 @@ What you get:
 - DI stays sync. Composition is plain `__init__`.
 - Each resource owns its open + close idempotently.
 
-### Lifecycle hooks are DI-aware
+### Lifecycle: `App(lifespan=cm)`
 
-`@app.on_startup` and `@app.on_shutdown` resolve their typed kwargs through
-the container, the same way `@app.health_check` does. Handlers take
-whatever they need:
+Lifecycle is a single ``async with`` context manager passed at App
+construction time. Routers may also expose a ``lifespan`` classmethod
+that composes into the App's outer lifespan. See CHANGELOG for the
+v0.31 collapse from per-hook decorators to this one path.
 
 ```python
-@app.on_startup
-async def _open(state: AppState) -> None:       # DI-resolved
-    await state.sqlite._ensure()
+from contextlib import asynccontextmanager
 
-@app.on_shutdown
-async def _close(state: AppState, settings: AppSettings) -> None:
-    await state.sqlite.close()
+@asynccontextmanager
+async def lifespan(app):
+    state = app.container().resolve(AppState)
+    await state.sqlite._ensure()
+    try:
+        yield
+    finally:
+        await state.sqlite.close()
+
+
+app = a2kit.App("my-app", lifespan=lifespan)
 ```
 
 No more `_app.container().resolve(AppState)` dance. Hooks read like any
@@ -307,6 +320,10 @@ user tools can't claim it.
 methods are async; field-bearing logging, events, and reports live as
 free functions in `a2kit.ldd` (three siblings, one dispatch shape).
 
+> **LDD** = *Logging / Data / Diagnostics* — the narrative-with-data
+> primitives bundled together because they share a dispatch shape and a
+> kill-switch.
+
 | Channel | API | When to use |
 |---|---|---|
 | Plain logging (fastmcp passthrough) | `await ctx.info(msg)` / `ctx.info(msg, extra={"k": 1})` | Free-form messages to the MCP client; matches fastmcp's narrow signature |
@@ -314,7 +331,7 @@ free functions in `a2kit.ldd` (three siblings, one dispatch shape).
 | Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — for progress bars |
 | **Narrative events (kwargs)** | `await event(ctx, "name.string", **payload)` | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
 | **Narrative events (typed)** | `await event(ctx, MyEvent(...))` — instance second positional | Pass a dataclass / pydantic model directly; name defaults to class name, fields serialize via `dataclasses.asdict` / `model_dump`. Enum fields coerced via `.value`. |
-| **Typed reports** | `await report(ctx, payload)` (requires stacked `@reports(ReportT)`) | Mid-flight result chunks with a declared schema |
+| **Typed reports** | `await report(ctx, payload)` (requires `reports=ReportT` kwarg on the verb decorator) | Mid-flight result chunks with a declared schema |
 | **Typed event registry** | `app.ldd.events.register(MyEvent, progress=fn)` then `await app.ldd.events.emit_typed(ctx, evt)` | One-call emit: dump → event → progress (use this when you also need progress reporting) |
 
 `info` / `warning` / `error` / `debug` / `log` also accept the instance
@@ -324,7 +341,6 @@ shared helper so the two primitives can't drift.
 ```python
 from pydantic import BaseModel
 from a2kit.ldd import event, info, report
-from a2kit.packages.mcp.reports import reports
 
 
 class BatchReport(BaseModel):
@@ -332,8 +348,7 @@ class BatchReport(BaseModel):
     accepted: int
 
 
-@a2kit.read()
-@reports(BatchReport)
+@a2kit.write(reports=BatchReport)
 async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
     await event(ctx, "import.started", file=file)
     items = await load(file)
@@ -355,12 +370,13 @@ MCP: `notifications/message` with `data.elapsed_ms: int` and (for events
 **Kill-switch.** Top-level CLI flags `--no-reports` / `--no-events` per
 invocation; `app.set_ldd(reports=False, events=False)` programmatically;
 env `A2KIT_LDD=off` process-wide. Most-specific layer wins. Disabled
-emissions still type-validate `@reports(...)` payloads — keeps tests
+emissions still type-validate `reports=` payloads — keeps tests
 deterministic.
 
 **Lint rule.** `A2K-LDD-REPORT-TYPE` fires when `report(ctx, ...)` is
-called without a stacked `@reports(ReportT)` decorator, or when the
-declared type is defined inside a function (Pydantic forward-ref constraint).
+called without a `reports=ReportT` kwarg on the verb decorator, or when
+the declared type is defined inside a function (Pydantic forward-ref
+constraint).
 
 The `ctx` parameter is stripped from the input schema and from CLI
 option generation.
@@ -396,6 +412,11 @@ class TrackerConn(ConnectionConfig):
 
 Round-trip preserves placeholders: `store.save(cfg)` writes the original `${MY_TOKEN}` string, never the resolved value.
 
+**Storage location.** Connections persist under `$A2KIT_CONFIG_HOME` if
+set, otherwise `~/.config/a2kit/connections/`. One JSONL file per
+`ConnectionConfig` subclass; each line is a saved record keyed by the
+config's `Key` namedtuple.
+
 Cloud-secret backends (AWS / Azure / GCP) compose via pydantic-settings sources — no a2kit-specific resolver registration needed.
 
 ## Lint
@@ -409,7 +430,7 @@ Active rules:
 
 - `A2K-CONN-LIST-PLACEHOLDER` — `${VAR}` inside list/dict fields on `ConnectionConfig`.
 - `A2K-IMPORT-DISCIPLINE` — `fastmcp` imports outside `packages/mcp/` and the lazy-load lines in `packages/cli/builder.py`.
-- `A2K-LDD-REPORT-TYPE` — `report(ctx, ...)` without a stacked `@reports(ReportT)`, or report type defined inside a function.
+- `A2K-LDD-REPORT-TYPE` — `report(ctx, ...)` without a `reports=ReportT` kwarg on the verb decorator, or report type defined inside a function.
 - `A2K-CORE-CLEAN` — feature identifiers (`connection`, `enricher`, `list_view`, `report_type`, `report_schema`, `router_slug`) in `src/a2kit/*.py` outside `packages/`. Same boundary keeps the DI container (`Container`, `partition_kwargs`, `apply_kwargs`) confined to `packages/connections`.
 - `A2K-EXTRA-NAMESPACE` — `meta.extra` keys must start with `a2kit.` or a `<package>.` prefix.
 
@@ -555,7 +576,7 @@ v0.19 / `v1-thin-core` intermediate shapes:
 - `app.use_factory(...)` → `app.provide(T, factory)` (or `app.provide(T)` for class-as-factory)
 - `class TrackerStore(a2kit.Store[TrackerConn]):` → `class TrackerStore:` (plain class)
 - `class R(a2kit.Router, enricher=fn):` (pre-v0.21) / per-tool `@enriches(fn)` (v0.21) → class attribute `enrichers = [fn, ...]` and/or `def enrich(self, exc) -> str | None`
-- `@a2kit.read(enricher=…, list_view=…, report=…)` (v0.20) / stacked `@enriches/@lists/@reports` (v0.21) → enrichers are class-side; list-view absorbed into `@a2kit.list_(*default_fields, page_size=, selectable_fields=)`; only `@reports` remains stacked
+- `@a2kit.read(enricher=…, list_view=…, report=…)` (v0.20) / stacked `@enriches/@lists/@reports` (v0.21) → enrichers are class-side; list-view absorbed into `@a2kit.list_(*default_fields, page_size=, selectable_fields=)`; report-type is the `reports=ReportT` kwarg on the verb decorator (v0.33)
 - `def __init__(self, get_store: GetStore)` factory closure → declare `store: TrackerStore` directly on tool methods; `app.provide(TrackerStore)` registers the class
 - `name = "tasks"` ceremonial line → derived from class name automatically (`class TasksRouter` → `"tasks"`); explicit `name = "..."` still wins
 - `from a2kit.exceptions import WriteNotAllowed` → `from a2kit.packages.connections.exceptions import WriteNotAllowed`

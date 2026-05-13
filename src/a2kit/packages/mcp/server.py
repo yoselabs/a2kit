@@ -301,7 +301,8 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
 
     from a2kit.tool import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
-    for fn in app.tools():
+    for desc in app.tools():
+        fn = desc.fn
         meta = get_meta(fn)
         if meta is None:
             continue

@@ -69,10 +69,12 @@ def test_report_outside_dispatch_raises() -> None:
 
 class _PingRouter(a2kit.Router):
     slug = "_ping"
+
     @a2kit.read()
     async def ping(self, ctx: a2kit.ToolContext) -> dict[str, str]:
         await ldd_info("hello", k="v")
         return {"ok": "yes"}
+
     tools = (ping,)
 
 
@@ -124,4 +126,69 @@ def test_ldd_state_for_call_with_stub_makes_primitives_work() -> None:
             await ldd_event("seam-works")
 
     # No raise expected.
+    asyncio.run(go())
+
+
+def test_ambient_context_missing_mode_no_dispatch_message() -> None:
+    """v0.33 Mode A: ContextVar unset → "outside an active tool dispatch"."""
+
+    async def go() -> None:
+        with pytest.raises(AmbientContextMissing) as excinfo:
+            await ldd_event("orphan")
+        msg = str(excinfo.value)
+        assert "outside an active tool dispatch" in msg
+        assert excinfo.value.mode == AmbientContextMissing.MODE_NO_DISPATCH
+
+    asyncio.run(go())
+
+
+def test_ambient_context_missing_mode_missing_ctx_param_message() -> None:
+    """v0.33 Mode B: scope active but state.ctx is None → "did not declare ctx" message."""
+
+    async def go() -> None:
+        # Enter the scope WITHOUT a ctx (mimics dispatch on a tool that
+        # omitted `ctx: ToolContext` from its signature).
+        with ldd_state_for_call(ctx=None):
+            with pytest.raises(AmbientContextMissing) as excinfo:
+                await ldd_event("missing-ctx")
+            msg = str(excinfo.value)
+            assert "did not declare" in msg
+            assert "ctx: a2kit.ToolContext" in msg
+            assert excinfo.value.mode == AmbientContextMissing.MODE_MISSING_CTX_PARAM
+
+    asyncio.run(go())
+
+
+class _NoCtxRouter(a2kit.Router):
+    """A router whose tool body calls LDD but the signature omits `ctx`."""
+
+    slug = "_noctx"
+
+    @a2kit.read()
+    async def fire(self) -> dict[str, str]:
+        # Intentional: no ctx param. Mode B should raise.
+        await ldd_event("forbidden")
+        return {"ok": "no"}
+
+    tools = (fire,)
+
+
+def test_ambient_context_missing_mode_b_via_real_dispatch() -> None:
+    """v0.33 Mode B reachable through real dispatch — tool body uses LDD without `ctx` param.
+
+    Confirms the dispatcher does enter the LDD scope (creating a state with
+    ``ctx=None`` when no ctx param is declared), so Mode B is not a
+    dead branch.
+    """
+    from a2kit.testing import client
+
+    app = a2kit.App("noctx-dispatch").add_router(_NoCtxRouter())
+
+    async def go() -> None:
+        async with client(app) as c:
+            with pytest.raises(AmbientContextMissing) as excinfo:
+                await c.invoke("fire")
+            assert excinfo.value.mode == AmbientContextMissing.MODE_MISSING_CTX_PARAM
+            assert "did not declare" in str(excinfo.value)
+
     asyncio.run(go())

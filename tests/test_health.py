@@ -9,7 +9,7 @@ Gherkin scenarios (mirroring `specs/health-probe/spec.md`):
 
   Scenario: health tool not registered by default
     GIVEN App(name) (no health_tool=)
-    THEN _meta.health is absent from app.tool_descriptors()
+    THEN _meta.health is absent from app.tools()
 
   Scenario: passing check contributes ok entry
     GIVEN @app.health_check returning HealthResult.ok()
@@ -38,14 +38,62 @@ from a2kit.testing import client
 
 def test_health_tool_not_registered_by_default() -> None:
     app = a2kit.App("plain")
-    names = [d.name for d in app.tool_descriptors()]
+    names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME not in names
 
 
 def test_health_tool_registered_when_enabled() -> None:
     app = a2kit.App("with-health", health_tool=True)
-    names = [d.name for d in app.tool_descriptors()]
+    names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME in names
+
+
+def test_health_check_auto_enables_health_tool() -> None:
+    """v0.33: first `@app.health_check` auto-installs `_meta.health`."""
+    app = a2kit.App("auto-enable")
+
+    @app.health_check
+    async def _check() -> HealthResult:
+        return HealthResult.ok()
+
+    names = [d.name for d in app.tools()]
+    assert HEALTH_TOOL_NAME in names
+
+
+def test_health_check_idempotent_with_explicit_flag() -> None:
+    """v0.33: `health_tool=True` + `@app.health_check` does not double-install."""
+    app = a2kit.App("both", health_tool=True)
+
+    @app.health_check
+    async def _check() -> HealthResult:
+        return HealthResult.ok()
+
+    # Exactly one `_meta.health` descriptor — no duplicate router install.
+    names = [d.name for d in app.tools()]
+    assert names.count(HEALTH_TOOL_NAME) == 1
+
+
+def test_health_cmd_does_not_import_testing_package() -> None:
+    """v0.33: `<app> health` runs without importing `a2kit.packages.testing`.
+
+    The CLI builder's ``health_cmd`` is decoupled from the test client so
+    fresh non-dev installs don't crash on a missing ``pytest`` dependency.
+    """
+    import importlib
+    import sys
+
+    # Drop any prior import of the testing package so we can detect a fresh load.
+    for mod in list(sys.modules):
+        if mod.startswith("a2kit.packages.testing"):
+            del sys.modules[mod]
+
+    builder = importlib.import_module("a2kit.packages.cli.builder")
+    # The function source must not reference the testing module.
+    import inspect
+
+    src = inspect.getsource(builder._register_health)
+    assert "a2kit.packages.testing" not in src
+    assert "from a2kit.packages.health import run_checks" in src
 
 
 def test_health_returns_ok_with_no_checks() -> None:
@@ -117,21 +165,20 @@ def test_mixed_checks_yield_degraded() -> None:
 
 
 def test_meta_namespace_reserved_for_user_tools() -> None:
-    """User tools cannot claim a `_meta.*` name."""
+    """User tools cannot claim a `_meta.*` name (exercised via the internal helper)."""
+    from a2kit.tool import _read_internal
+
     with pytest.raises(ValueError, match="reserved"):
 
-        @a2kit.read(name="_meta.custom")
+        @_read_internal("_meta.custom")
         async def custom() -> dict:
             return {}
 
 
 def test_meta_health_name_allowed_for_builtin() -> None:
     """The internal builtin tool with name `_meta.health` decorates without error."""
-    # Just constructing the App with health_tool=True triggers the internal
-    # decoration; if the reserved-name guard rejected the builtin we'd see
-    # the ValueError here.
     app = a2kit.App("with-health", health_tool=True)
-    names = [d.name for d in app.tool_descriptors()]
+    names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME in names
 
 

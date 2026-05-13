@@ -1,4 +1,4 @@
-"""LDD (logging / debug / diagnostic) primitives — protocol-neutral free functions.
+"""LDD (Logging / Data / Diagnostics) primitives — protocol-neutral free functions.
 
 Tools call :func:`event`, :func:`report`, :func:`log` (and the
 ``info`` / ``warning`` / ``error`` / ``debug`` shorthands) with **no**
@@ -153,10 +153,14 @@ def _require_ambient_state(fn_name: str) -> _LddState:
 
     LDD primitives only work inside a tool dispatch. Tests that exercise
     primitives directly must wrap with ``ldd_state_for_call(ctx=stub, ...)``.
+
+    v0.33: distinguishes two failure modes — see :class:`AmbientContextMissing`.
     """
     state = _LDD_STATE.get()
-    if state is None or state.ctx is None:
-        raise AmbientContextMissing(fn_name)
+    if state is None:
+        raise AmbientContextMissing(fn_name, mode=AmbientContextMissing.MODE_NO_DISPATCH)
+    if state.ctx is None:
+        raise AmbientContextMissing(fn_name, mode=AmbientContextMissing.MODE_MISSING_CTX_PARAM)
     return state
 
 

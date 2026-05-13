@@ -73,7 +73,7 @@ def test_write_and_tool_verbs_also_covered() -> None:
 import a2kit
 @a2kit.write()
 async def rotate_key() -> dict: return {}
-@a2kit.tool()
+@a2kit.write()
 async def issue_token() -> dict: return {}
 """
     assert len(_findings(src)) == 2

@@ -23,10 +23,12 @@ from a2kit.packages.di.container import Container
 
 class _NoCtxRouter(a2kit.Router):
     slug = "_noctx"
+
     @a2kit.read()
     async def ping(self) -> dict[str, str]:
         await ldd_event("from-no-ctx-tool")
         return {"ok": "yes"}
+
     tools = (ping,)
 
 

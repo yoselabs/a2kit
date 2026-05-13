@@ -58,9 +58,10 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
         slug = "rows"
         name = "rows"
 
-        @a2kit.list_("id", page_size=3, name="rows")
+        @a2kit.list_("id", page_size=3)
         async def rows(self) -> list[dict[str, Any]]:
             return [{"id": i, "extra": "drop"} for i in range(10)]
+
         tools = (rows,)
 
     app = a2kit.App("a").add_router(R())

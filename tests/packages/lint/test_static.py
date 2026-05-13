@@ -30,7 +30,7 @@ def _codes(findings: object) -> set[str]:
 
 
 def test_a2k002_str_return(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.tool()\ndef t() -> str:\n    return 'x'\n"
+    body = "import a2kit\n@a2kit.write()\ndef t() -> str:\n    return 'x'\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K002 in _codes(findings)
@@ -42,7 +42,7 @@ def test_a2k003_local_pydantic_return(tmp_path: Path) -> None:
         "from pydantic import BaseModel\n"
         "class Out(BaseModel):\n"
         "    x: int\n"
-        "@a2kit.tool()\n"
+        "@a2kit.write()\n"
         "def t() -> Out:\n"
         "    return Out(x=1)\n"
     )
@@ -52,14 +52,14 @@ def test_a2k003_local_pydantic_return(tmp_path: Path) -> None:
 
 
 def test_a2k011_dict_return(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.tool()\ndef t() -> dict:\n    return {}\n"
+    body = "import a2kit\n@a2kit.write()\ndef t() -> dict:\n    return {}\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K011 in _codes(findings)
 
 
 def test_a2k013_manual_param_doc_in_docstring(tmp_path: Path) -> None:
-    body = 'import a2kit\n@a2kit.tool()\ndef t() -> int:\n    f"""Hello {a2kit.docs.param_doc(\'foo\')} bar."""\n    return 1\n'
+    body = 'import a2kit\n@a2kit.write()\ndef t() -> int:\n    f"""Hello {a2kit.docs.param_doc(\'foo\')} bar."""\n    return 1\n'
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K013 in _codes(findings)
@@ -73,21 +73,21 @@ def test_a2k014_too_long(tmp_path: Path) -> None:
 
 
 def test_no_findings_on_clean_file(tmp_path: Path) -> None:
-    body = "import a2kit\nfrom pydantic import BaseModel\n@a2kit.tool()\ndef t() -> int:\n    return 1\n"
+    body = "import a2kit\nfrom pydantic import BaseModel\n@a2kit.write()\ndef t() -> int:\n    return 1\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert findings == []
 
 
 def test_noqa_suppresses_rule(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.tool()\ndef t() -> str:  # noqa: A2K002\n    return 'x'\n"
+    body = "import a2kit\n@a2kit.write()\ndef t() -> str:  # noqa: A2K002\n    return 'x'\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K002 not in _codes(findings)
 
 
 def test_disabled_rule_not_run(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.tool()\ndef t() -> str:\n    return 'x'\n"
+    body = "import a2kit\n@a2kit.write()\ndef t() -> str:\n    return 'x'\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p], disabled=[A2K002])
     assert A2K002 not in _codes(findings)

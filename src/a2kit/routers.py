@@ -85,16 +85,12 @@ class Router:
         bound: list[Callable[..., Any]] = []
         for fn in tools:
             if not callable(fn):
-                msg = (
-                    f"Router subclass {cls.__name__!r}: every entry in `tools` "
-                    f"must be a callable (method reference); got {fn!r}."
-                )
+                msg = f"Router subclass {cls.__name__!r}: every entry in `tools` must be a callable (method reference); got {fn!r}."
                 raise TypeError(msg)
             name = getattr(fn, "__name__", None)
             if name is None:
                 msg = (
-                    f"Router subclass {cls.__name__!r}: tools entry {fn!r} has "
-                    f"no __name__; only top-level method references are supported."
+                    f"Router subclass {cls.__name__!r}: tools entry {fn!r} has no __name__; only top-level method references are supported."
                 )
                 raise TypeError(msg)
             bound_method = getattr(self, name)

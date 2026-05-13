@@ -8,9 +8,11 @@ import a2kit
 
 class _Probe(a2kit.Router):
     slug = "_probe"
-    @a2kit.read("get")
+
+    @a2kit.read()
     async def get(self, *, connection: str = "default") -> dict:
         return {"connection": connection}
+
     tools = (get,)
 
 

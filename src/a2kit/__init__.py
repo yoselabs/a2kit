@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from a2kit.app import App
     from a2kit.exceptions import A2KitError
     from a2kit.routers import Router
-    from a2kit.tool import list_, read, tool, write
+    from a2kit.tool import list_, read, write
 
 
 # Top-level re-exports. The 95% authoring surface only — introspection
@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "App": ("a2kit.app", "App"),
     "Router": ("a2kit.routers", "Router"),
-    "tool": ("a2kit.tool", "tool"),
     "read": ("a2kit.tool", "read"),
     "write": ("a2kit.tool", "write"),
     "list_": ("a2kit.tool", "list_"),
@@ -32,6 +31,16 @@ _LAZY_MODULES: dict[str, str] = {
     "schema": "a2kit.schema",
 }
 
+# Removed-in-v0.33 symbols mapped to migration hints. Accessing any of these
+# via `a2kit.<name>` raises AttributeError with a pointed message.
+_REMOVED_IN_V033: dict[str, str] = {
+    "tool": (
+        "`@a2kit.tool` was removed in v0.33. Choose `@a2kit.read` (read-shaped), "
+        "`@a2kit.write` (write-shaped), or `@a2kit.list_` (list-shaped) based on "
+        "the tool's semantics."
+    ),
+}
+
 
 def __getattr__(name: str) -> Any:
     from importlib import import_module
@@ -41,6 +50,9 @@ def __getattr__(name: str) -> Any:
         return import_module(mod_target)
     target = _LAZY_ATTRS.get(name)
     if target is None:
+        hint = _REMOVED_IN_V033.get(name)
+        if hint is not None:
+            raise AttributeError(hint)
         raise AttributeError(f"module 'a2kit' has no attribute {name!r}")
 
     mod, attr = target
@@ -67,6 +79,5 @@ __all__ = [
     "list_",
     "read",
     "run",
-    "tool",
     "write",
 ]

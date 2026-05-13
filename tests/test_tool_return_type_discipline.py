@@ -195,9 +195,11 @@ def _build_in_function_basemodel_router() -> None:
 
     class R(a2kit.Router):
         slug = "r"
+
         @a2kit.read()
         async def t(self) -> LocalResult:  # noqa: A2K-LOCAL-RETURN-MODEL
             return LocalResult(ok=True)
+
         tools = (t,)
 
 
@@ -214,9 +216,11 @@ def test_decoration_passes_for_module_scope_basemodel() -> None:
 
     class R(a2kit.Router):
         slug = "r"
+
         @a2kit.read()
         async def t(self) -> GoodResult:
             return GoodResult(ok=True)
+
         tools = (t,)
 
     # No exception means pass; quick assertion to use the symbol
@@ -229,9 +233,11 @@ def _build_generic_carrier_router() -> None:
 
     class R(a2kit.Router):
         slug = "r"
+
         @a2kit.read()
         async def t(self) -> list[Inner]:  # noqa: A2K-LOCAL-RETURN-MODEL
             return []
+
         tools = (t,)
 
 
@@ -247,9 +253,11 @@ def test_str_return_still_raises_existing_error() -> None:
 
         class R(a2kit.Router):
             slug = "r"
+
             @a2kit.read()
             async def t(self) -> str:
                 return "hi"
+
             tools = (t,)
 
     assert "antipattern #1" in str(ei.value) or "str" in str(ei.value)
@@ -297,9 +305,11 @@ def test_decoration_passes_for_dict_return() -> None:
 
     class R(a2kit.Router):
         slug = "r"
+
         @a2kit.read()
         async def t(self) -> dict:
             return {"ok": True}
+
         tools = (t,)
 
     assert R is not None

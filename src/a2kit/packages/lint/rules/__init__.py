@@ -14,13 +14,23 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
+_A2KIT_VERB_DECORATOR_NAMES: frozenset[str] = frozenset({"read", "write", "list_"})
+
+
 def is_a2kit_tool_decorator(dec: ast.expr) -> bool:
+    """Return True if ``dec`` is one of ``@a2kit.read|write|list_`` (or bare).
+
+    The legacy ``@a2kit.tool`` verb was removed in v0.33; this helper no
+    longer recognises it. Lint test fixtures that previously used
+    ``@a2kit.tool()`` should switch to ``@a2kit.write()`` or
+    ``@a2kit.read()`` to exercise the same code paths.
+    """
     call = dec if isinstance(dec, ast.Call) else None
     target = call.func if call else dec
     if isinstance(target, ast.Attribute):
-        return target.attr == "tool" and isinstance(target.value, ast.Name) and target.value.id in {"a2kit", "tools"}
+        return target.attr in _A2KIT_VERB_DECORATOR_NAMES and isinstance(target.value, ast.Name) and target.value.id in {"a2kit", "tools"}
     if isinstance(target, ast.Name):
-        return target.id == "tool"
+        return target.id in _A2KIT_VERB_DECORATOR_NAMES
     return False
 
 

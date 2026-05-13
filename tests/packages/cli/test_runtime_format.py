@@ -35,6 +35,7 @@ class TestAutoRouting:
             @a2kit.list_("id", "title")
             async def list_x(self) -> list[Task]:
                 return [Task(id="a", title="x"), Task(id="b", title="y")]
+
             tools = (list_x,)
 
         app = a2kit.App("t").add_router(TR())
@@ -54,6 +55,7 @@ class TestAutoRouting:
             @a2kit.list_("id")
             async def list_x(self) -> list[TaskWithLabels]:
                 return [TaskWithLabels(id="a", labels=["x", "y"])]
+
             tools = (list_x,)
 
         app = a2kit.App("t").add_router(TR())
@@ -70,6 +72,7 @@ class TestAutoRouting:
             @a2kit.read()
             async def page_x(self) -> Page[Task]:
                 return Page[Task](items=[Task(id="a", title="x")], next_cursor="c")
+
             tools = (page_x,)
 
         app = a2kit.App("t").add_router(TR())
@@ -87,6 +90,7 @@ class TestAutoRouting:
             @a2kit.read()
             async def get(self, *, id: str = "a") -> Task:
                 return Task(id=id, title="x")
+
             tools = (get,)
 
         app = a2kit.App("t").add_router(TR())
@@ -105,6 +109,7 @@ class TestExplicitOverride:
             @a2kit.list_("id")
             async def list_x(self) -> list[Task]:
                 return [Task(id="a", title="x")]
+
             tools = (list_x,)
 
         app = a2kit.App("t").add_router(TR())
@@ -121,6 +126,7 @@ class TestExplicitOverride:
             @a2kit.read()
             async def get(self, *, id: str = "a") -> Task:
                 return Task(id=id, title="x")
+
             tools = (get,)
 
         app = a2kit.App("t").add_router(TR())

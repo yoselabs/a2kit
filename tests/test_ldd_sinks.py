@@ -195,6 +195,7 @@ def test_in_process_client_propagates_sinks_to_dispatch() -> None:
 
             await event("tickle", seq=1)
             return {"ok": 1}
+
         tools = (tick,)
 
     app = a2kit.App("sinkstest")

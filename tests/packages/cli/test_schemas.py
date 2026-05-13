@@ -73,7 +73,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
             return {}
 
         _tool.__name__ = f"tool_{i:03d}"
-        a2kit.read(_tool.__name__)(_tool)
+        a2kit.read()(_tool)
         setattr(Big, _tool.__name__, _tool)
 
     app = a2kit.App("big").add_router(Big())

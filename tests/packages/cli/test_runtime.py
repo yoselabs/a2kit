@@ -62,6 +62,7 @@ def test_enricher_wraps_exceptions() -> None:
         @a2kit.read()
         def boom(self, *, x: int) -> dict:
             raise BoomError("ugly")
+
         tools = (boom,)
 
     # Builder applies enrichers; here we apply manually using the same wrapper.

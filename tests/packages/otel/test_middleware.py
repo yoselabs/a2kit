@@ -65,14 +65,18 @@ def _build_server() -> Any:
         slug = "things"
         name = "things"
 
-        @a2kit.read("ping")
+        @a2kit.read()
         async def ping(self) -> dict[str, int]:
             return {"x": 1}
 
-        @a2kit.write("boom")
+        @a2kit.write()
         async def boom(self) -> dict[str, int]:
             raise RuntimeError("kaboom")
-        tools = (ping, boom,)
+
+        tools = (
+            ping,
+            boom,
+        )
 
     app = a2kit.App("demo-app").add_router(_R())
     return build_mcp_server(app)

@@ -18,8 +18,8 @@ from a2kit.packages.mcp.listview import _apply, _apply_to_items, _list_view_sett
 # --------------------------- module-level tools (no `self` binding issues) --------------------------- #
 
 
-@a2kit.list_("id", "name", page_size=2, name="list_things")
-async def _list_things() -> list[dict[str, Any]]:
+@a2kit.list_("id", "name", page_size=2)
+async def list_things() -> list[dict[str, Any]]:
     return [
         {"id": 1, "name": "a", "extra": "drop"},
         {"id": 2, "name": "b", "extra": "drop"},
@@ -28,13 +28,13 @@ async def _list_things() -> list[dict[str, Any]]:
     ]
 
 
-@a2kit.list_(name="plain_things")
-async def _plain_things() -> list[dict[str, Any]]:
+@a2kit.list_()
+async def plain_things() -> list[dict[str, Any]]:
     return [{"id": 1, "extra": "keep"}]
 
 
-@a2kit.read("scalar_thing")
-async def _scalar_thing() -> dict[str, int]:
+@a2kit.read()
+async def scalar_thing() -> dict[str, int]:
     return {"value": 42}
 
 
@@ -45,7 +45,7 @@ def _build_app() -> a2kit.App:
         name = "things"
 
     r = R()
-    r._tools.extend([_list_things, _plain_things, _scalar_thing])
+    r._tools.extend([list_things, plain_things, scalar_thing])
     return a2kit.App("e2e").add_router(r)
 
 

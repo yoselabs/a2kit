@@ -230,47 +230,33 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
                 str | None,
                 typer.Option(help=f"JSON object decoded into {body_cls.__name__}."),
             ]
-            sig_params.append(
-                inspect.Parameter(name, kind=inspect.Parameter.KEYWORD_ONLY, default=cli_default, annotation=new_ann)
-            )
+            sig_params.append(inspect.Parameter(name, kind=inspect.Parameter.KEYWORD_ONLY, default=cli_default, annotation=new_ann))
             annotations[name] = new_ann
             continue
 
         if _needs_json_decode(ann):
             json_decode_params.add(name)
             new_ann = Annotated[str | None, typer.Option(help="JSON value.")]
-            sig_params.append(
-                inspect.Parameter(name, kind=inspect.Parameter.KEYWORD_ONLY, default=cli_default, annotation=new_ann)
-            )
+            sig_params.append(inspect.Parameter(name, kind=inspect.Parameter.KEYWORD_ONLY, default=cli_default, annotation=new_ann))
             annotations[name] = new_ann
             continue
 
         new_ann = field_to_typer_annotation(ann)
-        sig_params.append(
-            inspect.Parameter(name, kind=inspect.Parameter.KEYWORD_ONLY, default=cli_default, annotation=new_ann)
-        )
+        sig_params.append(inspect.Parameter(name, kind=inspect.Parameter.KEYWORD_ONLY, default=cli_default, annotation=new_ann))
         annotations[name] = new_ann
 
     if needs_connection and "connection" not in params:
-        conn_ann = Annotated[
-            str | None, typer.Option(help="Connection name (single key, or comma-separated).")
-        ]
-        sig_params.append(
-            inspect.Parameter("connection", kind=inspect.Parameter.KEYWORD_ONLY, default=None, annotation=conn_ann)
-        )
+        conn_ann = Annotated[str | None, typer.Option(help="Connection name (single key, or comma-separated).")]
+        sig_params.append(inspect.Parameter("connection", kind=inspect.Parameter.KEYWORD_ONLY, default=None, annotation=conn_ann))
         annotations["connection"] = conn_ann
         required_names.add("connection")
 
     fmt_ann = Annotated[_CliFormat, typer.Option(help="Output format. 'auto' uses type-driven routing.")]
-    sig_params.append(
-        inspect.Parameter("format", kind=inspect.Parameter.KEYWORD_ONLY, default=_CliFormat.auto, annotation=fmt_ann)
-    )
+    sig_params.append(inspect.Parameter("format", kind=inspect.Parameter.KEYWORD_ONLY, default=_CliFormat.auto, annotation=fmt_ann))
     annotations["format"] = fmt_ann
 
     schema_ann = Annotated[bool, typer.Option("--schema", hidden=True, help="Print this tool's schema and exit.")]
-    sig_params.append(
-        inspect.Parameter("schema", kind=inspect.Parameter.KEYWORD_ONLY, default=False, annotation=schema_ann)
-    )
+    sig_params.append(inspect.Parameter("schema", kind=inspect.Parameter.KEYWORD_ONLY, default=False, annotation=schema_ann))
     annotations["schema"] = schema_ann
 
     wrapped_fn = _wrap_with_enricher(fn, router)
@@ -410,7 +396,8 @@ def _register_schema(typer_app: Any, app: App) -> None:
 
         container = app.container()
         schemas: dict[str, dict[str, Any]] = {}
-        for fn in app.tools():
+        for desc in app.tools():
+            fn = desc.fn
             meta = get_meta(fn)
             name = meta.tool_name if meta is not None else fn.__name__
             schemas[name] = compute_schema(fn, container)
@@ -462,22 +449,27 @@ def _register_serve(typer_app: Any, app: App) -> None:
 
 
 def _register_health(typer_app: Any, app: App) -> None:
-    """Register the ``health`` shorthand for ``_meta.health``."""
+    """Register the ``health`` shorthand for ``_meta.health``.
+
+    v0.33: runs the aggregated probe by calling
+    :func:`a2kit.packages.health.run_checks` directly under the App's
+    ``lifespan_cm()``. The test-client (and its ``pytest`` import) are NOT
+    imported by this path, so ``<app> health`` works on fresh non-dev
+    installs.
+    """
     import asyncio
     import json as _json
 
     import typer
 
-    from a2kit.packages.health import HEALTH_TOOL_NAME
+    from a2kit.packages.health import run_checks
 
     def health_cmd() -> None:
         """Run aggregated health probe; exits non-zero on degraded."""
-        from a2kit.packages.testing.client import client as _client
 
         async def _run() -> dict[str, Any]:
-            async with _client(app) as c:
-                result = await c.invoke(HEALTH_TOOL_NAME)
-                return result if isinstance(result, dict) else {"status": "unknown"}
+            async with app.lifespan_cm():
+                return await run_checks(app)
 
         result = asyncio.run(_run())
         typer.echo(_json.dumps(result, indent=2))

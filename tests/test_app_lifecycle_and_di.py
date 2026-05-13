@@ -80,16 +80,18 @@ def test_singleton_method_form_caches() -> None:
     assert calls["n"] == 1
 
 
-def test_singleton_decorator_form() -> None:
-    app = App("t")
+def test_singleton_class_as_factory_form() -> None:
+    """v0.33: ``app.singleton(T)`` (no factory) registers T as its own factory.
 
-    @app.singleton(_State)
-    def make_state() -> _State:
-        return _State("decorated")
+    The decorator form ``@app.singleton(T)`` was removed in v0.33; method
+    form is the only path. When factory is omitted, ``T.__init__`` becomes
+    the factory (same shape as ``app.provide(T)``).
+    """
+    app = App("t")
+    app.singleton(_State)
 
     s = app.container().resolve(_State)
-    assert s.label == "decorated"
-    assert callable(make_state)
+    assert isinstance(s, _State)
 
 
 def test_two_apps_independent_singletons() -> None:

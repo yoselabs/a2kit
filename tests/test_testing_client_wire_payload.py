@@ -21,9 +21,11 @@ from a2kit.testing import client
 
 class _DictRouter(a2kit.Router):
     slug = "_dict"
+
     @a2kit.read()
     async def whoami(self) -> dict[str, str]:
         return {"name": "alice"}
+
     tools = (whoami,)
 
 
@@ -49,9 +51,11 @@ class _Row(BaseModel):
 
 class _ListRouter(a2kit.Router):
     slug = "_list"
+
     @a2kit.read()
     async def rows(self) -> list[_Row]:
         return [_Row(id=1, label="a"), _Row(id=2, label="b")]
+
     tools = (rows,)
 
 
@@ -95,9 +99,11 @@ class _Model(BaseModel):
 
 class _ScalarRouter(a2kit.Router):
     slug = "_scalar"
+
     @a2kit.read()
     async def model(self) -> _Model:
         return _Model(x=42)
+
     tools = (model,)
 
 

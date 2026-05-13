@@ -1,4 +1,4 @@
-"""``App.tool_descriptors()`` — typed introspection surface."""
+"""``App.tools()`` — typed introspection surface."""
 
 from __future__ import annotations
 
@@ -22,13 +22,15 @@ class TestDescriptorBasics:
     def test_typed_list_tool_gets_tsv_hint(self):
         class TasksRouter(a2kit.Router):
             slug = "tasks"
+
             @a2kit.list_("id", "title")
             async def list_tasks(self, *, q: str = "") -> list[FlatTask]:  # noqa: ARG002
                 return []
+
             tools = (list_tasks,)
 
         app = a2kit.App("t").add_router(TasksRouter())
-        descriptors = app.tool_descriptors()
+        descriptors = app.tools()
         assert len(descriptors) == 1
         d = descriptors[0]
         assert d.name == "list_tasks"
@@ -45,10 +47,11 @@ class TestDescriptorBasics:
             @a2kit.list_("id")
             async def list_x(self) -> list[TaskWithList]:
                 return []
+
             tools = (list_x,)
 
         app = a2kit.App("t").add_router(TR())
-        d = app.tool_descriptors()[0]
+        d = app.tools()[0]
         assert d.format_hint == "json"
 
     def test_page_of_scalar_only_gets_page_tsv(self):
@@ -59,10 +62,11 @@ class TestDescriptorBasics:
             @a2kit.read()
             async def page_x(self) -> Page[FlatTask]:
                 return Page[FlatTask]()
+
             tools = (page_x,)
 
         app = a2kit.App("t").add_router(TR())
-        d = app.tool_descriptors()[0]
+        d = app.tools()[0]
         assert d.format_hint == "page-tsv"
 
     def test_single_basemodel_gets_json(self):
@@ -73,10 +77,11 @@ class TestDescriptorBasics:
             @a2kit.read()
             async def get(self, *, id: str) -> FlatTask:  # noqa: A002, ARG002
                 return FlatTask(id=id, title="x")
+
             tools = (get,)
 
         app = a2kit.App("t").add_router(TR())
-        d = app.tool_descriptors()[0]
+        d = app.tools()[0]
         assert d.format_hint == "json"
 
 
@@ -89,12 +94,14 @@ class TestDescriptorAccessors:
             @a2kit.read()
             async def get(self, *, id: str) -> FlatTask:  # noqa: A002, ARG002
                 return FlatTask(id=id, title="x")
+
             tools = (get,)
 
         app = a2kit.App("t").add_router(TR())
         tools = app.tools()
         assert len(tools) == 1
-        assert callable(tools[0])
+        # v0.33: app.tools() returns ToolDescriptor; callable lives on .fn
+        assert callable(tools[0].fn)
 
     def test_descriptor_count_matches_tool_count(self):
         class TR(a2kit.Router):
@@ -108,10 +115,14 @@ class TestDescriptorAccessors:
             @a2kit.read()
             async def b(self) -> FlatTask:
                 return FlatTask(id="b", title="y")
-            tools = (a, b,)
+
+            tools = (
+                a,
+                b,
+            )
 
         app = a2kit.App("t").add_router(TR())
-        assert len(app.tool_descriptors()) == len(app.tools()) == 2
+        assert len(app.tools()) == len(app.tools()) == 2
 
     def test_descriptors_returned_as_copy(self):
         # Mutating the returned list must not affect internal state.
@@ -122,9 +133,10 @@ class TestDescriptorAccessors:
             @a2kit.read()
             async def a(self) -> FlatTask:
                 return FlatTask(id="a", title="x")
+
             tools = (a,)
 
         app = a2kit.App("t").add_router(TR())
-        first = app.tool_descriptors()
+        first = app.tools()
         first.clear()
-        assert len(app.tool_descriptors()) == 1
+        assert len(app.tools()) == 1

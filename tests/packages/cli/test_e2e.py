@@ -73,6 +73,7 @@ def test_e2e_complex_param_decoded_as_json():
         @a2kit.read()
         def echo_dict(self, *, payload: dict) -> dict:
             return {"got": payload}
+
         tools = (echo_dict,)
 
     a = a2kit.App("demo").add_router(R())

@@ -13,9 +13,10 @@ class _R(a2kit.Router):
     slug = "demo"
     name = "demo"
 
-    @a2kit.read("ping")
+    @a2kit.read()
     async def ping(self) -> dict[str, int]:
         return {"x": 1}
+
     tools = (ping,)
 
 
