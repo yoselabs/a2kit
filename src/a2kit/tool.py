@@ -253,8 +253,10 @@ def _build_annotation_kwargs(
     """
     if explicit is not None:
         return None, explicit
-    if verb == "read" and destructive is not None:
-        raise TypeError("`destructive` is not valid on `@a2kit.read`; use `@a2kit.write` or `@a2kit.tool`")
+    if verb in ("read", "list") and destructive is not None:
+        raise TypeError(
+            f"`destructive` is not valid on `@a2kit.{verb}`; use `@a2kit.write` or `@a2kit.tool`"
+        )
     is_destructive = base_destructive if destructive is None else destructive
     kwargs: dict[str, Any] = {
         "readOnlyHint": base_read_only,
@@ -380,12 +382,21 @@ def list_(
     selectable_fields: tuple[str, ...] | None = None,
     visibility: Visibility | None = None,
     reports: type | None = None,
+    idempotent: bool = False,
+    open_world: bool = False,
+    destructive: bool | None = None,
+    title: str | None = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Absorbs list-view projection/pagination.
 
     Positional ``*default_fields`` is the row-projection default. When
     ``selectable_fields`` is omitted, it is derived from the tool's
     return-type annotation (``list[T]`` → fields of ``T``) at stamp time.
+
+    Carries the same semantic-flag vocabulary as `@read`/`@write`/`@tool`
+    (ADR 0003): ``idempotent``, ``open_world``, ``title``. ``destructive``
+    is a list/read constraint: passing ``destructive=True`` raises
+    ``TypeError`` (list is read-shaped).
     """
     from a2kit.metadata import ListViewSettings
 
@@ -413,7 +424,18 @@ def list_(
             verb="list",
             name=name,
             tags=frozenset({"read", "list"}),
-            annotations_kwargs={"readOnlyHint": True, "destructiveHint": False},
+            **_kwargs_for(
+                _build_annotation_kwargs(
+                    verb="list",
+                    base_read_only=True,
+                    base_destructive=False,
+                    idempotent=idempotent,
+                    open_world=open_world,
+                    destructive=destructive,
+                    title=title,
+                    explicit=None,
+                )
+            ),
             visibility=visibility,
             reports=reports,
             list_view=settings,
