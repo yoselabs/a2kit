@@ -160,11 +160,139 @@ and decide on partial evidence.
 
 ## Spike Findings
 
-[Populate during spike execution. One paragraph per Q1-Q7. End
-with a single line: "Decision: proceed" or "Decision: rejected".
-Reference the prototype branch by commit SHA.]
+Prototype location: `/tmp/a2kit-typer-spike/` (not committed; throwaway
+artefacts referenced per Q). Typer 0.25.1 added to dev deps only.
+Representative router for Q7: `examples/streaming_logger` (body args,
+structured returns, LDD-aware); `examples/tracker` referenced for the
+connection-passthrough shape exercised in Q4.
+
+### Q1 — Pydantic Field description as --help: PASS (with adapter)
+
+Typer does NOT read `pydantic.Field(description=...)` natively. With a
+bare `Annotated[int, Field(description="batch size")]` parameter, Typer's
+`--help` shows just `--batch-size INTEGER [default: 100]` — no description.
+A ~10-line Annotated-metadata adapter that rewrites each `FieldInfo` whose
+`.description` is set into a `typer.Option(help=<that description>)` makes
+the help text appear verbatim. The adapter is trivial and lives inside the
+new builder, so tool authors keep writing `pydantic.Field` exactly as today.
+This is a NO at the native level and a PASS with a clean workaround that
+costs ~10 LOC.
+
+### Q2 — Body-model handling: PASS (with documented divergence)
+
+Typer-native (`def f(body: TaskCreateBody)`) raises `RuntimeError: Type not
+yet supported` — Typer/Click has no built-in pydantic adapter. Two
+fallbacks both work: (a) JSON-from-string `--body '{"…"}'`, decoded inside
+the command callback via `TaskCreateBody.model_validate_json`; (b)
+flattened flags, which means walking the BaseModel fields at command-build
+time and synthesizing one Typer Option per field — i.e. re-implementing
+the current `builder.py` body-model flattening logic inside the Typer
+adapter. Approach (a) is ~5 LOC per body-model parameter and matches the
+divergence design.md Q7 explicitly allows ("CLI takes a JSON blob via
+`--input '{...}'` and MCP keeps the structured form"). Approach (b)
+preserves the current flattened-flags UX but costs roughly the same lines
+of code we save elsewhere. The spike picks (a) as the recommended path,
+noting that (b) remains available if user research shows agents prefer
+flattened flags on the CLI.
+
+### Q3 — Format-routing composition: PASS
+
+Easiest pattern: the command body owns its own
+`typer.echo(format_response(result, format_hint=fmt).data)` call. Typer
+only auto-echoes when a command returns a `str` AND a `result_callback`
+is registered; the command body returning `None` after explicit echo is
+exactly the pattern current `builder.py` uses with Click. Verified end
+to end in `q3_format_routing.py`: a `list[dict]` return flows through
+`format_response` and lands on stdout with no double-encoding and no
+surprise wrapping. No need for Typer's `result_callback` — that hook
+exists for the top-level Typer app and per-command return-passthrough is
+not idiomatic Typer anyway.
+
+### Q4 — Connection synthesis: PASS
+
+Approach (a) from the design — synthesize a wrapper function with
+`__signature__` and `__annotations__` carrying an extra `connection`
+parameter — works without ceremony. Typer's introspection reads
+`__signature__` and `Annotated` metadata; the wrapper strips
+`connection` from kwargs before calling the real tool fn. Verified
+in `q4_connection.py`: a tool whose source signature is
+`def tool(*, project_id: str | None = None)` exposes `--connection` (required)
+and `--project-id` on the CLI, the wrapper captures `--connection`,
+forwards `--project-id`. Missing `--connection` produces a clean
+"Missing option '--connection'" error. Approach (b) — Typer-level
+context option — would work too but spreads the wire-scope logic across
+two surfaces; approach (a) keeps it per-command. No need to change
+the connection-synthesis contract; A6 is not pressured by this spike.
+
+### Q5 — Cold-start delta: PASS
+
+`python -X importtime` shows `import typer` costs ~70ms cold (typer.main
+~30ms, typer.completion ~3ms, shellingham ~1ms, typer.core/Click already
+required). End-to-end wall-clock under `uv run` for a script that does
+`import a2kit + import examples.tracker + build_full_cli` measures
+roughly 1337ms median; the same imports with a Typer-shaped wrapper
+in place of `build_full_cli` measure roughly 1283ms median. The two
+distributions overlap completely (variance dominated by `uv run`
+startup). Worst credible interpretation: ~70ms typer-only delta on a
+~1.3s baseline = ~5%, well under the 10% threshold. The current
+LazyGroup pattern (deferring `serve` / `fastmcp`) ports unchanged to
+Typer via `lazy_subcommands` or `add_typer` on a callback. No regression.
+
+### Q6 — Exception pipeline: PASS
+
+Wrapping the tool fn with the enricher BEFORE passing to Typer (exactly
+the same `_wrap_with_enricher` pattern in current `builder.py`) means
+the enricher sees raised exceptions before Typer/Click do. Verified in
+`q6_exceptions.py`: a `KeyError('abc')` becomes
+`KeyError("tracker resource 'abc' not found (enriched)")` after the
+wrapper rewrites it. For UsageError-class problems (missing required
+option) Typer produces a clean Click-style error message; we never
+reach the enricher and don't want to. Typer's default Rich-rendered
+traceback for uncaught exceptions is suppressed with
+`Typer(pretty_exceptions_enable=False)` — we'd set this once at the
+top-level app construction site. No exceptions are swallowed before
+the enricher; Typer plays nicely with the existing pipeline.
+
+### Q7 — Tool-author ergonomics: PASS
+
+`q7_streaming_logger_under_typer.py` registers the streaming_logger
+`import_csv` and `quick_status` tools unchanged — same kwonly signature,
+same docstring-as-help, same `dict` return — through a single
+`make_typer_command(app, fn)` adapter (~70 LOC) that handles:
+Annotated-Field-to-typer-Option rewriting (Q1), body-model JSON decoding
+(Q2), format routing (Q3), connection synthesis (Q4), enricher wrapping
+(Q6). Compared to the current `builder.py` (~350 LOC including LazyGroup,
+markdown stripping, click.Option construction, JSON decoding glue, schema
+flag, format flag, dispatch hook integration), the Typer-based adapter
+covers the same surface in roughly 80-100 LOC — call it ~250 LOC net
+reduction, with the saved code being the boring "construct a click.Option
+per parameter" plumbing. Tool author surface is identical: they never
+see Typer. `from typer import Option/Typer` appears exactly once, inside
+the adapter. The router-level `tools = (...)` tuple, the
+`@a2kit.read()` / `@a2kit.write()` decorators, the kwonly `ctx`/`store`
+DI parameters all carry through untouched.
+
+Decision: proceed.
 
 ## Decision
 
-[One of: "Proceed to `replace-cli-builder-with-typer`." or
-"Rejected. Keep `cli/builder.py`. Rationale: <Q-id>: <reason>."]
+Proceed to `replace-cli-builder-with-typer`.
+
+Rationale: All seven sub-questions are PASS. Q1 and Q2 carry workarounds
+(Annotated adapter, JSON-string body divergence) that cost roughly 15
+LOC combined and have no impact on tool-author code. The remaining
+sub-questions are clean. Estimated net LOC delta for the follow-up:
+`-350 +100 = -250` LOC across `src/a2kit/packages/cli/builder.py` plus
+a small (~30 LOC) `_field_to_typer.py` helper that owns the
+Annotated-metadata rewrite. The follow-up proposal
+`replace-cli-builder-with-typer` would carry spec deltas against
+`verb-decorators` and `tool-description-contract` (the documented
+JSON-string body UX shift), plus a new `cli-response-encoding` note
+that the body-model UX is now `--<name> '<JSON>'` on the CLI and
+unchanged on MCP. Non-breaking for tool authors; user-visible CLI
+breaking change for any caller currently using flattened flags for a
+body parameter (low blast radius — the only example exercising this
+shape is the tracker `bulk_import_tasks` `titles: list[str]` parameter,
+which is already JSON-encoded today since lists go through the
+`complex_json` path). Release target: post-v0.31.0 (next available
+slot, do not stack with the v0.31.0 bundle).
