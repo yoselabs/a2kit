@@ -26,6 +26,17 @@ ALLOW_LIST: frozenset[str] = frozenset(
     {
         # why: frozen dataclass; construction-only, covered indirectly.
         "src/a2kit/metadata.py",
+        # why: covered indirectly by tests/test_app_lifecycle_and_di.py and
+        # tests/test_extras_coverage_2.py which import a2kit.lifespan.
+        "src/a2kit/lifespan.py",
+        # why: covered by tests/packages/cli/test_field_to_typer.py (the
+        # mirror rule expects the leading-underscore form to match the
+        # source filename; the existing test file uses the no-underscore
+        # form because it exercises both the public and private surface).
+        "src/a2kit/packages/cli/_field_to_typer.py",
+        # why: schema generation is tested end-to-end through tool
+        # registration and CLI/MCP schema commands; no isolated tests.
+        "src/a2kit/schema.py",
     }
 )
 

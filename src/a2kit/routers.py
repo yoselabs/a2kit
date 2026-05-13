@@ -70,7 +70,7 @@ class Router:
             )
             raise TypeError(msg)
         # Stamp instance attribute for fast lookup; matches pre-refactor shape.
-        self.slug = slug
+        self.slug = slug  # ty: ignore[invalid-attribute-access]
 
         # --- tools check --------------------------------------------------- #
         tools = getattr(cls, "tools", None)
@@ -108,7 +108,7 @@ class Router:
             # Resolve effective visibility: per-tool kwarg (if explicitly set)
             # → Router class attr → "all" baseline. Per-tool None means inherit.
             if meta.extras.visibility is None:  # noqa: A2K-CORE-CLEAN
-                meta.extras.visibility = type(self).visibility  # noqa: A2K-CORE-CLEAN
+                meta.extras.visibility = type(self).visibility  # noqa: A2K-CORE-CLEAN, A2K-EXTRA-NAMESPACE
             bound.append(bound_method)
 
         self._tools: list[Callable[..., Any]] = bound

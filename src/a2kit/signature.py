@@ -59,10 +59,44 @@ def _is_tool_context(ann: Any) -> bool:
     return ann is getattr(fastmcp_mod, "Context", None)
 
 
+def _is_optional_tool_context(ann: Any) -> bool:
+    """Detect ``Context | None`` / ``Optional[Context]`` / ``Union[Context, None]``.
+
+    Returns ``True`` when the annotation is a Union/Optional whose members
+    include both ``fastmcp.Context`` (or its ``a2kit.ToolContext`` re-export)
+    and ``NoneType``. This shape is rejected by ``find_context_param``: the
+    dispatcher always binds ``ctx`` when declared, so the Optional form is
+    misleading typing with no runtime path producing ``None``.
+    """
+    if ann is None or ann is inspect.Parameter.empty:
+        return False
+    import types as _types
+    import typing as _typing
+
+    origin = _typing.get_origin(ann)
+    if origin is _typing.Union or origin is _types.UnionType:
+        args = _typing.get_args(ann)
+        if type(None) in args and any(_is_tool_context(a) for a in args):
+            return True
+    return False
+
+
 def find_context_param(fn: Callable[..., Any]) -> str | None:
+    from a2kit.exceptions import A2KitInvalidContextAnnotation
+
     hints = resolve_hints(fn)
     for name, param in inspect.signature(fn).parameters.items():
         ann = hints.get(name, param.annotation)
+        if _is_optional_tool_context(ann):
+            raise A2KitInvalidContextAnnotation(
+                fn_name=getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>")),
+                param_name=name,
+                hint=(
+                    "ctx is always bound by the dispatcher when declared; "
+                    "drop '| None' from the annotation, or remove ctx "
+                    "entirely if the tool does not need it."
+                ),
+            )
         if _is_tool_context(ann):
             return name
     return None

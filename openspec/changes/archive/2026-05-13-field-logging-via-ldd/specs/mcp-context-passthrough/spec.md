@@ -56,7 +56,7 @@ to the `ctx` parameter. The stub SHALL expose every public method of
 - **THEN** the call raises `TypeError`. The tool is expected to use
   `await a2kit.ldd.info(ctx, "hi", foo=1)` instead.
 
-### Requirement: LDD event, report, and log primitives are protocol-neutral functions
+### Requirement: LDD event and report primitives are protocol-neutral functions
 
 The library SHALL expose `a2kit.ldd.event(ctx, ...)`,
 `a2kit.ldd.report(ctx, ...)`, and `a2kit.ldd.log(ctx, level, msg_or_instance, **fields)`
@@ -129,6 +129,8 @@ CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
 - **THEN** the delivered `message` (MCP) or rendered text (CLI) is
   exactly 60 characters with the final character `…`
 
+## ADDED Requirements
+
 ### Requirement: Field-bearing logging lives on `a2kit.ldd.*`, not on `ctx.*`
 
 The library SHALL document `a2kit.ldd.info` (and siblings) as the
@@ -144,17 +146,16 @@ narrow signature.
   with the recommended replacement `a2kit.ldd.info(ctx, ...)` and a
   pointer to this requirement.
 
-## REMOVED Requirements
+<!--
+  Removed-requirement note: the legacy "Logging works in CLI with kwargs form"
+  requirement is not present in the canonical mcp-context-passthrough spec at
+  archive time (kwargs-on-ctx logging was never a SHALL-level requirement, only
+  an asserted behaviour in prior tests). No REMOVED clause is emitted.
 
-### Requirement: (legacy) Logging works in CLI with kwargs form
+  Migration carried over:
+  `s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.ldd.\1(ctx, "\2", \3)/`
+  catches the documented call shapes. `ctx.info("plain string")` and
+  `ctx.info("msg", extra={...})` continue to work — they were always
+  fastmcp-compatible.
+-->
 
-**Reason for removal**: the kwarg form `ctx.info("hi", x=1)` was
-asserted as the CLI behaviour while crashing under MCP. The
-behaviour is replaced by `a2kit.ldd.info(ctx, "hi", x=1)`, which works
-identically on both transports. The kwarg form is now rejected at
-runtime on both transports.
-
-**Migration**: `s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.ldd.\1(ctx, "\2", \3)/`
-catches the documented call shapes. `ctx.info("plain string")` and
-`ctx.info("msg", extra={...})` continue to work — they were always
-fastmcp-compatible.

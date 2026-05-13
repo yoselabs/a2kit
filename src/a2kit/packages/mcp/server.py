@@ -55,7 +55,7 @@ def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
 def _wrap_with_ldd_state(
     fn: Any,
     *,
-    ctx_param_name: str,
+    ctx_param_name: str | None,
     report_type: type | None,
     tool_name: str | None,
     reports_enabled: bool,
@@ -66,16 +66,23 @@ def _wrap_with_ldd_state(
     before invoking ``fn``.
 
     The tool's signature is preserved unchanged; ``ctx: a2kit.ToolContext``
-    (= ``fastmcp.Context``) is injected directly by FastMCP. The free
-    functions ``a2kit.ldd.event``/``report``/``log`` (and shorthands)
-    read the ambient ``_LDD_STATE`` set here — tool authors and helper
-    functions never pass ``ctx`` explicitly.
+    (= ``fastmcp.Context``) is injected directly by FastMCP when declared.
+    The free functions ``a2kit.ldd.event``/``report``/``log`` (and
+    shorthands) read the ambient ``_LDD_STATE`` set here — tool authors
+    and helper functions never pass ``ctx`` explicitly.
+
+    When ``ctx_param_name`` is ``None`` (tool doesn't declare ctx), the
+    LDD scope is still entered with ``ctx=None`` so LDD primitives raise
+    ``AmbientContextMissing`` in Mode B (`missing_ctx_param`) rather
+    than Mode A (`no_dispatch`). This matches the CLI runtime's
+    unconditional ``ldd_state_for_call`` binding at
+    ``cli/runtime.py:42-58`` for cross-transport parity.
     """
     from a2kit.ldd import ldd_state_for_call
 
     @functools.wraps(fn)
     async def _wrapped(*args: Any, **kwargs: Any) -> Any:
-        ctx_obj = kwargs.get(ctx_param_name)
+        ctx_obj = kwargs.get(ctx_param_name) if ctx_param_name else None
         with ldd_state_for_call(
             ctx=ctx_obj,
             events_enabled=events_enabled,
@@ -121,39 +128,108 @@ def _wrap_with_router_enrichers(fn: Any, router: Any | None) -> Any:
     return _wrapped
 
 
-def _wrap_with_debug_traceback(fn: Any) -> Any:
-    """Augment exceptions with a full traceback in their message.
+def _wrap_with_timeout(fn: Any, *, seconds: float) -> Any:
+    """Wrap ``fn`` in ``anyio.fail_after(seconds)`` per
+    ``dispatcher-timeout-decorator`` D-WRAPPER.
 
-    Used when ``App(debug=True)`` — FastMCP unmasked-error path emits
-    ``f"Error calling tool {name!r}: {e}"`` on the wire, so embedding the
-    traceback in ``str(e)`` carries diagnostic detail through to the client.
-    ``asyncio.CancelledError`` is re-raised unchanged so cancellation isn't
-    wrapped (see OPERATIONAL_CONTRACTS.md Q1).
+    Installed as the innermost wrapper (closest to ``fn``). On
+    timeout, raises Python's built-in ``TimeoutError`` which the
+    outermost error-envelope wrapper serializes into the standard
+    structured payload.
+    """
+    import functools
+
+    import anyio
+
+    @functools.wraps(fn)
+    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with anyio.fail_after(seconds):
+            result = fn(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+
+    return _wrapped
+
+
+def _wrap_with_error_envelope(fn: Any, *, debug: bool) -> Any:
+    """a2kit-owned wire-error envelope — independent of FastMCP semantics.
+
+    Catches every uncaught ``Exception`` from the wrapper chain and
+    re-raises ``ToolError(json.dumps({"class", "message", [traceback]}))``.
+    FastMCP's tool-dispatch path re-raises ``FastMCPError`` subclasses
+    (including ``ToolError``) **unchanged** before any masking — so the
+    JSON payload reaches the wire verbatim as ``content[0].text`` with
+    ``isError: true``, regardless of ``mask_error_details``.
+
+    Exclusions:
+
+    - ``FastMCPError`` (incl. author-raised ``ToolError``) — passes
+      through unwrapped so author-shaped messages reach the wire
+      on FastMCP's own path. Double-wrapping their message would
+      corrupt it.
+    - ``asyncio.CancelledError``, ``KeyboardInterrupt``, ``SystemExit``
+      — ``BaseException`` siblings, naturally outside ``except Exception``.
+    - ``BaseExceptionGroup`` containing only ``CancelledError``s —
+      anyio task-group cancellation per Q1.
+
+    Replaces the legacy ``_wrap_with_debug_traceback`` (which embedded
+    the traceback in ``str(exc)`` as a workaround for the same problem).
     """
     import asyncio
     import functools
+    import json
     import traceback
+
+    from fastmcp.exceptions import FastMCPError, ToolError
+
+    def _payload(exc: BaseException) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "class": type(exc).__name__,
+            "message": str(exc),
+        }
+        if debug:
+            out["traceback"] = traceback.format_exc()
+        return out
 
     @functools.wraps(fn)
     async def _wrapped(*args: Any, **kwargs: Any) -> Any:
         try:
             return await fn(*args, **kwargs)
-        except asyncio.CancelledError:
+        except FastMCPError:
             raise
+        except BaseExceptionGroup as eg:
+            if all(isinstance(e, asyncio.CancelledError) for e in eg.exceptions):
+                raise
+            non_cancel = [e for e in eg.exceptions if not isinstance(e, asyncio.CancelledError)]
+            first = non_cancel[0]
+            raise ToolError(json.dumps(_payload(first))) from first
         except Exception as exc:
-            tb = traceback.format_exc()
-            augmented = type(exc)(f"{exc}\n\nTraceback:\n{tb}")
-            raise augmented from exc
+            raise ToolError(json.dumps(_payload(exc))) from exc
 
     return _wrapped
 
 
-def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
+def _wrap_with_dispatch_hook(
+    fn: Any,
+    hook: Any,
+    container: Any,
+    *,
+    ctx_param_name: str | None = None,
+) -> Any:
     """Apply the App's dispatch hook to resolve injectable kwargs before fn.
 
     The wrapper's ``__signature__`` is rewritten to expose only wire kwargs
     (plus ``connection: str`` when the chain reaches it) so fastmcp's
     schema gen sees the agent-facing surface, not the injectables.
+
+    When ``ctx_param_name`` is set, the tool's original ``ctx`` parameter
+    is re-appended to the rewritten signature so FastMCP's introspection
+    sees it and injects the live ``Context`` at call time. The dispatch
+    hook then passes ``ctx`` through alongside container-resolved kwargs.
+    Without this, FastMCP sees a signature missing ``ctx``, does not bind
+    it, and the body receives a ``TypeError: missing 'ctx'`` at call
+    time (the v0.32 MCP-transport regression).
     """
     from a2kit.signature import wire_input_params
 
@@ -192,6 +268,8 @@ def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
                 annotation=str,
             )
         )
+    _ensure_ctx_in_rewritten_signature(fn, new_params, ctx_param_name)
+
     # ``__signature__`` is an established convention for callable objects
     # (PEP 362) but isn't part of the static function-attribute set, so we
     # set it via ``setattr`` to keep the type checker happy without a
@@ -212,6 +290,31 @@ def _wrap_with_dispatch_hook(fn: Any, hook: Any, container: Any) -> Any:
             _WARN_ONCE.add(name)
             _log.warning("_wrap_with_dispatch_hook: failed to copy return annotation for %s: %s", name, exc)
     return _wrapped
+
+
+def _ensure_ctx_in_rewritten_signature(
+    fn: Any,
+    new_params: list[inspect.Parameter],
+    ctx_param_name: str | None,
+) -> None:
+    """Append the tool's original ``ctx`` Parameter to ``new_params`` so
+    FastMCP introspects it and binds the live ``Context`` at call time.
+
+    Raises :class:`A2KitContextBindingBroken` if the invariant is broken
+    post-append (defensive guard against future wrapper-chain changes).
+    """
+    from a2kit.exceptions import A2KitContextBindingBroken
+
+    if not ctx_param_name:
+        return
+    if ctx_param_name not in {p.name for p in new_params}:
+        orig_ctx_param = inspect.signature(fn).parameters[ctx_param_name]
+        new_params.append(orig_ctx_param.replace(kind=inspect.Parameter.KEYWORD_ONLY))
+    if ctx_param_name not in {p.name for p in new_params}:
+        raise A2KitContextBindingBroken(
+            fn_name=getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>")),
+            ctx_param_name=ctx_param_name,
+        )
 
 
 def _has_injectables(fn: Any, container: Any) -> bool:
@@ -284,9 +387,11 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     """
     user_lifespan = fastmcp_kwargs.get("lifespan")
     fastmcp_kwargs["lifespan"] = _build_fastmcp_lifespan(app, user_lifespan)
-    # `App(debug=True)` unmasks error details so the tool's exception message
-    # reaches the wire. Tool wrappers further down append the traceback to
-    # `str(exc)` when debug is on (see `_wrap_with_debug_traceback`).
+    # `App(debug=True)` adds a `traceback` field to the wire-error envelope's
+    # JSON payload. The envelope itself (see `_wrap_with_error_envelope`)
+    # is installed unconditionally and owns the wire bytes via
+    # `raise ToolError(json.dumps(...))`, bypassing FastMCP's
+    # `mask_error_details` semantics entirely.
     app_debug = bool(getattr(app, "debug", False))
     if "mask_error_details" not in fastmcp_kwargs:
         fastmcp_kwargs["mask_error_details"] = not app_debug
@@ -314,21 +419,39 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
             continue
 
         router = _router_for_tool(app, fn)
-        wrapped = _wrap_with_router_enrichers(fn, router)
+        # Timeout wraps innermost (closest to fn) so DI cost and LDD
+        # scope setup don't count against the budget. Cancel scope
+        # lives inside the LDD scope and inside dispatch-hook DI.
+        inner = fn
+        if meta.extras.timeout_seconds is not None:
+            inner = _wrap_with_timeout(inner, seconds=meta.extras.timeout_seconds)
+        wrapped = _wrap_with_router_enrichers(inner, router)
         if container is not None and dispatch_hook is not None:
-            wrapped = _wrap_with_dispatch_hook(wrapped, dispatch_hook, container)
-        if meta.context_param_name:
-            wrapped = _wrap_with_ldd_state(
+            wrapped = _wrap_with_dispatch_hook(
                 wrapped,
+                dispatch_hook,
+                container,
                 ctx_param_name=meta.context_param_name,
-                report_type=meta.extras.report_type,
-                tool_name=meta.tool_name,
-                reports_enabled=reports_enabled,
-                events_enabled=events_enabled,
-                sinks=app_sinks,
             )
-        if app_debug:
-            wrapped = _wrap_with_debug_traceback(wrapped)
+        # Always enter the LDD scope, even for no-ctx tools, so LDD
+        # primitives called without a declared ctx raise
+        # ``AmbientContextMissing`` in Mode B (`missing_ctx_param`)
+        # rather than Mode A (`no_dispatch`). Cross-transport parity
+        # with the CLI runtime (cli/runtime.py:42-58).
+        wrapped = _wrap_with_ldd_state(
+            wrapped,
+            ctx_param_name=meta.context_param_name,
+            report_type=meta.extras.report_type,
+            tool_name=meta.tool_name,
+            reports_enabled=reports_enabled,
+            events_enabled=events_enabled,
+            sinks=app_sinks,
+        )
+        # Outermost: a2kit-owned wire-error envelope. Installed
+        # unconditionally so the {class, message} contract holds in
+        # production (debug=False) too; debug=True adds the traceback
+        # field to the JSON payload.
+        wrapped = _wrap_with_error_envelope(wrapped, debug=app_debug)
 
         # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — tagged so
         # the post-loop `server.disable(tags={"_meta"})` filter excludes them

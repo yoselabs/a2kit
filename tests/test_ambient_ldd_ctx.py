@@ -176,19 +176,26 @@ class _NoCtxRouter(a2kit.Router):
 def test_ambient_context_missing_mode_b_via_real_dispatch() -> None:
     """v0.33 Mode B reachable through real dispatch — tool body uses LDD without `ctx` param.
 
-    Confirms the dispatcher does enter the LDD scope (creating a state with
-    ``ctx=None`` when no ctx param is declared), so Mode B is not a
-    dead branch.
+    Post ``rebuild-test-client-on-real-context`` the test client routes
+    through the real MCP transport; the exception surfaces as
+    ``ToolError`` carrying the a2kit-owned envelope. The exception
+    class name is preserved in ``payload["class"]``; the Mode B
+    discrimination is preserved in the message text ("did not declare").
     """
+    import json as _json
+
+    from fastmcp.exceptions import ToolError
+
     from a2kit.testing import client
 
     app = a2kit.App("noctx-dispatch").add_router(_NoCtxRouter())
 
     async def go() -> None:
         async with client(app) as c:
-            with pytest.raises(AmbientContextMissing) as excinfo:
+            with pytest.raises(ToolError) as excinfo:
                 await c.invoke("fire")
-            assert excinfo.value.mode == AmbientContextMissing.MODE_MISSING_CTX_PARAM
-            assert "did not declare" in str(excinfo.value)
+            payload = _json.loads(str(excinfo.value))
+            assert payload["class"] == "AmbientContextMissing"
+            assert "did not declare" in payload["message"]
 
     asyncio.run(go())

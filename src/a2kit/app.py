@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from contextlib import nullcontext
+from contextlib import asynccontextmanager, nullcontext
 from typing import TYPE_CHECKING, Any
 
 from a2kit.packages.di.container import (
@@ -118,6 +118,12 @@ class App:
         # overlapping sessions on the same App fail loud. Production code
         # never touches this attribute.
         self._test_override_owner: Any = None
+        # Singleton-teardown failures (per ``singleton-teardown-topological``):
+        # populated on lifespan exit by ``_run_teardowns``. Empty list on
+        # clean shutdown; never raised (the framework records and logs but
+        # does not propagate teardown failures). Inspected by tests +
+        # post-mortem callers.
+        self.teardown_failures: list[tuple[type, Exception]] = []
         if health_tool:
             self._install_health_tool()
 
@@ -193,6 +199,7 @@ class App:
                 "its `slug` class attribute"
             )
             raise ValueError(msg)
+        _validate_router_tools(router)
         self._routers.add(router)
         self._descriptors.extend(_build_descriptors(router))
         # Install Router-declared providers.
@@ -253,19 +260,25 @@ class App:
         self,
         type_: type,
         factory: Callable[..., Any] | None = None,
+        *,
+        teardown: Callable[[Any], Any] | None = None,
     ) -> App:
         """Register a factory whose result is cached for the lifetime of this App.
 
         Method-call form is the only path (v0.33): the decorator form
-        ``@app.singleton(T)`` was removed to free the signature for the
-        upcoming ``teardown=`` parameter and to mirror ``app.provide``.
+        ``@app.singleton(T)`` was removed to free the signature for
+        ``teardown=``.
 
         - ``app.singleton(T, factory)`` registers ``factory`` and returns
           ``self`` for chaining.
         - ``app.singleton(T)`` (no factory) registers ``T`` as its own
-          class-as-factory — the container introspects ``T.__init__`` at
-          resolve time. Same semantics as ``app.provide(T)``, just
-          App-cached.
+          class-as-factory.
+        - ``app.singleton(T, factory, teardown=fn)`` additionally
+          registers a shutdown callback (per
+          ``singleton-teardown-topological``). The framework invokes
+          ``teardown(instance)`` on lifespan exit, in topological order
+          (dependents first), error-isolated, with failures recorded on
+          :attr:`teardown_failures`. ``teardown`` may be sync or async.
 
         The factory MAY be sync (``def``) or async (``async def``). An
         async factory is awaited on first resolution; subsequent resolves
@@ -282,7 +295,7 @@ class App:
         classes are no longer necessary for the common case.
         """
         target = factory if factory is not None else type_
-        self._container.register_singleton(type_, target)
+        self._container.register_singleton(type_, target, teardown=teardown)
         return self
 
     def has_singleton(self, type_: type) -> bool:
@@ -322,11 +335,13 @@ class App:
 
         Composes (in order) the user-supplied ``lifespan=`` callable
         followed by every Router's ``lifespan`` method via
-        :func:`a2kit.lifespan.compose`. If the App has no user lifespan
-        and no Router contributes one, returns a
-        :class:`contextlib.nullcontext` (no-op enter, no-op exit). The
-        callable returned is already bound to ``self``; enter via
-        ``async with app.lifespan_cm():``.
+        :func:`a2kit.lifespan.compose`. Wraps the composition with
+        ``_wrap_with_teardowns`` when any singleton has a registered
+        teardown (per ``singleton-teardown-topological``) so framework
+        teardowns fire after all user/Router lifespans have fully exited.
+
+        Returns ``nullcontext()`` only when the App has neither a
+        user/Router lifespan nor any registered teardown.
 
         Used by the CLI runner, the test client, and the FastMCP
         adapter to obtain a single async-with for the whole App
@@ -338,18 +353,80 @@ class App:
         if self._lifespan is not None:
             legs.append(self._lifespan)
         legs.extend(_router_lifespan_factory(r) for r in self._router_lifespans)
+        has_teardowns = bool(self._container._teardowns)
         if not legs:
+            if has_teardowns:
+                return self._wrap_with_teardowns(nullcontext())
             return nullcontext()
         composed = _compose(*legs)
-        return composed(self)
+        inner = composed(self)
+        if has_teardowns:
+            return self._wrap_with_teardowns(inner)
+        return inner
 
     def has_lifespan(self) -> bool:
         """True iff this App contributes startup or shutdown work.
 
         Used by the CLI runner and FastMCP adapter to decide whether to
-        wire a lifespan context manager at all.
+        wire a lifespan context manager at all. Returns True when a
+        user lifespan, a Router lifespan, OR a singleton teardown is
+        registered (per ``singleton-teardown-topological``).
         """
-        return self._lifespan is not None or bool(self._router_lifespans)
+        if self._lifespan is not None or self._router_lifespans:
+            return True
+        return bool(self._container._teardowns)
+
+    def _wrap_with_teardowns(self, inner_cm: Any) -> Any:
+        """Wrap an inner lifespan CM with framework-managed teardowns.
+
+        On exit (after inner_cm has fully exited), walks
+        ``container.teardown_order()`` and invokes each registered
+        teardown. Error-isolated: failures recorded on
+        :attr:`teardown_failures` and logged, sibling teardowns
+        continue.
+        """
+
+        @asynccontextmanager
+        async def _cm() -> Any:
+            async with inner_cm as user_state:
+                yield user_state
+            await self._run_teardowns()
+
+        return _cm()
+
+    async def _run_teardowns(self) -> None:
+        """Invoke registered singleton teardowns in topological order.
+
+        Per ``singleton-teardown-topological``: dependents are torn down
+        before their dependencies; each teardown runs inside its own
+        ``try/except Exception``; failures are recorded on
+        :attr:`teardown_failures` and emitted as ``error``-level Python
+        log lines.
+        """
+        container = self._container
+        order = container.teardown_order()
+        if not order:
+            return
+        for t in order:
+            instance = container._singletons.get(t)
+            if instance is None or instance is UNRESOLVED:
+                continue
+            fn = container._teardowns.get(t)
+            if fn is None:
+                continue
+            try:
+                result = fn(instance)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as exc:  # noqa: BLE001 -- error-isolation is the contract
+                self.teardown_failures.append((t, exc))
+                _LIFECYCLE_LOG.error(
+                    "singleton teardown failed: type=%s class=%s message=%s",
+                    t.__name__,
+                    type(exc).__name__,
+                    exc,
+                )
+                _LIFECYCLE_LOG.debug("singleton teardown traceback for %s", t.__name__, exc_info=True)
 
     def dispatch_hook(self) -> Callable[..., Any]:
         return self._dispatch_hook
@@ -395,6 +472,26 @@ class App:
         public docs reference ``tools()`` exclusively.
         """
         return list(self._descriptors)
+
+
+def _validate_router_tools(router: Router) -> None:
+    """Verify every ``@a2kit.*``-decorated method on the Router class
+    is listed in its ``tools`` tuple.
+
+    Fires at ``App.add_router`` time per ``app-time-tools-tuple-validation``.
+    Only inspects the Router class's own attributes (``cls.__dict__``) so
+    inherited decorated methods from a base class are not surfaced as
+    drift unless the subclass intends them to be registered.
+    """
+    from a2kit.exceptions import A2KitDecoratedMethodNotInTools
+    from a2kit.metadata import get_meta
+
+    cls = type(router)
+    tools_names = {getattr(fn, "__name__", None) for fn in (getattr(cls, "tools", ()) or ())}
+    decorated_methods = {name for name, attr in cls.__dict__.items() if callable(attr) and get_meta(attr) is not None}
+    missing = sorted(decorated_methods - tools_names)
+    if missing:
+        raise A2KitDecoratedMethodNotInTools(cls.__name__, missing)
 
 
 def _build_descriptors(router: Router) -> list[ToolDescriptor]:
@@ -453,7 +550,7 @@ def _router_lifespan_factory(router: Router) -> Callable[[Any], Any]:
     """
 
     def _adapter(_app: Any) -> Any:
-        return router.lifespan()  # type: ignore[attr-defined]
+        return router.lifespan()  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
     _adapter.__qualname__ = f"{type(router).__name__}.lifespan"  # for log labels
     _adapter.__name__ = f"{type(router).__name__}.lifespan"

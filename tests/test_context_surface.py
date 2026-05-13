@@ -88,6 +88,24 @@ CTX_CALL_SHAPES: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = [
     ("delete_state", ("k",), {}),
     # read_resource: positional uri (string form — fastmcp accepts str|AnyUrl).
     ("read_resource", ("file:///x",), {}),
+    # log primitive — narrow level keyword (Treatment 4).
+    ("log", ("msg",), {"level": "info"}),
+    ("log", ("msg",), {"level": "warning", "extra": {"k": 1}}),
+    # elicit (Treatment 5).
+    ("elicit", ("Pick one",), {"response_type": str}),
+    ("elicit", ("Pick one",), {"response_type": ["a", "b"]}),
+    # get_prompt / list_resources / list_prompts / list_roots — no args (Treatment 5).
+    ("get_prompt", ("p",), {}),
+    ("list_resources", (), {}),
+    ("list_prompts", (), {}),
+    ("list_roots", (), {}),
+    # sample / sample_step — minimal positional form (Treatment 5).
+    ("sample", ("hello",), {}),
+    ("sample_step", ("hello",), {}),
+    # NB: send_notification omitted (Open Question 3 in design.md —
+    # the typed argument requires importing mcp.types, which the
+    # sig-bind test doesn't need; behavioural parity is asserted in
+    # the by-method MCPOnlyError test below).
 ]
 
 
@@ -130,6 +148,49 @@ def test_ctx_call_shapes_bind_against_both_contexts() -> None:
                 failures.append(f"{cls.__name__}.{method}({args=}, {kwargs=}) — {exc}")
 
     assert not failures, "Context call-shape drift:\n  " + "\n  ".join(failures)
+
+
+# Methods where the stub mirrors fastmcp's signature exactly (Treatment 2
+# of align-context-method-signatures). The test below pins
+# `inspect.signature(stub_method) == inspect.signature(fastmcp_method)`
+# for each — any fastmcp version bump that drifts a signature fails CI
+# at the bind step instead of failing in production.
+SIGNATURE_MIRRORED_METHODS: tuple[str, ...] = (
+    "read_resource",
+    "elicit",
+    "sample",
+    "sample_step",
+    "get_prompt",
+    "list_resources",
+    "list_prompts",
+    "list_roots",
+    "send_notification",
+)
+
+
+def test_stub_signature_matches_fastmcp() -> None:
+    """The Treatment-2 methods bind-compatible against fastmcp's signature.
+
+    Drives the same parameter-binding pattern as
+    ``test_ctx_call_shapes_bind_against_both_contexts`` but as a
+    per-method guarantee for every signature-mirrored stub method.
+    """
+    import inspect as _inspect
+
+    failures: list[str] = []
+    for method in SIGNATURE_MIRRORED_METHODS:
+        stub_fn = getattr(StderrToolContext, method, None)
+        fastmcp_fn = getattr(Context, method, None)
+        if stub_fn is None or fastmcp_fn is None:
+            failures.append(f"{method} missing on stub or fastmcp")
+            continue
+        stub_sig = _inspect.signature(stub_fn)
+        fastmcp_sig = _inspect.signature(fastmcp_fn)
+        stub_params = {n: p.kind for n, p in stub_sig.parameters.items()}
+        fastmcp_params = {n: p.kind for n, p in fastmcp_sig.parameters.items()}
+        if stub_params != fastmcp_params:
+            failures.append(f"{method}: stub params {stub_params} != fastmcp params {fastmcp_params}")
+    assert not failures, "Stub signature drift:\n  " + "\n  ".join(failures)
 
 
 def test_field_bearing_logging_is_only_on_ldd_not_on_ctx() -> None:

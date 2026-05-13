@@ -29,6 +29,7 @@ import typer
 
 if TYPE_CHECKING:
     import click
+    from pydantic import BaseModel
 
     from a2kit.app import App
     from a2kit.routers import Router
@@ -108,7 +109,7 @@ def _wrap_with_enricher(fn: Callable[..., Any], router: Router | None = None) ->
     return _wrapped
 
 
-def _is_basemodel(ann: Any) -> type | None:
+def _is_basemodel(ann: Any) -> type[BaseModel] | None:
     """Return the BaseModel subclass if ``ann`` (or its inner Annotated/Optional) is one."""
     import types
     from typing import Union, get_args, get_origin
@@ -207,7 +208,7 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
 
     descriptor_hint = infer_format_hint(resolved_hints.get("return"))
 
-    body_model_params: dict[str, type] = {}
+    body_model_params: dict[str, type[BaseModel]] = {}
     json_decode_params: set[str] = set()
     required_names: set[str] = set()
     sig_params: list[inspect.Parameter] = []
@@ -340,11 +341,11 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
         typer.echo(data)
 
     short_help, long_help = _docstring_to_help(fn)
-    callback.__signature__ = inspect.Signature(sig_params)  # type: ignore[attr-defined]
+    callback.__signature__ = inspect.Signature(sig_params)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     callback.__annotations__ = annotations
     callback.__doc__ = long_help or None
     callback.__name__ = meta.tool_name if meta is not None else getattr(fn, "__name__", "tool")
-    callback._a2kit_short_help = short_help  # type: ignore[attr-defined]  # noqa: SLF001
+    callback._a2kit_short_help = short_help  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]  # noqa: SLF001
     return callback
 
 
@@ -382,7 +383,7 @@ def _register_schema(typer_app: Any, app: App) -> None:
     import typer
 
     from a2kit.metadata import get_meta
-    from a2kit.packages.formatter import FormatHint, format_response, truncate
+    from a2kit.packages.formatter import format_response, truncate
 
     def schema_cmd(
         tool_name: Annotated[str | None, typer.Argument(help="Tool name; omit to dump all.")] = None,
@@ -399,7 +400,7 @@ def _register_schema(typer_app: Any, app: App) -> None:
         for desc in app.tools():
             fn = desc.fn
             meta = get_meta(fn)
-            name = meta.tool_name if meta is not None else fn.__name__
+            name = meta.tool_name if meta is not None else getattr(fn, "__name__", "tool")
             schemas[name] = compute_schema(fn, container)
 
         if tool_name is not None:
@@ -422,7 +423,7 @@ def _register_schema(typer_app: Any, app: App) -> None:
                 typer.echo(truncate(_json.dumps(s, separators=(",", ":"), default=str)))
             return
 
-        response = format_response(result, format_hint=cast("FormatHint", fmt))
+        response = format_response(result, format_hint=fmt)
         typer.echo(truncate(response.data))
 
     typer_app.command(name="schema")(schema_cmd)

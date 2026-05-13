@@ -71,20 +71,17 @@ MCP-protocol-level logging use `ctx.session.send_log_message`
   exist on `StderrToolContext`. The recommended migration is
   `await a2kit.ldd.log(ctx, level, msg, **fields)`.
 
-## REMOVED Requirements
+<!--
+  Removed-requirement note: the legacy "Stub supplies send_log_message"
+  requirement is not present in the canonical mcp-context-passthrough spec
+  at archive time, so no REMOVED clause is emitted here.
 
-### Requirement: (legacy) Stub supplies send_log_message
+  Migration carried over: replace `await ctx.send_log_message(level, logger,
+  data)` with one of:
 
-**Reason for removal**: `send_log_message` is not a method on
-`fastmcp.Context` (it lives on `ctx.session`). The stub inventing it
-created a CLI-only method whose calls would `AttributeError` under
-MCP transport — the same class of bug `field-logging-via-ldd`
-repaired for the four logging methods.
+  - `await a2kit.ldd.log(ctx, level, message, **data)` — recommended;
+    protocol-neutral.
+  - `await ctx.session.send_log_message(level, logger, data)` — fastmcp-
+    native; MCP transport only.
+-->
 
-**Migration**: replace `await ctx.send_log_message(level, logger,
-data)` with one of:
-
-- `await a2kit.ldd.log(ctx, level, message, **data)` — recommended;
-  protocol-neutral.
-- `await ctx.session.send_log_message(level, logger, data)` — fastmcp-
-  native; MCP transport only.

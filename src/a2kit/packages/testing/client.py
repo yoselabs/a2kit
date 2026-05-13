@@ -1,13 +1,21 @@
-"""In-process test client — runs the full dispatcher with capture surfaces.
+"""In-process test client — real FastMCP transport, capture via handlers.
 
-Round-2 a2web feedback (item 7): every consumer today bypasses a2kit's
-dispatcher in tests, leaving the adapter layer (DI, schema, ctx wiring,
-rendering, error envelope) untested. This client invokes tools through the
-**same** dispatch path as production (same DI hook, same `_invoke_tool_in_process`
-machinery) with the live ToolContext replaced by a capturing variant whose
-`_emit` writes into per-instance buffers instead of stderr.
+Drives an in-memory ``fastmcp.Client(transport=build_mcp_server(app))``
+so every tool dispatch goes through the production MCP wrapper chain
+(dispatch-hook signature rewrite, ambient LDD state binding,
+fastmcp.Context injection, ``mcp-structured-wire-error-envelope``
+error path). Captured emissions (events, reports, logs, progress) are
+surfaced via client-side ``log_handler`` / ``progress_handler``
+notifications, fanned out by the ``a2kit_kind`` marker the LDD wire
+format carries.
 
-Cold-start preserving: the module is lazy-imported via
+Replaces the previous ``_CapturingContext(StderrToolContext)`` design,
+which never exercised the MCP wrapper chain and missed every bug that
+lived between dispatch-hook signature rewriting and FastMCP binding
+(see ``fix-mcp-dispatch-strips-ctx`` and
+``mcp-structured-wire-error-envelope`` for the production fallout).
+
+Cold-start preserving: this module is lazy-imported via
 :mod:`a2kit.testing` and never pulled by a bare ``import a2kit``.
 
 Example::
@@ -17,130 +25,169 @@ Example::
         assert any(e["name"] == "ProjectCreated" for e in c.events)
         assert c.progress[-1] == (1.0, 1.0)
         assert c.render_as("json", result) == {...}
+
+**Return shape.** ``invoke()`` returns ``result.data`` from
+``fastmcp.Client.call_tool``, which is the FastMCP-unmarshaled form
+of the tool's return value. For tools returning user-declared
+dataclasses or BaseModels, FastMCP synthesizes a Pydantic-validated
+copy with field-equivalent shape (same field names + values) but a
+distinct class identity. Tests that asserted on identity equality of
+user-declared types must migrate to field-wise comparison (e.g.
+``result[0].id == 1``) or ``model_dump()`` equality.
+
+**Exception propagation.** Tool-body exceptions surface as
+``fastmcp.exceptions.ToolError`` carrying the a2kit-owned structured
+envelope from ``mcp-structured-wire-error-envelope`` —
+``json.loads(str(exc)) == {"class": ..., "message": ..., [traceback]}``.
+Tests asserting on Python exception classes parse the JSON envelope.
 """
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-from a2kit.packages.cli.context import StderrToolContext
 from a2kit.packages.formatter import FormatHint, format_response
+from a2kit.packages.mcp.server import build_mcp_server
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from a2kit.app import App
     from a2kit.tool import ToolDescriptor
-
-
-class _CapturingContext(StderrToolContext):
-    """``StderrToolContext`` subclass that captures emissions into lists.
-
-    The base class's ``_emit`` would print to stderr; we override it to
-    append a structured dict. Logging methods (``info``/``warning``/...) and
-    ``log`` continue to delegate to ``_emit`` via the parent class, so they
-    land in ``logs`` automatically. ``report_progress`` also routes through
-    ``_emit`` (level=``"progress"``); we additionally capture a tidy
-    ``(current, total)`` tuple so tests don't have to parse fields.
-    """
-
-    def __init__(
-        self,
-        *,
-        events: list[dict[str, Any]],
-        progress: list[tuple[float, float | None]],
-        logs: list[dict[str, Any]],
-        reports: list[dict[str, Any]],
-    ) -> None:
-        super().__init__()
-        self._events = events
-        self._progress = progress
-        self._logs = logs
-        self._reports = reports
-
-    async def report_progress(
-        self,
-        progress: float,
-        total: float | None = None,
-        message: str | None = None,
-    ) -> None:
-        self._progress.append((progress, total))
-        await super().report_progress(progress, total, message)
-
-    def _emit(
-        self,
-        level: str,
-        msg: str,
-        fields: Mapping[str, Any],
-        *,
-        elapsed_ms: int | None = None,
-    ) -> None:
-        # No stderr write — capture only.
-        if elapsed_ms is None:
-            elapsed_ms = round((time.monotonic() - self._start_ts) * 1000)
-        record = {"level": level, "msg": msg, "fields": dict(fields), "elapsed_ms": elapsed_ms}
-        if level == "event":
-            # Event payload shape mirrors the LDD wire format: `msg` is the event
-            # name and `fields` is the payload dict.
-            self._events.append({"name": msg, "payload": dict(fields), "elapsed_ms": elapsed_ms})
-        elif level == "progress":
-            # Progress is captured separately via report_progress; suppress the
-            # _emit-level duplicate from logs to keep assertions clean.
-            return
-        elif level == "report":
-            # Report path: `msg` is the type name; `fields` is the model_dump body.
-            self._reports.append({"type": msg, "body": dict(fields), "elapsed_ms": elapsed_ms})
-        else:
-            self._logs.append(record)
 
 
 _OverrideT = TypeVar("_OverrideT")
 
 
 class TestClient:
-    """In-process test client — capture-only ToolContext, full dispatcher."""
+    """In-process test client backed by real FastMCP in-memory transport.
+
+    Manages two resources for the ``async with`` lifetime: the
+    ``fastmcp.FastMCP`` server (built from the App, lifespan included)
+    and an in-memory ``fastmcp.Client`` connected to it. FastMCP drives
+    the server's lifespan, so ``@app.on_startup`` /
+    ``@app.on_shutdown`` hooks run inside the scope automatically.
+    """
 
     def __init__(self, app: App) -> None:
         self.app = app
         self.events: list[dict[str, Any]] = []
         self.progress: list[tuple[float, float | None]] = []
+        self.progress_with_message: list[tuple[float, float | None, str | None]] = []
         self.logs: list[dict[str, Any]] = []
         self.reports: list[dict[str, Any]] = []
-        self._lifecycle_started = False
-        self._lifespan_cm: Any = None
+        self._client: Any = None
+        self._client_cm: Any = None
         self._override_snapshot: Any = None
 
     async def __aenter__(self) -> TestClient:
+        from fastmcp import Client  # noqa: A2K-IMPORT-DISCIPLINE
+
         owner = getattr(self.app, "_test_override_owner", None)
         if owner is not None:
-            msg = (
+            raise RuntimeError(
                 "Another TestClient session is already holding override "
                 "ownership on this App. TestClient sessions are not "
                 "reentrant — wrap them sequentially, not concurrently."
             )
-            raise RuntimeError(msg)
         self.app._test_override_owner = self  # noqa: SLF001 -- test seam owner flag
-        if self.app.has_lifespan() and not self.app._lifecycle_started:  # noqa: SLF001
-            self.app._lifecycle_started = True  # noqa: SLF001
-            self._lifecycle_started = True
-            self._lifespan_cm = self.app.lifespan_cm()
-            await self._lifespan_cm.__aenter__()
+
+        server = build_mcp_server(self.app)
+        # Re-enable ``_meta.*`` tools (production hides them from agent
+        # `list_tools` via ``server.disable(tags={"_meta"})``; tests need
+        # to invoke ``_meta.health`` directly).
+        server.enable(tags={"_meta"})
+        self._client_cm = Client(
+            transport=server,
+            log_handler=self._on_log,
+            progress_handler=self._on_progress,
+        )
+        self._client = await self._client_cm.__aenter__()
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         try:
-            if self._lifecycle_started and self._lifespan_cm is not None:
+            if self._client_cm is not None:
                 try:
-                    await self._lifespan_cm.__aexit__(exc_type, exc, tb)
+                    await self._client_cm.__aexit__(exc_type, exc, tb)
                 finally:
-                    self._lifespan_cm = None
-                    self.app._lifecycle_started = False  # noqa: SLF001 -- reset for re-entry
+                    self._client_cm = None
+                    self._client = None
             if self._override_snapshot is not None:
                 self.app.container()._restore(self._override_snapshot)  # noqa: SLF001 -- test seam
                 self._override_snapshot = None
         finally:
             self.app._test_override_owner = None  # noqa: SLF001 -- test seam owner flag
+
+    # ---------- capture handlers (server -> client notifications) -------- #
+
+    async def _on_log(self, message: Any) -> None:
+        """Fan-out by the ``a2kit_kind`` marker in the wire payload.
+
+        FastMCP delivers ``message.data == {"msg": <ctx.log message>,
+        "extra": <ctx.log extra dict>}`` on the client side. We pull
+        `a2kit_kind` out of ``extra`` and route to ``events`` /
+        ``reports`` / ``logs``.
+
+        The wire-side ``extra`` carries a2kit-internal keys prefixed
+        with ``a2kit_`` (e.g. ``a2kit_name``, ``a2kit_payload``,
+        ``a2kit_elapsed_ms``) to dodge Python ``LogRecord`` reserved
+        attribute collisions. We un-prefix them to the public capture
+        shape so test consumers see ``c.events[0]["name"]`` etc.
+        """
+        data = getattr(message, "data", None) or {}
+        if not isinstance(data, dict):
+            return
+        extra = dict(data.get("extra") or {})
+        wire_msg = data.get("msg", "")
+        kind = extra.pop("a2kit_kind", None)
+        level_norm = self._normalize_level(getattr(message, "level", "info"))
+
+        if kind == "event":
+            self.events.append(
+                {
+                    "name": extra.get("a2kit_name", wire_msg),
+                    "payload": extra.get("a2kit_payload", {}),
+                    "elapsed_ms": extra.get("a2kit_elapsed_ms"),
+                }
+            )
+            return
+        if kind == "report":
+            self.reports.append(
+                {
+                    "type": extra.get("a2kit_type", wire_msg),
+                    "body": extra.get("a2kit_payload", {}),
+                    "elapsed_ms": extra.get("a2kit_elapsed_ms"),
+                }
+            )
+            return
+
+        # Plain log line — user-supplied fields plus framework-injected
+        # `a2kit_elapsed_ms`. Strip the prefix on `elapsed_ms`; leave
+        # user fields untouched.
+        elapsed = extra.pop("a2kit_elapsed_ms", None)
+        self.logs.append(
+            {
+                "level": level_norm,
+                "msg": wire_msg,
+                "fields": extra,
+                "elapsed_ms": elapsed,
+            }
+        )
+
+    async def _on_progress(self, progress: float, total: float | None = None, message: str | None = None) -> None:
+        self.progress.append((progress, total))
+        self.progress_with_message.append((progress, total, message))
+
+    @staticmethod
+    def _normalize_level(level_raw: Any) -> str:
+        """Map FastMCP MCP log levels to the LDD wire-shorthand the
+        legacy capture surfaced (``INFO`` / ``WARN`` / ``ERROR`` /
+        ``DEBUG``)."""
+        s = str(level_raw).lower()
+        if s == "warning":
+            return "WARN"
+        return s.upper()
+
+    # ----------------------------------- public test surface -------------- #
 
     def override(self, type_: type[_OverrideT], fake: _OverrideT) -> None:
         """Replace the DI binding for ``type_`` with ``fake`` for this session.
@@ -177,21 +224,44 @@ class TestClient:
     ) -> Any:
         """Invoke ``tool_name`` and return the **wire-encoded** payload.
 
-        Composes :meth:`invoke` (which returns the tool's Python value)
-        with the same formatter the production transports use, reading
-        the cached ``descriptor.format_hint`` so the test-observed
-        format and production wire format flip in lockstep when the
-        tool's return annotation changes.
-
-        Use this when an assertion needs to pin the JSON / TSV /
-        page-tsv shape (e.g. ``Page[T]`` pagination, list→TSV
-        formatting). For value-shape assertions, :meth:`invoke` is
-        cheaper.
+        Uses FastMCP's ``structured_content`` (clean dict / list-of-dicts)
+        as the formatter input rather than ``.data`` (FastMCP-synthesized
+        types that don't satisfy ``isinstance(x, BaseModel)`` or
+        ``isinstance(x, dict)``). For list returns FastMCP wraps as
+        ``{"result": [...]}`` per its convention; unwrap to the raw list
+        so TSV formatting can iterate rows.
         """
+        if self._client is None:
+            raise RuntimeError("TestClient must be used as `async with client(app) as c:` before calling call_wire().")
         descriptor = self._descriptor(tool_name)
-        value = await self.invoke(tool_name, connection=connection, **kwargs)
+        wire_name = self._wire_name(tool_name)
+        wire_kwargs = dict(kwargs)
+        if connection is not None and "connection" not in wire_kwargs:
+            wire_kwargs["connection"] = connection
+        result = await self._client.call_tool(wire_name, wire_kwargs)
+        value = self._structured_for_format(result)
         response = format_response(value, format_hint=descriptor.format_hint)
         return response.data
+
+    @staticmethod
+    def _structured_for_format(result: Any) -> Any:
+        """Extract the formatter-friendly value from a CallToolResult.
+
+        Prefers ``structured_content`` (raw dict / list shape that
+        ``format_response`` consumes); unwraps FastMCP's
+        ``{"result": [...]}`` list-wrap convention.
+        """
+        sc = getattr(result, "structured_content", None)
+        if isinstance(sc, dict) and set(sc.keys()) == {"result"}:
+            return sc["result"]
+        if sc is not None:
+            return sc
+        # Fall back to text content (e.g. plain-string tools).
+        if hasattr(result, "content") and result.content:
+            text = getattr(result.content[0], "text", None)
+            if text is not None:
+                return text
+        return getattr(result, "data", None)
 
     async def invoke(
         self,
@@ -200,55 +270,40 @@ class TestClient:
         connection: str | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Invoke ``tool_name`` through the dispatcher; return the tool's value.
+        """Invoke ``tool_name`` through the real MCP transport.
 
-        Looks up the descriptor by `name`, sets up `ldd_state_for_call` with the
-        capturing context bound, runs the dispatch hook (DI resolution), and
-        invokes the underlying function. Reports captured into ``self.reports``
-        via a monkey-patched ``report`` hook for the duration of the call.
+        Returns FastMCP's unmarshaled structured payload. See module
+        docstring for the typed-return shape contract.
         """
-        from a2kit.ldd import ldd_state_for_call
+        if self._client is None:
+            raise RuntimeError("TestClient must be used as `async with client(app) as c:` before calling invoke().")
+        wire_name = self._wire_name(tool_name)
+        wire_kwargs = dict(kwargs)
+        if connection is not None and "connection" not in wire_kwargs:
+            wire_kwargs["connection"] = connection
 
-        descriptor = self._descriptor(tool_name)
-        fn = descriptor.fn
-        meta = _meta_for(fn)
-
-        ctx: _CapturingContext | None = None
-        if meta.context_param_name:
-            ctx = _CapturingContext(
-                events=self.events,
-                progress=self.progress,
-                logs=self.logs,
-                reports=self.reports,
-            )
-        kwargs_for_call: dict[str, Any] = dict(kwargs)
-        if connection is not None and "connection" not in kwargs_for_call:
-            kwargs_for_call["connection"] = connection
-        if meta.context_param_name and meta.context_param_name not in kwargs_for_call:
-            kwargs_for_call[meta.context_param_name] = ctx
-
-        # Reports go through `a2kit.ldd.report(ctx, payload)` which routes via
-        # `_is_fastmcp_context` → CLI path → `ctx._emit("report", type_name, body)`.
-        # The capturing context's `_emit` branch on `level == "report"` writes to
-        # `self.reports`, so we don't need to monkey-patch the report function.
-        report_type = meta.extras.report_type
-
-        with ldd_state_for_call(
-            ctx=ctx,
-            events_enabled=True,
-            reports_enabled=True,
-            report_type=report_type,
-            tool_name=tool_name,
-            sinks=self.app.ldd.sinks if hasattr(self.app, "ldd") else (),
-        ):
-            return await _invoke_through_dispatcher(
-                self.app,
-                fn,
-                kwargs_for_call,
-                ctx_param_name=meta.context_param_name,
-            )
+        result = await self._client.call_tool(wire_name, wire_kwargs)
+        return self._extract_payload(result)
 
     # --- internals ----------------------------------------------------- #
+
+    @staticmethod
+    def _extract_payload(result: Any) -> Any:
+        if hasattr(result, "data") and result.data is not None:
+            return result.data
+        if hasattr(result, "structured_content") and result.structured_content is not None:
+            return result.structured_content
+        if hasattr(result, "content") and result.content:
+            block = result.content[0]
+            text = getattr(block, "text", None)
+            if text is not None:
+                import json as _json
+
+                try:
+                    return _json.loads(text)
+                except _json.JSONDecodeError:
+                    return text
+        return result
 
     def _descriptor(self, tool_name: str) -> ToolDescriptor:
         for d in self.app.tools():
@@ -257,47 +312,20 @@ class TestClient:
         available = sorted(d.name for d in self.app.tools())
         raise KeyError(f"tool {tool_name!r} not found. Available: {available}")
 
+    def _wire_name(self, tool_name: str) -> str:
+        for d in self.app.tools():
+            if d.name == tool_name or _qualified(d) == tool_name:
+                from a2kit.metadata import get_meta
+
+                m = get_meta(d.fn)
+                return m.tool_name if m is not None else d.name
+        return tool_name
+
 
 def _qualified(descriptor: ToolDescriptor) -> str:
     """Return ``<router-slug>.<tool-name>`` if the router has a slug."""
     slug = getattr(descriptor.router, "slug", None)
     return f"{slug}.{descriptor.name}" if slug else descriptor.name
-
-
-def _meta_for(fn: Any) -> Any:
-    from a2kit.metadata import get_meta
-
-    return get_meta(fn)
-
-
-async def _invoke_through_dispatcher(
-    app: App,
-    fn: Any,
-    kwargs: dict[str, Any],
-    *,
-    ctx_param_name: str | None,
-) -> Any:
-    """Run the dispatch hook (DI resolution) and call ``fn`` with the resolved kwargs.
-
-    Mirrors the dispatch step of :func:`a2kit.packages.cli.runtime._invoke_tool_in_process`
-    but returns the raw value (no formatter).
-    """
-    import inspect
-
-    hook = app._dispatch_hook  # noqa: SLF001 -- intentional, dispatch hook is App-scoped
-    resolved_any: Any = hook(fn, kwargs)
-    if inspect.isawaitable(resolved_any):
-        resolved_any = await resolved_any
-    call_kwargs = dict(resolved_any)
-    if ctx_param_name and ctx_param_name not in call_kwargs and ctx_param_name in kwargs:
-        call_kwargs[ctx_param_name] = kwargs[ctx_param_name]
-    if inspect.iscoroutinefunction(fn):
-        result = await fn(**call_kwargs)
-    else:
-        result = fn(**call_kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-    return result
 
 
 def client(app: App) -> TestClient:

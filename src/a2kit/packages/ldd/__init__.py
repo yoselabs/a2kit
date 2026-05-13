@@ -299,14 +299,20 @@ async def event(__name_or_payload: Any, /, **payload: Any) -> None:
     else:
         __name, payload_dict = _typed_event_to_payload(__name_or_payload, payload)
     if _is_fastmcp_context(ctx):
+        # Prefix a2kit-internal keys with `a2kit_` to dodge Python
+        # `LogRecord` reserved attribute names. FastMCP's
+        # `_log_to_server_and_client` passes `extra` to a Python logger
+        # as a server-side side-effect; reserved keys (`name`, `msg`,
+        # `levelname`, ...) crash `logging.makeRecord`. See
+        # `rebuild-test-client-on-real-context` design D-LDD-WIRE-PREFIX.
         await ctx.log(
             message=_cap_text(__name),
             level="info",
             extra={
                 "a2kit_kind": "event",
-                "name": __name,
-                "payload": payload_dict,
-                "elapsed_ms": elapsed,
+                "a2kit_name": __name,
+                "a2kit_payload": payload_dict,
+                "a2kit_elapsed_ms": elapsed,
             },
         )
     else:
@@ -346,14 +352,15 @@ async def report(payload: Any, /) -> None:
     body = payload.model_dump(mode="json") if hasattr(payload, "model_dump") else dict(payload)
     type_name = type(payload).__name__
     if _is_fastmcp_context(ctx):
+        # See `event` for the prefix rationale.
         await ctx.log(
             message=_cap_text(type_name),
             level="info",
             extra={
                 "a2kit_kind": "report",
-                "type": type_name,
-                "payload": body,
-                "elapsed_ms": elapsed,
+                "a2kit_type": type_name,
+                "a2kit_payload": body,
+                "a2kit_elapsed_ms": elapsed,
             },
         )
     else:
@@ -415,7 +422,10 @@ async def log(
         msg, payload_dict = _typed_event_to_payload(__msg_or_instance, dict(fields))
 
     if _is_fastmcp_context(ctx):
-        wire_extra = {**payload_dict, "elapsed_ms": elapsed}
+        # Prefix only the a2kit-internal `elapsed_ms` key; user-supplied
+        # fields stay un-prefixed (users sanitizing their own keys is on
+        # them, not the framework). See `event` for the rationale.
+        wire_extra = {**payload_dict, "a2kit_elapsed_ms": elapsed}
         await ctx.log(level=__level, message=_cap_text(msg), extra=wire_extra)
     else:
         ctx._emit(_LOG_LEVEL_LABEL[__level], msg, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here

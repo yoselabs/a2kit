@@ -84,12 +84,61 @@ def _has_a2kit_verb_decorator(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> boo
     return any(_is_a2kit_verb_decorator(d) for d in fn.decorator_list)
 
 
-def rule_ldd_report_type(tree: ast.AST, filename: str, _source: str) -> Iterable[LintMessage]:
-    from a2kit.packages.lint.static import A2K_LDD_REPORT_TYPE, LintMessage
+def _yield_missing_reports_kwarg(
+    report_calls: list[ast.Call],
+    filename: str,
+    noqa: dict[int, set[str]],
+) -> Iterable[LintMessage]:
+    from a2kit.packages.lint.static import A2K_LDD_REPORT_TYPE, LintMessage, suppressed
+
+    for call in report_calls:
+        if suppressed(noqa, A2K_LDD_REPORT_TYPE, call.lineno):
+            continue
+        yield LintMessage(
+            rule=A2K_LDD_REPORT_TYPE,
+            filename=filename,
+            line=call.lineno,
+            col=call.col_offset,
+            message=(
+                "ctx.report(...) called but no `reports=ReportT` kwarg on the verb decorator. "
+                "Add `reports=YourReportModel` to @a2kit.read/write/list_/tool, or use "
+                "ctx.event(...) for free-form narration."
+            ),
+        )
+
+
+def _yield_non_module_scope(
+    reports_kw: ast.keyword,
+    module_names: set[str],
+    filename: str,
+    noqa: dict[int, set[str]],
+) -> Iterable[LintMessage]:
+    from a2kit.packages.lint.static import A2K_LDD_REPORT_TYPE, LintMessage, suppressed
+
+    arg = reports_kw.value
+    if not (isinstance(arg, ast.Name) and arg.id not in module_names):
+        return
+    if suppressed(noqa, A2K_LDD_REPORT_TYPE, arg.lineno):
+        return
+    yield LintMessage(
+        rule=A2K_LDD_REPORT_TYPE,
+        filename=filename,
+        line=arg.lineno,
+        col=arg.col_offset,
+        message=(
+            f"`reports={arg.id}` references a non-module-scope type. "
+            "Pydantic forward-ref resolution requires module-scope. Hoist the model out."
+        ),
+    )
+
+
+def rule_ldd_report_type(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
+    from a2kit.packages.lint.static import parse_noqa
 
     if not isinstance(tree, ast.Module):
         return
     module_names = _module_scope_names(tree)
+    noqa = parse_noqa(source)
 
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -101,32 +150,10 @@ def rule_ldd_report_type(tree: ast.AST, filename: str, _source: str) -> Iterable
         reports_kw = _reports_kwarg(node)
 
         if report_calls and reports_kw is None:
-            for call in report_calls:
-                yield LintMessage(
-                    rule=A2K_LDD_REPORT_TYPE,
-                    filename=filename,
-                    line=call.lineno,
-                    col=call.col_offset,
-                    message=(
-                        "ctx.report(...) called but no `reports=ReportT` kwarg on the verb decorator. "
-                        "Add `reports=YourReportModel` to @a2kit.read/write/list_/tool, or use "
-                        "ctx.event(...) for free-form narration."
-                    ),
-                )
+            yield from _yield_missing_reports_kwarg(report_calls, filename, noqa)
 
         if reports_kw is not None:
-            arg = reports_kw.value
-            if isinstance(arg, ast.Name) and arg.id not in module_names:
-                yield LintMessage(
-                    rule=A2K_LDD_REPORT_TYPE,
-                    filename=filename,
-                    line=arg.lineno,
-                    col=arg.col_offset,
-                    message=(
-                        f"`reports={arg.id}` references a non-module-scope type. "
-                        "Pydantic forward-ref resolution requires module-scope. Hoist the model out."
-                    ),
-                )
+            yield from _yield_non_module_scope(reports_kw, module_names, filename, noqa)
 
 
 __all__ = ["rule_ldd_report_type"]

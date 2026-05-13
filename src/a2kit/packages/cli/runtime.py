@@ -49,6 +49,23 @@ async def _invoke_tool_in_process(
         call_kwargs[ctx_param_name] = StderrToolContext()
     ctx_for_ldd: Any = call_kwargs.get(ctx_param_name) if ctx_param_name else None
 
+    # Per-tool timeout (per ``dispatcher-timeout-decorator``):
+    # read ``meta.extras.timeout_seconds`` and wrap the fn call in
+    # ``anyio.fail_after`` for cross-transport parity with the MCP
+    # path's ``_wrap_with_timeout``.
+    from a2kit.metadata import get_meta
+
+    _meta = get_meta(fn)
+    _timeout_s: float | None = _meta.extras.timeout_seconds if _meta is not None else None
+
+    async def _call_fn() -> Any:
+        if inspect.iscoroutinefunction(fn):
+            return await fn(**call_kwargs)
+        out = fn(**call_kwargs)
+        if inspect.isawaitable(out):
+            return await out
+        return out
+
     with ldd_state_for_call(
         ctx=ctx_for_ldd,
         events_enabled=events_enabled,
@@ -57,12 +74,13 @@ async def _invoke_tool_in_process(
         tool_name=tool_name,
         sinks=sinks,
     ):
-        if inspect.iscoroutinefunction(fn):
-            raw = await fn(**call_kwargs)
+        if _timeout_s is not None:
+            import anyio
+
+            with anyio.fail_after(_timeout_s):
+                raw = await _call_fn()
         else:
-            raw = fn(**call_kwargs)
-            if inspect.isawaitable(raw):
-                raw = await raw
+            raw = await _call_fn()
 
     response = format_response(raw, format_hint=cast("FormatHint", fmt))
     return response.data

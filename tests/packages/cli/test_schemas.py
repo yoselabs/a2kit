@@ -67,6 +67,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         slug = "big"
         name = "big"
 
+    generated = []
     for i in range(200):
 
         async def _tool(self, *, x: str = "x" * 600) -> dict:  # noqa: ARG001
@@ -75,6 +76,11 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         _tool.__name__ = f"tool_{i:03d}"
         a2kit.read()(_tool)
         setattr(Big, _tool.__name__, _tool)
+        generated.append(_tool)
+    # Populate the tools tuple — required post
+    # ``app-time-tools-tuple-validation``; programmatically generated
+    # tools must still be listed.
+    Big.tools = tuple(generated)
 
     app = a2kit.App("big").add_router(Big())
     result = CliRunner().invoke(build_full_cli(app), ["schema", "--format=json"])

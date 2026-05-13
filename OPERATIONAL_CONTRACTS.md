@@ -33,14 +33,33 @@ is cancelled mid-await; the test asserts the `finally` block ran and
 
 ## Q2. Per-tool timeouts
 
-**Current behavior.** No built-in timeout flag on `@a2kit.read` / `@a2kit.write`.
-Tools cooperate with structured concurrency directly.
+**Current behavior.** Two complementary mechanisms:
 
-**Why no built-in.** A decorator-level timeout suggests every tool has one
-budget; in practice the right number depends on the stage. Network ≠ extraction
-≠ format-routing. A blanket `@a2kit.read(timeout=60)` would either kill
-post-network processing or force authors to inflate the budget. Per-region
-`anyio.fail_after` is the honest tool.
+1. **Built-in decorator kwarg** (`dispatcher-timeout-decorator`):
+   `@a2kit.read(timeout=...)` accepts a number (seconds) or string with
+   unit suffix (`"60s"`, `"2m"`, `"500ms"`). When set, the dispatcher
+   wraps the tool body in `anyio.fail_after` at the innermost layer of
+   the wrapper chain — inside the LDD scope and dispatch-hook DI, so
+   neither counts against the budget. The same wrap fires on both MCP
+   and CLI transports for transport parity. On timeout, Python's
+   built-in `TimeoutError` is raised; the MCP envelope serializes it as
+   `{"class": "TimeoutError", "message": ...}`. Use this when the tool
+   has a single uniform timeout that callers should advertise to agents
+   via `tool.meta.extras.timeout_seconds`.
+
+2. **Per-region `anyio.fail_after`** inside the tool body. Use when the
+   tool's stages need different budgets (network vs extraction vs
+   format-routing) or when partial-failure modes (e.g.
+   `anyio.move_on_after` for cache lookups) are part of the contract.
+
+**Why both.** A decorator-level timeout suggests every tool has one
+budget; in practice the right number sometimes depends on the stage.
+Network ≠ extraction ≠ format-routing. For tools with a single budget
+that callers should see, the decorator is the right knob (and surfaces
+in `tool.meta` so agents can plan retries). For tools with stage-shaped
+budgets or recoverable partial-timeouts, per-region `anyio.fail_after`
+remains the honest tool. The two compose: a decorator-level overall
+cap + inner per-region `fail_after` budgets that carve it up.
 
 ### Prescribed patterns
 
@@ -159,42 +178,60 @@ servers); a2kit shouldn't pick a single answer.
 
 ## Q5. Error envelope for unhandled tool exceptions
 
-**Current behavior.** Unhandled exceptions in tool bodies bubble to the
-dispatcher.
+**Policy.** a2kit guarantees that any uncaught exception raised by a tool
+body or its wrapper chain reaches the MCP wire as `isError: true` with a
+JSON-encoded text payload of shape
+`{"class": "<ExceptionClassName>", "message": "<str(exc)>"}`. When
+`App(debug=True)`, the payload additionally includes
+`"traceback": "<rendered traceback>"`. The contract is enforced by a2kit's
+outermost tool wrapper (`_wrap_with_error_envelope` in
+`packages/mcp/server.py`) which catches `Exception` and re-raises
+`ToolError(json.dumps(payload))`. FastMCP's tool-dispatch path re-raises
+`FastMCPError` subclasses (incl. `ToolError`) unchanged before any
+masking — so the JSON payload reaches the wire verbatim regardless of
+FastMCP's `mask_error_details` flag. a2kit treats `mask_error_details`
+as an internal implementation detail subject to upstream change; the
+envelope shape is owned here.
 
-- **MCP path.** FastMCP wraps the exception as a `ToolError` on the wire.
-  By default (`App(debug=False)`) a2kit passes `mask_error_details=True` to
-  FastMCP, so the wire message is a generic `f"Error calling tool {name!r}"`
-  with no detail. With `App(debug=True)`, a2kit passes
-  `mask_error_details=False` AND wraps every tool with a debug helper that
-  appends the full traceback to the exception's `str()`. FastMCP's
-  unmasked path then emits `f"Error calling tool {name!r}: {message}"`
-  where `message` includes the traceback. Use `debug=True` only in
-  development — tracebacks expose internal paths.
-- **CLI path.** The process exits with a non-zero status code; the error
-  message goes to stderr as ``error: <message>``. When `App(debug=True)`,
-  the full traceback follows the error line on stderr; otherwise only the
-  one-line message appears.
+**Unwrapped propagation.** The envelope does NOT wrap:
 
-`asyncio.CancelledError` is treated specially (see Q1) — it bubbles unchanged
-without being wrapped in an envelope, since cancellation is not an error.
+- `fastmcp.exceptions.FastMCPError` (incl. author-raised `ToolError`) —
+  passes through unchanged so author-shaped messages reach the wire on
+  FastMCP's own path. Double-wrapping would corrupt the author's message.
+- `asyncio.CancelledError`, `KeyboardInterrupt`, `SystemExit` —
+  `BaseException` siblings, naturally outside `except Exception`.
+- `BaseExceptionGroup` containing only `CancelledError`s — anyio
+  task-group cancellation per Q1.
+
+**CLI path.** Unchanged from prior behavior. The process exits with a
+non-zero status code; the error message goes to stderr as
+`error: <message>`. When `App(debug=True)`, the full traceback follows
+the error line on stderr; otherwise only the one-line message appears.
+The structured-envelope guarantee is an MCP-transport contract only.
 
 **Tool author's responsibility.** Either:
 
 - Catch domain-level failures inside the tool and return a structured
   response (e.g. `FetchResponse(status="failed", reason=...)`). This is
   the recommended pattern for predictable failure modes.
-- Let unexpected exceptions bubble — they'll surface as JSON-RPC errors /
-  CLI tracebacks with no extra work.
+- Let unexpected exceptions bubble — they'll surface on the MCP wire as
+  the structured envelope `{class, message, [traceback]}` and on the
+  CLI side as `error: <message>` + traceback under `debug=True`.
 
-**Future plans.** None for the envelope shape. The `debug=True` traceback
-toggle is the relevant lever; `App(debug=True)` is the documented contract.
-A structured `data.traceback` field (rather than message-embedded text) would
-require sub-classing `ToolError` upstream in FastMCP — deferred.
+**Why owned by a2kit, not delegated.** The pre-v0.33 implementation
+relied on FastMCP's `mask_error_details` semantics to surface the
+exception message. Those semantics have shifted across FastMCP minor
+versions and as of v0.32 collapsed unmasked responses to the bare
+string `"Error calling tool 'X'"` regardless of `mask_error_details`,
+leaving downstream consumers with no diagnostic signal. The envelope
+wrapper bypasses the masking path entirely.
 
-**Regression test.** `tests/test_error_envelope.py` — covers the in-process
-client raising path (dispatcher does not swallow), and the `debug` flag's
-effect on the wire output.
+**Regression test.** `tests/test_wire_error_envelope.py` — covers the
+`{class, message}` shape under `debug=False`, the `traceback` field
+addition under `debug=True`, author-raised `ToolError` passthrough,
+`CancelledError` propagation, special-character round-trip, and the
+FastMCP-independence assertion (same payload shape regardless of
+`mask_error_details`).
 
 ## Q6. Streaming output for large responses + visibility during long phases
 
@@ -425,6 +462,120 @@ per site asserts (a) the documented fallback still applies on failure,
 (b) exactly one WARN line is emitted per offender, (c) a second failure
 for the same offender in the same process does not emit a second line.
 The signature-level test lives in `tests/test_resolve_hints.py`.
+
+## Q-Ctx. Context binding invariants
+
+**Policy.** When a tool function declares a parameter typed
+`a2kit.ToolContext` (the re-export of `fastmcp.Context`), the dispatcher
+SHALL bind it on every transport. Implementations and contributors
+must honor three invariants:
+
+1. **Always bound when declared.** On MCP, FastMCP injects the live
+   `Context` at call time. On CLI, the runtime synthesizes a
+   `StderrToolContext` at `cli/runtime.py:49`. There is no transport
+   or test path where a declared `ctx` arrives as `None`.
+2. **Optional annotation forms are rejected at decoration time.** A
+   tool declaring `ctx: ToolContext | None`, `ctx: Optional[ToolContext]`,
+   or `ctx: Union[ToolContext, None]` raises
+   `A2KitInvalidContextAnnotation` from `find_context_param`. The
+   Optional form is misleading typing — there is no runtime path
+   producing `None`. Migration: drop `| None` from the annotation,
+   or remove the `ctx` parameter entirely if the tool does not need
+   it.
+3. **The MCP wrapper chain's rewritten signature MUST contain `ctx`
+   when the tool declares it.** `_wrap_with_dispatch_hook` re-appends
+   the original `ctx` parameter onto the rewritten signature so
+   FastMCP's introspection sees it and binds the live `Context` at
+   call time. A decoration-time invariant inside
+   `_wrap_with_dispatch_hook` raises `A2KitContextBindingBroken` if
+   this is ever violated by a future wrapper-chain change — the App
+   fails to build before serving any request.
+
+**Why this matters.** v0.32 shipped a regression where the MCP
+wrapper chain dropped `ctx` from the rewritten signature, breaking
+every tool that combined `state: T` DI with `ctx: ToolContext` over
+the MCP transport (CLI was unaffected). The bug surfaced as
+`TypeError: missing 1 required keyword-only argument: 'ctx'` masked
+by FastMCP into the bare wire string `"Error calling tool 'X'"`,
+with no diagnostic signal for downstream consumers. The
+`A2KitContextBindingBroken` decoration-time guard prevents this
+class of regression from ever reaching production again.
+
+**Regression test.** `tests/test_transport_parity.py` exercises the
+full (state-DI, ctx-DI) declaration matrix across CLI and MCP
+transports. The MCP leg uses
+`fastmcp.Client(transport=build_mcp_server(app))` to drive the real
+production wrapper chain (the in-process test client
+`a2kit.testing.client` bypasses it by design — it is a unit-test
+seam for tool bodies, not a substitute for transport-parity
+testing). Future wrapper-chain refactors MUST keep this file green.
+
+An opt-in stdio JSON-RPC subprocess smoke
+(`tests/test_transport_parity_stdio.py`, gated on
+`A2KIT_SLOW_TESTS=1`) provides one canary case covering the wire
+framing layer below the dispatcher.
+
+**Diagnostic classes.**
+
+- `a2kit.exceptions.A2KitContextBindingBroken` — framework-internal
+  invariant; raised from `_wrap_with_dispatch_hook` at App
+  construction.
+- `a2kit.exceptions.A2KitInvalidContextAnnotation` — user-facing;
+  raised from `find_context_param` at decoration time when the
+  annotation form is Optional/Union with `None`.
+
+## Q-Teardown. Singleton teardown contract
+
+**Policy.** `app.singleton(T, factory, *, teardown=fn)` registers a
+shutdown callback the framework invokes on App lifespan exit. The
+framework owns three guarantees:
+
+1. **Topological order — dependents before dependencies.** When
+   multiple singletons have registered teardowns AND their factories
+   declare each other as parameters (forming a dependency edge),
+   teardowns fire in reverse-topological order. A pool whose factory
+   takes a sqlite handle is closed before sqlite, regardless of
+   registration order. Reverse-of-registration is *not* the contract.
+2. **Error isolation.** A teardown that raises `Exception` does NOT
+   prevent sibling teardowns from running. The framework catches the
+   exception, appends `(type, exc)` to `App.teardown_failures`,
+   emits an `error`-level log line via the `a2kit.lifecycle` logger
+   with class, message, and singleton type name, and continues. The
+   framework does NOT re-raise teardown failures from `lifespan_cm()`.
+3. **Cycles handled deterministically.** If the singleton
+   factory-parameter graph contains a cycle (which the container's
+   resolution-cycle detection should prevent in practice), the
+   teardown walk breaks the cycle at the lowest-`id(type)` member
+   and emits a `WARN`-level log line identifying the cycle.
+
+**Composition with user / Router lifespans.** Framework teardowns run
+**after** all user and Router lifespan `finally` blocks have fully
+exited. User code can still hand-roll teardowns (which run first,
+inside their own scope); the framework provides the safety net for
+explicitly-registered `teardown=` callbacks (which run after).
+
+**Async teardowns.** `teardown=` may be sync (`def`) or async
+(`async def`); awaitable returns are awaited. Same convention as the
+dispatch hook.
+
+**Programmatic introspection.** `App.teardown_failures` is a list of
+`(type, exc)` tuples, empty on clean shutdown. Tests pin this attribute
+to assert shutdown ran clean. The `a2kit.exceptions.A2KitSingletonTeardownError`
+class aggregates failures for callers who want to construct an
+exception object from `app.teardown_failures` themselves — the framework
+never raises it.
+
+**Why owned by the framework.** Three problems with hand-rolled
+shutdown patterns (`finally: for c in reversed(closers): try: ...`):
+the boilerplate scales linearly with resource count; `try/except: pass`
+silently masks failures; reverse-of-registration is *incorrect* when
+the DI graph diverges from registration order (pool depending on
+sqlite, registered second). Framework ownership centralizes correct
+ordering, error isolation, and observability.
+
+**Regression test.** `tests/test_singleton_teardown.py` — covers
+topological ordering, error isolation, async teardown, cycle handling,
+and composition with user lifespans.
 
 ## See also
 

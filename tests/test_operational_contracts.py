@@ -127,7 +127,17 @@ def test_two_apps_lifecycle_handlers_fire_independently() -> None:
 
 
 def test_unhandled_exception_bubbles_through_dispatcher() -> None:
-    """The dispatcher does not swallow tool exceptions — they reach the caller."""
+    """The dispatcher does not swallow tool exceptions — they reach the caller.
+
+    Post ``rebuild-test-client-on-real-context`` the test client runs
+    through the real MCP transport, so exceptions surface as
+    ``fastmcp.exceptions.ToolError`` carrying the a2kit-owned envelope
+    from ``mcp-structured-wire-error-envelope``. The Python exception
+    class round-trips via the JSON payload.
+    """
+    import json as _json
+
+    from fastmcp.exceptions import ToolError
 
     class _R(a2kit.Router):
         slug = "_r"
@@ -144,8 +154,11 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
         async with client(app) as c:
             return await c.invoke("boom")
 
-    with pytest.raises(ValueError, match="explicit failure"):
+    with pytest.raises(ToolError) as ei:
         asyncio.run(go())
+    payload = _json.loads(str(ei.value))
+    assert payload["class"] == "ValueError"
+    assert payload["message"] == "explicit failure"
 
 
 def test_app_debug_flag_defaults_false() -> None:
@@ -204,38 +217,48 @@ def test_cli_error_includes_traceback_when_debug_true() -> None:
     assert "ValueError" in result.output
 
 
-def test_mcp_debug_wrapper_augments_message() -> None:
-    """The MCP-side debug wrapper appends the traceback to `str(exc)`."""
-    import asyncio
+def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
+    """The MCP-side error envelope re-raises ``ToolError(json.dumps(...))``.
 
-    from a2kit.packages.mcp.server import _wrap_with_debug_traceback
+    Replaces the legacy ``_wrap_with_debug_traceback`` (which embedded
+    the traceback in ``str(exc)``). The envelope owns the wire bytes
+    independently of FastMCP's ``mask_error_details`` per
+    `mcp-structured-wire-error-envelope`.
+    """
+    import asyncio
+    import json
+
+    from fastmcp.exceptions import ToolError
+
+    from a2kit.packages.mcp.server import _wrap_with_error_envelope
 
     async def boom() -> None:
         raise ValueError("base msg")
 
-    wrapped = _wrap_with_debug_traceback(boom)
+    wrapped = _wrap_with_error_envelope(boom, debug=True)
 
     async def go() -> None:
         await wrapped()
 
-    with pytest.raises(ValueError) as ei:
+    with pytest.raises(ToolError) as ei:
         asyncio.run(go())
-    msg = str(ei.value)
-    assert "base msg" in msg
-    assert "Traceback:" in msg
-    assert "ValueError" in msg
+    payload = json.loads(str(ei.value))
+    assert payload["class"] == "ValueError"
+    assert payload["message"] == "base msg"
+    assert "traceback" in payload
+    assert "ValueError: base msg" in payload["traceback"]
 
 
-def test_mcp_debug_wrapper_passes_cancelled_unchanged() -> None:
+def test_mcp_error_envelope_passes_cancelled_unchanged() -> None:
     """CancelledError must not be wrapped (per OPERATIONAL_CONTRACTS Q1)."""
     import asyncio
 
-    from a2kit.packages.mcp.server import _wrap_with_debug_traceback
+    from a2kit.packages.mcp.server import _wrap_with_error_envelope
 
     async def stuck() -> None:
         await asyncio.sleep(60)
 
-    wrapped = _wrap_with_debug_traceback(stuck)
+    wrapped = _wrap_with_error_envelope(stuck, debug=False)
 
     async def go() -> None:
         task = asyncio.create_task(wrapped())

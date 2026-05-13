@@ -120,10 +120,19 @@ def test_enricher_fires_before_registration() -> None:
     server = build_mcp_server(app)
 
     async def _check() -> None:
+        import json as _json
+
+        from fastmcp.exceptions import ToolError
+
         tools = {t.name: t for t in await server.list_tools()}
         bt = tools["boom"]
-        with pytest.raises(RuntimeError, match="enriched: kaboom"):
+        # Enricher runs innermost; the outermost wire-error envelope
+        # then wraps the enriched RuntimeError into ToolError(json).
+        with pytest.raises(ToolError) as ei:
             await bt.fn()
+        payload = _json.loads(str(ei.value))
+        assert payload["class"] == "RuntimeError"
+        assert payload["message"] == "enriched: kaboom"
 
     asyncio.run(_check())
     assert len(fired) == 1

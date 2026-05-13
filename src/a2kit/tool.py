@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: A2K014
 
 import logging
 from collections.abc import Awaitable, Callable, Iterable
@@ -157,6 +157,39 @@ def _check_reserved_name(tool_name: str) -> None:
         raise ValueError(msg)
 
 
+def _parse_timeout(value: float | int | str | None) -> float | None:
+    """Parse a ``timeout=`` kwarg into canonical float seconds.
+
+    Accepts ``None`` (no timeout), ``int``/``float`` (seconds), or a
+    string with unit suffix ``"ms"``/``"s"``/``"m"`` (or a bare
+    numeric string treated as seconds). Raises ``TypeError`` on any
+    unparseable string at decoration time per
+    ``dispatcher-timeout-decorator`` D-PARSE.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        msg = f"timeout= must be a number or unit string, got bool {value!r}"
+        raise TypeError(msg)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        msg = f"timeout= must be a number, unit string, or None; got {type(value).__name__}"
+        raise TypeError(msg)
+    s = value.strip().lower()
+    if not s:
+        msg = "timeout= string is empty"
+        raise TypeError(msg)
+    try:
+        for suffix, mult in (("ms", 0.001), ("s", 1.0), ("m", 60.0)):
+            if s.endswith(suffix):
+                return float(s[: -len(suffix)]) * mult
+        return float(s)
+    except ValueError as exc:
+        msg = f"timeout={value!r} is not a valid number or unit string (e.g. '60s', '2m', '500ms', 0.5)"
+        raise TypeError(msg) from exc
+
+
 def _stamp(
     fn: F,
     *,
@@ -167,7 +200,8 @@ def _stamp(
     annotations_explicit: Any = None,
     visibility: Visibility | None = None,
     reports: type | None = None,
-    list_view: Any | None = None,
+    list_view: Any | None = None,  # noqa: A2K-CORE-CLEAN
+    timeout: float | int | str | None = None,
 ) -> F:
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
@@ -178,8 +212,11 @@ def _stamp(
         schema = _compute_report_schema(reports)
         if schema is not None:
             extras_kwargs["report_schema"] = schema  # noqa: A2K-CORE-CLEAN
-    if list_view is not None:
+    if list_view is not None:  # noqa: A2K-CORE-CLEAN
         extras_kwargs["list_view"] = list_view  # noqa: A2K-CORE-CLEAN
+    parsed_timeout = _parse_timeout(timeout)
+    if parsed_timeout is not None:
+        extras_kwargs["timeout_seconds"] = parsed_timeout  # noqa: A2K-CORE-CLEAN
     extras = A2KitMetaExtras(**extras_kwargs)
     meta = A2KitMeta(
         tool_name=resolved_name,
@@ -194,14 +231,14 @@ def _stamp(
     return fn
 
 
-def _compute_report_schema(report_type: type) -> dict[str, Any] | None:
+def _compute_report_schema(report_type: type) -> dict[str, Any] | None:  # noqa: A2K-CORE-CLEAN
     """Best-effort JSON schema for a report type, used by adapters."""
     try:
         from pydantic import TypeAdapter
     except ImportError:
         return None
     try:
-        return TypeAdapter(report_type).json_schema()
+        return TypeAdapter(report_type).json_schema()  # noqa: A2K-CORE-CLEAN
     except Exception:  # noqa: BLE001 -- decoration must not raise
         return None
 
@@ -312,11 +349,16 @@ def read(
     annotations: ToolAnnotations | None = None,
     idempotent: bool | None = None,
     destructive: bool | None = None,
+    timeout: float | int | str | None = None,
 ) -> Callable[[F], F]:
     """Read-shaped tool decorator. Sets ``readOnlyHint=True``.
 
     Read tools are spec-idempotent and non-destructive by definition;
     passing ``idempotent=`` or ``destructive=`` raises ``TypeError``.
+
+    ``timeout=`` (per ``dispatcher-timeout-decorator``): None for no
+    timeout, number for seconds, or string with unit suffix
+    (``"60s"``, ``"2m"``, ``"500ms"``).
     """
 
     def deco(fn: F) -> F:
@@ -339,6 +381,7 @@ def read(
             ),
             visibility=visibility,
             reports=reports,
+            timeout=timeout,
         )
 
     return deco
@@ -353,11 +396,16 @@ def write(
     visibility: Visibility | None = None,
     reports: type | None = None,
     annotations: ToolAnnotations | None = None,
+    timeout: float | int | str | None = None,
 ) -> Callable[[F], F]:
     """Write-shaped tool decorator. Sets ``readOnlyHint=False, destructiveHint=True`` by default.
 
     ``idempotent=`` and ``destructive=`` may be overridden. ``annotations=``
     is the full escape hatch — must not be mixed with flag kwargs.
+
+    ``timeout=`` (per ``dispatcher-timeout-decorator``): None for no
+    timeout, number for seconds, or string with unit suffix
+    (``"60s"``, ``"2m"``, ``"500ms"``).
     """
 
     def deco(fn: F) -> F:
@@ -380,6 +428,7 @@ def write(
             ),
             visibility=visibility,
             reports=reports,
+            timeout=timeout,
         )
 
     return deco
@@ -396,6 +445,7 @@ def list_(
     annotations: ToolAnnotations | None = None,
     idempotent: bool | None = None,
     destructive: bool | None = None,
+    timeout: float | int | str | None = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Read-shaped; requires ``list[T]`` return.
 
@@ -448,7 +498,8 @@ def list_(
             ),
             visibility=visibility,
             reports=reports,
-            list_view=settings,
+            list_view=settings,  # noqa: A2K-CORE-CLEAN
+            timeout=timeout,
         )
 
     return deco

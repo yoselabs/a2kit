@@ -269,11 +269,18 @@ def test_state_isolated_between_instances() -> None:
 
 
 def test_read_resource_file_text(tmp_path: Any) -> None:
+    """Returns a fastmcp-shaped result with ``.content`` attribute.
+
+    Post ``align-context-method-signatures`` Treatment 1, the return
+    mirrors fastmcp's ``ResourceResult``. The CLI stub uses
+    ``_StubResourceResult`` (duck-typed, exposes ``.content``) to
+    avoid eager ``mcp.types`` import.
+    """
     p = tmp_path / "hello.txt"
     p.write_text("hello world", encoding="utf-8")
     ctx = StderrToolContext()
     result = asyncio.run(ctx.read_resource(f"file://{p}"))
-    assert result == "hello world"
+    assert result.content == "hello world"
 
 
 def test_read_resource_non_file_raises() -> None:
@@ -376,13 +383,16 @@ def test_read_resource_binary(tmp_path: Any) -> None:
     p.write_bytes(b"\xff\xd8\xff\xe0")
     ctx = StderrToolContext()
     result = asyncio.run(ctx.read_resource(f"file://{p}"))
-    assert result == b"\xff\xd8\xff\xe0"
+    assert result.content == b"\xff\xd8\xff\xe0"
 
 
 def test_sample_step_raises() -> None:
+    """Signature mirrors fastmcp's ``sample_step``; needs at least the
+    ``messages`` positional argument (Treatment 2 of
+    ``align-context-method-signatures``)."""
     ctx = StderrToolContext()
     with pytest.raises(MCPOnlyError):
-        asyncio.run(ctx.sample_step())
+        asyncio.run(ctx.sample_step("hello"))
 
 
 # --- MCP-only methods raise --- #

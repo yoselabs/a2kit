@@ -109,34 +109,47 @@
 
 - [x] 6.1 `make lint` target gains `uv run ty check examples/`. Run;
       expect 0 errors after migration.
-- [ ] 6.2 `make lint` target gains `uv run ty check tests/`. If the
-      diff surfaces unrelated errors (per design Open Question 3),
-      either fix them inline or defer `tests/` to a follow-up
-      change and leave only `examples/` gated. Decide based on
-      noise.
+- [x] 6.2 `make lint` target gains `uv run ty check tests/`. **Deferred
+      per design OQ-3**: `uv run ty check tests/` surfaces 61 unrelated
+      ty diagnostics across 12 categories (`invalid-argument-type`,
+      `unresolved-attribute`, `not-iterable`, etc.) — pre-existing
+      noise from test scaffolding, fixtures, and parametrised data
+      shapes. Gating now would block every `make lint` invocation on
+      errors unrelated to context-shape regression. Captured as a
+      follow-up; `examples/` remains the active ty gate.
 - [x] 6.3 Update `Makefile` `lint` recipe.
 
 ## 7. Spec edits
 
-- [ ] 7.1 `openspec/specs/mcp-context-passthrough/spec.md` — narrow
+- [x] 7.1 `openspec/specs/mcp-context-passthrough/spec.md` — narrow
       the "CLI stub supplies a fastmcp.Context-shaped stub" requirement
       to match fastmcp's exact signature for the four logging methods.
-      Remove the worked example `ctx.info("hi", x=1)`.
-- [ ] 7.2 Same spec — extend "LDD event and report primitives are
+      Remove the worked example `ctx.info("hi", x=1)`. **Done in the
+      change's spec delta**: signatures narrowed to
+      `(message, logger_name=None, extra=None)`; the only remaining
+      `ctx.info("hi", ...)` references are the antipattern-rejection
+      scenario and the REMOVED-requirement migration note.
+- [x] 7.2 Same spec — extend "LDD event and report primitives are
       protocol-neutral functions" to cover `log` as a third sibling.
       Add MCP-path scenario: `a2kit.ldd.info(ctx, "msg", k=1)` over
       `fastmcp.Client` produces a `notifications/message` with
-      `extra={"k": 1, "elapsed_ms": ...}`.
-- [ ] 7.3 Same spec — add a new requirement: "Field-bearing
+      `extra={"k": 1, "elapsed_ms": ...}`. **Done in the change's spec
+      delta**: requirement title now reads "LDD event, report, and log
+      primitives are protocol-neutral functions"; MCP-path scenario
+      "a2kit.ldd.info delivers a structured message on MCP" lives
+      under it.
+- [x] 7.3 Same spec — add a new requirement: "Field-bearing
       logging lives on `a2kit.ldd.*`, not on `ctx.*`." with the
-      antipattern listed.
+      antipattern listed. **Done in the change's spec delta** at the
+      "Field-bearing logging lives on `a2kit.ldd.*`, not on `ctx.*`"
+      requirement, scenario "Antipattern is documented".
 
 ## 8. Documentation
 
 - [x] 8.1 `README.md` LDD section: document `event` / `report` / `log`
       as three siblings; show before/after for the kwarg pattern.
 - [x] 8.2 `ANTIPATTERNS.md`: new entry "Kwargs on `ctx.info/warning/error/debug`."
-- [ ] 8.3 `CHANGELOG.md`: BREAKING entry for the kwarg removal;
+- [x] 8.3 `CHANGELOG.md`: BREAKING entry for the kwarg removal;
       migration recipe.
 
 ## 9. Verification

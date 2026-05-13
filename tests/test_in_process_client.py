@@ -1,5 +1,15 @@
 """Section 2 of `a2web-feedback-round-2`: in-process test client.
 
+**Post ``rebuild-test-client-on-real-context``** (2026-05-14): the
+test client is backed by a real ``fastmcp.Client(transport=
+build_mcp_server(app))`` in-memory transport, NOT a CLI-shaped stub.
+That makes this file structurally a transport-level test of the full
+MCP wrapper chain — every assertion here pins the same code path
+production MCP traffic exercises. Return values are
+FastMCP-unmarshaled (field-equivalent synthetic types, not the
+user-declared classes); tool-body exceptions surface as
+``fastmcp.exceptions.ToolError`` carrying a JSON envelope.
+
 Gherkin scenarios (mirroring `specs/in-process-test-client/spec.md`):
 
   Scenario: invoke runs the same code path as production dispatch
@@ -94,6 +104,15 @@ def _build_app() -> a2kit.App:
 
 
 def test_invoke_returns_value() -> None:
+    """``invoke()`` returns FastMCP's unmarshaled structured payload.
+
+    After ``rebuild-test-client-on-real-context``, FastMCP synthesizes
+    a field-equivalent Pydantic type from the tool's return annotation
+    (e.g. user-declared ``_Item`` → synthetic ``Root`` with identical
+    fields). Compare by ``model_dump()`` / field-wise rather than by
+    identity equality. The wire round-trip is the point; the synthetic
+    type is FastMCP's structured-content shape.
+    """
     app = _build_app()
 
     async def go() -> Any:
@@ -101,7 +120,8 @@ def test_invoke_returns_value() -> None:
             return await c.invoke("list_items")
 
     items = asyncio.run(go())
-    assert items == [_Item(id=1, name="alpha"), _Item(id=2, name="beta")]
+    assert len(items) == 2
+    assert [(i.id, i.name) for i in items] == [(1, "alpha"), (2, "beta")]
 
 
 # --- Scenario 2: lifecycle hooks fire --- #

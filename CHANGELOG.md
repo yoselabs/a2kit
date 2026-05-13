@@ -1,5 +1,145 @@
 # Changelog
 
+## Unreleased
+
+This release closes the v0.32 MCP production blocker (a2web v0.6.0
+went down on every `mcp__a2web__fetch` call) and pays down the
+test-coverage debt that let it slip past release validation. Eight
+coordinated changes land together; the wire-error envelope and the
+ctx-binding fix are mutually load-bearing.
+
+### Breaking — MCP wire-error envelope is now a2kit-owned
+
+When a tool body or wrapper raises, the wire now returns a
+`ToolError(json)` whose payload carries the original exception's
+class name, message, and (under `App(debug=True)`) traceback:
+
+```json
+{"class": "ValueError", "message": "bad arg", "traceback": "..."}
+```
+
+Previously the wire collapsed to the bare string `"Error calling
+tool 'X'"` regardless of `debug=`, because the guarantee was
+outsourced to FastMCP's `mask_error_details` which shifted across
+minor versions. Consumers parsing the envelope must now JSON-decode
+the `ToolError` text. `FastMCPError` subclasses (incl. user-raised
+`ToolError`) re-raise unchanged.
+
+### Fixed — MCP dispatch stripped `ctx` from the wrapped signature
+
+Any tool that declared **both** a container-resolved param (`state:
+T`) and `ctx: a2kit.ToolContext` failed 100% of MCP calls with
+`TypeError: <fn>() missing 1 required keyword-only argument: 'ctx'`.
+CLI was unaffected. The wrapper chain (`_wrap_with_dispatch_hook`)
+now re-appends the `ctx` Parameter to the rewritten signature, and
+a decoration-time invariant (`A2KitContextBindingBroken`) catches
+future regressions before wheels ship.
+
+### Changed — in-process test client now drives real fastmcp.Client
+
+`a2kit.testing.client.TestClient` is rebuilt on
+`fastmcp.Client(transport=build_mcp_server(app))`. It exercises the
+production wrapper chain on every invoke, so any ctx-shape
+divergence between `StderrToolContext` and `fastmcp.Context` fails
+in test. The ctx-binding bug above slipped past the v0.32 test suite
+because the legacy client subclassed the CLI stub and bypassed the
+dispatch hook entirely.
+
+Behavioural changes for test authors:
+
+- `client.invoke(...)` returns FastMCP-marshaled types (field-equal,
+  identity-different from user-declared classes). Compare field-wise
+  or via `model_dump()`.
+- Tool exceptions surface as `fastmcp.exceptions.ToolError`; parse
+  the JSON envelope for class + message.
+- LDD internal extra-keys are prefixed with `a2kit_` on the wire
+  (`a2kit_kind`, `a2kit_name`, `a2kit_payload`, `a2kit_elapsed_ms`,
+  `a2kit_type`) to dodge Python `LogRecord` reserved-attribute
+  collisions. The `TestClient` un-prefixes them when populating
+  `client.events` / `client.reports` / `client.logs`, so capture
+  shape is unchanged.
+
+### Added — App-construction validation of `Router.tools` completeness
+
+`App.add_router(router)` now walks `vars(cls)` for `@a2kit.*`-tagged
+callables and set-diffs against the `tools = (...)` tuple. A
+decorated-but-unlisted method raises
+`A2KitDecoratedMethodNotInTools` at App construction (not at
+deploy, not at first call). Closes the v0.31 CHANGELOG promise of a
+static lint rule — caught here is cheaper than a plugin and runs in
+every dev `python -m app` boot.
+
+### Added — per-tool `timeout=` on `@a2kit.read/write/list_`
+
+```python
+@a2kit.read(timeout="60s")
+async def fetch(*, url: str) -> dict: ...
+```
+
+Framework-owned `anyio.fail_after` wraps the tool body, slotted
+outside the LDD scope (so teardown `event()` calls don't race the
+deadline) and inside the dispatcher's lifecycle unwind (so resource
+cleanup still runs). Parses `int`/`float`/`"60s"`/`"500ms"`/`"5m"`.
+Surfaces on `A2KitMetaExtras.timeout_seconds` for callers and
+annotation consumers.
+
+### Added — `App.singleton(T, factory, *, teardown=fn)`
+
+Framework-owned, topologically-ordered teardown for singleton
+resources. Dependents tear down before their providers; teardown
+failures are logged and recorded on `App.teardown_failures: list[(type,
+Exception)]` without halting the rest. Composes after any user /
+Router `lifespan` finally-blocks, so user code still runs first.
+Replaces the hand-rolled `for closer in (...): try: await closer()
+except: pass` pattern that silently swallowed errors in every
+consumer.
+
+### Changed — Context method signatures narrowed across the 13-method drift
+
+`StderrToolContext` was the looser shape on `read_resource`, `elicit`,
+`sample` / `sample_step`, `get_prompt`, `list_resources` /
+`list_prompts` / `list_roots`, `send_notification`. All thirteen now
+mirror `fastmcp.Context` exactly (modulo `self`); `read_resource`
+returns a duck-typed `_StubResourceResult` so consumers reading
+`.content` work on both transports. `send_log_message` is removed
+from the stub (not in `fastmcp.Context`). New
+`A2KitInvalidContextAnnotation` rejects `ctx: ToolContext | None`
+declarations at decoration time — the dispatcher always binds.
+
+### Breaking — `ctx.info/warning/error/debug` no longer accept arbitrary `**fields`
+
+The four `fastmcp.Context` logging methods are narrowed to fastmcp's
+exact signature `(message, logger_name=None, extra=None)` on the CLI
+stub. Calls of the shape `await ctx.info("msg", batch=2)` now raise
+`TypeError` on both transports. The kwarg form previously appeared to
+work on CLI while crashing under MCP (a real client serialised the
+unknown kwarg into `LogRecord` constructor args).
+
+Field-bearing structured logging now lives on `a2kit.ldd.*` as a third
+sibling alongside `event` and `report`:
+
+```python
+# before
+await ctx.info("starting", batch=2)
+
+# after
+import a2kit
+await a2kit.ldd.info(ctx, "starting", batch=2)
+```
+
+`a2kit.ldd.log(ctx, level, msg_or_instance, **fields)` plus the
+`info` / `warning` / `error` / `debug` convenience aliases accept both
+string and dataclass/pydantic instance forms (the same shape as
+`a2kit.ldd.event`). They round-trip identically on MCP (delivered as
+`notifications/message` with structured `extra`) and CLI (rendered as
+`[ +s.mmm INFO    ] msg k=v`). The `--no-events` flag and
+`A2KIT_LDD=off` env var gate all three primitives.
+
+Migration recipe:
+`s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.ldd.\1(ctx, "\2", \3)/`
+catches the documented call shapes. `ctx.info("plain")` and
+`ctx.info("msg", extra={...})` continue to work unchanged.
+
 ## 0.33.0 — Prettification: footguns + dead surface + README rescue — 2026-05-13
 
 Tightens the v0.32 consumption interface before the next wave of consumer

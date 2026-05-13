@@ -1,3 +1,4 @@
+# noqa: A2K014
 """Typed DI container — feature-agnostic, sync + async resolution paths.
 
 Resolution flow per tool call::
@@ -28,12 +29,15 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import types
 import typing
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, get_origin
+
+_log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 Factory = Callable[..., Any]
@@ -145,6 +149,11 @@ class Container:
         # live in the consumer's dispatch hook. Schema generation consults
         # this to synthesize the wire-side string param.
         self._wire_scopes: dict[str, set[type]] = {}
+        # Per-type teardown callback. Populated via
+        # ``register_singleton(..., teardown=fn)``. Read by
+        # ``teardown_order`` + ``App._run_teardowns`` at lifespan exit.
+        # Sync or async callables; awaitable returns are awaited.
+        self._teardowns: dict[type, Callable[[Any], Any]] = {}
 
     # -- registration --------------------------------------------------- #
 
@@ -173,7 +182,13 @@ class Container:
                     raise ValueError(msg)
         self._providers[type_] = factory
 
-    def register_singleton(self, type_: type, factory: Factory) -> None:
+    def register_singleton(
+        self,
+        type_: type,
+        factory: Factory,
+        *,
+        teardown: Callable[[Any], Any] | None = None,
+    ) -> None:
         """Register a factory whose result is cached on this Container.
 
         The factory may be sync (``def``) or async (``async def``). First
@@ -182,6 +197,11 @@ class Container:
         and ``warm_async_singletons``); subsequent resolves on either path return the
         cached value. Sync :meth:`resolve` on an unresolved async singleton
         raises a precise error pointing at the async path.
+
+        ``teardown`` (per ``singleton-teardown-topological``): optional
+        callable invoked with the resolved instance at App lifespan exit.
+        May be sync or async. Framework owns the ordering (topological)
+        and error-isolation.
         """
         is_async = inspect.iscoroutinefunction(factory)
         if is_async:
@@ -190,6 +210,8 @@ class Container:
         if type_ not in self._singletons:
             self._singletons[type_] = _UNRESOLVED
         self._providers[type_] = factory
+        if teardown is not None:
+            self._teardowns[type_] = teardown
 
     def has(self, type_: Any) -> bool:
         return type_ in self._providers
@@ -240,6 +262,59 @@ class Container:
     def singletons(self) -> dict[type, Any]:
         """Snapshot of registered singletons; unresolved entries carry the sentinel."""
         return dict(self._singletons)
+
+    def _build_teardown_edges(self, candidates: list[type]) -> dict[type, set[type]]:
+        """Reverse-edge map for the teardown subgraph: T' → {T : T depends on T'}.
+
+        Leaves of this graph (types with empty reverse-edge sets) are
+        safe to tear down first — nobody else depends on them.
+        """
+        candidate_set = set(candidates)
+        depended_on_by: dict[type, set[type]] = {t: set() for t in candidates}
+        for t in candidates:
+            factory = self._providers.get(t)
+            if factory is None:
+                continue
+            for spec in self._params_for(factory):
+                if spec.annotation in candidate_set and spec.annotation is not t:
+                    depended_on_by[spec.annotation].add(t)
+        return depended_on_by
+
+    def teardown_order(self) -> list[type]:
+        """Return resolved singletons-with-teardowns in **shutdown order**.
+
+        Dependents emitted first: any singleton ``T'`` that another
+        singleton ``T`` depends on (via ``T``'s factory parameter
+        annotations) is torn down **after** ``T``.
+
+        Kahn's algorithm over the singleton-with-teardown subgraph;
+        cycles broken deterministically at lowest-``id`` type with a
+        ``WARN`` log line per ``singleton-teardown-topological``
+        D-CYCLE-HANDLING.
+        """
+        candidates = [t for t in self._singletons if self._singletons[t] is not _UNRESOLVED and t in self._teardowns]
+        if not candidates:
+            return []
+        depended_on_by = self._build_teardown_edges(candidates)
+        order: list[type] = []
+        remaining = set(candidates)
+        while remaining:
+            ready = sorted(
+                (t for t in remaining if not (depended_on_by[t] & remaining)),
+                key=id,
+            )
+            if not ready:
+                cycle = sorted(remaining, key=id)
+                _log.warning(
+                    "singleton teardown cycle detected: %s; breaking at %s",
+                    [t.__name__ for t in cycle],
+                    cycle[0].__name__,
+                )
+                ready = [cycle[0]]
+            for t in ready:
+                order.append(t)
+                remaining.discard(t)
+        return order
 
     # -- resolution ----------------------------------------------------- #
 

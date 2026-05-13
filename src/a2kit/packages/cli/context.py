@@ -53,6 +53,24 @@ _LEVEL_LABEL: dict[str, str] = {
 }
 
 
+class _StubResourceResult:
+    """Duck-typed stand-in for ``mcp.types.ResourceResult``.
+
+    Exposes ``.content`` (the file's str or bytes). a2kit avoids
+    importing the heavy ``mcp.types`` symbols on the cold-start
+    path; consumers that need exact ``ResourceResult`` semantics
+    use the real MCP transport.
+    """
+
+    __slots__ = ("content",)
+
+    def __init__(self, *, content: str | bytes) -> None:
+        self.content = content
+
+    def __repr__(self) -> str:
+        return f"_StubResourceResult(content={self.content!r})"
+
+
 class StderrToolContext:
     """CLI stub mimicking ``fastmcp.Context``'s public interface.
 
@@ -141,7 +159,19 @@ class StderrToolContext:
 
     # --- Resources (file:// only on CLI) ---------------------------------- #
 
-    async def read_resource(self, uri: str) -> Any:
+    async def read_resource(self, uri: str | Any) -> Any:
+        """Read a file:// resource and return a fastmcp-shaped result.
+
+        Signature mirrors ``fastmcp.Context.read_resource(uri: str | AnyUrl)
+        -> ResourceResult``. The return type is duck-typed
+        (``_StubResourceResult``) to avoid an eager ``mcp.types`` import on
+        cold-start; it exposes the ``.content`` attribute consumers
+        expect.
+
+        ``AnyUrl`` is accepted via ``str(uri)`` coercion; the runtime type
+        annotation stays loose to avoid importing pydantic.AnyUrl on
+        every CLI invocation.
+        """
         parsed = urlparse(str(uri))
         if parsed.scheme != "file":
             raise MCPOnlyError(
@@ -150,16 +180,17 @@ class StderrToolContext:
             )
         path = Path(parsed.path)
         try:
-            return path.read_text(encoding="utf-8")
+            content: str | bytes = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            return path.read_bytes()
+            content = path.read_bytes()
+        return _StubResourceResult(content=content)
 
     # --- Elicitation (primitive prompt loop) ------------------------------ #
 
     async def elicit(
         self,
         message: str,
-        response_type: Any = None,
+        response_type: type[Any] | list[str] | dict[str, dict[str, str]] | list[list[str]] | list[dict[str, dict[str, str]]] | None = None,
         *,
         response_title: str | None = None,  # noqa: ARG002
         response_description: str | None = None,  # noqa: ARG002
@@ -209,12 +240,48 @@ class StderrToolContext:
             hint=f"complex/nested response_type {response_type!r} not supported on CLI — use MCP transport",
         )
 
-    # --- MCP-only surface (raise) ----------------------------------------- #
+    # --- MCP-only surface (signature-mirror-then-raise) ------------------- #
+    #
+    # Signatures match ``fastmcp.Context`` exactly (per
+    # ``align-context-method-signatures`` Treatment 2). Bodies are a
+    # single ``raise MCPOnlyError(...)``. The signature parity is
+    # asserted by ``test_stub_signature_matches_fastmcp`` so any
+    # upstream fastmcp drift surfaces at CI time.
+    #
+    # Parameter types use string-quoted forms or ``Any`` to keep the
+    # cold-start path light — these signatures must not eagerly import
+    # ``mcp.types``, ``fastmcp.server.sampling.*``, etc., on a bare
+    # ``import a2kit``.
 
-    async def sample(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ARG002
+    async def sample(
+        self,
+        messages: Any,  # noqa: ARG002
+        *,
+        system_prompt: str | None = None,  # noqa: ARG002
+        temperature: float | None = None,  # noqa: ARG002
+        max_tokens: int | None = None,  # noqa: ARG002
+        model_preferences: Any = None,  # noqa: ARG002
+        tools: Any = None,  # noqa: ARG002
+        result_type: Any = None,  # noqa: ARG002
+        mask_error_details: bool | None = None,  # noqa: ARG002
+        tool_concurrency: int | None = None,  # noqa: ARG002
+    ) -> Any:
         raise MCPOnlyError("sample", hint="LLM sampling needs an MCP client")
 
-    async def sample_step(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ARG002
+    async def sample_step(
+        self,
+        messages: Any,  # noqa: ARG002
+        *,
+        system_prompt: str | None = None,  # noqa: ARG002
+        temperature: float | None = None,  # noqa: ARG002
+        max_tokens: int | None = None,  # noqa: ARG002
+        model_preferences: Any = None,  # noqa: ARG002
+        tools: Any = None,  # noqa: ARG002
+        tool_choice: Any = None,  # noqa: ARG002
+        execute_tools: bool = True,  # noqa: ARG002
+        mask_error_details: bool | None = None,  # noqa: ARG002
+        tool_concurrency: int | None = None,  # noqa: ARG002
+    ) -> Any:
         raise MCPOnlyError("sample_step", hint="LLM sampling needs an MCP client")
 
     async def list_resources(self) -> Any:
@@ -223,7 +290,11 @@ class StderrToolContext:
     async def list_prompts(self) -> Any:
         raise MCPOnlyError("list_prompts")
 
-    async def get_prompt(self, name: str, arguments: Any = None) -> Any:  # noqa: ARG002
+    async def get_prompt(
+        self,
+        name: str,  # noqa: ARG002
+        arguments: dict[str, Any] | None = None,  # noqa: ARG002
+    ) -> Any:
         raise MCPOnlyError("get_prompt")
 
     async def list_roots(self) -> Any:
@@ -232,30 +303,12 @@ class StderrToolContext:
     async def send_notification(self, notification: Any) -> None:  # noqa: ARG002
         raise MCPOnlyError("send_notification")
 
-    # --- Structured logger (matches MCP-side ``send_log_message``) -------- #
-
-    async def send_log_message(
-        self,
-        level: str,
-        logger: str | None = None,
-        data: Mapping[str, Any] | None = None,
-    ) -> None:
-        """Emit a structured log line: ``[ +s.mmm <LEVEL>] <logger> <kv>``.
-
-        Mirrors the MCP-server-side ``send_log_message`` so portable code
-        that wants structured fields (rather than ``info``'s free-form
-        kwargs) renders identically on both transports. Coerces non-JSON
-        values via ``str(v)`` to keep stderr legible.
-        """
-        label = _LEVEL_LABEL.get(level.lower(), level.upper())
-        fields: dict[str, Any] = {}
-        if data:
-            for k, v in data.items():
-                fields[k] = v if isinstance(v, (str, int, float, bool, type(None))) else str(v)
-        msg = logger or ""
-        self._emit(label, msg, fields)
-
     # --- LDD wire-format primitive (used by a2kit.ldd) -------------------- #
+    # (Note: previously ``send_log_message`` mirrored the MCP-side
+    # session method here, but it was never invoked from anywhere in
+    # src/, tests/, or examples/ — deleted per
+    # ``align-context-method-signatures`` Treatment 3. ``a2kit.ldd``
+    # routes directly through ``_emit`` on the CLI side.)
 
     def _emit(
         self,

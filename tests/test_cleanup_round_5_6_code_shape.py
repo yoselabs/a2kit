@@ -33,15 +33,27 @@ class _NoCtxRouter(a2kit.Router):
 
 
 def test_test_client_no_ctx_tool_raises_on_ldd_primitive() -> None:
-    """TestClient must not synthesize a capturing ctx for a no-ctx tool."""
+    """TestClient must not synthesize a capturing ctx for a no-ctx tool.
+
+    Post ``rebuild-test-client-on-real-context`` the test client routes
+    through the real MCP transport; the exception surfaces as
+    ``ToolError`` carrying the a2kit-owned envelope with
+    ``payload["class"] == "AmbientContextMissing"``.
+    """
+    import json as _json
+
+    from fastmcp.exceptions import ToolError
+
     from a2kit.testing import client
 
     app = a2kit.App("noctx").add_router(_NoCtxRouter())
 
     async def go() -> None:
         async with client(app) as c:
-            with pytest.raises(AmbientContextMissing):
+            with pytest.raises(ToolError) as excinfo:
                 await c.invoke("ping")
+            payload = _json.loads(str(excinfo.value))
+            assert payload["class"] == "AmbientContextMissing"
 
     asyncio.run(go())
 

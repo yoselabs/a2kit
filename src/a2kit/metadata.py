@@ -45,6 +45,7 @@ class A2KitMetaExtras(BaseModel):
     router_slug: str | None = None  # noqa: A2K-CORE-CLEAN
     visibility: str | None = None  # noqa: A2K-CORE-CLEAN
     list_view: ListViewSettings | None = None  # noqa: A2K-CORE-CLEAN
+    timeout_seconds: float | None = None  # noqa: A2K-CORE-CLEAN
 
 
 @dataclass(frozen=True, slots=True)

@@ -34,110 +34,162 @@ The MCP runtime adapter SHALL pass the live `fastmcp.Context` instance directly 
 
 ### Requirement: CLI transport supplies a fastmcp.Context-shaped stub
 
-The CLI runtime SHALL bind a CLI-specific stub class (the rewritten `StderrToolContext`) to the `ctx` parameter. The stub SHALL expose every public method of `fastmcp.Context` as listed in the FastMCP version pinned in `pyproject.toml`. Stub behavior is defined per-method:
+The CLI runtime SHALL bind a CLI-specific stub class (`StderrToolContext`)
+to the `ctx` parameter. The stub SHALL expose every public method of
+`fastmcp.Context` as listed in the FastMCP version pinned in
+`pyproject.toml`, with **signatures matching `fastmcp.Context` exactly**
+(modulo `self`). Stub behavior is defined per-method:
 
-- `debug`, `info`, `warning`, `error` — emit a stderr line in the existing LDD wire format `[ +s.mmm LEVEL] msg key=val`.
-- `report_progress(current, total)` — emit a stderr line `[ +s.mmm progress] current=N total=M`.
-- `elicit(message, response_type)` — render the elicitation JSON schema as a sequence of `click.prompt` calls and return an `ElicitResult` with `action="accept"` and validated `data`. Ctrl-D (EOF) returns `action="cancel"`. A literal sentinel input `--decline` returns `action="decline"`.
-- `read_resource(uri)` — for `file://` URIs, read and return the file contents; for any other scheme, raise `MCPOnlyError`.
-- `set_state(key, value)`, `get_state(key)`, `delete_state(key)` — operate on a per-instance in-memory dict scoped to one CLI invocation.
-- `send_log_message(level, logger, data)` — emit a stderr line in LDD wire format `[ +s.mmm <LEVEL>] <logger> <key=value pairs>` where `data` dict entries are rendered as space-separated `key=value` (non-JSON-serializable values coerced via `str(v)`). Honors the LDD events kill-switch: when `app.ldd_events()` is `False` (or env `A2KIT_LDD=off`), the call is a no-op. This primitive backs `a2kit.ldd.event`'s CLI rendering.
-- `sample`, `list_resources`, `list_prompts`, `get_prompt`, `list_roots`, `send_notification` — raise `MCPOnlyError` (subclass of `RuntimeError`) with a message identifying the method and pointing the user at MCP transport.
+- `debug`, `info`, `warning`, `error` — signature
+  `(message: str, logger_name: str | None = None, extra: Mapping[str, Any] | None = None)`.
+  Emit a stderr line in the LDD wire format `[ +s.mmm LEVEL] message k=v ...`
+  where `k=v` pairs come from `extra` (plus a synthesised `logger=...`
+  pair when `logger_name` is provided). The stub SHALL NOT accept
+  arbitrary `**fields` kwargs; the kwargs form is reserved for
+  `a2kit.ldd.log` (see below).
+- `report_progress(progress, total=None, message=None)` — emit a
+  stderr line `[ +s.mmm progress] current=N total=M`.
+- `elicit(message, response_type=None, *, response_title=None, response_description=None)` —
+  render via stdin loop; sentinel `--decline` returns
+  `DeclinedElicitation`; EOF/SIGINT returns `CancelledElicitation`;
+  otherwise `AcceptedElicitation(data=...)`.
+- `read_resource(uri)` — `file://` URIs return contents; other schemes raise `MCPOnlyError`.
+- `set_state`, `get_state`, `delete_state` — per-instance dict scoped to one CLI invocation.
+- `send_log_message(level, logger, data)` — emit a stderr line in LDD wire format.
+- `sample`, `list_resources`, `list_prompts`, `get_prompt`, `list_roots`,
+  `send_notification` — raise `MCPOnlyError`.
 
-#### Scenario: Logging works in CLI
-- **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext) -> str` calling `ctx.info("hi", x=1)`
+#### Scenario: Plain logging works in CLI
+
+- **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext) -> str` calling `ctx.info("hi")`
 - **WHEN** the tool runs via `<app> tasks t`
+- **THEN** stderr contains a line matching `[ +\d+\.\d+ INFO    ] hi`
+
+#### Scenario: Logging with extra works in CLI
+
+- **GIVEN** a tool calling `await ctx.info("hi", extra={"x": 1})`
+- **WHEN** the tool runs via CLI
 - **THEN** stderr contains a line matching `[ +\d+\.\d+ INFO    ] hi x=1`
 
-#### Scenario: Elicit prompts on stdin
-- **GIVEN** a tool calling `await ctx.elicit("info", response_type=UserInfo)` where `UserInfo` is a dataclass `(name: str, age: int)`
-- **WHEN** the tool runs via CLI with stdin `Alice\n42\n`
-- **THEN** the call returns `ElicitResult(action="accept", data=UserInfo(name="Alice", age=42))`
+#### Scenario: Stub signatures match fastmcp.Context
 
-#### Scenario: Sample raises MCPOnlyError
-- **GIVEN** a tool calling `await ctx.sample("hello")`
-- **WHEN** the tool runs via CLI
-- **THEN** the call raises `MCPOnlyError` with a message containing `"sample"` and `"MCP transport"`
+- **WHEN** `inspect.signature(StderrToolContext.<method>)` is compared
+  against `inspect.signature(fastmcp.Context.<method>)` for each of
+  `info`, `warning`, `error`, `debug`, `log`, `report_progress`,
+  `read_resource`, `elicit`, `set_state`, `get_state`, `delete_state`
+- **THEN** the signatures are identical modulo the `self` parameter
 
-#### Scenario: read_resource handles file:// URIs only
-- **WHEN** a tool calls `ctx.read_resource("file:///tmp/x.txt")` in CLI
-- **THEN** the file is read and its contents returned
-- **WHEN** a tool calls `ctx.read_resource("https://example.com/")` in CLI
-- **THEN** the call raises `MCPOnlyError`
+#### Scenario: Kwargs on ctx.info are rejected
 
-#### Scenario: State scoped to a single invocation
-- **WHEN** a tool calls `ctx.set_state("k", "v")` then `ctx.get_state("k")` in the same CLI invocation
-- **THEN** the second call returns `"v"`
-- **WHEN** a separate CLI invocation of the same tool calls `ctx.get_state("k")`
-- **THEN** the call returns `None`
-
-#### Scenario: Stub stays in lockstep with fastmcp.Context surface
-- **WHEN** the CLI stub class is inspected at test time against `dir(fastmcp.Context)`
-- **THEN** every public method (non-`_` prefixed) on `fastmcp.Context` is either implemented on the stub or in the documented MCP-only allowlist
+- **GIVEN** a tool calling `await ctx.info("hi", foo=1)`
+- **WHEN** the tool runs via CLI **or** MCP
+- **THEN** the call raises `TypeError`. The tool is expected to use
+  `await a2kit.ldd.info(ctx, "hi", foo=1)` instead.
 
 ### Requirement: ctx parameter excluded from input schema
 
-When a tool function declares a parameter typed `a2kit.ToolContext` (i.e. `fastmcp.Context`), schema generation, CLI option synthesis, and MCP wire-input synthesis SHALL exclude that parameter from the user-facing input surface.
+When a tool function declares a parameter typed `a2kit.ToolContext` (i.e. `fastmcp.Context`), schema generation, CLI option synthesis, and MCP wire-input synthesis SHALL exclude that parameter from the **user-facing input surface** — that is, the agent-supplied `inputSchema` over MCP and the `--option`-style command-line flags over CLI.
+
+The exclusion SHALL apply only to the user-facing input surface. The **internal** call-time signature that the MCP transport introspects to bind framework-supplied parameters (notably the live `fastmcp.Context`) SHALL retain the ctx parameter so that FastMCP injects it at dispatch time. Wrapper code that rewrites a tool's `__signature__` for FastMCP introspection MUST include the ctx parameter when the tool declares one.
 
 #### Scenario: ctx omitted from MCP schema
+
 - **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext, name: str) -> str`
 - **WHEN** the MCP tool schema is generated
 - **THEN** the schema input properties include `name` only
 
 #### Scenario: ctx omitted from CLI options
+
 - **GIVEN** the same tool registered in a CLI app
 - **WHEN** the user runs `<app> tasks t --help`
 - **THEN** the option list shows `--name` and not `--ctx`
 
+#### Scenario: ctx preserved in internal call-time signature over MCP
+
+- **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext, name: str, state: AppState) -> str` where `state: AppState` is supplied via `app.singleton(AppState, ...)`
+- **WHEN** the MCP transport assembles the wrapper chain for `t` and FastMCP introspects the outermost wrapped function
+- **THEN** the introspected signature contains both `name` and `ctx` (FastMCP-injected) as keyword-only parameters
+- **AND** an `mcp` `tools/call` with `arguments={"name": "x"}` reaches `t`'s body with all three kwargs (`name`, `ctx`, `state`) bound and returns successfully
+
+#### Scenario: ctx and container-DI combine cleanly over MCP
+
+- **GIVEN** a tool that declares both `state: T` (container-resolved) AND `ctx: a2kit.ToolContext`
+- **WHEN** the tool is invoked via `fastmcp.Client(transport=build_mcp_server(app))`
+- **THEN** the response is a successful tool result (NOT `{isError: true}`)
+- **AND** the body received both `state` (from the container) and `ctx` (from FastMCP)
+
 ### Requirement: LDD event and report primitives are protocol-neutral functions
 
-The library SHALL expose `a2kit.ldd.event(payload, *, name=None, **kw)`, `a2kit.ldd.report(payload)`, and `a2kit.ldd.log(level, msg_or_instance, **fields)` (with shorthands `a2kit.ldd.debug`, `a2kit.ldd.info`, `a2kit.ldd.warning`, `a2kit.ldd.error`) as free functions. These functions SHALL NOT take a `ctx` parameter. Each function SHALL resolve the live transport context from the ambient `_LddState` set by the active `ldd_state_for_call` dispatch scope.
+The library SHALL expose `a2kit.ldd.event(ctx, ...)`,
+`a2kit.ldd.report(ctx, ...)`, and `a2kit.ldd.log(ctx, level, msg_or_instance, **fields)`
+as free functions that accept any `fastmcp.Context`-shaped object. The
+three SHALL share a single dispatch shape (identity-check against the
+live ctx type and route to either `ctx.log(extra=...)` on MCP or
+`StderrToolContext._emit(...)` on CLI).
 
-The `event` function SHALL accept either form:
+`a2kit.ldd.log` SHALL accept two call forms, matching `event`'s
+shape verbatim:
 
-1. **Kwargs form**: `event("name_string", key=value, ...)`. First positional is the event name; remaining kwargs are the payload.
-2. **Typed form**: `event(instance)`. First positional is any class instance. Name defaults to `type(instance).__name__`; explicit `name=` overrides. Payload derived from the instance:
-   - `dataclasses.asdict(instance)` if dataclass.
-   - `instance.model_dump(mode="json")` if pydantic `BaseModel`.
-   - `vars(instance)` fallback.
-   - Any `Enum` value in the payload is replaced by `value.value`.
+- **String form**: `log(ctx, "info", "msg", k=v, ...)`. Third
+  positional is the message; remaining kwargs are fields.
+- **Instance form**: `log(ctx, "info", instance)`. Third positional
+  is a dataclass / pydantic `BaseModel` / object. Message defaults
+  to `type(instance).__name__`; fields derive via
+  `model_dump(mode="json")` (pydantic), `dataclasses.asdict`
+  (dataclass), or `vars(instance)` (fallback). `Enum` values
+  are unwrapped to `.value`.
 
-The library SHALL NOT add `event`, `report`, or `log` methods to the `a2kit.ToolContext` re-export. Existing `--no-events` / `--no-reports` CLI flags and the `A2KIT_LDD` env var SHALL continue to gate these primitives. The library SHALL NOT offer an explicit-`ctx` overload of any LDD primitive.
+Convenience aliases `a2kit.ldd.info`, `warning`, `error`, `debug`
+forward to `log` with the appropriate level literal and accept the
+same two forms.
 
-#### Scenario: Kwargs form delivers an event using ambient ctx
+The library SHALL NOT add `event`, `report`, or `log` methods to the
+`a2kit.ToolContext` re-export. Existing `--no-events` / `--no-reports`
+CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
+`log` SHALL share the events flag's kill-switch.
 
-- **GIVEN** a tool body executing inside an active dispatch (`ldd_state_for_call` entered with the live `ctx`)
-- **WHEN** the tool calls `await a2kit.ldd.event("api.fetched", count=30)`
-- **THEN** the MCP client receives a `notifications/message` whose `data={"name": "api.fetched", "count": 30, "elapsed_ms": ...}`
-- **AND** the tool body did not pass `ctx` to `event`
+#### Scenario: a2kit.ldd.info delivers a structured message on MCP
 
-#### Scenario: Typed form delivers an event by class
+- **GIVEN** a tool calling `await a2kit.ldd.info(ctx, "starting", batch=2)`
+- **WHEN** the tool runs under `<app> serve` via `fastmcp.Client`
+- **THEN** the client receives a `notifications/message` whose
+  `level="info"`, `message="starting"`, `extra={"batch": 2, "elapsed_ms": ...}`
 
-- **GIVEN** `@dataclass class ApiFetched: count: int` and a tool body inside an active dispatch
-- **WHEN** the tool calls `await a2kit.ldd.event(ApiFetched(count=30))`
-- **THEN** the MCP client receives a `notifications/message` whose `data={"name": "ApiFetched", "count": 30, "elapsed_ms": ...}`
+#### Scenario: a2kit.ldd.info renders the same line on CLI
 
-#### Scenario: Typed form with enum field
+- **GIVEN** the same tool
+- **WHEN** the tool runs via `<app> tasks t`
+- **THEN** stderr contains a line matching `[ +\d+\.\d+ INFO    ] starting batch=2`
 
-- **GIVEN** `class Verdict(Enum): OK = "ok"` and `@dataclass class TierEnded: verdict: Verdict`
-- **WHEN** `await a2kit.ldd.event(TierEnded(verdict=Verdict.OK))` is called inside a dispatch
-- **THEN** the delivered payload contains `"verdict": "ok"` (the enum value, not the enum instance)
+#### Scenario: Both transports agree on payload contents
 
-#### Scenario: Explicit name override
+- **GIVEN** identical `a2kit.ldd.info(ctx, "x", n=42)` calls under
+  MCP and CLI
+- **THEN** the structured `extra` payload (or its CLI `key=value`
+  rendering) carries the same fields with the same values, except
+  for transport-specific framing. `elapsed_ms` appears in both.
 
-- **WHEN** `await a2kit.ldd.event(ApiFetched(count=30), name="api.custom_name")` is called inside a dispatch
-- **THEN** the delivered `data["name"]` is `"api.custom_name"`, not `"ApiFetched"`
+#### Scenario: Instance form derives message and fields
 
-#### Scenario: --no-events suppresses both forms
+- **GIVEN** `@dataclass class ImportStarted: file: str; batch: int`
+- **WHEN** `await a2kit.ldd.info(ctx, ImportStarted(file="/x.csv", batch=2))` is called
+- **THEN** the delivered payload has `message="ImportStarted"` and
+  `extra={"file": "/x.csv", "batch": 2, "elapsed_ms": ...}` on MCP,
+  rendering as `[ +s.mmm INFO    ] ImportStarted file=/x.csv batch=2` on CLI
 
-- **WHEN** the same tool runs with `--no-events`
-- **THEN** neither form delivers an event, but neither call raises
+#### Scenario: Instance form and string form produce identical wire payload
 
-#### Scenario: log primitive resolves ambient ctx
+- **GIVEN** `MyDC(x=1, y=2)` as a dataclass
+- **WHEN** `a2kit.ldd.info(ctx, MyDC(x=1, y=2))` and
+  `a2kit.ldd.info(ctx, "MyDC", x=1, y=2)` are called
+- **THEN** the delivered `extra` (MCP) or rendered key=value pairs
+  (CLI) are identical key-for-key, except `elapsed_ms`
 
-- **GIVEN** a tool body inside an active dispatch
-- **WHEN** the tool calls `await a2kit.ldd.log("info", "msg", k=1)` (no `ctx` argument)
-- **THEN** the rendered emission carries `"msg"` and `k=1` on the active transport (MCP `ctx.log` or CLI stderr line)
+#### Scenario: msg is capped at 60 chars before transport
+
+- **WHEN** `a2kit.ldd.info(ctx, "<200-char string>", k=1)` is called on either transport
+- **THEN** the delivered `message` (MCP) or rendered text (CLI) is
+  exactly 60 characters with the final character `…`
 
 ### Requirement: LDD wire-format invariants are owned by `a2kit.ldd`
 
@@ -281,4 +333,92 @@ If any of `a2kit.ldd.event`, `a2kit.ldd.report`, `a2kit.ldd.log`, `a2kit.ldd.deb
 
 - **WHEN** `await a2kit.ldd.warning("x")`, `await a2kit.ldd.error("x")`, `await a2kit.ldd.debug("x")` are each called outside an active dispatch
 - **THEN** each call raises `AmbientContextMissing` whose message names the called shorthand (`"a2kit.ldd.warning"`, `"a2kit.ldd.error"`, `"a2kit.ldd.debug"` respectively), not `"a2kit.ldd.log"`
+
+### Requirement: Decoration-time invariant — rewritten MCP signature contains ctx
+
+When the MCP runtime wraps a tool function with the dispatch-hook signature rewrite, the rewritten `__signature__` SHALL contain the tool's ctx parameter name whenever `A2KitMeta.context_param_name` is non-None for that tool. The rewrite SHALL raise `a2kit.exceptions.A2KitContextBindingBroken` at App-construction time if the invariant does not hold.
+
+The check is framework-internal: user code cannot cause it to fire. Its purpose is to catch wrapper-chain regressions immediately when the App is constructed, before any tool call reaches a real transport.
+
+#### Scenario: App fails to build when wrapper chain drops ctx
+
+- **GIVEN** a hypothetical regression in `_wrap_with_dispatch_hook` that produces a rewritten signature missing the ctx parameter
+- **WHEN** `App.add_router` runs and the MCP wrapper chain is assembled for a tool with `ctx: a2kit.ToolContext`
+- **THEN** the call raises `A2KitContextBindingBroken` with `fn_name` and `ctx_param_name` attributes
+- **AND** the error message identifies the regression as framework-internal and instructs the user to file an issue
+
+#### Scenario: Normal apps build without raising
+
+- **GIVEN** a correctly-functioning a2kit installation (post fix-mcp-dispatch-strips-ctx)
+- **WHEN** any App with any tool combination is built
+- **THEN** no `A2KitContextBindingBroken` exception is raised
+
+### Requirement: Optional-ctx annotation form rejected at decoration time
+
+A tool function's ctx parameter annotation MUST be exactly `a2kit.ToolContext` (or equivalent re-export of `fastmcp.Context`). Annotations of the form `ctx: ToolContext | None`, `ctx: Optional[ToolContext]`, or `ctx: Union[ToolContext, None]` SHALL be rejected at decoration time with `a2kit.exceptions.A2KitInvalidContextAnnotation`.
+
+The rejection enforces the runtime invariant that ctx is always bound by the dispatcher when declared: there is no transport or test path that produces a `None` ctx for a declared parameter. The Optional form is misleading typing with no corresponding runtime semantics.
+
+#### Scenario: Optional ctx rejected
+
+- **GIVEN** a tool body `async def t(*, msg: str, ctx: a2kit.ToolContext | None = None) -> dict`
+- **WHEN** `@a2kit.read()` decorates the function
+- **THEN** the decoration raises `A2KitInvalidContextAnnotation`
+- **AND** the message identifies the parameter name and includes the hint "ctx is always bound by the dispatcher when declared; drop '| None' from the annotation, or remove ctx entirely if the tool does not need it."
+
+#### Scenario: Plain ToolContext accepted
+
+- **GIVEN** a tool body `async def t(*, msg: str, ctx: a2kit.ToolContext) -> dict`
+- **WHEN** `@a2kit.read()` decorates the function
+- **THEN** the decoration succeeds and `A2KitMeta.context_param_name == "ctx"`
+
+#### Scenario: No ctx declaration accepted
+
+- **GIVEN** a tool body `async def t(*, msg: str) -> dict`
+- **WHEN** `@a2kit.read()` decorates the function
+- **THEN** the decoration succeeds and `A2KitMeta.context_param_name is None`
+
+### Requirement: Transport-parity matrix
+
+A test suite SHALL pin the contract that a tool's behavior is identical across the CLI and MCP transports for the four canonical declaration combinations of `(state-DI present, ctx-DI present)`. The suite SHALL drive the MCP transport through `fastmcp.Client(transport=build_mcp_server(app))` (not the in-process test client) so the full production wrapper chain — including `_wrap_with_dispatch_hook`'s signature rewrite and `_wrap_with_ldd_state`'s ambient binding — is exercised. The suite SHALL assert both successful-payload structural equality and exact exception-class parity on misuse cases.
+
+#### Scenario: All four declaration combos pass parity
+
+- **GIVEN** the test fixture App with four tools: `tool_none` (neither), `tool_state` (state only), `tool_ctx` (ctx only), `tool_both` (both)
+- **WHEN** each tool is invoked over both CLI and MCP with the same kwargs
+- **THEN** the returned payloads are structurally equal across transports for every tool
+
+#### Scenario: Error class parity for unknown-kwarg misuse
+
+- **GIVEN** a tool `tool_none` invoked with an unknown kwarg `extra="y"`
+- **WHEN** invoked on each transport
+- **THEN** both transports surface an error of the same Python exception class (`TypeError`)
+
+### Requirement: Field-bearing logging lives on `a2kit.ldd.*`, not on `ctx.*`
+
+The library SHALL document `a2kit.ldd.info` (and siblings) as the
+canonical structured-narrative logging primitive. The library SHALL
+treat `ctx.info(msg, **fields)` (with kwargs other than `logger_name`
+/ `extra`) as an antipattern and reject it at runtime via fastmcp's
+narrow signature.
+
+#### Scenario: Antipattern is documented
+
+- **WHEN** the ANTIPATTERNS.md is inspected
+- **THEN** an entry exists titled "Kwargs on `ctx.info/warning/error/debug`"
+  with the recommended replacement `a2kit.ldd.info(ctx, ...)` and a
+  pointer to this requirement.
+
+<!--
+  Removed-requirement note: the legacy "Logging works in CLI with kwargs form"
+  requirement is not present in the canonical mcp-context-passthrough spec at
+  archive time (kwargs-on-ctx logging was never a SHALL-level requirement, only
+  an asserted behaviour in prior tests). No REMOVED clause is emitted.
+
+  Migration carried over:
+  `s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.ldd.\1(ctx, "\2", \3)/`
+  catches the documented call shapes. `ctx.info("plain string")` and
+  `ctx.info("msg", extra={...})` continue to work — they were always
+  fastmcp-compatible.
+-->
 

@@ -222,7 +222,12 @@ property, not duplication.
    as Python exceptions on the `await call_tool(...)` line? The current
    `_CapturingContext` re-raises directly; if the new client wraps in
    `ToolError`, tests that `pytest.raises(MyError)` need a wrapper-aware
-   helper. Decide during phase 0 smoke.
+   helper. **Resolved (phase 0, 2026-05-14)**: exceptions surface as
+   `fastmcp.exceptions.ToolError` carrying the a2kit-owned structured
+   envelope from `mcp-structured-wire-error-envelope`. Body:
+   `json.loads(str(exc)) == {"class": ..., "message": ..., [traceback]}`.
+   Tests asserting on Python exception classes must parse the envelope
+   or use `raise_on_error=False`.
 
 2. **Sinks**: today, sinks registered on `app.ldd.add_sink(...)` fire
    per-emission. Under the new client, fan-out still happens (sinks
@@ -233,9 +238,122 @@ property, not duplication.
    tool body — does the in-memory transport pass it through cleanly,
    or wrap it? The cold-start tests' cancellation scenarios
    (`tests/test_spike_cancellation_flush.py`) are the canary.
+   **Pending validation against the canary suite.**
 
 4. **Should `c.logs` include LDD lines emitted by `a2kit.ldd.event` /
    `report`**, or only those emitted by `a2kit.ldd.log` and bare
    `ctx.log` / `ctx.info`? Today the lists are disjoint by `a2kit_kind`
    marker; new client preserves this. Document explicitly so test
    authors don't assert against the wrong list.
+
+## Phase-0 Findings — design blockers uncovered 2026-05-14
+
+A speculative implementation pass (reverted) attempted swapping
+`TestClient` to a real `fastmcp.Client(transport=build_mcp_server(app))`
+keeping the dict-shaped capture surfaces unchanged. The pass surfaced
+two blocking issues this design does not yet resolve:
+
+### Blocker P0-1 — typed-return marshaling differs from raw Python
+
+The legacy `_invoke_through_dispatcher` returns the tool's raw Python
+value (e.g. a `list[Root]` of user-declared dataclasses). The new
+client receives `result.data` from `fastmcp.Client.call_tool`, which
+is the **FastMCP-unmarshaled** form — a Pydantic-validated copy that
+synthesizes types from the tool's return annotation. For
+`tests/test_in_process_client.py::test_invoke_returns_value`:
+
+```
+expected = [_Item(id=1, name='alpha'), _Item(id=2, name='beta')]
+got      = [Root(id=1, name='alpha'),  Root(id=2, name='beta')]
+                ↑ FastMCP-synthesized type with identical fields
+```
+
+The user-declared type `_Item` and the FastMCP-synthesized `Root` are
+field-equivalent but not identity-equal. Every test asserting on
+`isinstance` or exact class will break. This is a real semantic
+shift, not a migration hint.
+
+**Resolution options** (decision needed before phase 1):
+
+- **(A)** Document the semantic shift as intentional; migrate tests
+  to compare by `model_dump()` or field-wise equality. Honest about
+  the wire round-trip; preserves the "real transport" goal.
+- **(B)** Hybrid client: drive notifications/logs through the real
+  transport (so capture surfaces exercise the wrapper chain) but
+  return the raw Python value via a side-channel. Loses some fidelity;
+  preserves test ergonomics.
+- **(C)** Don't rewrite `invoke()`; keep the dispatcher-direct path
+  for return values, only wire `log_handler`/`progress_handler` to
+  the real transport for emissions. Smallest change, but `invoke()`
+  itself never exercises the MCP wrapper chain (defeats the original
+  goal for transport-parity assertion).
+
+### Blocker P0-2 — `ldd.event` over real MCP crashes on `name` field
+
+`a2kit.ldd.event` emits via `ctx.log(extra={"a2kit_kind": "event",
+"name": ..., "payload": ..., "elapsed_ms": ...})`. FastMCP's
+`ctx.log` implementation calls
+`to_client_logger.log(level=..., msg=..., extra=data.extra)` as a
+server-side side effect before sending the notification. Python's
+`logging.makeRecord` rejects `extra` containing `name` (reserved
+`LogRecord` attribute), raising
+`KeyError: "Attempt to overwrite 'name' in LogRecord"`. The
+exception then propagates as a `ToolError` on the wire.
+
+The legacy `_CapturingContext` masked this entirely by intercepting
+`_emit` directly before fastmcp's logging pipeline. Every test that
+exercises `ldd.event` over the real transport hits this. The
+existing `test_field_logging_mcp_path.py` doesn't hit it only because
+its tools use `ldd.info` (no `name` field), not `ldd.event`.
+
+**Resolution options** (decision needed before phase 1):
+
+- **(A)** Fix `a2kit.ldd.event` to use a non-reserved key in `extra`
+  (e.g. rename to `event_name`); update spec scenarios in
+  `mcp-context-passthrough` that say `data["name"]`. Out of scope
+  for this change; would belong in a follow-up to
+  `field-logging-via-ldd`.
+- **(B)** Prefix all a2kit-internal keys in `extra` with `a2kit_`
+  (`a2kit_name`, `a2kit_payload`, `a2kit_elapsed_ms`). Safer against
+  the full LogRecord reserved set; same scope concern as (A).
+- **(C)** Sanitize at the wire-emit site by inserting a `logging.Filter`
+  that rewrites reserved keys before they reach `makeRecord`.
+  Doesn't change the wire shape consumers see. Possibly the cleanest
+  fix; needs a probe pass.
+
+### Decisions (made 2026-05-14)
+
+**P0-1 — Option (A) chosen.** Embrace FastMCP's typed-return marshaling
+as the documented shape of `c.invoke()`. Tests that asserted on
+identity-equal user-declared dataclasses migrate to either
+`model_dump()` comparison, field-wise comparison, or `result_pydantic_model.id == 1` style attribute checks. Empirically (phase-0 probe)
+this affects exactly one existing test
+(`tests/test_in_process_client.py::test_invoke_returns_value`); the
+migration is one assertion change. The benefit is full real-wrapper-
+chain coverage for every consumer of the test client, end-to-end with
+zero side-channels.
+
+**P0-2 — Option (B) chosen.** Prefix all a2kit-internal keys in
+`ctx.log(extra=...)` payloads with `a2kit_` to dodge Python's
+`LogRecord` reserved-attribute set. Affects three sites in
+`src/a2kit/packages/ldd/__init__.py`:
+
+- `event` path: `name` → `a2kit_name`, `payload` → `a2kit_payload`,
+  `elapsed_ms` → `a2kit_elapsed_ms`, `a2kit_kind` stays.
+- `report` path: `type` → `a2kit_type`, `payload` → `a2kit_payload`,
+  `elapsed_ms` → `a2kit_elapsed_ms`.
+- `log` path: only `elapsed_ms` → `a2kit_elapsed_ms` (user-supplied
+  fields stay un-prefixed; users sanitizing their own keys is on them,
+  not the framework).
+
+The capability spec scenarios in `mcp-context-passthrough` that
+literally say `data={"name": "api.fetched", ...}` are stale — they
+were never actually deliverable because the wire emit crashed. The
+spec delta in this change updates them to match the new prefixed
+wire shape.
+
+The test client's `_on_log` handler reads from the prefixed keys and
+maps them back to the public capture shape (`c.events[0]["name"]`,
+`c.events[0]["payload"]`, etc.) so test consumers see unchanged
+ergonomics. The framework owns the prefix-prefix-unprefix dance; tool
+authors never see it.

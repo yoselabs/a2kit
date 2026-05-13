@@ -255,7 +255,7 @@ def test_str_return_still_raises_existing_error() -> None:
             slug = "r"
 
             @a2kit.read()
-            async def t(self) -> str:
+            async def t(self) -> str:  # noqa: A2K002
                 return "hi"
 
             tools = (t,)

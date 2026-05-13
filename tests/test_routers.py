@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 import a2kit
 from a2kit.routers import Router
 
@@ -209,7 +211,15 @@ def test_router_empty_slug_raises() -> None:
         _R()
 
 
-def test_decorated_method_not_in_tuple_is_not_registered() -> None:
+def test_decorated_method_not_in_tuple_raises_at_app_construction() -> None:
+    """Post ``app-time-tools-tuple-validation``: ``App.add_router``
+    raises when a Router has decorated methods missing from its
+    ``tools`` tuple. Previously the methods were silently invisible
+    (a tier-1 footgun); the new contract fails loud at App
+    construction so the drift can't reach production.
+    """
+    from a2kit.exceptions import A2KitDecoratedMethodNotInTools
+
     class _R(Router):
         slug = "z"
 
@@ -224,10 +234,58 @@ def test_decorated_method_not_in_tuple_is_not_registered() -> None:
         tools = (listed,)
 
     app = a2kit.App("t")
-    app.add_router(_R())
+    with pytest.raises(A2KitDecoratedMethodNotInTools) as ei:
+        app.add_router(_R())
+    assert "unlisted" in ei.value.missing
+    assert "listed" not in ei.value.missing
+
+
+def test_all_decorated_methods_listed_passes() -> None:
+    """Negative case: every decorated method in tuple → add_router clean."""
+
+    class _R(Router):
+        slug = "z2"
+
+        @a2kit.read()
+        async def one(self) -> dict[str, int]:
+            return {"k": 1}
+
+        @a2kit.read()
+        async def two(self) -> dict[str, int]:
+            return {"k": 2}
+
+        tools = (one, two)
+
+    app = a2kit.App("t").add_router(_R())
     tool_names = {d.name for d in app.tools()}
-    assert "listed" in tool_names
-    assert "unlisted" not in tool_names
+    assert tool_names == {"one", "two"}
+
+
+def test_inherited_decorated_method_does_not_trigger_validation() -> None:
+    """A subclass that doesn't re-list an inherited decorated method
+    is fine — validation inspects only ``cls.__dict__``."""
+
+    class _Base(Router):
+        slug = "base"
+
+        @a2kit.read()
+        async def base_tool(self) -> dict[str, int]:
+            return {"k": 0}
+
+        tools = (base_tool,)
+
+    class _Sub(_Base):
+        slug = "sub"
+
+        @a2kit.read()
+        async def sub_tool(self) -> dict[str, int]:
+            return {"k": 1}
+
+        tools = (sub_tool,)
+
+    app = a2kit.App("t").add_router(_Sub())
+    tool_names = {d.name for d in app.tools()}
+    assert "sub_tool" in tool_names
 
 
 def test_plain_router_unchanged() -> None:
