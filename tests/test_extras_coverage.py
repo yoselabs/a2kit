@@ -250,7 +250,7 @@ def test_tool_generic_decorator_stamps_meta() -> None:
     from a2kit.metadata import get_meta
     from a2kit.tool import tool
 
-    @tool(name="manual", tags={"x"})
+    @tool(name="manual")
     async def fn() -> dict[str, int]:
         return {"a": 1}
 
@@ -258,7 +258,7 @@ def test_tool_generic_decorator_stamps_meta() -> None:
     assert meta is not None
     assert meta.tool_name == "manual"
     assert meta.verb == "tool"
-    assert "x" in meta.tags
+    assert meta.tags == frozenset()
 
 
 def test_tool_generic_decorator_defaults_to_function_name() -> None:

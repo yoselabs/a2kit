@@ -4,12 +4,13 @@
 
 A consumption-interface audit (explore session 2026-05-13) measured
 real usage of every public kwarg across all six example apps and the
-in-repo test suite. Three surfaces have **zero live readers** and
+in-repo test suite. Two surfaces have **zero live readers** and
 inflate every author's IDE autocomplete with knobs nobody turns:
 
 - **`tags=`** kwarg on `@a2kit.read/write/list_/tool`. Author-set tags
-  never appear in any example, downstream consumer, or test fixture.
-  The MCP server reads `meta.tags`, but every tag it cares about is
+  never appear in any example, downstream consumer, or test fixture
+  (only one test fixture sets it for coverage). The MCP server and
+  OTEL middleware read `meta.tags`, but every tag they care about is
   framework-auto-stamped (`"read"`, `"write"`, `"list"`, `"_meta"`).
   No author has ever set the kwarg.
 - **`Cap` enum + `capabilities` registry** in `a2kit.capabilities`.
@@ -17,9 +18,14 @@ inflate every author's IDE autocomplete with knobs nobody turns:
   lint-rule "did you mean Cap.X?" suggestion string, and nowhere else.
   No decorator usage, no consumer reads, no runtime contract. Pure
   aspirational surface.
-- **`App(..., debug=False)`** constructor flag. Stored on
-  `self.debug` and never read by any production code, test, or
-  example.
+
+`App(..., debug=False)` was originally listed in this proposal as
+dead. **It is not.** Re-verification found two live readers:
+`src/a2kit/packages/cli/builder.py:349` (stderr traceback emission)
+and `src/a2kit/packages/mcp/server.py:290`
+(`fastmcp_kwargs["mask_error_details"]`). Three tests in
+`test_operational_contracts.py` cover the behaviour. Out of scope
+for this change.
 
 Removing these shrinks the top-level surface (`a2kit.Cap`,
 `a2kit.capabilities`) by two exports and the decorator surface by
@@ -38,8 +44,6 @@ change for any real consumer.
   `src/a2kit/packages/lint/rules/caps.py` that suggests `Cap.X`
   spellings (the whole rule if its only purpose was capability
   validation).
-- **REMOVE** `debug` kwarg from `App.__init__` and `self.debug`
-  attribute.
 
 ## Non-goals
 
@@ -55,7 +59,6 @@ change for any real consumer.
 - Authors who set `tags={...}`: drop the kwarg. Zero in-repo callers.
 - Authors importing `a2kit.Cap` / `a2kit.capabilities`: delete.
   Zero in-repo callers (confirmed by grep).
-- Authors passing `debug=True`: drop. Zero readers regardless.
 
 ## Risk
 

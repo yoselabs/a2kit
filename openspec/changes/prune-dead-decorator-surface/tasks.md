@@ -4,8 +4,7 @@
 
 - [ ] 0.1 Baseline green: `make lint` + `make test`. Record test count.
 - [ ] 0.2 Confirm zero in-repo usage of each target symbol via grep
-      (`tags=`, `a2kit.Cap`, `capabilities.register`,
-      `App(.*debug=`).
+      (`tags=`, `a2kit.Cap`, `capabilities.register`).
 - [ ] 0.3 Confirm zero downstream usage by grepping the four
       consumer repos (a2web, a2db, a2atlassian, fox).
 
@@ -31,12 +30,7 @@
       `src/a2kit/packages/lint/rules/caps.py`. If the rule has no
       other purpose, delete the file and its test.
 
-## 3. Drop `App.debug=`
-
-- [ ] 3.1 Remove `debug` parameter from `App.__init__` in
-      `src/a2kit/app.py`.
-- [ ] 3.2 Remove `self.debug = debug` line.
-- [ ] 3.3 Remove any test that constructs `App(..., debug=True)`.
+## 3. ~~Drop App.debug=~~ — out of scope (live readers in CLI + MCP)
 
 ## 4. Verify
 
@@ -51,4 +45,4 @@
 
 - [ ] 5.1 CHANGELOG entry under "Breaking" with two-line migration note.
 - [ ] 5.2 Notify downstream maintainers (a2web, a2db, a2atlassian, fox)
-      that the next release drops `Cap` / `tags=` / `debug=`.
+      that the next release drops `Cap` and `tags=` kwarg.

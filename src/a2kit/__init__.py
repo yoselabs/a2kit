@@ -6,7 +6,6 @@ if TYPE_CHECKING:
     from fastmcp import Context as ToolContext  # noqa: A2K-IMPORT-DISCIPLINE
 
     from a2kit.app import App
-    from a2kit.capabilities import Cap, capabilities
     from a2kit.exceptions import (
         A2KitError,
         InvalidFilterExpression,
@@ -31,8 +30,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "read": ("a2kit.tool", "read"),
     "write": ("a2kit.tool", "write"),
     "list_": ("a2kit.tool", "list_"),
-    "Cap": ("a2kit.capabilities", "Cap"),
-    "capabilities": ("a2kit.capabilities", "capabilities"),
     "ToolContext": ("fastmcp", "Context"),
     "A2KitMeta": ("a2kit.metadata", "A2KitMeta"),
     "A2KitError": ("a2kit.exceptions", "A2KitError"),
@@ -80,7 +77,6 @@ __all__ = [
     "A2KitError",
     "A2KitMeta",
     "App",
-    "Cap",
     "HealthResult",
     "InvalidFilterExpression",
     "InvalidToolReturnTypeError",
@@ -91,7 +87,6 @@ __all__ = [
     "Surface",
     "ToolCallContamination",
     "ToolContext",
-    "capabilities",
     "list_",
     "read",
     "run",

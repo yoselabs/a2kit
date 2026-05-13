@@ -65,7 +65,7 @@ def _build_server() -> Any:
         slug = "things"
         name = "things"
 
-        @a2kit.read("ping", tags={"alpha", "beta"})
+        @a2kit.read("ping")
         async def ping(self) -> dict[str, int]:
             return {"x": 1}
 
@@ -104,9 +104,7 @@ async def test_span_emitted_on_success(tracing: Any) -> None:
     assert attrs["a2kit.tool_name"] == "ping"
     assert attrs["a2kit.verb"] == "read"
     assert attrs["a2kit.router"] == "things"
-    # tags are sorted comma-joined
-    assert "alpha" in attrs["a2kit.tags"]
-    assert "beta" in attrs["a2kit.tags"]
+    # framework auto-stamps the verb tag
     assert "read" in attrs["a2kit.tags"]
     assert attrs["mcp.request_id"] == "req-42"
     # OK status

@@ -9,7 +9,6 @@ import pytest
 from a2kit.packages.lint.static import (
     A2K002,
     A2K003,
-    A2K009,
     A2K011,
     A2K013,
     A2K014,
@@ -57,13 +56,6 @@ def test_a2k011_dict_return(tmp_path: Path) -> None:
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K011 in _codes(findings)
-
-
-def test_a2k009_raw_builtin_capability(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.tool(capabilities={'write'})\ndef t() -> int:\n    return 1\n"
-    p = _write(tmp_path, "m.py", body)
-    findings = run_static_rules([p])
-    assert A2K009 in _codes(findings)
 
 
 def test_a2k013_manual_param_doc_in_docstring(tmp_path: Path) -> None:

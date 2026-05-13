@@ -269,7 +269,6 @@ def _build_annotation_kwargs(
 def tool(
     name: str | None = None,
     *,
-    tags: set[str] | frozenset[str] | None = None,
     annotations: ToolAnnotations | None = None,
     idempotent: bool = False,
     open_world: bool = False,
@@ -283,7 +282,7 @@ def tool(
             fn,
             verb="tool",
             name=name,
-            tags=frozenset(tags or ()),
+            tags=frozenset(),
             **_kwargs_for(
                 _build_annotation_kwargs(
                     verb="tool",
@@ -306,7 +305,6 @@ def tool(
 def read(
     name: str | None = None,
     *,
-    tags: set[str] | None = None,
     idempotent: bool = False,
     open_world: bool = False,
     destructive: bool | None = None,
@@ -319,7 +317,7 @@ def read(
             fn,
             verb="read",
             name=name,
-            tags=frozenset({"read", *(tags or set())}),
+            tags=frozenset({"read"}),
             **_kwargs_for(
                 _build_annotation_kwargs(
                     verb="read",
@@ -342,7 +340,6 @@ def read(
 def write(
     name: str | None = None,
     *,
-    tags: set[str] | None = None,
     idempotent: bool = False,
     open_world: bool = False,
     destructive: bool | None = None,
@@ -355,7 +352,7 @@ def write(
             fn,
             verb="write",
             name=name,
-            tags=frozenset({"write", *(tags or set())}),
+            tags=frozenset({"write"}),
             **_kwargs_for(
                 _build_annotation_kwargs(
                     verb="write",
@@ -378,7 +375,6 @@ def write(
 def list_(
     *default_fields: str,
     name: str | None = None,
-    tags: set[str] | None = None,
     page_size: int | None = None,
     selectable_fields: tuple[str, ...] | None = None,
     surfaces: Surface = Surface.ALL,
@@ -415,7 +411,7 @@ def list_(
             fn,
             verb="list",
             name=name,
-            tags=frozenset({"read", "list", *(tags or set())}),
+            tags=frozenset({"read", "list"}),
             annotations_kwargs={"readOnlyHint": True, "destructiveHint": False},
             surfaces=surfaces,
             reports=reports,

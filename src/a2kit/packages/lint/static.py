@@ -28,9 +28,7 @@ A2K002 = "A2K002"
 A2K003 = "A2K003"
 A2K006 = "A2K006"
 A2K008 = "A2K008"
-A2K009 = "A2K009"
 A2K011 = "A2K011"
-A2K012 = "A2K012"
 A2K013 = "A2K013"
 A2K014 = "A2K014"
 
@@ -48,9 +46,7 @@ ALL_RULES = (
     A2K003,
     A2K006,
     A2K008,
-    A2K009,
     A2K011,
-    A2K012,
     A2K013,
     A2K014,
     A2K_CONN_LIST_PLACEHOLDER,
@@ -132,7 +128,6 @@ _RuleFn = Callable[[ast.AST, str, str], Iterable[LintMessage]]
 
 def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.budget import rule_a2k014
-    from a2kit.packages.lint.rules.caps import rule_a2k009, rule_a2k012
     from a2kit.packages.lint.rules.conn import rule_conn_list_placeholder
     from a2kit.packages.lint.rules.importing import rule_import_discipline
     from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
@@ -145,9 +140,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     return (
         (A2K002, rule_a2k002),
         (A2K003, rule_a2k003),
-        (A2K009, rule_a2k009),
         (A2K011, rule_a2k011),
-        (A2K012, rule_a2k012),
         (A2K013, rule_a2k013),
         (A2K014, rule_a2k014),
         (A2K_CONN_LIST_PLACEHOLDER, rule_conn_list_placeholder),
@@ -224,9 +217,7 @@ __all__ = [
     "A2K003",
     "A2K006",
     "A2K008",
-    "A2K009",
     "A2K011",
-    "A2K012",
     "A2K013",
     "A2K014",
     "A2K_CONN_LIST_PLACEHOLDER",

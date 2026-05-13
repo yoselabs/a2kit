@@ -1,4 +1,4 @@
-"""Second-pass coverage: connections store, lint runtime, caps edges, otel."""
+"""Second-pass coverage: connections store, lint runtime, otel."""
 
 from __future__ import annotations
 
@@ -176,46 +176,6 @@ def test_lint_runtime_list_tool_names_returns_empty_for_naive_server() -> None:
         pass
 
     assert _list_tool_names(_Naive()) == []
-
-
-# --------------------------- caps.py edges (project_root None / unparseable) --------------------------- #
-
-
-def test_caps_a2k012_no_project_root_treats_imported_name_unsafe(tmp_path: Path) -> None:
-    """Without pyproject.toml, project_root is None — imported Name is NOT trusted as Final[str]."""
-    from a2kit.packages.lint.rules.caps import _reset_reexport_cache
-    from a2kit.packages.lint.static import A2K012, run_static_rules
-
-    _reset_reexport_cache()
-    body = "import a2kit\nfrom mystery import MY_CAP\n@a2kit.tool(capabilities={MY_CAP})\ndef t() -> int:\n    return 1\n"
-    p = tmp_path / "src" / "m.py"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(body)
-    findings = run_static_rules([p])
-    # No A2K012 because elt is a Name, not Constant — A2K012 only flags string constants.
-    # But the safe_names check still has to RUN — which means project_root was None branch.
-    assert {f.rule for f in findings}.isdisjoint({A2K012})  # type: ignore[union-attr]
-
-
-def test_caps_a2k012_skips_unparseable_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Re-export resolution survives a SyntaxError in a sibling module."""
-    from a2kit.packages.lint.rules.caps import _reset_reexport_cache
-    from a2kit.packages.lint.static import A2K012, run_static_rules
-
-    _reset_reexport_cache()
-    src = tmp_path / "src"
-    src.mkdir()
-    (tmp_path / "pyproject.toml").write_text("")
-    (src / "broken.py").write_text("def f(:\n    pass\n")  # SyntaxError
-    body = "import a2kit\nfrom broken import MY_CAP\n@a2kit.tool(capabilities={MY_CAP})\ndef t() -> int:\n    return 1\n"
-    p = src / "m.py"
-    p.write_text(body)
-    # Monkey-patch project root resolution to point at tmp_path:
-    findings = run_static_rules([p])
-    # Doesn't crash — that's the success criterion.
-    assert isinstance(findings, list)
-    # MY_CAP is a Name, not a Constant — A2K012 skips Names.
-    assert A2K012 not in {f.rule for f in findings}  # type: ignore[union-attr]
 
 
 # --------------------------- otel module (lazy install) --------------------------- #
