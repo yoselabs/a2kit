@@ -24,6 +24,7 @@ dependencies = [
     "pydantic>=2,<3",
     "pydantic-settings>=2.14,<3",
     "tomli-w>=1",
+    "typer>=0.25,<1",
 ]
 
 [project.scripts]
@@ -203,7 +204,6 @@ dev = [
     "opentelemetry-sdk>=1.20",
     "mutmut>=3.5",
     "cosmic-ray>=8.4.6",
-    "typer>=0.25.1",
 ]
 
 [tool.mutmut]

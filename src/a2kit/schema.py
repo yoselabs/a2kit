@@ -1,28 +1,27 @@
-"""``schema`` Click command + ``compute_schema`` helper.
+"""Transport-neutral tool schema introspection.
 
 Pure-Python schema generator (pydantic + typing). Strips DI / context
-parameters via ``a2kit.signature`` and builds a pydantic model from the
-remaining kwonly params. Returns a dict with ``name``, ``description``,
-``inputSchema``, ``outputSchema``, ``annotations``, ``tags``, ``meta``.
+parameters via :mod:`a2kit.signature` and builds a pydantic model from
+the remaining kwonly params. Returns a dict with ``name``,
+``description``, ``inputSchema``, ``outputSchema``, ``annotations``,
+``tags``, ``meta``, ``reportSchema``.
 
-No fastmcp import.
+No ``fastmcp`` import. No ``click`` import. Imported lazily via
+``a2kit.__init__._LAZY_MODULES`` so ``import a2kit`` doesn't pay for it.
 
-The testing helpers in ``a2kit.packages.testing.snapshots`` import
-``compute_schema`` from here.
+Consumed by the CLI ``schema`` subcommand, the in-process test client's
+snapshot helpers, and the public re-export ``a2kit.testing.compute_schema``.
 """
 
 from __future__ import annotations
 
 import inspect
-import json
 from dataclasses import asdict, is_dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-import click
 from pydantic import create_model
 
 from a2kit.metadata import get_meta
-from a2kit.packages.formatter import FormatHint, format_response, truncate
 from a2kit.signature import wire_input_params
 
 if TYPE_CHECKING:
@@ -91,7 +90,7 @@ def compute_schema(fn: Callable[..., Any], container: Any | None = None) -> dict
     """Return a dict describing ``fn`` for schema snapshots / CLI dump.
 
     Output keys: ``name``, ``description``, ``inputSchema``, ``outputSchema``,
-    ``annotations``, ``tags``, ``meta``. No fastmcp import.
+    ``annotations``, ``tags``, ``meta``. No ``fastmcp`` import.
     """
     meta = get_meta(fn)
     name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
@@ -120,60 +119,4 @@ def compute_schema(fn: Callable[..., Any], container: Any | None = None) -> dict
     return out
 
 
-def _all_schemas(app: Any) -> dict[str, dict[str, Any]]:
-    container = getattr(app, "container", lambda: None)()
-    out: dict[str, dict[str, Any]] = {}
-    for fn in app.tools():
-        meta = get_meta(fn)
-        name = meta.tool_name if meta is not None else fn.__name__
-        out[name] = compute_schema(fn, container)
-    return out
-
-
-def build_schema_command(app: Any) -> click.Command:
-    """Build a ``schema`` Click command bound to ``app`` via closure."""
-
-    @click.command("schema")
-    @click.argument("tool_name", required=False)
-    @click.option(
-        "--format",
-        "fmt",
-        type=click.Choice(["auto", "json", "tsv"]),
-        default="auto",
-        show_default=True,
-    )
-    @click.option(
-        "--jsonl",
-        is_flag=True,
-        default=False,
-        help="Emit one JSON schema per line (only with --format=json).",
-    )
-    def schema_cmd(tool_name: str | None, fmt: str, jsonl: bool) -> None:
-        """Print tool schemas. Default format is auto (JSON unless type-driven routing picks otherwise)."""
-        schemas = _all_schemas(app)
-
-        if tool_name is not None:
-            result: Any = schemas.get(tool_name)
-            if result is None:
-                msg = f"Unknown tool: {tool_name!r}. Known: {sorted(schemas)}"
-                raise click.UsageError(msg)
-        else:
-            result = schemas
-
-        if jsonl:
-            if fmt != "json":
-                raise click.UsageError("--jsonl requires --format=json")
-            if tool_name is not None:
-                click.echo(truncate(json.dumps(result, separators=(",", ":"), default=str)))
-                return
-            for s in result.values():
-                click.echo(truncate(json.dumps(s, separators=(",", ":"), default=str)))
-            return
-
-        response = format_response(result, format_hint=cast("FormatHint", fmt))
-        click.echo(truncate(response.data))
-
-    return schema_cmd
-
-
-__all__ = ["build_schema_command", "compute_schema"]
+__all__ = ["compute_schema"]

@@ -14,6 +14,7 @@ import uuid
 
 import a2kit
 from a2kit.ldd import event, info, report
+
 from .enrichers import tracker_404_enricher
 from .models import BatchReport, Project, Task
 from .store import TrackerStore

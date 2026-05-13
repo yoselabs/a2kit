@@ -309,7 +309,7 @@ def test_ephemeral_aware_store_list_no_base() -> None:
 
 def test_compute_schema_handles_param_with_no_annotation() -> None:
     """`_annotation_to_field` Any-fallback branch when param has no annotation."""
-    from a2kit.packages.cli.schemas import compute_schema
+    from a2kit.schema import compute_schema
 
     async def fn(x):  # type: ignore[no-untyped-def]
         return {"x": x}
@@ -320,7 +320,7 @@ def test_compute_schema_handles_param_with_no_annotation() -> None:
 
 
 def test_compute_schema_no_return_annotation_skips_output_schema() -> None:
-    from a2kit.packages.cli.schemas import compute_schema
+    from a2kit.schema import compute_schema
 
     async def fn():  # type: ignore[no-untyped-def]
         return 1
@@ -333,7 +333,7 @@ def test_annotations_dict_handles_dataclass_and_none() -> None:
     """`_annotations_dict` covers dataclass branch + None branch."""
     from dataclasses import dataclass
 
-    from a2kit.packages.cli.schemas import _annotations_dict
+    from a2kit.schema import _annotations_dict
 
     @dataclass
     class _A:
@@ -363,23 +363,20 @@ def test_builder_strip_optional_returns_inner_type() -> None:
     assert _strip_optional(int) is int
 
 
-def test_builder_click_type_for_primitives_and_any() -> None:
+def test_builder_needs_json_decode_primitives_and_complex() -> None:
+    """``_needs_json_decode`` returns False for primitives, True for complex types."""
     import inspect
 
-    from a2kit.packages.cli.builder import _click_type_for
+    from a2kit.packages.cli.builder import _needs_json_decode
 
-    # Empty + Any → STRING, complex=False
-    t1, c1 = _click_type_for(inspect.Parameter.empty)
-    assert c1 is False
-    t2, c2 = _click_type_for(int)
-    assert t2 is int
-    assert c2 is False
-    t3, c3 = _click_type_for(bool)
-    assert t3 is bool
-    assert c3 is False
-    # list[int] → STRING, complex=True
-    t4, c4 = _click_type_for(list[int])
-    assert c4 is True
+    assert _needs_json_decode(inspect.Parameter.empty) is False
+    assert _needs_json_decode(int) is False
+    assert _needs_json_decode(bool) is False
+    assert _needs_json_decode(str) is False
+    assert _needs_json_decode(float) is False
+    # Complex types get JSON-decode treatment.
+    assert _needs_json_decode(list[int]) is True
+    assert _needs_json_decode(dict[str, int]) is True
 
 
 # --------------------------- otel module (lazy install) --------------------------- #

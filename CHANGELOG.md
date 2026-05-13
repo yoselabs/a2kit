@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+### Changed — CLI builder rewritten on top of Typer (breaking shape for body-model tools)
+
+`src/a2kit/packages/cli/builder.py` no longer hand-rolls Click reflection.
+Each tool function is registered through `typer.Typer.command()` with a
+synthesized `__signature__` / `__annotations__` derived from the wire
+params. The `FieldInfo.description` set via `pydantic.Field(...)` is
+surfaced as `typer.Option(help=...)` through a small adapter at
+`src/a2kit/packages/cli/_field_to_typer.py`. Net: roughly 250 LOC out of
+the CLI package.
+
+Tool-author surface is **unchanged**. The router decorator API, the
+`tools = (...)` tuple, kwonly DI parameters, docstring-as-help, and the
+`--format` / `--schema` / `--connection` / `--no-reports` / `--no-events`
+flags all behave the same.
+
+**Breaking shape — body-model parameters on the CLI.** A tool param typed
+as `body: SomeBaseModel` is now exposed as a single JSON-string flag
+`--body '<json>'` and decoded via `SomeBaseModel.model_validate_json`.
+The previous flattened-flag-per-field UX is gone. In-repo blast radius
+is zero — no in-repo tool ships this shape — but downstream callers
+using a body model as a kwonly param must switch to the JSON-string
+form. MCP wire shape unchanged.
+
+`a2kit.packages.cli.schemas` has been removed; its `compute_schema`
+moved to a new transport-neutral module `a2kit.schema` (lazy-imported
+via `_LAZY_MODULES`, no `click` / `fastmcp` dependency). Public
+re-export `a2kit.testing.compute_schema` is preserved. The CLI's
+`<app> schema [tool]` subcommand is now a Typer command registered
+directly on the root app.
+
+`typer>=0.25,<1` is a new runtime dependency. `import a2kit` does not
+trigger `import typer`; both are lazy.
+
+See `docs/adr/0001-typer-cli.md` for the decision rationale.
+
 ## 0.31.0 — bundled breaking minor — 2026-05-13
 
 A single release bundles four coordinated changes so consumers migrate

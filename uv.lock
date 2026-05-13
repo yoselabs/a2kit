@@ -19,6 +19,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "tomli-w" },
+    { name = "typer" },
 ]
 
 [package.optional-dependencies]
@@ -44,7 +45,6 @@ dev = [
     { name = "ruff" },
     { name = "syrupy" },
     { name = "ty" },
-    { name = "typer" },
     { name = "vcrpy" },
 ]
 
@@ -60,6 +60,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14,<3" },
     { name = "syrupy", marker = "extra == 'testing'", specifier = ">=4" },
     { name = "tomli-w", specifier = ">=1" },
+    { name = "typer", specifier = ">=0.25,<1" },
     { name = "vcrpy", marker = "extra == 'testing'", specifier = ">=6" },
 ]
 provides-extras = ["testing", "otel"]
@@ -77,7 +78,6 @@ dev = [
     { name = "ruff", specifier = ">=0.9" },
     { name = "syrupy", specifier = ">=4" },
     { name = "ty", specifier = ">=0.0.34" },
-    { name = "typer", specifier = ">=0.25.1" },
     { name = "vcrpy", specifier = ">=6" },
 ]
 

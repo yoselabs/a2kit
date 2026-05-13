@@ -6,13 +6,14 @@ import click
 from click.testing import CliRunner
 
 import a2kit
-from a2kit.packages.cli.builder import LazyGroup, build_full_cli
+from a2kit.packages.cli.builder import build_full_cli
 
 
 def test_returns_click_command(app):
     cli = build_full_cli(app)
     assert isinstance(cli, click.Command)
-    assert isinstance(cli, LazyGroup)
+    # Typer-backed: the root is a click.Group (typer.main.get_command(main)).
+    assert isinstance(cli, click.Group)
 
 
 def test_top_level_help_lists_routers_and_subgroups(app):

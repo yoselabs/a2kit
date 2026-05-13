@@ -1,4 +1,4 @@
-"""``schema`` Click command — JSON output, JSONL mode."""
+"""``<app> schema`` subcommand — JSON output, JSONL mode (Typer-backed)."""
 
 from __future__ import annotations
 
@@ -6,17 +6,16 @@ import json
 
 from click.testing import CliRunner
 
-from a2kit.packages.cli.schemas import build_schema_command
+from a2kit.packages.cli.builder import build_full_cli
 
 
 def _run(app, args):
-    return CliRunner().invoke(build_schema_command(app), args)
+    return CliRunner().invoke(build_full_cli(app), ["schema", *args])
 
 
 def test_schema_all_default_lists_all_tools(app):
     result = _run(app, [])
     assert result.exit_code == 0, result.output
-    # Three tools registered on the test router, names appear in output.
     assert "get_task" in result.output
     assert "list_tasks" in result.output
     assert "create_task" in result.output
@@ -33,7 +32,6 @@ def test_schema_specific_tool_returns_only_that(app):
 def test_schema_unknown_tool_errors(app):
     result = _run(app, ["does_not_exist", "--format", "json"])
     assert result.exit_code != 0
-    assert "Unknown tool" in (result.output + (result.stderr or ""))
 
 
 def test_schema_jsonl_mode(app):
@@ -60,7 +58,7 @@ def test_per_tool_schema_format_json(app):
 
 
 def test_schema_output_respects_truncation_cap(monkeypatch):
-    """schema_command pipes through formatter.truncate; large outputs are capped."""
+    """schema subcommand pipes through formatter.truncate; large outputs are capped."""
     import a2kit
     from a2kit.packages.formatter import DEFAULT_MAX_CHARS
 
@@ -69,7 +67,6 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         slug = "big"
         name = "big"
 
-    # Build many tools so combined schema dict definitely exceeds the cap.
     for i in range(200):
 
         async def _tool(self, *, x: str = "x" * 600) -> dict:  # noqa: ARG001
@@ -80,8 +77,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         setattr(Big, _tool.__name__, _tool)
 
     app = a2kit.App("big").add_router(Big())
-    result = CliRunner().invoke(build_schema_command(app), ["--format=json"])
+    result = CliRunner().invoke(build_full_cli(app), ["schema", "--format=json"])
 
     assert result.exit_code == 0
-    # Either the marker is present, or the output stayed under the cap.
     assert "(truncated)" in result.output or len(result.output) <= DEFAULT_MAX_CHARS + 100

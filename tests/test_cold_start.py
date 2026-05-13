@@ -29,6 +29,17 @@ def test_import_a2kit_under_100ms_and_no_fastmcp() -> None:
     assert fast_str == "False", "fastmcp should not load on `import a2kit`"
 
 
+def test_import_a2kit_does_not_load_typer() -> None:
+    """``import a2kit`` must NOT trigger ``import typer``.
+
+    Typer is a runtime dep (powers ``<app> ...`` CLI) but the import must be
+    deferred until the user actually constructs the CLI. ``import a2kit`` is
+    used by library consumers who never touch the CLI.
+    """
+    out = _runtime_check("import sys; import a2kit; print('typer' in sys.modules)")
+    assert out.strip() == "False", "typer must not load on `import a2kit`"
+
+
 def test_lint_cli_does_not_load_fastmcp() -> None:
     out = _runtime_check(
         "import sys;"

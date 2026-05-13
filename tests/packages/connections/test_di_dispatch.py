@@ -69,7 +69,7 @@ def test_di_strips_injectable_from_schema() -> None:
     it should synthesize a wire ``connection: str``."""
     app = a2kit.App("app").add_router(_Probe()).provide(_Store)
     install_connections(app, _Cfg)
-    from a2kit.packages.cli.schemas import compute_schema
+    from a2kit.schema import compute_schema
 
     fn = next(iter(_Probe().bound_tools()))
     schema = compute_schema(fn, container=app.container())
@@ -89,7 +89,7 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
         tools = (noop,)
 
     app = a2kit.App("app").add_router(_Plain())
-    from a2kit.packages.cli.schemas import compute_schema
+    from a2kit.schema import compute_schema
 
     fn = next(iter(_Plain().bound_tools()))
     schema = compute_schema(fn, container=app.container())
