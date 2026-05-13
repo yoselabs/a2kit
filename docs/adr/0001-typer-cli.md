@@ -42,6 +42,45 @@ expensive enough to need lazy materialization.
 emit a CLI — has a canonical Python solution that ships maintained,
 tested, and on the same Click foundation we already depend on.
 
+## Why Typer specifically (and not "better Click")
+
+Click is an imperative CLI framework. You build commands by either
+writing a function and decorating it (`@click.command()`,
+`@click.option("--x")`) or by constructing the objects yourself
+(`click.Command(name=..., params=[click.Option([...]), ...],
+callback=...)`). Click does **not** introspect Python type annotations
+to decide what options to expose. That's a deliberate scope boundary:
+Click is a CLI layer, not a reflection layer.
+
+Our `builder.py` was the reflection layer. Given a tool function with
+arbitrary kwonly parameters and Python type annotations, it figured
+out what `click.Option` objects to construct. We had built — and were
+maintaining — an in-house "type hints → Click commands" translator.
+
+That's exactly the layer Typer provides. Typer is literally:
+
+> Click + a maintained, opinionated implementation of "function
+> signature with type annotations → click.Command", with
+> `Annotated[T, typer.Option(help=...)]` as the metadata channel.
+
+Same Click foundation. Same Click testing tools (`CliRunner`). Same
+Click plugin ecosystem (`add_command`, custom Group classes, env-var
+expansion). Same exception surface. The migration is **not** Click →
+some-other-CLI-framework; it's "stop maintaining our own reflection
+shim, use the one the FastAPI ecosystem maintains."
+
+The alternative — "write better Click code" — was the path we'd been
+on for several releases. Each round of improvements added another
+conditional in `_make_tool_command` because the problem we were
+solving was a *reflection* problem, not a *Click* problem. Click was
+fine; the parallel reflection layer was the cost.
+
+So the justification for Typer isn't capability ("Click can't do
+this"). Click can; we were doing it. The justification is **layering**:
+the work we were doing has a name in the ecosystem, ships maintained,
+and using it removes a layer of code whose only job was to translate
+between Python's type system and Click's `click.Option` shape.
+
 ## What Typer absorbs for free
 
 | Old `builder.py` code path | Typer equivalent |
@@ -159,12 +198,18 @@ Negative:
 file grew with every cleanup round, and three SDK ports coming meant
 re-implementing the same accidental complexity in two more languages.
 
-**argparse / cleo / cyclopts.** Typer is the established FastAPI sibling
-on top of Click. We already depend on Click; Typer is the smallest jump
-that absorbs the most reflection code. Other libraries would either
-require a Click → other migration (more breakage) or duplicate Click's
-ecosystem coverage (worse story for shell integration, plugin authors,
-testing helpers).
+**Write better Click code (no Typer).** Tried. That's what every
+recent cleanup round was doing. The conditionals kept accumulating
+because the problem isn't a Click problem — it's a reflection
+problem, and Click isn't a reflection library. See the "Why Typer
+specifically" section above.
+
+**argparse / cleo / cyclopts.** These would all require a full
+Click → other-framework migration, breaking `CliRunner` test
+helpers, `add_command` plugin contracts (we use this for
+`connections_cli`), and the env-var / completion ecosystem Click
+ships. Typer is the *only* option that keeps Click underneath while
+adding the reflection layer on top.
 
 **A thinner in-house shim.** A shim is a shim no matter how thin; the
 maintenance cost of explaining "why not Typer?" doesn't go away. The
