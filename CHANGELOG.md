@@ -1,6 +1,95 @@
 # Changelog
 
-## Unreleased
+## 0.32.0 — Typer CLI + consumption-interface audit — 2026-05-13
+
+A coordinated breaking bundle: the Typer CLI rewrite plus the five-change
+consumption-interface audit (Q1-Q5 + ADR 0003). Consumers migrate once
+across the whole surface rather than per-change.
+
+Migration table (alphabetical):
+
+| before                                | after                                  |
+|---------------------------------------|----------------------------------------|
+| `@a2kit.read/write/list_/tool(tags={...})` | drop — no replacement              |
+| `@a2kit.read/write/list_/tool(surfaces=Surface.CLI)` | `visibility="cli"`       |
+| `@a2kit.read/write/list_/tool(surfaces=Surface.ALL)` | drop (default)            |
+| `@a2kit.read/write/list_/tool(surfaces=Surface.MCP)` | no replacement (was unused) |
+| `App(name, debug=True)`               | unchanged (kept — has live readers)    |
+| `body: SomeBaseModel` flattened flags | `--body '<json>'` single flag         |
+| `from a2kit import A2KitMeta`         | `from a2kit.metadata import A2KitMeta` |
+| `from a2kit import RouterRegistry`    | `from a2kit.routers import RouterRegistry` |
+| `from a2kit import UNRESOLVED`        | `from a2kit.app import UNRESOLVED`     |
+| `from a2kit import Cap, capabilities` | removed — no replacement               |
+| `from a2kit import Surface`           | removed — `visibility` literal type    |
+| `from a2kit import ToolCallContamination` (+ 4 siblings) | `from a2kit.exceptions import ...` (A2KitError stays at top-level) |
+| `from a2kit.ldd import LddEmission, LddSink` | `from a2kit.packages.ldd import ...` |
+| `install_connections(app, T); app.add_cli(connections_cli(T))` | `install_connections(app, T)` (one call) |
+
+### Added — `visibility` tier on every verb decorator + `Router.visibility`
+
+Three-tier transport-routing kwarg (`"hidden"` / `"cli"` / `"all"`) plus
+matching `Router.visibility` class attribute. Per-tool kwarg overrides
+Router default. Replaces the `Surface` Flag enum, which modelled CLI and
+MCP symmetrically when the threat model is asymmetric (CLI is
+operator-facing and always-on; MCP/API/GraphQL are agent-facing and the
+gated surface).
+
+CLI builder maps `visibility="hidden"` to Click's native `hidden=True`.
+MCP server skips both `"hidden"` and `"cli"` tiers. Lint rule
+`A2K-SURFACE-EXPLICIT` updated to suggest `visibility="cli"` for
+credential-named tools (`login`/`logout`/`rotate_key`/etc.).
+
+### Added — `@a2kit.list_` parameter parity
+
+`@a2kit.list_` now accepts `idempotent`, `open_world`, `title`, and
+`visibility` like the other three verb decorators. Asymmetry was
+historical. `destructive=True` raises `TypeError` on `@list_` and
+`@read` alike (both are read-shaped).
+
+### Added — ADR 0003: semantic-flag vocabulary
+
+`docs/adr/0003-semantic-flag-vocabulary.md` locks the framing that
+emerged from the consumption-interface audit: `idempotent`,
+`open_world`, `destructive`, `title` are transport-neutral tool
+semantics, not MCP escape hatches. Each flag MUST have a meaningful
+read on at least two transports; adding a new flag requires an ADR
+superseding 0003.
+
+### Changed — connections plugin: one-call wiring
+
+`install_connections(app, *conn_types)` now installs the dispatch hook,
+registers the wire scope, AND adds the `connections` Click subcommand
+group in a single call. The standalone `connections_cli` factory is
+still importable from `a2kit.packages.connections.cli` but is no longer
+exported from the package's public surface.
+
+### Changed — `@a2kit.read/write/list_/tool(tags={...})` removed
+
+Author-set decorator tags had zero live users across `src/`, `tests/`,
+`examples/`, and the four downstream consumer repos. Framework
+auto-stamped verb tags (`"read"` / `"write"` / `"list"`) are preserved
+— readers in MCP server and OTEL middleware unaffected.
+
+### Removed — `a2kit.Cap` + `a2kit.capabilities` + A2K009/A2K012 lint rules
+
+Capability registry was aspirational surface with no live consumer.
+Lint rules A2K009 (raw built-in capability strings) and A2K012 (raw
+custom capability strings) existed solely to enforce discipline on
+top of `tags=` — moot now that tags is gone.
+
+### Removed — `a2kit.Surface` `Flag` enum + `surfaces=` decorator kwarg
+
+Superseded by `visibility` tier (see Added section above). The Surface
+flag is deleted entirely; `src/a2kit/surface.py` removed.
+
+### Changed — top-level `a2kit.*` namespace trimmed to 95% authoring surface
+
+22 names → 10 names. Demoted symbols stay in their owning modules:
+`A2KitMeta`, `RouterRegistry`, `UNRESOLVED`, four non-umbrella exception
+subclasses, and the LDD sink-author types `LddEmission` / `LddSink`.
+`A2KitError` (umbrella exception) and the live LDD primitives
+(`event`/`report`/`log`/`info`/`warning`/`error`/`debug`/`EventRegistry`/
+`format_ldd_line`/`ldd_state_for_call`) stay re-exported.
 
 ### Changed — CLI builder rewritten on top of Typer (breaking shape for body-model tools)
 
