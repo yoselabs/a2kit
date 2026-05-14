@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## v0.35.0 — 2026-05-14
+
+This release combines the never-tagged v0.34 wave (MCP wire-error
+envelope + ctx-binding fix + coordinated audit-loud-failure changes)
+with the v0.35 lifecycle consolidation. The two waves shipped together
+because v0.34 never got cut as its own tag.
 
 ### Breaking — lifecycle consolidated on the async-CM protocol (v0.35)
 
@@ -51,9 +56,9 @@ their dependents see no change.
 
 ---
 
-## v0.34 series (released prior to the v0.35 lifecycle consolidation)
+### v0.34-wave changes (folded into v0.35.0; never tagged separately)
 
-This release closes the v0.32 MCP production blocker (a2web v0.6.0
+This wave closes the v0.32 MCP production blocker (a2web v0.6.0
 went down on every `mcp__a2web__fetch` call) and pays down the
 test-coverage debt that let it slip past release validation. Eight
 coordinated changes land together; the wire-error envelope and the
