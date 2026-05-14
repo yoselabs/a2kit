@@ -130,7 +130,7 @@ def install_connection_dispatch(
     container = app._container  # noqa: SLF001
     container.register_wire_scope(_WIRE_CONN_KEY, *conn_types)
     for ct in conn_types:
-        if not container.has(ct):
+        if not container.has_provider(ct):
             # Register as a per-call (SCOPED) stub provider so chain
             # resolution routes through the dispatch's child container,
             # where the hook-wired wire-seeder has registered the actual

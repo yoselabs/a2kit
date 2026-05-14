@@ -31,6 +31,9 @@ A2K008 = "A2K008"
 A2K011 = "A2K011"
 A2K013 = "A2K013"
 A2K014 = "A2K014"
+A2K015 = "A2K015"  # _ensure() lazy-init pattern (di-scoped-lifecycle anti-pattern)
+A2K016 = "A2K016"  # parameterized lambda as DI factory
+A2K017 = "A2K017"  # Lazy[T] suggestion for conditional-use deps
 
 A2K_CONN_LIST_PLACEHOLDER = "A2K-CONN-LIST-PLACEHOLDER"
 A2K_IMPORT_DISCIPLINE = "A2K-IMPORT-DISCIPLINE"
@@ -48,6 +51,9 @@ ALL_RULES = (
     A2K011,
     A2K013,
     A2K014,
+    A2K015,
+    A2K016,
+    A2K017,
     A2K_CONN_LIST_PLACEHOLDER,
     A2K_IMPORT_DISCIPLINE,
     A2K_LDD_REPORT_TYPE,
@@ -127,6 +133,11 @@ _RuleFn = Callable[[ast.AST, str, str], Iterable[LintMessage]]
 def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.budget import rule_a2k014
     from a2kit.packages.lint.rules.conn import rule_conn_list_placeholder
+    from a2kit.packages.lint.rules.di_scoped import (
+        rule_ensure_pattern,
+        rule_lazy_t_suggestion,
+        rule_parameterized_lambda_factory,
+    )
     from a2kit.packages.lint.rules.importing import rule_import_discipline
     from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
     from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
@@ -141,6 +152,9 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K011, rule_a2k011),
         (A2K013, rule_a2k013),
         (A2K014, rule_a2k014),
+        (A2K015, rule_ensure_pattern),
+        (A2K016, rule_parameterized_lambda_factory),
+        (A2K017, rule_lazy_t_suggestion),
         (A2K_CONN_LIST_PLACEHOLDER, rule_conn_list_placeholder),
         (A2K_IMPORT_DISCIPLINE, rule_import_discipline),
         (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),

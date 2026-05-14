@@ -140,7 +140,7 @@ def wire_input_params(
     out: dict[str, inspect.Parameter] = {}
     for name, param in base.items():
         ann = hints.get(name, param.annotation)
-        if container.has(ann):
+        if container.has_provider(ann):
             continue
         # Lazy[T] params are framework-injected closures, not wire-side.
         if _lazy_inner_type(ann) is not None:

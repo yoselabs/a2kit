@@ -205,46 +205,6 @@ class Container:
         """Snapshot of registered singletons; unresolved entries carry the sentinel."""
         return dict(self._singletons)
 
-    def singleton_entry_order(self) -> list[type]:
-        """Topological order over registered singletons.
-
-        Each singleton's factory parameters that point to OTHER registered
-        singletons form the dependency edges; Kahn's algorithm emits in
-        dependency-first order. Singletons with equal in-degree are
-        emitted in registration order so unrelated singletons keep a
-        deterministic, stable ordering.
-
-        Cycles among registered singletons are not possible — the
-        container rejects them at registration time.
-        """
-        registration_index: dict[type, int] = {t: i for i, t in enumerate(self._singletons)}
-        registered = set(registration_index)
-        deps: dict[type, set[type]] = {t: set() for t in registered}
-        for t in registered:
-            factory = self._providers.get(t)
-            if factory is None:
-                continue
-            for spec in self._params_for(factory):
-                anno = spec.annotation
-                if anno in registered and anno is not t:
-                    deps[t].add(anno)
-        in_degree: dict[type, int] = {t: len(deps[t]) for t in registered}
-        reverse: dict[type, set[type]] = {t: set() for t in registered}
-        for t, ds in deps.items():
-            for d in ds:
-                reverse[d].add(t)
-        ready: list[type] = sorted([t for t, n in in_degree.items() if n == 0], key=registration_index.__getitem__)
-        out: list[type] = []
-        while ready:
-            t = ready.pop(0)
-            out.append(t)
-            for dependent in reverse[t]:
-                in_degree[dependent] -= 1
-                if in_degree[dependent] == 0:
-                    ready.append(dependent)
-                    ready.sort(key=registration_index.__getitem__)
-        return out
-
     # -- resolution ----------------------------------------------------- #
 
     def resolve(
