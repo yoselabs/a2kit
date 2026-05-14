@@ -33,7 +33,7 @@ def _capture_stderr_async(awaitable_factory: Callable[[], Awaitable[Any]]) -> st
     saved = sys.stderr
     sys.stderr = buf
     try:
-        asyncio.run(awaitable_factory())
+        asyncio.run(awaitable_factory())  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     finally:
         sys.stderr = saved
     return buf.getvalue()

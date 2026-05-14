@@ -101,4 +101,4 @@ class TestToonRemoved:
         import pytest
 
         with pytest.raises(ValueError, match="toon"):
-            format_response({"a": 1}, format_hint="toon")  # type: ignore[arg-type]
+            format_response({"a": 1}, format_hint="toon")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface

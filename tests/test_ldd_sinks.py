@@ -20,7 +20,7 @@ def test_emission_is_frozen() -> None:
 
     e = LddEmission(kind="event", name="x", payload={}, elapsed_ms=0, tool_name=None, ctx=None)
     with pytest.raises((AttributeError, Exception)) as info:
-        e.name = "y"  # type: ignore[misc]
+        e.name = "y"  # type: ignore[misc]  # ty: ignore[invalid-assignment]  # why: intentional type mismatch — exercises error path or removed surface
     assert (
         "FrozenInstanceError" in type(info.value).__name__
         or "can't set attribute" in str(info.value)

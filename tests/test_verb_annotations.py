@@ -107,17 +107,17 @@ def test_list_page_size_negative_raises() -> None:
 def test_read_name_kwarg_rejected() -> None:
     """v0.33: `name=` removed from public verb decorators."""
     with pytest.raises(TypeError, match="name"):
-        a2kit.read(name="custom")  # type: ignore[call-arg]
+        a2kit.read(name="custom")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 def test_write_name_kwarg_rejected() -> None:
     with pytest.raises(TypeError, match="name"):
-        a2kit.write(name="custom")  # type: ignore[call-arg]
+        a2kit.write(name="custom")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 def test_list_name_kwarg_rejected() -> None:
     with pytest.raises(TypeError, match="name"):
-        a2kit.list_("id", name="custom")  # type: ignore[call-arg]
+        a2kit.list_("id", name="custom")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 def test_write_destructive_override() -> None:
@@ -205,7 +205,7 @@ def test_tool_function_removed() -> None:
     function.
     """
     with pytest.raises(ImportError):
-        from a2kit.tool import tool  # noqa: F401
+        from a2kit.tool import tool  # noqa: F401  # ty: ignore[unresolved-import]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 def test_a2kit_tool_attribute_in_subprocess_raises_with_hint() -> None:

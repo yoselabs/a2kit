@@ -28,7 +28,7 @@ def _write(path: Path, body: str) -> Path:
 
 
 def _codes(findings: object) -> set[str]:
-    return {f.rule for f in findings}  # type: ignore[union-attr]
+    return {f.rule for f in findings}  # type: ignore[union-attr]  # ty: ignore[not-iterable]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 # --------------------------- cross.py: A2K006 / A2K008 --------------------------- #

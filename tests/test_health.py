@@ -181,7 +181,7 @@ def test_mixed_checks_yield_degraded() -> None:
 
 def test_meta_namespace_reserved_for_user_tools() -> None:
     """User tools cannot claim a `_meta.*` name (exercised via the internal helper)."""
-    from a2kit.tool import _read_internal
+    from a2kit._verbs import _read_internal
 
     with pytest.raises(ValueError, match="reserved"):
 

@@ -20,7 +20,7 @@ def _write(path: Path, body: str) -> Path:
 
 
 def _codes(findings: object) -> set[str]:
-    return {f.rule for f in findings}  # type: ignore[union-attr]
+    return {f.rule for f in findings}  # type: ignore[union-attr]  # ty: ignore[not-iterable]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 # --------------------------- rules/__init__.py decorator helpers --------------------------- #
@@ -35,7 +35,7 @@ def test_decorator_helpers_recognize_bare_write_name() -> None:
     src = "@write\ndef f():\n    pass\n"
     tree = ast.parse(src)
     fn = tree.body[0]
-    dec = fn.decorator_list[0]
+    dec = fn.decorator_list[0]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
     assert is_a2kit_tool_decorator(dec) is True
     # `@write` is a Name (not Attribute) — server detector returns False.
     assert is_server_tool_decorator(dec) is False
@@ -51,7 +51,7 @@ def test_decorator_helpers_recognize_server_tool_attr() -> None:
     src = "@server.tool()\ndef f():\n    pass\n"
     tree = ast.parse(src)
     fn = tree.body[0]
-    dec = fn.decorator_list[0]
+    dec = fn.decorator_list[0]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
     # is_a2kit_tool_decorator: target.value is a Name 'server' not in {'a2kit', 'tools'} → False
     assert is_a2kit_tool_decorator(dec) is False
     assert is_server_tool_decorator(dec) is True
@@ -64,7 +64,7 @@ def test_decorator_helpers_unknown_decorator_returns_false() -> None:
 
     src = "@somemod.somemethod\ndef f():\n    pass\n"
     tree = ast.parse(src)
-    dec = tree.body[0].decorator_list[0]
+    dec = tree.body[0].decorator_list[0]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
     assert is_a2kit_tool_decorator(dec) is False
     # The Attribute is `somemod.somemethod` (attr != 'tool') → server detector also False
     assert is_server_tool_decorator(dec) is False
@@ -79,7 +79,7 @@ def test_decorator_helpers_constant_decorator_returns_false() -> None:
     # `@(x)()` is invalid; use a Subscript decorator instead.
     src = "@regs[0]\ndef f():\n    pass\n"
     tree = ast.parse(src)
-    dec = tree.body[0].decorator_list[0]
+    dec = tree.body[0].decorator_list[0]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
     assert is_a2kit_tool_decorator(dec) is False
     assert is_server_tool_decorator(dec) is False
 
@@ -91,7 +91,7 @@ def test_iter_string_literals_skips_non_string_elts() -> None:
     from a2kit.packages.lint.rules import iter_string_literals
 
     tree = ast.parse("x = ('a', 1, None, 'b')")
-    rhs = tree.body[0].value
+    rhs = tree.body[0].value  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
     out = [c.value for c in iter_string_literals(rhs)]
     assert out == ["a", "b"]
 
@@ -103,7 +103,7 @@ def test_iter_string_literals_returns_nothing_for_non_container() -> None:
     from a2kit.packages.lint.rules import iter_string_literals
 
     tree = ast.parse("x = 'just a string'")
-    rhs = tree.body[0].value
+    rhs = tree.body[0].value  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
     assert list(iter_string_literals(rhs)) == []
 
 

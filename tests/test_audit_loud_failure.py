@@ -19,13 +19,13 @@ import a2kit
 
 def test_compute_report_schema_logs_warn_on_failure(caplog: pytest.LogCaptureFixture) -> None:
     """Unschemable report type → returns None AND logs at WARN."""
-    from a2kit.tool import _compute_report_schema
+    from a2kit._verbs import _compute_report_schema
 
     class _Unschemable:
         """Bare class without pydantic schema support."""
 
     # Reset the warn-once cache so this test fires the warning fresh.
-    from a2kit.tool import _WARN_ONCE_REPORT_SCHEMA
+    from a2kit._verbs import _WARN_ONCE_REPORT_SCHEMA
 
     _WARN_ONCE_REPORT_SCHEMA.discard(_Unschemable.__qualname__)
 
@@ -38,7 +38,7 @@ def test_compute_report_schema_logs_warn_on_failure(caplog: pytest.LogCaptureFix
 
 def test_compute_report_schema_warn_dedupes(caplog: pytest.LogCaptureFixture) -> None:
     """Repeated failures on the same type warn exactly once."""
-    from a2kit.tool import _WARN_ONCE_REPORT_SCHEMA, _compute_report_schema
+    from a2kit._verbs import _WARN_ONCE_REPORT_SCHEMA, _compute_report_schema
 
     class _UnschemableDedupe:
         pass

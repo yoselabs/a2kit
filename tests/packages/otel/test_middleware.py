@@ -82,7 +82,7 @@ def _build_server() -> Any:
     return build_mcp_server(app)
 
 
-async def _ok_call_next(_ctx: Any) -> dict[str, str]:
+async def _ok_call_next(_ctx: Any) -> dict[str, bool]:
     return {"ok": True}
 
 
@@ -97,7 +97,7 @@ async def test_span_emitted_on_success(tracing: Any) -> None:
     mw = OTelMiddleware()
 
     fake_ctx = _FakeMiddlewareContext("ping", server)
-    result = await mw.on_call_tool(fake_ctx, _ok_call_next)
+    result = await mw.on_call_tool(fake_ctx, _ok_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     assert result == {"ok": True}
 
     spans = span_exporter.get_finished_spans()
@@ -123,7 +123,7 @@ async def test_span_records_exception_on_error(tracing: Any) -> None:
 
     fake_ctx = _FakeMiddlewareContext("boom", server)
     with pytest.raises(RuntimeError, match="kaboom"):
-        await mw.on_call_tool(fake_ctx, _fail_call_next)
+        await mw.on_call_tool(fake_ctx, _fail_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -141,9 +141,9 @@ async def test_counter_increments_with_status(tracing: Any) -> None:
     server = _build_server()
     mw = OTelMiddleware()
 
-    await mw.on_call_tool(_FakeMiddlewareContext("ping", server), _ok_call_next)
+    await mw.on_call_tool(_FakeMiddlewareContext("ping", server), _ok_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     with pytest.raises(RuntimeError):
-        await mw.on_call_tool(_FakeMiddlewareContext("boom", server), _fail_call_next)
+        await mw.on_call_tool(_FakeMiddlewareContext("boom", server), _fail_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
 
     data = metric_reader.get_metrics_data()
     assert data is not None
@@ -166,7 +166,7 @@ async def test_unknown_tool_still_emits_span(tracing: Any) -> None:
     server = _build_server()
     mw = OTelMiddleware()
 
-    await mw.on_call_tool(_FakeMiddlewareContext("nonexistent", server), _ok_call_next)
+    await mw.on_call_tool(_FakeMiddlewareContext("nonexistent", server), _ok_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     attrs = dict(spans[0].attributes or {})

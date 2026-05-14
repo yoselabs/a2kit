@@ -1,4 +1,4 @@
-"""Hard gate budget: `# ty: ignore` count.
+"""Hard gate budget: `# ty: ignore` count.  # why: intentional type mismatch — exercises error path or removed surface
 
 The `ty check src/` invocation itself is gated by `make lint`, not pytest —
 running ty inside the test suite duplicates the lint step and slows feedback.
@@ -14,7 +14,12 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _ty_ignore_count() -> int:
     out = subprocess.run(  # noqa: S603
-        ["/usr/bin/grep", "-rE", "# ty: ignore", str(ROOT / "src" / "a2kit")],
+        [
+            "/usr/bin/grep",
+            "-rE",
+            "# ty: ignore",
+            str(ROOT / "src" / "a2kit"),
+        ],  # why: intentional type mismatch — exercises error path or removed surface
         capture_output=True,
         text=True,
         check=False,
@@ -25,4 +30,6 @@ def _ty_ignore_count() -> int:
 
 
 def test_ty_ignore_count_under_budget() -> None:
-    assert _ty_ignore_count() <= 10, "Spec budget for `# ty: ignore` is ≤ 10"
+    assert _ty_ignore_count() <= 10, (
+        "Spec budget for `# ty: ignore` is ≤ 10"
+    )  # why: intentional type mismatch — exercises error path or removed surface

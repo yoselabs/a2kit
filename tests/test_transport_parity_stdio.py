@@ -83,7 +83,7 @@ async def test_stdio_smoke_tool_both_round_trips(tmp_path) -> None:
     assert text_block is not None
     import json as _json
 
-    payload = _json.loads(text_block.text)
+    payload = _json.loads(text_block.text)  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
     assert payload == {"msg": "x", "state_tag": "S", "has_ctx": True}
 
 

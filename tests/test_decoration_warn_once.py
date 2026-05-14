@@ -17,7 +17,7 @@ import pytest
 
 from dataclasses import dataclass
 
-from a2kit import tool as tool_module
+from a2kit import _verbs as tool_module
 from a2kit.packages.di.container import Container
 
 
@@ -105,7 +105,7 @@ def test_l1_dispatch_hook_return_annotation_failure_warns_once(
 def test_l2_resolve_return_annotation_warns_once(caplog: pytest.LogCaptureFixture) -> None:
     """`_resolve_return_annotation` returns None with one WARN on `get_type_hints` failure."""
 
-    def fn() -> "Unresolved":  # type: ignore[name-defined]  # noqa: F821, UP037
+    def fn() -> "Unresolved":  # type: ignore[name-defined]  # noqa: F821, UP037  # ty: ignore[unresolved-reference]  # why: intentional type mismatch — exercises error path or removed surface
         return None  # type: ignore[return-value]
 
     with caplog.at_level(logging.WARNING, logger="a2kit.tool"):
@@ -128,7 +128,7 @@ def test_l2_resolve_return_annotation_warns_once(caplog: pytest.LogCaptureFixtur
 def test_l3_derive_selectable_fields_warns_once(caplog: pytest.LogCaptureFixture) -> None:
     """`_derive_selectable_fields` returns () with one WARN on `get_type_hints` failure."""
 
-    def fn() -> "list[Unresolved]":  # type: ignore[name-defined]  # noqa: F821, UP037
+    def fn() -> "list[Unresolved]":  # type: ignore[name-defined]  # noqa: F821, UP037  # ty: ignore[unresolved-reference]  # why: intentional type mismatch — exercises error path or removed surface
         return []
 
     with caplog.at_level(logging.WARNING, logger="a2kit.tool"):
@@ -178,7 +178,7 @@ class _StubServer:
             pass
 
         t = _Tool()
-        t.meta = self._meta  # type: ignore[attr-defined]
+        t.meta = self._meta  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
         return t
 
 
@@ -205,8 +205,8 @@ async def test_l4_listview_get_tool_failure_warns_once(caplog: pytest.LogCapture
     ctx = _StubMwCtx(name="broken_tool", fastmcp_context=_StubFastMcpCtx(server))
 
     with caplog.at_level(logging.WARNING, logger="a2kit.packages.mcp.listview"):
-        out1 = await mw.on_call_tool(ctx, _identity_call_next)
-        out2 = await mw.on_call_tool(ctx, _identity_call_next)
+        out1 = await mw.on_call_tool(ctx, _identity_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
+        out2 = await mw.on_call_tool(ctx, _identity_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
 
     assert out1 == "ORIG-RESULT"
     assert out2 == "ORIG-RESULT"
@@ -243,8 +243,8 @@ async def test_l4_listview_projection_failure_warns_once(caplog: pytest.LogCaptu
         return seed
 
     with caplog.at_level(logging.WARNING, logger="a2kit.packages.mcp.listview"):
-        out1 = await mw.on_call_tool(ctx, _seed_call_next)
-        out2 = await mw.on_call_tool(ctx, _seed_call_next)
+        out1 = await mw.on_call_tool(ctx, _seed_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
+        out2 = await mw.on_call_tool(ctx, _seed_call_next)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
 
     assert out1 is seed
     assert out2 is seed

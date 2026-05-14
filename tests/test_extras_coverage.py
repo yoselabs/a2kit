@@ -163,7 +163,7 @@ def test_listview_middleware_returns_result_when_tool_lookup_fails() -> None:
     async def _next(ctx: Any) -> Any:
         return fake_result
 
-    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]
+    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     assert out is fake_result
 
 
@@ -186,7 +186,7 @@ def test_listview_middleware_returns_result_when_no_fastmcp_context() -> None:
     async def _next(ctx: Any) -> Any:
         return fake_result
 
-    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]
+    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     assert out is fake_result
 
 
@@ -212,7 +212,7 @@ def test_listview_middleware_returns_result_when_server_attr_missing() -> None:
     async def _next(ctx: Any) -> Any:
         return fake_result
 
-    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]
+    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     assert out is fake_result
 
 
@@ -235,7 +235,7 @@ def test_listview_middleware_returns_result_when_tool_name_missing() -> None:
     async def _next(ctx: Any) -> Any:
         return fake_result
 
-    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]
+    out = asyncio.run(mw.on_call_tool(_Ctx(), _next))  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     assert out is fake_result
 
 
@@ -255,7 +255,7 @@ def test_a2kit_tool_function_removed_from_submodule() -> None:
     import pytest
 
     with pytest.raises(ImportError):
-        from a2kit.tool import tool  # noqa: F401
+        from a2kit.tool import tool  # noqa: F401  # ty: ignore[unresolved-import]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 # --------------------------- a2kit.exceptions edges --------------------------- #

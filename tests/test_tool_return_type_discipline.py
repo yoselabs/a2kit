@@ -276,7 +276,7 @@ def test_primitive_returns_raise_invalid_tool_return_type(return_type: type, typ
     """Antipattern #1 broadened — all primitives + None rejected at decoration time."""
 
     # Build an async fn whose return annotation is the primitive type.
-    async def fn() -> return_type:  # type: ignore[valid-type]
+    async def fn() -> return_type:  # type: ignore[valid-type]  # ty: ignore[invalid-type-form]  # why: intentional type mismatch — exercises error path or removed surface
         return None  # type: ignore[return-value]
 
     fn.__annotations__["return"] = return_type

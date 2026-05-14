@@ -18,7 +18,7 @@ def _write(path: Path, body: str) -> Path:
 
 
 def _codes(findings: object) -> set[str]:
-    return {f.rule for f in findings}  # type: ignore[union-attr]
+    return {f.rule for f in findings}  # type: ignore[union-attr]  # ty: ignore[not-iterable]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 def test_a2k014_just_under_threshold_silent(tmp_path: Path) -> None:

@@ -1,12 +1,8 @@
-"""BDD contract for consolidate-lifecycle-on-async-cm-protocol task 1.1.
+"""BDD contract for App's async-context-manager protocol.
 
-App becomes its own async context manager. Construction is pure: no
+App is its own async context manager. Construction is pure: no
 async work, no singleton ``__aenter__``, no router ``__aenter__``.
-
-These tests are skipped at the module level until the implementation
-lands (tasks 2-7). When the impl ships, remove the ``pytestmark`` line
-and migrate the existing ``tests/test_app_lifecycle_and_di.py`` away
-from the ``lifespan=`` shape.
+First ``__aenter__`` triggers framework-owned resource entry.
 """
 
 from __future__ import annotations

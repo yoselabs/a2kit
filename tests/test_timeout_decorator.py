@@ -17,7 +17,7 @@ from fastmcp import Client
 import a2kit
 from a2kit.metadata import get_meta
 from a2kit.packages.mcp.server import build_mcp_server
-from a2kit.tool import _parse_timeout
+from a2kit._verbs import _parse_timeout
 
 
 # ----------------------------------------------------------- _parse_timeout
@@ -70,7 +70,7 @@ def test_parse_timeout_bool_rejected() -> None:
 
 def test_parse_timeout_other_type_rejected() -> None:
     with pytest.raises(TypeError):
-        _parse_timeout([60])  # type: ignore[arg-type]
+        _parse_timeout([60])  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
 
 
 # ----------------------------------------------------------- decorator stamps

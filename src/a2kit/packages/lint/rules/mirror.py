@@ -48,6 +48,13 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # a2kit/tool.py to keep tool.py under the SLOC budget; behavior
         # covered by tests/test_list_verb.py / tests/test_verb_annotations.py.
         "src/a2kit/_list_helpers.py",
+        # why: verb-decorator bodies (``read`` / ``write`` / ``list_`` /
+        # ``_read_internal`` + helpers) extracted from a2kit/tool.py per
+        # tidy-v035-deferred-items so tool.py drops the A2K014 suppression;
+        # behavior covered by tests/test_verb_annotations.py,
+        # tests/test_list_verb.py, tests/test_timeout_decorator.py,
+        # tests/test_audit_loud_failure.py, tests/test_decoration_warn_once.py.
+        "src/a2kit/_verbs.py",
     }
 )
 

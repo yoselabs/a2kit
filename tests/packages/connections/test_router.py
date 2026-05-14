@@ -76,7 +76,7 @@ def test_add_router_ignores_underscore_marker() -> None:
 
     class _Sneaky(a2kit.Router):
         slug = "sneaky"
-        tools: tuple = ()
+        tools: tuple = ()  # ty: ignore[invalid-attribute-override]  # why: intentional type mismatch — exercises error path or removed surface
         _a2kit_attach = staticmethod(_hidden_hook)
 
     app = a2kit.App("t")

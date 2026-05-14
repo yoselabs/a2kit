@@ -49,9 +49,10 @@ class App:
     Lifecycle:
 
     ``a2kit.App`` is its own async context manager. ``async with app:``
-    enters all registered singletons eagerly (in registration order,
-    topological-DI ordering deferred), auto-detecting their cleanup
-    protocol (``__aexit__`` / ``aclose`` / ``close``). Routers carrying
+    enters all registered singletons eagerly in topological DI order
+    (dependencies first; registration order is the tiebreaker between
+    unrelated singletons), auto-detecting their cleanup protocol
+    (``__aexit__`` / ``aclose`` / ``close``). Routers carrying
     ``__aenter__`` enter lazily on first dispatch of any of their tools
     and unwind on App exit in LIFO order.
 
@@ -163,9 +164,9 @@ class App:
         """
         if any(r.slug == "_meta" for r in self._routers.all()):
             return
+        from a2kit._verbs import _read_internal
         from a2kit.packages.health import HEALTH_TOOL_NAME, run_checks
         from a2kit.routers import Router as _Router
-        from a2kit.tool import _read_internal
 
         app_ref = self
 
@@ -368,23 +369,23 @@ class App:
     async def __aenter__(self) -> App:
         """Enter the App's lifecycle.
 
-        Singletons enter eagerly in registration order. Each resolved
+        Singletons enter eagerly in topological order over the DI graph
+        restricted to the registered set, with registration order as
+        the tiebreaker between unrelated singletons. Each resolved
         instance is probed for cleanup protocol (``__aexit__``,
         ``aclose``, ``close`` — first match wins) and the corresponding
         cleanup is registered on an ``AsyncExitStack`` owned by the
         App. Routers enter lazily on first dispatch.
 
         Exit order: routers unwind first in LIFO of enter order,
-        followed by the AsyncExitStack (LIFO of singleton registration).
-        Topological DI-graph ordering for singletons is a deferred
-        refinement; registration order is the contract today.
+        followed by the AsyncExitStack (LIFO of singleton entry).
         """
         from contextlib import AsyncExitStack
 
         stack = AsyncExitStack()
         await stack.__aenter__()
         try:
-            for type_ in list(self._container.singletons()):
+            for type_ in self._container.singleton_entry_order():
                 if self._container.has_async_singleton(type_):
                     instance = await self._container.aresolve(type_)
                 else:

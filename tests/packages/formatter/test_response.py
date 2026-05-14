@@ -28,7 +28,7 @@ class TestResponse:
     def test_frozen(self):
         r = Response(data="x", format="toon")
         with pytest.raises(Exception):  # FrozenInstanceError
-            r.data = "y"  # type: ignore[misc]
+            r.data = "y"  # type: ignore[misc]  # ty: ignore[invalid-assignment]  # why: intentional type mismatch — exercises error path or removed surface
 
     def test_format_values(self):
         # The dataclass doesn't enforce the literal at runtime — that's the

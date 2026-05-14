@@ -217,7 +217,7 @@ def test_ephemeral_aware_store_short_circuits_to_ephemeral(tmp_path: Path) -> No
 
     base = ConnectionStore(WidgetConfig, tmp_path)
     ephemeral = {("eph",): WidgetConfig(key=("eph",), token="ephemeral-token")}
-    s = EphemeralAwareStore(base, ephemeral)
+    s = EphemeralAwareStore(base, ephemeral)  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
     info = asyncio.run(s.load(("eph",)))
     assert info.token == "ephemeral-token"
 

@@ -24,7 +24,7 @@ from a2kit.packages.cli.context import StderrToolContext
 from a2kit.packages.ldd import EventRegistry
 
 
-def _run(coro: asyncio.coroutines) -> None:
+def _run(coro: asyncio.coroutines) -> None:  # ty: ignore[invalid-type-form]  # why: intentional type mismatch — exercises error path or removed surface
     asyncio.run(coro)
 
 

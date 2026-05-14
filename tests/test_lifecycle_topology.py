@@ -14,40 +14,87 @@ import a2kit
 from a2kit.testing import client as _testing_client
 
 
-@pytest.mark.skip(
-    reason="parallel-paths phase: singletons currently enter in registration order; DI-graph topological order lands at atomic cutover"
-)
+class _TopoDB:
+    def __init__(self, order: list[str]) -> None:
+        self._order = order
+
+    async def __aenter__(self) -> _TopoDB:
+        self._order.append("DB-enter")
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self._order.append("DB-exit")
+
+
+class _TopoRepo:
+    def __init__(self, db: _TopoDB, order: list[str]) -> None:
+        self.db = db
+        self._order = order
+
+    async def __aenter__(self) -> _TopoRepo:
+        self._order.append("Repo-enter")
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self._order.append("Repo-exit")
+
+
 @pytest.mark.asyncio
 async def test_dependent_enters_after_dependency() -> None:
     order: list[str] = []
 
-    class _DB:
-        async def __aenter__(self) -> _DB:
-            order.append("DB-enter")
-            return self
+    def _make_db() -> _TopoDB:
+        return _TopoDB(order)
 
-        async def __aexit__(self, *_exc: object) -> None:
-            order.append("DB-exit")
-
-    class _Repo:
-        def __init__(self, db: _DB) -> None:
-            self.db = db
-
-        async def __aenter__(self) -> _Repo:
-            order.append("Repo-enter")
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None:
-            order.append("Repo-exit")
+    def _make_repo(db: _TopoDB) -> _TopoRepo:
+        return _TopoRepo(db, order)
 
     app = a2kit.App("x")
-    app.singleton(_DB)
-    app.singleton(_Repo)
+    # Register _TopoRepo BEFORE _TopoDB to confirm registration order
+    # does not win over the DI topo order.
+    app.singleton(_TopoRepo, _make_repo)
+    app.singleton(_TopoDB, _make_db)
 
     async with app:
         pass
 
     assert order == ["DB-enter", "Repo-enter", "Repo-exit", "DB-exit"]
+
+
+@pytest.mark.asyncio
+async def test_unrelated_singletons_preserve_registration_order() -> None:
+    order: list[str] = []
+
+    class _X:
+        async def __aenter__(self) -> _X:
+            order.append("X")
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None: ...
+
+    class _Y:
+        async def __aenter__(self) -> _Y:
+            order.append("Y")
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None: ...
+
+    class _Z:
+        async def __aenter__(self) -> _Z:
+            order.append("Z")
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None: ...
+
+    app = a2kit.App("x")
+    app.singleton(_X)
+    app.singleton(_Y)
+    app.singleton(_Z)
+
+    async with app:
+        pass
+
+    assert order == ["X", "Y", "Z"]
 
 
 @pytest.mark.asyncio

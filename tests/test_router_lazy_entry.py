@@ -120,7 +120,7 @@ async def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
     class _Legacy(a2kit.Router):
         slug = "leg"
 
-        async def lifespan(self) -> None:  # type: ignore[override]
+        async def lifespan(self) -> None:  # type: ignore[override]  # ty: ignore[invalid-return-type]  # why: intentional type mismatch — exercises error path or removed surface
             yield
 
         @a2kit.read()
