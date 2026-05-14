@@ -19,13 +19,13 @@ def test_container_isinstance_resolver() -> None:
 
 
 def test_resolver_minimal_surface() -> None:
-    """``Resolver`` protocol surface is exactly: ``get``, ``provide``, ``child``, ``aclose``."""
+    """``Resolver`` protocol surface covers the v0.38 framework-facing seam."""
     from a2kit.packages.di import Resolver
 
     # Walk all public attributes declared on the Protocol.
     surface = {name for name in dir(Resolver) if not name.startswith("_")}
 
-    expected = {"get", "provide", "child", "aclose"}
+    expected = {"get", "provide", "resolve_params", "dispatch", "child", "aclose"}
     extra = surface - expected
     missing = expected - surface
 

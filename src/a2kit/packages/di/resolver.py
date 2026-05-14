@@ -1,8 +1,11 @@
 """``Resolver`` protocol — the framework-facing seam over the DI container.
 
 Framework modules (dispatcher, App, TestClient) MUST reference this
-protocol, never the concrete ``Container``. The protocol surface is
-intentionally minimal: ``get``, ``provide``, ``child``, ``aclose``.
+protocol, never the concrete ``Container``. The protocol surface covers
+the full v0.38 framework-facing seam: registration (``provide``),
+resolution (``get`` / ``resolve_params``), per-call dispatch
+(``dispatch`` async-CM), child opening (``child``), lifecycle
+(``__aenter__`` / ``__aexit__`` / ``aclose``).
 
 The concrete :class:`a2kit.packages.di.Container` implements it; future
 extraction to a standalone PyPI package only needs to keep the protocol
@@ -15,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from contextlib import AbstractAsyncContextManager
 
     from a2kit.packages.di.scope import Scope
 
@@ -45,12 +49,43 @@ class Resolver(Protocol):
         """Register a provider for ``t``. Last-write-wins overrides prior providers."""
         ...
 
+    async def resolve_params(self, fn: Callable[..., Any]) -> dict[str, Any]:
+        """Resolve ``fn``'s parameter kwargs, honoring ``Lazy[T]``."""
+        ...
+
+    def dispatch(
+        self,
+        fn: Callable[..., Any],
+        wire_kwargs: dict[str, Any] | None = None,
+        *,
+        pre_hook: Callable[..., Any] | None = None,
+    ) -> AbstractAsyncContextManager[dict[str, Any]]:
+        """Per-call dispatch helper (async context manager).
+
+        Returns an async-CM whose ``__aenter__`` yields the merged kwarg
+        dict and whose ``__aexit__`` unwinds the per-call cleanup stack.
+        """
+        ...
+
     def child(self) -> Resolver:
         """Open a per-call child resolver sharing this resolver's providers."""
         ...
 
     async def aclose(self) -> None:
         """Unwind this resolver's cleanup stack in LIFO order."""
+        ...
+
+    async def __aenter__(self) -> Resolver:
+        """Enter the resolver's lifecycle scope (root: seal + validate)."""
+        ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: object,
+    ) -> None:
+        """Exit the resolver's lifecycle scope, unwinding cleanups."""
         ...
 
 

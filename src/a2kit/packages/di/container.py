@@ -1,8 +1,3 @@
-# noqa: A2K014
-# Rationale: 525 SLOC after v0.38 retirement (down from 721). Further split
-# would scatter the single-responsibility Container class. TODO: extract
-# _lazy_inner_type/_looks_like_basesettings/_enter_lifecycle helper module
-# if file grows again.
 """Typed DI container — feature-agnostic, async lifecycle-aware resolution.
 
 Resolution surface (post-v0.38 retire-legacy-di-surface):
@@ -41,6 +36,15 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NoReturn, TypeVar
 
 from a2kit.packages.di._cleanup_stack import CleanupStack
+from a2kit.packages.di._helpers import (
+    enter_lifecycle as _enter_lifecycle,
+)
+from a2kit.packages.di._helpers import (
+    lazy_inner_type as _lazy_inner_type,
+)
+from a2kit.packages.di._helpers import (
+    looks_like_basesettings as _looks_like_basesettings,
+)
 from a2kit.packages.di._introspection import (
     Factory,
     UnresolvableType,
@@ -591,83 +595,6 @@ class _ContainerSnapshot:
     providers: dict[type, Factory] = field(default_factory=dict)
     singletons: dict[type, Any] = field(default_factory=dict)
     scope_metadata: dict[type, Scope] = field(default_factory=dict)
-
-
-def _lazy_inner_type(ann: Any) -> type | None:  # noqa: PLR0911
-    """If ``ann`` is ``Lazy[T]`` / ``Callable[[], Awaitable[T]]``, return ``T``.
-
-    Recognizes the user-facing ``a2kit.Lazy`` alias plus the equivalent
-    raw ``Callable[[], Awaitable[T]]`` shape. Returns ``None`` for any
-    other annotation.
-    """
-    import typing as _typing
-    from collections.abc import Awaitable as _Awaitable
-    from collections.abc import Callable as _Callable
-
-    origin = _typing.get_origin(ann)
-    if origin is None:
-        return None
-    if origin not in (_Callable, _typing.Callable):  # type: ignore[attr-defined]
-        return None
-    args = _typing.get_args(ann)
-    if len(args) != 2:
-        return None
-    # Callable[[arg_types...], ret_type]
-    callable_args, ret = args
-    if callable_args != []:
-        return None
-    ret_origin = _typing.get_origin(ret)
-    if ret_origin not in (_Awaitable, _typing.Awaitable):  # type: ignore[attr-defined]
-        return None
-    inner = _typing.get_args(ret)
-    if len(inner) != 1:
-        return None
-    t = inner[0]
-    if isinstance(t, type):
-        return t
-    return None
-
-
-def _looks_like_basesettings(type_: Any) -> bool:
-    """Duck-typed detection of ``pydantic_settings.BaseSettings`` subclasses.
-
-    Walks ``type_.__mro__`` looking for a class whose ``__module__`` starts
-    with ``pydantic_settings`` and whose ``__name__`` is ``BaseSettings``.
-    Duck-typed on purpose: the container stays usable without the optional
-    settings dependency installed.
-    """
-    if not inspect.isclass(type_):
-        return False
-    for base in type_.__mro__:
-        mod = getattr(base, "__module__", "") or ""
-        name = getattr(base, "__name__", "")
-        if name == "BaseSettings" and mod.startswith("pydantic_settings"):
-            return True
-    return False
-
-
-async def _enter_lifecycle(result: Any) -> tuple[Any, Callable[..., Any] | None]:
-    """Single-protocol entry: only ``__aenter__``/``__aexit__`` is honored.
-
-    Returns ``(instance, aexit_callable_or_None)``. The ``aexit`` callable
-    forwards ``(exc_type, exc, tb)`` to the resource's ``__aexit__`` so
-    per-call resources see the propagating body exception (matching the
-    Python ``async with`` protocol).
-
-    ``aclose`` / ``close`` are NOT auto-detected — wrap such resources in
-    a class with ``__aenter__``/``__aexit__`` or use ``@asynccontextmanager``.
-
-    Partial-entry safety: nothing is returned to the caller until
-    ``__aenter__`` succeeded.
-    """
-    if hasattr(result, "__aenter__") and hasattr(result, "__aexit__"):
-        instance = await result.__aenter__()
-
-        async def _aexit(exc_type: Any = None, exc: Any = None, tb: Any = None) -> None:
-            await result.__aexit__(exc_type, exc, tb)
-
-        return instance, _aexit
-    return result, None
 
 
 def _params_for_method(fn: Callable[..., Any]) -> list[_ParamSpec]:

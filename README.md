@@ -126,7 +126,7 @@ app.provide(TrackerStore)                  # class-as-factory (introspects __ini
 
 What the framework does:
 
-- `install_connections(app, TrackerConn)` registers the **dispatch hook** (which awaits `store.load(connection)` and substitutes the typed `TrackerConn` into the per-call DI cache) and a stub provider for `TrackerConn` (so `container.has()` is True for schema-gen). `connections_cli(TrackerConn)` adds the matching Click subcommands.
+- `install_connections(app, TrackerConn)` registers the **dispatch hook** (which awaits `store.load(connection)` and substitutes the typed `TrackerConn` into the per-call DI cache) and a stub provider for `TrackerConn` (so `container.has_provider()` is True for schema-gen). `connections_cli(TrackerConn)` adds the matching Click subcommands.
 - `provide(TrackerStore)` registers `TrackerStore` as its own factory; the container reads `TrackerStore.__init__(conn: TrackerConn)` and chains.
 - At dispatch: the connections dispatch hook (async) awaits the connection load; the typed `TrackerConn` is seeded into the container's per-call cache; the rest of the chain resolves synchronously. The wire schema strips `store`; agents see only `connection` + `task_id`.
 - For one-off non-trivial wiring, pass an explicit sync factory: `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.
