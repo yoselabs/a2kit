@@ -62,6 +62,25 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # indirectly through every verb-decorated tool's stamp call
         # and the decoration-warn-once tests.
         "src/a2kit/_verb_validators.py",
+        # why: per-scope LIFO cleanup stack tested via
+        # tests/packages/di/test_cleanup_stack.py (single-underscore
+        # naming predates the mirror rule's double-underscore expectation).
+        "src/a2kit/packages/di/_cleanup_stack.py",
+        # why: `resolve_hints` wrapper tested via tests/test_resolve_hints.py;
+        # behavior also exercised through every signature-introspecting test.
+        "src/a2kit/packages/di/_hints.py",
+        # why: pure type alias `Lazy = Callable[[], Awaitable[T]]` — no
+        # runtime behavior to test in isolation; consumers exercise it in
+        # tests/packages/di/test_lazy_annotation.py + 3 wire/CLI tests.
+        "src/a2kit/packages/di/_lazy.py",
+        # why: `Scope` enum with two constants; constants exercised by
+        # every per-call/app-scope test under tests/packages/di/.
+        "src/a2kit/packages/di/scope.py",
+        # why: `Resolver` Protocol tested via
+        # tests/packages/di/test_resolver_protocol.py (the test name
+        # describes what's pinned — the Protocol shape — rather than
+        # mirroring the source filename).
+        "src/a2kit/packages/di/resolver.py",
     }
 )
 

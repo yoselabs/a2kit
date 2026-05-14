@@ -23,6 +23,7 @@ class _Transaction:
 
     def __init__(self) -> None:
         type(self).instances_created += 1
+        self.pool: _ConnectionPool | None = None
 
     async def __aenter__(self) -> _Transaction:
         return self
@@ -126,7 +127,7 @@ async def test_per_call_depends_on_app_scope() -> None:
     async def tx_factory(pool: _ConnectionPool) -> AsyncIterator[_Transaction]:
         # The factory closes over the app-scope pool.
         tx = _Transaction()
-        tx.pool = pool  # type: ignore[attr-defined]
+        tx.pool = pool
         async with tx:
             yield tx
 
@@ -143,7 +144,7 @@ async def test_per_call_depends_on_app_scope() -> None:
     # Two per-call transactions, but both share the one app-scope pool.
     assert tx1 is not tx2
     assert _ConnectionPool.instances_created == 1, f"app-scope pool created {_ConnectionPool.instances_created} times — expected 1"
-    assert tx1.pool is tx2.pool  # type: ignore[attr-defined]
+    assert tx1.pool is tx2.pool
 
 
 @pytest.mark.asyncio
