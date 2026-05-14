@@ -31,9 +31,7 @@ declared under `[project.optional-dependencies] otel = [...]`.
 
 ### Requirement: `install(server)` adds an OTel Middleware
 
-`a2kit.packages.otel.install(server, *, tracer_name="a2kit", meter_name="a2kit", metrics=False)`
-SHALL register a FastMCP `Middleware` subclass that wraps every
-`on_call_tool` invocation in an OTel span.
+`a2kit.packages.otel.install(server, ...)` SHALL register a FastMCP `Middleware` subclass that wraps every `on_call_tool` invocation in an OTel span. Signature: `install(server, *, tracer_name="a2kit", meter_name="a2kit", metrics=False)`.
 
 #### Scenario: Span attributes from A2KitMeta
 - **WHEN** a tool registered with `@a2kit.read(name="get_task", tags={"read"})` is invoked through the MCP server with the OTel middleware installed
@@ -63,9 +61,7 @@ SHALL register a FastMCP `Middleware` subclass that wraps every
 
 ### Requirement: Core stays OTel-free
 
-`a2kit` core (top-level files in `src/a2kit/`) and every plugin package
-under `a2kit.packages.*` other than `otel` SHALL NOT import any
-`opentelemetry-*` symbol — direct or transitive.
+`a2kit` core (top-level files in `src/a2kit/`) SHALL NOT import any `opentelemetry-*` symbol — direct or transitive. The same prohibition applies to every plugin package under `a2kit.packages.*` other than `otel`.
 
 #### Scenario: No OTel import outside the otel package
 - **WHEN** `grep -rE "^(from|import) opentelemetry" src/a2kit/` is run, excluding `src/a2kit/packages/otel/`
