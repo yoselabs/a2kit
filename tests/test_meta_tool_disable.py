@@ -3,8 +3,8 @@
 Pins the contract documented in `operational-contracts` and `health-probe`
 specs and the call-site fix in `src/a2kit/packages/mcp/server.py`. The
 prior implementation called per-tool `tool.disable()`, which FastMCP 3
-removed; every `build_mcp_server(app)` against an `App(health_tool=True)`
-crashed with `NotImplementedError`.
+removed; every `build_mcp_server(app)` against an app with the health
+tool installed crashed with `NotImplementedError`.
 """
 
 from __future__ import annotations
@@ -21,6 +21,17 @@ from a2kit.metadata import get_meta, set_meta
 from a2kit.packages.mcp.server import build_mcp_server
 
 
+def _install_h(app: a2kit.App) -> a2kit.App:
+    """Install the synthetic `_meta.health` router on ``app`` and return ``app``.
+
+    v0.35: the explicit ``health_tool=True`` constructor flag was
+    removed; tests that want the tool present without an explicit
+    ``@app.health_check`` registration touch the internal seam directly.
+    """
+    app._install_health_tool()  # noqa: SLF001 -- test seam
+    return app
+
+
 class _Pinger(a2kit.Router):
     slug = "_pinger"
 
@@ -32,7 +43,7 @@ class _Pinger(a2kit.Router):
 
 
 def _app_with_health() -> a2kit.App:
-    return a2kit.App("t", health_tool=True).add_router(_Pinger())
+    return _install_h(a2kit.App("t")).add_router(_Pinger())
 
 
 def test_build_mcp_server_with_health_tool_does_not_raise() -> None:

@@ -64,7 +64,6 @@ class App:
         self,
         name: str,
         *,
-        health_tool: bool = False,
         debug: bool = False,
         **_kw: Any,
     ) -> None:
@@ -95,10 +94,11 @@ class App:
 
         self.ldd = _AppLdd()
 
-        # Health probe — disabled by default; opt in via constructor.
+        # Health probe — auto-installed on the first ``@app.health_check``
+        # call (v0.35: explicit constructor flag removed).
         from a2kit.packages.health import HealthRegistry
 
-        self._health: HealthRegistry = HealthRegistry(enabled=health_tool)
+        self._health: HealthRegistry = HealthRegistry(enabled=False)
         # Test-seam: TestClient sessions claim this slot via __aenter__ so
         # overlapping sessions on the same App fail loud.
         self._test_override_owner: Any = None
@@ -110,8 +110,6 @@ class App:
         self._entered_routers: dict[str, Router] = {}
         # Per-router asyncio.Lock for first-touch coalescing.
         self._router_locks: dict[str, Any] = {}
-        if health_tool:
-            self._install_health_tool()
 
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
@@ -127,6 +125,14 @@ class App:
                 "(``class _Warmup: __aenter__/__aexit__``; "
                 "``app.singleton(_Warmup)``) or move the work into "
                 "``main()`` before ``async with app:``. See CHANGELOG."
+            )
+            raise TypeError(msg)
+        if "health_tool" in kw:
+            msg = (
+                f"App({name!r}, health_tool=...) was removed in v0.35. "
+                "Register a probe with @app.health_check to "
+                "auto-install the _meta.health tool, or omit the flag "
+                "entirely if you don't need health checks."
             )
             raise TypeError(msg)
         msg = f"App({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for v0.35 removals."

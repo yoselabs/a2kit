@@ -3,35 +3,6 @@
 ## Purpose
 TBD - created by archiving change a2web-feedback-round-2. Update Purpose after archive.
 ## Requirements
-### Requirement: Built-in health tool
-
-The system SHALL register a `_meta.health` tool when either (a) `App(..., health_tool=True)` is set explicitly, or (b) at least one `@app.health_check` is registered. The first `@app.health_check` call SHALL auto-install the `_meta.health` synthetic router idempotently — subsequent calls SHALL register additional checks without re-installing. The `health_tool=True` constructor flag SHALL remain accepted (no-op when checks are also registered) for backward compatibility and for apps that want the tool present with zero checks.
-
-#### Scenario: health tool returns ok with version
-
-- **WHEN** a client invokes `_meta.health` on an app constructed with `health_tool=True` and no registered checks
-- **THEN** the response is `{"status": "ok", "version": <pyproject version>, "checks": []}`
-
-#### Scenario: health tool not registered when neither flag nor checks present
-
-- **WHEN** an app is constructed without `health_tool=` AND no `@app.health_check` is registered
-- **THEN** `_meta.health` is not present in `app.tools()`
-
-#### Scenario: `@app.health_check` auto-enables the health tool
-
-- **GIVEN** an app constructed without the `health_tool=` flag
-- **WHEN** `@app.health_check` is applied to a function
-- **THEN** the `_meta.health` synthetic router is installed on the app
-- **AND** the check is registered into the health registry
-- **AND** subsequent `@app.health_check` calls register additional checks without re-installing the router
-
-#### Scenario: `health_tool=True` + `@app.health_check` is idempotent
-
-- **GIVEN** an app constructed with `health_tool=True`
-- **WHEN** `@app.health_check` is applied to a function
-- **THEN** no second `_meta.health` router is installed
-- **AND** the check appears in the health registry
-
 ### Requirement: User-registered readiness checks
 
 The system SHALL allow registering health checks via `@app.health_check` that run when the health tool is invoked and aggregate into the response.
@@ -97,4 +68,46 @@ The system SHALL reject user tools whose name starts with `_meta.` at decoration
 
 - **WHEN** a user decorates a tool `@a2kit.read(name="_meta.custom")`
 - **THEN** a `ValueError` is raised at decoration time, naming the reserved namespace
+
+### Requirement: `_meta.health` SHALL install exclusively via `@app.health_check`
+
+The synthetic `_meta.health` tool SHALL install as a side effect of
+the first `@app.health_check` registration on an `App`. The install
+SHALL be idempotent — subsequent `@app.health_check` calls SHALL
+register additional checks without re-installing the synthetic
+router. Apps with zero registered checks SHALL NOT have
+`_meta.health` exposed; the synthetic router exists only when at
+least one check exists.
+
+The previous `App(health_tool=True)` install path SHALL NOT exist.
+Constructing `App(...)` with that keyword SHALL raise `TypeError`
+with a message naming `@app.health_check` as the replacement.
+
+#### Scenario: First @app.health_check installs the synthetic tool
+
+- **GIVEN** `app = a2kit.App("a")` (no checks yet)
+- **WHEN** `@app.health_check` is applied to a function for the first time
+- **THEN** `_meta.health` becomes invocable on the app's MCP/CLI surface
+- **AND** `app.tools()` includes the synthetic tool descriptor
+
+#### Scenario: Repeated @app.health_check is idempotent
+
+- **GIVEN** an app with two `@app.health_check`-decorated functions registered
+- **WHEN** the app is inspected
+- **THEN** exactly one `_meta.health` tool descriptor exists
+- **AND** both checks fire when `_meta.health` is invoked
+
+#### Scenario: `health_tool=True` raises with migration hint
+
+- **GIVEN** code `a2kit.App("a", health_tool=True)`
+- **WHEN** the constructor evaluates
+- **THEN** `TypeError` is raised
+- **AND** the message contains `"health_check"`
+
+#### Scenario: No checks → no synthetic tool
+
+- **GIVEN** `app = a2kit.App("a")` with no `@app.health_check` registrations
+- **WHEN** the app is inspected
+- **THEN** `_meta.health` is NOT present in `app.tools()`
+- **AND** invoking `_meta.health` over MCP returns the standard "unknown tool" error
 

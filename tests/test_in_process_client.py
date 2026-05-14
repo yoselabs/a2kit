@@ -48,6 +48,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import pytest
 from pydantic import BaseModel
 
 import a2kit
@@ -270,3 +271,28 @@ def test_connection_passthrough_tracker() -> None:
     except (KeyError, FileNotFoundError, OSError):
         # Connection lookup raised — that's still proof the chain ran.
         pass
+
+
+# --- Migration-hint guards (loud-error-on-renamed-test-client-method) --- #
+
+
+def test_call_raises_with_migration_hint() -> None:
+    """The pre-v0.33 ``client.call(...)`` shape now raises with hint."""
+    from a2kit.packages.testing.client import TestClient
+
+    app = _build_app()
+    c = TestClient(app)
+    with pytest.raises(TypeError) as ei:
+        _ = c.call  # noqa: B018 -- accessing the attribute is the trigger
+    msg = str(ei.value)
+    assert "renamed" in msg
+    assert "invoke" in msg
+
+
+def test_genuinely_unknown_attribute_raises_attribute_error() -> None:
+    from a2kit.packages.testing.client import TestClient
+
+    app = _build_app()
+    c = TestClient(app)
+    with pytest.raises(AttributeError):
+        _ = c.totally_unknown_method  # noqa: B018

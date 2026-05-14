@@ -44,7 +44,7 @@ Tests asserting on Python exception classes parse the JSON envelope.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from a2kit.packages.formatter import FormatHint, format_response
 from a2kit.packages.mcp.server import build_mcp_server
@@ -61,11 +61,23 @@ class TestClient:
     """In-process test client backed by real FastMCP in-memory transport.
 
     Manages two resources for the ``async with`` lifetime: the
-    ``fastmcp.FastMCP`` server (built from the App, lifespan included)
+    ``fastmcp.FastMCP`` server (built from the App, lifecycle included)
     and an in-memory ``fastmcp.Client`` connected to it. FastMCP drives
-    the server's lifespan, so ``@app.on_startup`` /
-    ``@app.on_shutdown`` hooks run inside the scope automatically.
+    the server's lifespan, so the App's ``async with app:`` lifecycle
+    enters automatically.
     """
+
+    #: Methods renamed in prior releases. Accessing the old name raises
+    #: ``TypeError`` with an embedded migration hint via
+    #: :meth:`__getattr__`. No alias is provided.
+    _MIGRATED_NAMES: ClassVar[dict[str, str]] = {"call": "invoke"}
+
+    def __getattr__(self, name: str) -> Any:
+        migrated = type(self)._MIGRATED_NAMES  # noqa: SLF001 -- intentional class-attr access
+        if name in migrated:
+            new = migrated[name]
+            raise TypeError(f"TestClient.{name}(...) was renamed to TestClient.{new}(...). Update the call site; no alias is provided.")
+        raise AttributeError(f"'TestClient' object has no attribute {name!r}")
 
     def __init__(self, app: App) -> None:
         self.app = app

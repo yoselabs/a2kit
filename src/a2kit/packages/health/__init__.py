@@ -4,10 +4,11 @@ Round-2 a2web feedback (item 10): every serious deployable service ships a
 fast, no-side-effect probe. a2kit owns this so every consumer (a2web, a2db,
 a2atlassian) answers the same shape and ops engineers know what to expect.
 
-Opt-in via ``App(name, health_tool=True)``. The tool is named ``_meta.health``
-and is excluded from ``list_tools`` by default — agents shouldn't see it in
-their tool picker. The CLI exposes ``<app> health`` whose exit code reflects
-the aggregated status (0 ok, non-zero degraded).
+Opt-in via ``@app.health_check`` (the first decorator call auto-installs
+the synthetic router). The tool is named ``_meta.health`` and is
+excluded from ``list_tools`` by default — agents shouldn't see it in
+their tool picker. The CLI exposes ``<app> health`` whose exit code
+reflects the aggregated status (0 ok, non-zero degraded).
 """
 
 from __future__ import annotations

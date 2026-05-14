@@ -40,7 +40,7 @@ class _SqliteResource:
         _state.sqlite_open = False
 
 
-app = a2kit.App("health-demo", health_tool=True)
+app = a2kit.App("health-demo")
 app.singleton(_SqliteResource)
 
 
