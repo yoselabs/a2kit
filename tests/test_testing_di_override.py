@@ -100,8 +100,8 @@ def test_override_of_unregistered_type_is_removed_on_exit() -> None:
     async def go() -> None:
         async with client(app) as c:
             c.override(_Other, _Other())
-            assert app.container().has(_Other)
-        assert not app.container().has(_Other)
+            assert app.container().has_provider(_Other)
+        assert not app.container().has_provider(_Other)
 
     asyncio.run(go())
 

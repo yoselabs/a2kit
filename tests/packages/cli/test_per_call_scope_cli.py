@@ -51,10 +51,6 @@ def test_per_call_resource_cleaned_up_at_cli_call_exit() -> None:
 
     invoke_tool_sync(_use_tx, {}, fmt="json", app=app)
 
-    assert _Transaction.enter_count == 1, (
-        f"Transaction entered {_Transaction.enter_count} times — expected 1"
-    )
-    assert _Transaction.exit_count == 1, (
-        f"Transaction exited {_Transaction.exit_count} times — expected 1"
-    )
+    assert _Transaction.enter_count == 1, f"Transaction entered {_Transaction.enter_count} times — expected 1"
+    assert _Transaction.exit_count == 1, f"Transaction exited {_Transaction.exit_count} times — expected 1"
     assert _Transaction.last_exc_type is None

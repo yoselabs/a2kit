@@ -33,13 +33,12 @@ def test_no_a2kit_imports_inside_di_package() -> None:
         for match in pattern.finditer(text):
             line_start = text.rfind("\n", 0, match.start()) + 1
             line_end = text.find("\n", match.end())
-            line = text[line_start:line_end if line_end != -1 else None]
+            line = text[line_start : line_end if line_end != -1 else None]
             if self_ref_pattern.search(line):
                 continue
             line_no = text[: match.start()].count("\n") + 1
             offenders.append((py_file, line_no, line.strip()))
 
-    assert not offenders, (
-        "DI package must be self-contained for standalone shipping. Found:\n"
-        + "\n".join(f"  {p}:{ln}: {src}" for p, ln, src in offenders)
+    assert not offenders, "DI package must be self-contained for standalone shipping. Found:\n" + "\n".join(
+        f"  {p}:{ln}: {src}" for p, ln, src in offenders
     )

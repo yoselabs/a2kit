@@ -87,9 +87,7 @@ async def test_aclose_not_detected() -> None:
     async with app:
         await app._resolver.get(_Resource)
 
-    assert _Resource.aclose_called is False, (
-        "framework auto-detected aclose() — should be banned per protocol collapse"
-    )
+    assert _Resource.aclose_called is False, "framework auto-detected aclose() — should be banned per protocol collapse"
 
 
 @pytest.mark.asyncio
@@ -108,6 +106,4 @@ async def test_close_not_detected() -> None:
     async with app:
         await app._resolver.get(_Resource)
 
-    assert _Resource.close_called is False, (
-        "framework auto-detected close() — should be banned per protocol collapse"
-    )
+    assert _Resource.close_called is False, "framework auto-detected close() — should be banned per protocol collapse"

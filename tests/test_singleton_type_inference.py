@@ -55,5 +55,3 @@ def test_explicit_base_type_override() -> None:
     app.provide(_Thing, make)
     assert _Thing in app.providers()
     assert _Sub not in app.providers()
-
-

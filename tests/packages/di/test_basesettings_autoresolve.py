@@ -73,6 +73,4 @@ def test_container_does_not_import_pydantic() -> None:
 
     forbidden = ("import pydantic", "from pydantic")
     found = [needle for needle in forbidden if needle in text]
-    assert not found, (
-        f"container.py imports pydantic ({found}) — must use duck-typing per spec"
-    )
+    assert not found, f"container.py imports pydantic ({found}) — must use duck-typing per spec"

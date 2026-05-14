@@ -6,10 +6,7 @@ from typing import TYPE_CHECKING, Any
 from a2kit._lifecycle_helpers import (
     resolve_singleton_args,
 )
-from a2kit.packages.di.container import (
-    _UNRESOLVED,
-    Container,
-)
+from a2kit.packages.di.container import Container
 from a2kit.packages.di.scope import Scope
 from a2kit.routers import Router, RouterRegistry
 from a2kit.tool import ToolDescriptor
@@ -20,10 +17,6 @@ if TYPE_CHECKING:
     import click
 
     from a2kit.packages.di.resolver import Resolver
-
-
-#: Singleton-not-yet-resolved sentinel. Importable as ``from a2kit.app import UNRESOLVED``.
-UNRESOLVED: Any = _UNRESOLVED
 
 
 _LIFECYCLE_LOG = logging.getLogger("a2kit.lifecycle")
@@ -289,10 +282,7 @@ class App:
             )
             raise TypeError(msg)
         if _kw:
-            msg = (
-                f"app.provide() received unexpected keyword arguments: {sorted(_kw)}. "
-                "Supported kwargs are `per_call`."
-            )
+            msg = f"app.provide() received unexpected keyword arguments: {sorted(_kw)}. Supported kwargs are `per_call`."
             raise TypeError(msg)
         type_, factory = resolve_singleton_args(arg1, arg2)
         scope = Scope.SCOPED if per_call else Scope.SINGLETON
@@ -337,15 +327,11 @@ class App:
         raise TypeError(msg)
 
     def has_singleton(self, type_: type) -> bool:  # noqa: ARG002
-        msg = (
-            "app.has_singleton(T) was removed in v0.36. Use app.has_provider(T)."
-        )
+        msg = "app.has_singleton(T) was removed in v0.36. Use app.has_provider(T)."
         raise TypeError(msg)
 
     def singletons(self) -> dict[type, Any]:
-        msg = (
-            "app.singletons() was removed in v0.36. Use app.providers()."
-        )
+        msg = "app.singletons() was removed in v0.36. Use app.providers()."
         raise TypeError(msg)
 
     # --- Lazy router entry (v0.35 consolidate-lifecycle) ----------------- #

@@ -115,9 +115,7 @@ async def test_per_call_cleanup_runs_on_exception() -> None:
                 raise _BodyError("body failed")
 
     assert _Transaction.cleanup_count == 1
-    assert isinstance(_Transaction.last_exc, _BodyError), (
-        f"cleanup did not see propagating exception, saw {_Transaction.last_exc!r}"
-    )
+    assert isinstance(_Transaction.last_exc, _BodyError), f"cleanup did not see propagating exception, saw {_Transaction.last_exc!r}"
 
 
 @pytest.mark.asyncio
@@ -144,9 +142,7 @@ async def test_per_call_depends_on_app_scope() -> None:
 
     # Two per-call transactions, but both share the one app-scope pool.
     assert tx1 is not tx2
-    assert _ConnectionPool.instances_created == 1, (
-        f"app-scope pool created {_ConnectionPool.instances_created} times — expected 1"
-    )
+    assert _ConnectionPool.instances_created == 1, f"app-scope pool created {_ConnectionPool.instances_created} times — expected 1"
     assert tx1.pool is tx2.pool  # type: ignore[attr-defined]
 
 

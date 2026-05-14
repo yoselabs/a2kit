@@ -89,13 +89,9 @@ async def test_first_dispatch_warms_resource_once() -> None:
         second = await app._resolver.get(_BrowserPool)
 
         assert first is second, "cached instance not reused across resolves"
-        assert _BrowserPool.enter_count == 1, (
-            f"expected one __aenter__, got {_BrowserPool.enter_count}"
-        )
+        assert _BrowserPool.enter_count == 1, f"expected one __aenter__, got {_BrowserPool.enter_count}"
 
-    assert _BrowserPool.exit_count == 1, (
-        f"expected one __aexit__ on app close, got {_BrowserPool.exit_count}"
-    )
+    assert _BrowserPool.exit_count == 1, f"expected one __aexit__ on app close, got {_BrowserPool.exit_count}"
 
 
 @pytest.mark.asyncio
@@ -128,9 +124,7 @@ async def test_concurrent_first_touches_coalesce() -> None:
 
     async with app:
         # Spawn ten concurrent resolutions.
-        tasks = [
-            asyncio.create_task(app._resolver.get(_SlowResource)) for _ in range(10)
-        ]
+        tasks = [asyncio.create_task(app._resolver.get(_SlowResource)) for _ in range(10)]
         # Wait until __aenter__ is in flight, then release.
         await enter_started.wait()
         release_enter.set()
@@ -143,6 +137,4 @@ async def test_concurrent_first_touches_coalesce() -> None:
             assert r is first, "concurrent first-resolves returned distinct instances"
 
         # Construction + __aenter__ ran exactly once.
-        assert _SlowResource.instances_created == 1, (
-            f"factory invoked {_SlowResource.instances_created} times under concurrent load"
-        )
+        assert _SlowResource.instances_created == 1, f"factory invoked {_SlowResource.instances_created} times under concurrent load"

@@ -92,9 +92,7 @@ async def test_dispatch_propagates_tool_exception_and_cleans_up() -> None:
                 await tool(**kw)
 
     assert _Tx.cleanup_count == 1
-    assert isinstance(_Tx.last_exc, _BodyError), (
-        f"per-call cleanup did not see propagating exception, saw {_Tx.last_exc!r}"
-    )
+    assert isinstance(_Tx.last_exc, _BodyError), f"per-call cleanup did not see propagating exception, saw {_Tx.last_exc!r}"
 
 
 # --- pre_hook plumbing (dispatch-lifecycle-wiring §2) ---------------------

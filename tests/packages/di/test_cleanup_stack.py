@@ -109,9 +109,7 @@ async def test_lifo_order() -> None:
 
     # After app exits, LIFO unwind: C, B, A.
     events = [e for e in _Resource.log if e[1] == "exit"]
-    assert events == [("C", "exit"), ("B", "exit"), ("A", "exit")], (
-        f"LIFO unwind violated: {events}"
-    )
+    assert events == [("C", "exit"), ("B", "exit"), ("A", "exit")], f"LIFO unwind violated: {events}"
 
 
 @pytest.mark.asyncio
@@ -146,9 +144,7 @@ async def test_per_resource_exception_isolation(caplog: pytest.LogCaptureFixture
     assert ("A", "exit") in exits
     assert ("B", "exit") in exits
     assert ("C", "exit") in exits
-    assert any("B failed to exit" in r.message for r in caplog.records), (
-        "B's cleanup failure was not logged at WARN"
-    )
+    assert any("B failed to exit" in r.message for r in caplog.records), "B's cleanup failure was not logged at WARN"
 
 
 @pytest.mark.asyncio

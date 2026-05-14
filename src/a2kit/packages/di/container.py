@@ -1,7 +1,14 @@
-"""Typed DI container — feature-agnostic, sync + async resolution paths.
+# noqa: A2K014
+# Rationale: 525 SLOC after v0.38 retirement (down from 721). Further split
+# would scatter the single-responsibility Container class. TODO: extract
+# _lazy_inner_type/_looks_like_basesettings/_enter_lifecycle helper module
+# if file grows again.
+"""Typed DI container — feature-agnostic, async lifecycle-aware resolution.
 
-Resolution surface (post-v0.37 dispatch-lifecycle-wiring):
+Resolution surface (post-v0.38 retire-legacy-di-surface):
 
+- ``Container.provide(t, factory, *, scope)`` / ``has_provider`` /
+  ``providers_view`` — registration.
 - ``Container.dispatch(fn, wire_kwargs, *, pre_hook=None)`` — async-CM
   for per-call dispatch (opens a child, runs the optional pre_hook,
   runs ``resolve_params`` for DI, yields merged kwargs, unwinds
@@ -10,16 +17,17 @@ Resolution surface (post-v0.37 dispatch-lifecycle-wiring):
   through DI, ``Lazy[T]``-aware.
 - ``Container.get(t)`` — async lifecycle-aware resolve honoring scope,
   ``__aenter__``, cleanup recording.
-- ``Container.provide(t, factory, *, scope)`` / ``has_provider`` /
-  ``providers_view`` — v0.36 registration surface.
-
-Legacy surface (still in place for TestClient seam + sync test paths):
-``register`` / ``register_singleton`` / ``resolve`` / ``aresolve`` /
-``has`` / ``has_async_singleton``. Scheduled for separate retirement.
+- ``Container.child()`` — open a per-call child container.
+- ``Container.aclose()`` + ``__aenter__`` / ``__aexit__`` — lifecycle.
 
 Wire-input transformation (e.g. ``connection: str`` → typed config)
 lives in the consumer's dispatch hook (``pre_hook`` arg), wire-side only
 — DI runs after, on the hook's output.
+
+Legacy methods (``register`` / ``register_singleton`` / ``resolve`` /
+``aresolve`` / ``has`` / ``has_async_singleton`` /
+``has_any_async_singletons``) raise ``TypeError`` with v0.38 migration
+hints. See CHANGELOG.
 """
 
 from __future__ import annotations
@@ -30,7 +38,7 @@ import inspect
 import logging
 import weakref
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVar
 
 from a2kit.packages.di._cleanup_stack import CleanupStack
 from a2kit.packages.di._introspection import (
@@ -49,36 +57,33 @@ _log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+_RETIRED_V038 = "v0.38 (see CHANGELOG retire-legacy-di-surface)"
+
+
+def _retired(old: str, replacement: str) -> NoReturn:
+    msg = f"Container.{old} was retired in {_RETIRED_V038}. Replacement: {replacement}."
+    raise TypeError(msg)
+
+
 class Container:
-    """Synchronous typed DI container.
+    """Typed async DI container with lifecycle-aware resolution.
 
     Construct one per :class:`a2kit.App`. The container holds the App's
-    singletons (cached values shared across dispatches) and per-call
-    providers (fresh instances per dispatch).
-
-    Resolution is per-call: pass a fresh cache dict to :meth:`resolve` each
-    time so two kwargs of the same type share one instance within a call
-    but never across calls.
+    app-scope cache (instances shared across dispatches) and opens a
+    per-call child via :meth:`child` / :meth:`dispatch` for SCOPED types.
     """
 
     def __init__(self) -> None:
         self._providers: dict[type, Factory] = {}
-        # Singleton cache: type → cached instance.
+        # Canonical app-scope cache: type → built instance. Populated by
+        # ``_build_singleton`` on first ``get(T)``. Absent keys mean "not
+        # yet built" (lazy first-use, post-v0.36).
         self._singletons: dict[type, Any] = {}
-        # Types whose singleton factory is async. First aresolve awaits;
-        # sync resolve raises a precise error while the cache is unresolved.
-        self._async_factories: set[type] = set()
-        # Per-type asyncio.Lock for concurrent first-resolution coalescing.
-        # Created lazily on first aresolve to avoid touching the running
-        # loop at registration time.
-        self._async_singleton_locks: dict[type, asyncio.Lock] = {}
         # Cached parameter introspection per factory, keyed on the live factory
         # object via a ``WeakKeyDictionary``. The id(factory)-keyed cache that
         # preceded this would hit stale entries when CPython recycled function
         # ids across nested test scopes — the same hazard documented for the
         # tool-signature cache in ``a2kit/signature.py``'s design note.
-        # ``WeakKeyDictionary`` keys on the object identity and auto-vacates
-        # on GC, eliminating both the aliasing and the memory-growth modes.
         self._param_cache: weakref.WeakKeyDictionary[Factory, list[_ParamSpec]] = weakref.WeakKeyDictionary()
         # Generic "wire-scoped string" registry. Consumer packages register
         # a scope name (e.g. ``"connection"``) and the types whose values
@@ -88,9 +93,8 @@ class Container:
         # this to synthesize the wire-side string param.
         self._wire_scopes: dict[str, set[type]] = {}
 
-        # --- new di-scoped-lifecycle state --------------------------------
-        # Registered scope per type. Defaults to SINGLETON for ``provide`` /
-        # ``register_singleton``; SCOPED entries are child-container-scoped.
+        # Registered scope per type. Defaults to SINGLETON for ``provide``;
+        # SCOPED entries are child-container-scoped.
         self._scope_metadata: dict[type, Scope] = {}
         # Per-container cleanup stack. Root container holds app-scope
         # cleanups; child containers hold per-call cleanups.
@@ -105,64 +109,60 @@ class Container:
         # Per-call (SCOPED) cache. Empty on root; populated on children.
         self._scoped_cache: dict[type, Any] = {}
         # Per-type async locks for lifecycle-aware ``get(T)`` so concurrent
-        # first-touches coalesce. Separate from the older
-        # ``_async_singleton_locks`` used by the legacy ``aresolve`` path.
+        # first-touches coalesce.
         self._get_locks: dict[type, asyncio.Lock] = {}
 
+    # -- retired legacy surface (loud-crash with v0.38 hints) ------------ #
+
+    def register(self, type_: type, factory: Factory | None = None) -> NoReturn:  # noqa: ARG002
+        _retired(
+            "register(T, factory)",
+            "Container.provide(T, factory) — see CHANGELOG retire-legacy-di-surface",
+        )
+
+    def register_singleton(self, type_: type, factory: Factory) -> NoReturn:  # noqa: ARG002
+        _retired(
+            "register_singleton(T, factory)",
+            "Container.provide(T, factory, scope=Scope.SINGLETON)",
+        )
+
+    def resolve(
+        self,
+        type_: type,  # noqa: ARG002
+        *,
+        cache: dict[type, Any] | None = None,  # noqa: ARG002
+        chain: list[type] | None = None,  # noqa: ARG002
+    ) -> NoReturn:
+        _retired(
+            "resolve(T)",
+            "await Container.get(T) (async; honors __aenter__ and cleanup)",
+        )
+
+    async def aresolve(
+        self,
+        type_: type,  # noqa: ARG002
+        *,
+        cache: dict[type, Any] | None = None,  # noqa: ARG002
+        chain: list[type] | None = None,  # noqa: ARG002
+    ) -> NoReturn:
+        _retired("aresolve(T)", "await Container.get(T)")
+
+    def has(self, type_: Any) -> NoReturn:  # noqa: ARG002
+        _retired("has(T)", "Container.has_provider(T)")
+
+    def has_async_singleton(self, type_: type) -> NoReturn:  # noqa: ARG002
+        _retired(
+            "has_async_singleton(T)",
+            "no replacement — provide(scope=SINGLETON) accepts both sync and async factories",
+        )
+
+    def has_any_async_singletons(self) -> NoReturn:
+        _retired(
+            "has_any_async_singletons()",
+            "no replacement — async vs sync factories are no longer distinguished at registration",
+        )
+
     # -- registration --------------------------------------------------- #
-
-    def register(self, type_: type, factory: Factory | None = None) -> None:
-        """Register ``factory`` (or ``type_`` itself) as the provider for ``type_``.
-
-        When ``factory`` is None, the class itself becomes the factory and
-        the container will introspect ``type_.__init__`` at resolve time.
-        Factories MUST be synchronous (``def``, not ``async def``); async
-        factories raise ``ValueError`` at registration.
-        """
-        if factory is None:
-            factory = type_
-        if inspect.iscoroutinefunction(factory):
-            msg = (
-                f"provider for {type_!r}: factory is `async def`, but container "
-                "factories must be synchronous. Async resource initialization belongs "
-                "in resource classes (lazy-init pattern) or at the composition root "
-                "(see README 'Resource pattern' appendix)."
-            )
-            raise ValueError(msg)
-        if inspect.isclass(factory):
-            for spec in _factory_params(factory):
-                if not spec.has_default and spec.annotation is inspect.Parameter.empty:
-                    msg = f"provider for {type_!r}: parameter {spec.name!r} lacks an annotation"
-                    raise ValueError(msg)
-        self._providers[type_] = factory
-
-    def register_singleton(self, type_: type, factory: Factory) -> None:
-        """Register a factory whose result is cached on this Container.
-
-        The factory may be sync (``def``) or async (``async def``). First
-        resolution of an async-factory singleton runs inside an event
-        loop via :meth:`aresolve` (or any code path the framework
-        dispatches inside one — e.g. App ``__aenter__`` eagerly resolves
-        every registered singleton). Subsequent resolves return the
-        cached value. Sync :meth:`resolve` on an unresolved async
-        singleton raises a precise error.
-        """
-        is_async = inspect.iscoroutinefunction(factory)
-        if is_async:
-            self._async_factories.add(type_)
-        # Sentinel: registered but not yet resolved.
-        if type_ not in self._singletons:
-            self._singletons[type_] = _UNRESOLVED
-        self._providers[type_] = factory
-
-    def has(self, type_: Any) -> bool:
-        return type_ in self._providers
-
-    def has_singleton(self, type_: Any) -> bool:
-        return type_ in self._singletons
-
-    def providers(self) -> dict[type, Factory]:
-        return dict(self._providers)
 
     def register_wire_scope(self, scope_name: str, *types: type) -> None:
         """Track ``types`` as populated by a wire-side string named ``scope_name``.
@@ -170,7 +170,7 @@ class Container:
         The container holds the mapping but does no resolution work for it.
         The consumer's dispatch hook is responsible for converting the wire
         string into typed instances and substituting them into kwargs before
-        the container's ``apply_kwargs`` runs.
+        DI runs.
         """
         self._wire_scopes.setdefault(scope_name, set()).update(types)
 
@@ -201,206 +201,19 @@ class Container:
         for spec in self._params_for(factory):
             self._collect_reachable(spec.annotation, seen)
 
-    def singletons(self) -> dict[type, Any]:
-        """Snapshot of registered singletons; unresolved entries carry the sentinel."""
-        return dict(self._singletons)
-
-    # -- resolution ----------------------------------------------------- #
-
-    def resolve(
-        self,
-        type_: type,
-        *,
-        cache: dict[type, Any] | None = None,
-        chain: list[type] | None = None,
-    ) -> Any:
-        """Resolve ``type_`` synchronously.
-
-        Per-call cache prevents the same factory from running twice within
-        one resolution. Singleton-registered types short-circuit to their
-        cached value after first resolve.
-        """
-        if cache is None:
-            cache = {}
-        if chain is None:
-            chain = []
-        # Singleton fast-path.
-        if type_ in self._singletons:
-            cached = self._singletons[type_]
-            if cached is not _UNRESOLVED:
-                return cached
-            if type_ in self._async_factories:
-                msg = (
-                    f"singleton {type_!r} has an async factory and has not been "
-                    "resolved yet. Use the async resolve path (the dispatcher "
-                    "runs async, so depending on this type from a tool body is "
-                    "fine), or warm it up by calling "
-                    "`await app.warm_async_singletons()` from inside the "
-                    "App's lifespan body so sync resolve sees a cached value."
-                )
-                raise ValueError(msg)
-        if type_ in cache:
-            return cache[type_]
-        if type_ in chain:
-            msg = f"provider cycle: {[*chain, type_]}"
-            raise ValueError(msg)
-        factory = self._providers.get(type_)
-        if factory is None:
-            raise UnresolvableType(type_, [*chain])
-
-        new_chain = [*chain, type_]
-        kwargs = self._resolve_factory_kwargs(factory, cache, new_chain)
-        result = factory(**kwargs)
-        if type_ in self._singletons:
-            # Singleton: cache permanently.
-            self._singletons[type_] = result
-        cache[type_] = result
-        return result
-
-    async def aresolve(
-        self,
-        type_: type,
-        *,
-        cache: dict[type, Any] | None = None,
-        chain: list[type] | None = None,
-    ) -> Any:
-        """Resolve ``type_`` from within an event loop.
-
-        Hot path is identical to :meth:`resolve` (cached lookup). Cold path
-        for async-factory singletons takes the per-type lock, double-checks
-        the cache, awaits the factory, and caches the result. Two concurrent
-        first-resolution calls for the same type coalesce on the lock; the
-        factory runs at most once. Resolving sub-dependencies of an async
-        factory uses this same path, so an async factory may depend on
-        other async singletons.
-
-        v0.36 bridge: when ``type_`` was registered via the new
-        ``provide(...)`` API (has scope metadata), delegate to
-        :meth:`get` so ``__aenter__`` / cleanup wire through the per-scope
-        cleanup stack uniformly.
-        """
-        if cache is None:
-            cache = {}
-        if chain is None:
-            chain = []
-        # New-API bridge: any type registered via `provide()` carries scope
-        # metadata; route through `get` so lifecycle is honored.
-        if type_ in self._scope_metadata:
-            return await self.get(type_)
-        cached = self._cached_or_none(type_, cache)
-        if cached is not _MISSING:
-            return cached
-        if type_ in chain:
-            msg = f"provider cycle: {[*chain, type_]}"
-            raise ValueError(msg)
-        factory = self._providers.get(type_)
-        if factory is None:
-            raise UnresolvableType(type_, [*chain])
-
-        new_chain = [*chain, type_]
-        if type_ in self._singletons and type_ in self._async_factories:
-            return await self._aresolve_async_singleton(type_, factory, cache, new_chain)
-        kwargs = await self._aresolve_factory_kwargs(factory, cache, new_chain)
-        result = factory(**kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-        if type_ in self._singletons:
-            self._singletons[type_] = result
-        cache[type_] = result
-        return result
-
-    def _cached_or_none(self, type_: type, cache: dict[type, Any]) -> Any:
-        """Return cached value (singleton or per-call) or ``_MISSING``."""
-        if type_ in self._singletons:
-            cached = self._singletons[type_]
-            if cached is not _UNRESOLVED:
-                return cached
-        if type_ in cache:
-            return cache[type_]
-        return _MISSING
-
-    async def _aresolve_async_singleton(
-        self,
-        type_: type,
-        factory: Factory,
-        cache: dict[type, Any],
-        new_chain: list[type],
-    ) -> Any:
-        lock = self._async_singleton_locks.get(type_)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._async_singleton_locks[type_] = lock
-        async with lock:
-            cached = self._singletons.get(type_, _UNRESOLVED)
-            if cached is not _UNRESOLVED:
-                return cached
-            kwargs = await self._aresolve_factory_kwargs(factory, cache, new_chain)
-            result = factory(**kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-            self._singletons[type_] = result
-            cache[type_] = result
-            return result
-
-    async def _aresolve_factory_kwargs(
-        self,
-        factory: Factory,
-        cache: dict[type, Any],
-        new_chain: list[type],
-    ) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {}
-        for spec in self._params_for(factory):
-            if self.has(spec.annotation):
-                kwargs[spec.name] = await self.aresolve(
-                    spec.annotation,
-                    cache=cache,
-                    chain=new_chain,
-                )
-                continue
-            if spec.has_default:
-                continue
-            raise UnresolvableType(spec.annotation, new_chain)
-        return kwargs
-
-    def _resolve_factory_kwargs(
-        self,
-        factory: Factory,
-        cache: dict[type, Any],
-        new_chain: list[type],
-    ) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {}
-        for spec in self._params_for(factory):
-            if self.has(spec.annotation):
-                kwargs[spec.name] = self.resolve(
-                    spec.annotation,
-                    cache=cache,
-                    chain=new_chain,
-                )
-                continue
-            if spec.has_default:
-                continue
-            raise UnresolvableType(spec.annotation, new_chain)
-        return kwargs
-
-    def has_async_singleton(self, type_: type) -> bool:
-        return type_ in self._async_factories
-
-    def has_any_async_singletons(self) -> bool:
-        return bool(self._async_factories)
-
     # -- test seam: snapshot/restore for TestClient.override -------------- #
 
     def _override(self, type_: type, instance: object) -> None:
         """Pin ``type_`` to ``instance`` across all resolution paths.
 
-        Test-only seam owning the three-attribute mutation: install a
-        constant factory in `_providers`, cache `instance` in
-        `_singletons`, and clear any async-factory marker on `type_` so
-        sync `resolve` no longer raises. Idempotent and feature-agnostic.
+        Test-only seam owning the registration mutation: install a constant
+        factory in ``_providers``, cache the instance on the app-scope
+        ``_singletons`` map, and mark scope so :meth:`get` short-circuits.
+        Idempotent and feature-agnostic.
         """
         self._providers[type_] = lambda: instance
         self._singletons[type_] = instance
-        self._async_factories.discard(type_)
+        self._scope_metadata[type_] = Scope.SINGLETON
 
     def _snapshot(self) -> _ContainerSnapshot:
         """Capture the registration + cache state for later restore.
@@ -412,16 +225,14 @@ class Container:
         return _ContainerSnapshot(
             providers=dict(self._providers),
             singletons=dict(self._singletons),
-            async_factories=set(self._async_factories),
+            scope_metadata=dict(self._scope_metadata),
         )
 
     def _restore(self, snapshot: _ContainerSnapshot) -> None:
         """Restore the registration + cache state from a prior snapshot."""
         self._providers = dict(snapshot.providers)
         self._singletons = dict(snapshot.singletons)
-        self._async_factories = set(snapshot.async_factories)
-        # Locks are rebuilt lazily; drop any held by overridden types.
-        self._async_singleton_locks = {t: lock for t, lock in self._async_singleton_locks.items() if t in self._async_factories}
+        self._scope_metadata = dict(snapshot.scope_metadata)
 
     # -- di-scoped-lifecycle public surface ----------------------------- #
 
@@ -460,28 +271,11 @@ class Container:
         if inspect.isclass(factory):
             for spec in _factory_params(factory):
                 if not spec.has_default and spec.annotation is inspect.Parameter.empty:
-                    msg = (
-                        f"provider for {type_!r}: parameter {spec.name!r} lacks an annotation"
-                    )
+                    msg = f"provider for {type_!r}: parameter {spec.name!r} lacks an annotation"
                     raise ValueError(msg)
 
-        is_async = inspect.iscoroutinefunction(factory)
-        if scope is Scope.SINGLETON:
-            if is_async:
-                self._async_factories.add(type_)
-            else:
-                self._async_factories.discard(type_)
-            if type_ not in self._singletons:
-                self._singletons[type_] = _UNRESOLVED
-            else:
-                # Re-registration overrides any cached value too.
-                self._singletons[type_] = _UNRESOLVED
-        else:
-            # SCOPED: don't pre-register in singletons cache; ensure no
-            # stale singleton entry survives from a prior provide() call.
-            self._singletons.pop(type_, None)
-            self._async_factories.discard(type_)
-
+        # Re-registration: drop any prior cached instance.
+        self._singletons.pop(type_, None)
         self._providers[type_] = factory
         self._scope_metadata[type_] = scope
 
@@ -520,9 +314,8 @@ class Container:
         # as SINGLETON (the default) and miss them.
         scope = self._scope_of(type_)
         if scope is Scope.SINGLETON:
-            cached = self._root()._singletons.get(type_, _UNRESOLVED)
-            if cached is not _UNRESOLVED:
-                return cached
+            if type_ in self._root()._singletons:
+                return self._root()._singletons[type_]
             return await self._root()._build_singleton(type_)
 
         # SCOPED on this child (or transient — TRANSIENT not on App surface yet).
@@ -575,8 +368,8 @@ class Container:
         receives ``(fn, dict(wire_kwargs))``, may be sync or async,
         and returns a ``dict[str, Any]`` of wire-side resolved kwargs
         (e.g. ``{"connection": <TrackerConn instance>}``). It MUST NOT
-        call DI (``apply_kwargs``, ``get``) — DI is the framework's
-        job, run after the hook on the hook's output.
+        call DI — DI is the framework's job, run after the hook on
+        the hook's output.
 
         Example::
 
@@ -598,12 +391,9 @@ class Container:
             # SCOPED providers so chain resolution from any factory
             # can find them. Walks ALL wire kwargs: each value's
             # concrete class becomes a type-keyed seed on the child.
-            # Primitives (str/int/bool/etc.) seed too — harmless if
-            # nothing chains through them, useful if a tool actually
-            # takes the wire kwarg by type rather than by name.
             for _wire_val in wire.values():
                 _t = type(_wire_val)
-                child._providers[_t] = (lambda v=_wire_val: v)
+                child._providers[_t] = lambda v=_wire_val: v
                 child._scope_metadata[_t] = Scope.SCOPED
                 child._scoped_cache[_t] = _wire_val
             resolved = await child.resolve_params(fn)
@@ -699,9 +489,8 @@ class Container:
         root = self._root()
         lock = root._get_locks.setdefault(type_, asyncio.Lock())
         async with lock:
-            cached = root._singletons.get(type_, _UNRESOLVED)
-            if cached is not _UNRESOLVED:
-                return cached
+            if type_ in root._singletons:
+                return root._singletons[type_]
             instance = await self._construct(type_, scope=Scope.SINGLETON)
             root._singletons[type_] = instance
             return instance
@@ -795,33 +584,13 @@ class Container:
         return params
 
 
-class _Unresolved:
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "<UNRESOLVED>"
-
-
-_UNRESOLVED: Any = _Unresolved()
-
-
 @dataclass(frozen=True, slots=True)
 class _ContainerSnapshot:
     """Opaque snapshot of container state for the test-override seam."""
 
     providers: dict[type, Factory] = field(default_factory=dict)
     singletons: dict[type, Any] = field(default_factory=dict)
-    async_factories: set[type] = field(default_factory=set)
-
-
-class _Missing:
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "<MISSING>"
-
-
-_MISSING: Any = _Missing()
+    scope_metadata: dict[type, Scope] = field(default_factory=dict)
 
 
 def _lazy_inner_type(ann: Any) -> type | None:  # noqa: PLR0911

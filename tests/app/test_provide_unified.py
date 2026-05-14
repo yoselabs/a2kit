@@ -120,6 +120,4 @@ async def test_sealed_after_aenter() -> None:
             app.provide(_Real)
         msg = str(excinfo.value)
         # Spec: message names the sealing rule and the override pattern.
-        assert "sealed" in msg.lower() or "after" in msg.lower(), (
-            f"sealed-container error message missing context: {msg!r}"
-        )
+        assert "sealed" in msg.lower() or "after" in msg.lower(), f"sealed-container error message missing context: {msg!r}"

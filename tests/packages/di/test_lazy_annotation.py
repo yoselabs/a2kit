@@ -74,9 +74,7 @@ async def test_lazy_param_receives_callable_not_instance() -> None:
 
     browser = captured["browser"]
     assert callable(browser), "Lazy[T] param did not receive a callable"
-    assert not isinstance(browser, _BrowserPool), (
-        "Lazy[T] param was given the resolved instance instead of a deferred closure"
-    )
+    assert not isinstance(browser, _BrowserPool), "Lazy[T] param was given the resolved instance instead of a deferred closure"
 
 
 @pytest.mark.asyncio

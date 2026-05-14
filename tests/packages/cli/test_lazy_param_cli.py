@@ -39,7 +39,5 @@ def test_lazy_never_invoked_under_cli() -> None:
 
     invoke_tool_sync(_skip_browser, {}, fmt="json", app=app)
 
-    assert _Browser.enter_count == 0, (
-        f"Browser.__aenter__ ran {_Browser.enter_count} times despite Lazy not awaited"
-    )
+    assert _Browser.enter_count == 0, f"Browser.__aenter__ ran {_Browser.enter_count} times despite Lazy not awaited"
     assert _Browser.exit_count == 0

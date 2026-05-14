@@ -8,16 +8,13 @@ modules reference the protocol, not the concrete class.
 from __future__ import annotations
 
 
-
-
 def test_container_isinstance_resolver() -> None:
     """A default ``Container`` satisfies the ``Resolver`` protocol at runtime."""
     from a2kit.packages.di import Container, Resolver
 
     container = Container()
     assert isinstance(container, Resolver), (
-        "Container does not satisfy Resolver — either Protocol is not "
-        "@runtime_checkable or Container is missing required methods"
+        "Container does not satisfy Resolver — either Protocol is not @runtime_checkable or Container is missing required methods"
     )
 
 
@@ -26,11 +23,7 @@ def test_resolver_minimal_surface() -> None:
     from a2kit.packages.di import Resolver
 
     # Walk all public attributes declared on the Protocol.
-    surface = {
-        name
-        for name in dir(Resolver)
-        if not name.startswith("_")
-    }
+    surface = {name for name in dir(Resolver) if not name.startswith("_")}
 
     expected = {"get", "provide", "child", "aclose"}
     extra = surface - expected
@@ -45,6 +38,4 @@ def test_resolver_is_runtime_checkable() -> None:
     from a2kit.packages.di import Resolver
 
     # Protocol decorated with @runtime_checkable has _is_runtime_protocol = True.
-    assert getattr(Resolver, "_is_runtime_protocol", False), (
-        "Resolver must be decorated with @typing.runtime_checkable"
-    )
+    assert getattr(Resolver, "_is_runtime_protocol", False), "Resolver must be decorated with @typing.runtime_checkable"

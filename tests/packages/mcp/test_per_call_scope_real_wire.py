@@ -78,15 +78,9 @@ async def test_per_call_resource_cleaned_up_at_mcp_call_exit() -> None:
     async with app, Client(transport=build_mcp_server(app)) as c:
         await c.call_tool("use_tx", {})
 
-    assert _Transaction.enter_count == 1, (
-        f"Transaction entered {_Transaction.enter_count} times — expected 1"
-    )
-    assert _Transaction.exit_count == 1, (
-        f"Transaction exited {_Transaction.exit_count} times — expected 1"
-    )
-    assert _Transaction.last_exc_type is None, (
-        "__aexit__ saw an exception on a clean return"
-    )
+    assert _Transaction.enter_count == 1, f"Transaction entered {_Transaction.enter_count} times — expected 1"
+    assert _Transaction.exit_count == 1, f"Transaction exited {_Transaction.exit_count} times — expected 1"
+    assert _Transaction.last_exc_type is None, "__aexit__ saw an exception on a clean return"
 
 
 @pytest.mark.asyncio
@@ -102,6 +96,4 @@ async def test_per_call_resource_sees_body_exception_on_aexit() -> None:
         assert payload["message"] == "boom"
 
     assert _Transaction.exit_count == 1
-    assert _Transaction.last_exc_type is ValueError, (
-        f"__aexit__ saw {_Transaction.last_exc_type!r}; expected ValueError"
-    )
+    assert _Transaction.last_exc_type is ValueError, f"__aexit__ saw {_Transaction.last_exc_type!r}; expected ValueError"

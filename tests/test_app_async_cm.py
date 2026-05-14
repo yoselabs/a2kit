@@ -43,5 +43,3 @@ def test_construction_is_pure() -> None:
 
     assert _DB.enter_count == 0
     assert _DB.exit_count == 0
-
-

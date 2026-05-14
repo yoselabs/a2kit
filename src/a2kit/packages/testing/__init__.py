@@ -22,19 +22,39 @@ if TYPE_CHECKING:
 
 
 def peek(app_: App, type_: type) -> Any:
-    """Test-only container peek over :meth:`Container.resolve`.
+    """Test-only sync container peek over :meth:`Container.get`.
 
-    Production code should resolve via the container during dispatch (the
-    request-scoped DI surface). ``peek`` exists to give a discoverable name
-    for the assertion pattern in tests:
+    Production code resolves via :meth:`Container.get` during dispatch.
+    ``peek`` exists to give a discoverable name for the assertion pattern
+    in synchronous tests::
 
         state = a2kit.testing.peek(app, AppState)
         assert state.config.foo == "bar"
 
-    Resolution is synchronous in v0.27+. Async resource opens belong inside
-    resource classes (lazy-init pattern), not in DI factories.
+    Driven by ``asyncio.run`` over ``Container.get`` — works from sync test
+    bodies. For async tests, call ``await app.container().get(T)`` directly.
     """
-    return app_.container().resolve(type_)
+    import asyncio
+
+    container = app_.container()
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No loop running — drive Container.get via asyncio.run.
+        return asyncio.run(container.get(type_))
+    # Inside an async test: read the app-scope cache directly. Async tests
+    # should `await container.get(T)` if the instance isn't already built;
+    # peek's role from inside a loop is to inspect already-resolved state
+    # (the common case being post-`override`).
+    cached = container._singletons.get(type_)  # noqa: SLF001 -- test seam
+    if cached is None:
+        msg = (
+            f"peek({type_!r}) called from inside an event loop with no cached "
+            f"app-scope instance. Use `await app.container().get({type_.__name__})` "
+            "in async tests instead."
+        )
+        raise LookupError(msg)
+    return cached
 
 
 __all__ = [

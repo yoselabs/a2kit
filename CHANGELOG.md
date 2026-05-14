@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.38.0 — 2026-05-15
+
+The pre-v0.36 DI surface on `Container` is retired. The new path
+(`provide` / `get` / `dispatch` / `has_provider`) — shipped in v0.36
+and routed through production dispatch in v0.37 — is now the only
+non-erroring path. Legacy methods raise `TypeError` with migration
+hints; container state is unified on the v0.36+ shape.
+
+### Breaking — legacy DI methods raise `TypeError`
+
+| Removed                                   | Replacement                                                                                          |
+|-------------------------------------------|------------------------------------------------------------------------------------------------------|
+| `Container.register(T, factory)`          | `Container.provide(T, factory)`                                                                      |
+| `Container.register_singleton(T, factory)`| `Container.provide(T, factory, scope=Scope.SINGLETON)`                                               |
+| `Container.resolve(T)` (sync)             | `await Container.get(T)` (async; honors `__aenter__` and cleanup)                                    |
+| `Container.aresolve(T)`                   | `await Container.get(T)`                                                                             |
+| `Container.has(T)`                        | `Container.has_provider(T)`                                                                          |
+| `Container.has_async_singleton(T)`        | (removed; `provide(scope=SINGLETON)` accepts both sync and async factories)                          |
+| `Container.has_any_async_singletons()`    | (removed; async vs sync factories are not distinguished at registration)                             |
+
+### Internal
+
+- `_async_factories` / `_async_singleton_locks` / `_UNRESOLVED` sentinel
+  removed from `Container`. `_singletons` is now the canonical app-scope
+  cache: absent key = not yet built (lazy first-use).
+- `_resolve_factory_kwargs` / `_aresolve_factory_kwargs` deleted.
+- `a2kit.testing.peek` switches from the retired sync `resolve` to
+  driving `Container.get` via `asyncio.run` (sync context) or reading
+  the app-scope cache (inside a running loop).
+
 ## v0.37.0 — 2026-05-15
 
 Production dispatch sites (MCP transport + CLI runtime) now route every
