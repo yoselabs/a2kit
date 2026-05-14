@@ -206,3 +206,22 @@ The list-verb decoration-time validators SHALL live in `src/a2kit/_list_helpers.
 - **WHEN** `uv run a2kit lint static src/` runs against the source tree containing `src/a2kit/_verbs.py`
 - **THEN** no mirror-rule diagnostic is emitted for `_verbs.py`
 
+### Requirement: Verb-decorator validators SHALL live in their own module
+
+The return-annotation validators and reserved-name guards used by `@a2kit.read` / `@write` / `@list_` SHALL live in `src/a2kit/_verb_validators.py`, exporting `_check_return`, `_resolve_return_annotation`, `_check_reserved_name`, `_BUILTIN_RESERVED_TOOL_NAMES`, and `_RESERVED_TOOL_NAME_PREFIX`. `_verbs.py` SHALL re-export `_resolve_return_annotation` and the `_WARN_ONCE_RESOLVE_RETURN` set for test access.
+
+#### Scenario: Validators importable from the sibling module
+
+- **WHEN** consumer code does `from a2kit._verb_validators import _check_return, _resolve_return_annotation`
+- **THEN** the imports succeed and the symbols resolve to the introspection functions
+
+#### Scenario: `_verbs.py` stays under the SLOC budget
+
+- **WHEN** `uv run a2kit lint static src/` runs against `src/a2kit/_verbs.py`
+- **THEN** no `A2K014` diagnostic is emitted and the file carries no `# noqa: A2K014` suppression
+
+#### Scenario: Mirror rule allows `_verb_validators.py`
+
+- **WHEN** `uv run a2kit lint static src/` runs against the source tree containing `src/a2kit/_verb_validators.py`
+- **THEN** no mirror-rule diagnostic is emitted for `_verb_validators.py`
+
