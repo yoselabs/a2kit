@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Breaking — lifecycle consolidated on the async-CM protocol (v0.35)
+
+Three overlapping lifecycle surfaces collapse into one. The App is now
+its own async context manager; `async with app:` is the canonical
+entry point.
+
+| Removed                                          | Replacement                                                |
+|--------------------------------------------------|------------------------------------------------------------|
+| `a2kit.App(..., lifespan=cm)`                    | Marker singleton with `__aenter__`/`__aexit__`, OR move imperative work into `main()` before `async with app:`. |
+| `Router.lifespan` classmethod                    | Implement `__aenter__` / `__aexit__` on the Router subclass. Enters lazily on first dispatch of any of its tools. |
+| `app.singleton(..., teardown=fn)`                | Move cleanup onto the resource itself via `__aexit__`, `aclose`, or `close` — framework auto-detects (first match wins). |
+| `app.lifespan_cm()`                              | `async with app:` |
+| `app.has_lifespan()`                             | Removed — `async with app:` is always safe to enter. |
+| `app.warm_async_singletons()`                    | Removed — every registered singleton resolves and enters during `App.__aenter__`. |
+| `app.teardown_failures` attribute                | Removed — singleton/router `__aexit__` failures log at `a2kit.lifecycle` ERROR. |
+| `a2kit.lifespan.compose(...)` + entire module    | Removed — composition is internal `AsyncExitStack`. |
+
+Each removed kwarg raises `TypeError` with the migration recipe
+embedded; no aliases, no `DeprecationWarning`, no transitional period.
+
+`app.singleton(...)` accepts three call shapes:
+
+```python
+app.singleton(SomeClass)                    # type = class itself
+app.singleton(factory)                      # type from return annotation
+app.singleton(BaseClass, factory)           # explicit base-type override
+```
+
+`App` construction stays pure (no async work, no resource entry) — use
+that for wiring-only tests. `async with app:` is the only entry point.
+
+---
+
+## v0.34 series (released prior to the v0.35 lifecycle consolidation)
+
 This release closes the v0.32 MCP production blocker (a2web v0.6.0
 went down on every `mcp__a2web__fetch` call) and pays down the
 test-coverage debt that let it slip past release validation. Eight

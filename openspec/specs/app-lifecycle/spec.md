@@ -3,85 +3,66 @@
 ## Purpose
 TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpose after archive.
 ## Requirements
-### Requirement: App exposes `on_startup` and `on_shutdown` registration
+### Requirement: App SHALL implement the async context manager protocol
 
-The `a2kit.App` class SHALL expose `on_startup(handler)` and `on_shutdown(handler)` methods that register process-lifecycle handlers. Each method SHALL accept a callable that takes arbitrary DI-resolvable kwargs (e.g. `state: AppState`) and returns either `None` or an awaitable. Each method SHALL also be usable as a decorator (with or without parens). Multiple handlers MAY be registered for either phase. The methods SHALL return the original handler unchanged so the same call site supports both `app.on_startup(fn)` and `@app.on_startup` decorator usage without divergent return semantics.
+The `a2kit.App` class SHALL implement `__aenter__` and `__aexit__`. `async with app:` SHALL be the canonical entry point for the App's lifecycle. App construction (`a2kit.App(...)` plus subsequent `add_router(...)` / `singleton(...)` calls) SHALL be pure: no async work, no singleton `__aenter__`, no router `__aenter__`. The first `__aenter__` invocation on the App SHALL be the only event that triggers framework-owned resource entry.
 
-#### Scenario: Typed-kwarg method form registers a handler
+#### Scenario: Construction is pure
 
-- **WHEN** `app.on_startup(open_db)` is called with `async def open_db(state: AppState)` defined and `AppState` registered as a singleton
-- **THEN** subsequent invocation of the lifecycle resolves `state` via the container and invokes `open_db(state=...)` exactly once before any tool dispatch
+- **GIVEN** `app = a2kit.App("api")` followed by `app.singleton(DB)` and `app.add_router(Github())`
+- **WHEN** the constructor and registration calls return
+- **THEN** no `__aenter__` method on any singleton or Router has been invoked
 
-#### Scenario: Decorator form with typed kwargs
+#### Scenario: `async with app` enters singletons
 
-- **WHEN** a function `async def _close(state: AppState)` is decorated with `@app.on_shutdown`
-- **THEN** the function is registered as a shutdown handler and returned unchanged
-- **AND** at shutdown the runtime resolves `state` via the container and calls the handler
+- **GIVEN** an App with singletons `A`, `B` registered (no DI relationship)
+- **WHEN** `async with app:` is entered
+- **THEN** both `A.__aenter__` and `B.__aenter__` have been invoked exactly once before the body runs
 
-### Requirement: Lifecycle handlers resolve kwargs via the container
+#### Scenario: `async with app` exit unwinds in LIFO order
 
-The runtime SHALL resolve each lifecycle handler's kwargs through `container.apply_kwargs(handler, {})` before invocation, matching the model used by `@app.health_check` and tool dispatch. The handler signature determines which singletons / providers are resolved.
+- **GIVEN** an App with singletons `A`, `B` entered during `__aenter__`
+- **WHEN** the `async with` block exits normally
+- **THEN** `B.__aexit__` ran before `A.__aexit__`
 
-#### Scenario: Multiple typed kwargs
+### Requirement: `App.__init__` SHALL reject the removed `lifespan=` kwarg with a migration hint
 
-- **GIVEN** `async def warmup(state: AppState, settings: AppSettings)` registered as `@on_startup`
-- **WHEN** the lifecycle dispatches startup
-- **THEN** both `state` and `settings` are resolved through the container and passed to `warmup`
+`App.__init__` SHALL accept `**_kw: Any` after its documented positional + keyword parameters. If `_kw` contains `lifespan` the constructor SHALL raise `TypeError` whose message names `App(lifespan=...)`, the version of removal (`v0.35`), and points at the two replacement paths: (a) a marker singleton with `__aenter__`/`__aexit__`, (b) imperative work in `main()` before `async with app:`. Other unknown kwargs SHALL raise `TypeError` with the standard "unexpected kwarg" shape.
 
-### Requirement: Both transports invoke handlers exactly once per process / lifespan
+#### Scenario: `lifespan=` raises with hint
 
-The CLI runner (`a2kit.run(app)`) SHALL invoke registered startup handlers once before the user's subcommand is dispatched, and registered shutdown handlers once after the subcommand completes. The MCP server (`build_mcp_server(app, ...)`) SHALL incorporate the App's handlers into the FastMCP `lifespan` such that startup handlers run before any tool is served and shutdown handlers run after the lifespan unwinds.
+- **WHEN** `a2kit.App("x", lifespan=some_cm)` is constructed
+- **THEN** `TypeError` is raised whose message contains both the string `"lifespan="` and the string `"__aenter__"`
 
-#### Scenario: CLI invocation runs full lifecycle
+#### Scenario: Documented kwargs still work
 
-- **GIVEN** an app with one startup handler (`(state: AppState)`) and one shutdown handler (`(state: AppState)`)
-- **WHEN** `a2kit.run(app, ["my-tool", ...])` is called and the tool returns successfully
-- **THEN** the startup handler ran exactly once before the tool body with the resolved `state`
-- **AND** the shutdown handler ran exactly once after the tool body with the resolved `state`
+- **WHEN** `a2kit.App("x", debug=True)` is constructed
+- **THEN** no `TypeError` is raised and the App is usable
 
-### Requirement: Shutdown handlers run in reverse registration order
+### Requirement: Composition SHALL be internal via AsyncExitStack
 
-Shutdown handlers SHALL be invoked in the reverse of the order in which they were registered (LIFO), mirroring the unwind order of nested context managers.
+The framework SHALL compose singleton entries, router entries, and any framework-owned cleanup callbacks via a single `contextlib.AsyncExitStack` owned by the App. The composed unwind order SHALL be LIFO. Composition SHALL NOT be a public surface: there is no `a2kit.lifespan.compose`, no `app.use(cm)`, no `App(lifespan=...)`.
 
-#### Scenario: Reverse order on shutdown
+#### Scenario: Public composition surface absent
 
-- **GIVEN** shutdown handlers S1, S2, S3 registered in that order
-- **WHEN** the lifecycle dispatches shutdown
-- **THEN** the invocation order is S3, S2, S1
+- **WHEN** `grep -rn "lifespan.compose\|app.use(\|App(.*lifespan=" src/` runs (excluding test fixtures asserting the migration error)
+- **THEN** the result is empty
 
-### Requirement: Startup failure aborts lifecycle and propagates
+### Requirement: Singleton or router `__aexit__` failure SHALL log and continue unwinding
 
-If a startup handler raises an exception, the runtime SHALL NOT invoke any subsequent startup handlers, SHALL NOT invoke any shutdown handlers, and SHALL propagate the original exception. No partial setup is presumed.
+If a singleton's or Router's `__aexit__` raises during App `__aexit__`, the framework SHALL log the exception via `logging.getLogger("a2kit.lifecycle")` at level ERROR with traceback, SHALL continue unwinding remaining entries, and SHALL NOT re-raise unless the original `__aexit__` was called with a non-None exception (in which case the in-flight exception SHALL win and the swallowed shutdown error SHALL still be logged).
 
-#### Scenario: Startup handler raises mid-sequence
+#### Scenario: Shutdown error logged, sibling unwind continues
 
-- **GIVEN** startup handlers H1 (succeeds), H2 (raises `RuntimeError("boom")`), H3 (would succeed)
-- **WHEN** the lifecycle dispatches startup
-- **THEN** H1 ran, H2 raised, H3 did not run, no shutdown handler ran
-
-### Requirement: Shutdown failure is logged and swallowed; remaining handlers still run
-
-If a shutdown handler raises, the runtime SHALL log the exception (logger name `a2kit.lifecycle`, level ERROR, with traceback), SHALL invoke remaining shutdown handlers, and SHALL NOT re-raise. The original exit reason (if any) SHALL NOT be masked.
-
-#### Scenario: One shutdown handler raises, others run
-
-- **GIVEN** shutdown handlers S1, S2 (raises `RuntimeError("close failed")`), S3, registered in that order
-- **WHEN** the lifecycle dispatches shutdown (LIFO: S3 first)
-- **THEN** S3 ran, S2 raised and was logged, S1 ran
-- **AND** the lifecycle dispatch completed without raising
+- **GIVEN** singletons `A` (well-behaved), `B` (raises in `__aexit__`), `C` (well-behaved), all entered
+- **WHEN** App `__aexit__` runs
+- **THEN** `C.__aexit__` ran, `B.__aexit__` raised and was logged at ERROR, `A.__aexit__` ran
+- **AND** the `async with app:` block exited without raising
 
 #### Scenario: Tool error is preserved when shutdown also raises
 
-- **GIVEN** a CLI invocation where the tool body raised `ToolError` and a shutdown handler subsequently raises `ShutdownError`
-- **WHEN** the lifecycle finishes
-- **THEN** the caller of `run` sees `ToolError` (not `ShutdownError`)
-- **AND** `ShutdownError` was logged
+- **GIVEN** the `async with app:` body raised `ToolError("x")` and singleton `B.__aexit__` raises `ShutdownError("y")`
+- **WHEN** the `async with` block exits
+- **THEN** the caller sees `ToolError("x")`
+- **AND** `ShutdownError("y")` was logged at ERROR
 
-### Requirement: Sync handlers are accepted and run inline
-
-`on_startup` and `on_shutdown` SHALL accept plain (non-async) callables. The runtime SHALL invoke them inline (not in a thread) during the async lifecycle dispatch.
-
-#### Scenario: Sync handler accepted
-
-- **WHEN** `app.on_startup(lambda a: setattr(a, "_marker", True))` is registered
-- **THEN** during startup the lambda is called and `app._marker is True` afterward

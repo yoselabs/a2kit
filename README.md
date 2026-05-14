@@ -64,7 +64,7 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name, *, lifespan=cm, health_tool=False)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, `singleton(T, factory)` for App-cached factories, and `set_ldd(...)` for the LDD kill-switch. Lifecycle: pass `lifespan=async_cm` at construction. `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and a `lifespan` classmethod that composes into the App's outer lifespan. |
+| `a2kit.App(name, *, health_tool=False, debug=False)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, `singleton(...)` for App-cached factories (three call shapes — see below), and `set_ldd(...)` for the LDD kill-switch. Lifecycle: `App` is its own async context manager. `async with app:` enters all registered singletons eagerly (auto-detecting `__aexit__` / `aclose` / `close`) and positions routers to enter lazily on first dispatch. `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. |
 | `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `visibility=` kwarg | Verb decorators accept `visibility: Literal["hidden", "cli", "all"]`. Defaults to inherit from the Router's `visibility` class attribute (default `"all"`). Tier semantics: `"hidden"` — CLI-invokable but absent from `--help` and not on programmatic transports; `"cli"` — visible in `--help`, not on MCP / future REST; `"all"` — registered everywhere. Credential-management tools should declare `visibility="cli"` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
@@ -178,6 +178,12 @@ class AppState:
     browser: BrowserPool            # never None
     # locks live INSIDE the resources, never on AppState
 
+    async def aclose(self) -> None:
+        # Framework auto-detects ``aclose`` on the resolved singleton
+        # and runs it during App ``__aexit__``.
+        await self.browser.close()
+        await self.sqlite.close()
+
 
 def build_state(settings: AppSettings) -> AppState:    # sync!
     return AppState(
@@ -187,23 +193,7 @@ def build_state(settings: AppSettings) -> AppState:    # sync!
     )
 
 
-from contextlib import asynccontextmanager
-
-
-@asynccontextmanager
-async def lifespan(app):
-    # Warm-up — surface config errors at startup, not first call.
-    state = app.container().resolve(AppState)
-    await state.sqlite._ensure()
-    try:
-        yield
-    finally:
-        # Reverse-of-open order; each close is idempotent.
-        await state.browser.close()
-        await state.sqlite.close()
-
-
-app = a2kit.App("my-app", lifespan=lifespan)
+app = a2kit.App("my-app")
 app.singleton(AppState, build_state)
 ```
 
@@ -213,31 +203,60 @@ What you get:
 - DI stays sync. Composition is plain `__init__`.
 - Each resource owns its open + close idempotently.
 
-### Lifecycle: `App(lifespan=cm)`
+### Lifecycle: `async with app:`
 
-Lifecycle is a single ``async with`` context manager passed at App
-construction time. Routers may also expose a ``lifespan`` classmethod
-that composes into the App's outer lifespan. See CHANGELOG for the
-v0.31 collapse from per-hook decorators to this one path.
+`App` is its own async context manager. Entering it walks the
+registered singletons, resolves each, and auto-detects the cleanup
+protocol on the resolved instance (`__aexit__` paired with
+`__aenter__`, `aclose`, or `close` — first match wins). Routers
+opt into lifecycle by implementing `__aenter__` / `__aexit__` and
+enter lazily on first dispatch of any of their tools. Construction
+(`a2kit.App(...)` + `add_router(...)` + `singleton(...)`) is pure —
+useful for tests that introspect wiring without entering the App.
 
 ```python
-from contextlib import asynccontextmanager
+class DB:
+    async def __aenter__(self) -> "DB":
+        self.pool = await asyncpg.create_pool(DSN)
+        return self
 
-@asynccontextmanager
-async def lifespan(app):
-    state = app.container().resolve(AppState)
-    await state.sqlite._ensure()
-    try:
-        yield
-    finally:
-        await state.sqlite.close()
+    async def __aexit__(self, *_exc) -> None:
+        await self.pool.close()
 
 
-app = a2kit.App("my-app", lifespan=lifespan)
+app = a2kit.App("my-app")
+app.singleton(DB)
+
+async def main():
+    async with app:
+        # tools dispatch here; routers enter on first call,
+        # singletons already entered eagerly.
+        ...
 ```
 
-No more `_app.container().resolve(AppState)` dance. Hooks read like any
-other DI-aware function.
+For router-scoped resources:
+
+```python
+class Github(a2kit.Router):
+    slug = "gh"
+
+    async def __aenter__(self) -> "Github":
+        self.client = httpx.AsyncClient(base_url="https://api.github.com")
+        return self
+
+    async def __aexit__(self, *_exc) -> None:
+        await self.client.aclose()
+
+    @a2kit.read()
+    async def fetch(self, *, path: str) -> dict:
+        return (await self.client.get(path)).json()
+
+    tools = (fetch,)
+```
+
+For one-shot startup or shutdown work that has no associated resource
+object, do it in `main()` before/after `async with app:` — not via a
+framework hook.
 
 ### MCP tool annotations
 

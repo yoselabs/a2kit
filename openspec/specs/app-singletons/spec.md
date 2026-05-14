@@ -5,32 +5,32 @@ TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpos
 ## Requirements
 ### Requirement: App exposes `singleton(T, factory=None)` registration
 
-The `a2kit.App` class SHALL expose `singleton(type_: type[T], factory: Callable[..., T] | None = None)` that registers a typed factory whose result is cached on the `App` instance and shared across all dispatches that resolve `type_`. The call SHALL ALWAYS return `self` (for chaining), never a decorator. When `factory` is omitted, `type_` itself SHALL be used as the factory (class-as-factory), and the container SHALL introspect `type_.__init__` at resolve time — same semantics as `app.provide(T)`. **Factories MUST be synchronous** (`def`, not `async def`); async factories raise `ValueError` at registration time. The previous decorator form `@app.singleton(T)` SHALL be removed; the method-call form is the only path.
+The `a2kit.App` class SHALL expose `singleton(...)` that registers a typed factory whose resolved instance is cached on the `App` and shared across all dispatches that resolve the type. The method SHALL accept three call shapes: (a) `singleton(SomeClass)` where the class itself is the factory and the registered type is the class; (b) `singleton(factory)` where the factory's return-type annotation provides the registered type (sync `def`, `async def`, or annotated lambda are accepted); (c) `singleton(BaseClass, factory)` for explicit override where the factory returns a subtype but the registration should be under the base. The call SHALL return `self` for chaining. When the one-arg form receives a callable with no return type annotation, the framework SHALL raise `TypeError` at registration naming the call site and proposing both fixes (annotate the factory or pass the type explicitly).
 
-#### Scenario: Method form with explicit factory
-
-- **WHEN** `app.singleton(AppState, lambda: AppState(...))` is called with a sync factory
-- **THEN** `AppState` is resolvable from the container
-- **AND** the factory is invoked at most once per `App` instance
-- **AND** the call returns `self` for chaining
-
-#### Scenario: Class-as-factory form
+#### Scenario: Class-as-factory form (zero-arg ctor)
 
 - **WHEN** `app.singleton(AppState)` is called with no second argument
-- **THEN** `AppState.__init__` is used as the factory at resolve time
-- **AND** dependencies of `__init__` are resolved via the container chain
-- **AND** the call returns `self` for chaining
+- **THEN** `AppState` itself is used as the factory at resolve time
+- **AND** the registered type is `AppState`
+- **AND** the call returns `self`
 
-#### Scenario: Decorator form removed
+#### Scenario: Factory-only form with return annotation
 
-- **WHEN** consumer code applies `@app.singleton(AppState)` to a factory function
-- **THEN** the decoration fails (e.g., `TypeError` from attempting to call `self` as a decorator)
-- **AND** the migration message points the author at the method-call form `app.singleton(AppState, build_state)`
+- **GIVEN** `async def build_state() -> AppState: ...`
+- **WHEN** `app.singleton(build_state)` is called
+- **THEN** the registered type is `AppState` (read from the return annotation)
+- **AND** the call returns `self`
 
-#### Scenario: Async factory rejected
+#### Scenario: Explicit base-type override
 
-- **WHEN** `app.singleton(AppState, async_build_state)` is called with `async_build_state` being `async def`
-- **THEN** `ValueError` is raised at registration naming the offending factory and pointing the user at the lazy-init resource pattern
+- **GIVEN** `class SubState(AppState): ...` and `def make() -> SubState: ...`
+- **WHEN** `app.singleton(AppState, make)` is called
+- **THEN** the registered type is `AppState` (not `SubState`)
+
+#### Scenario: Unannotated factory raises with hint
+
+- **WHEN** `app.singleton(lambda: AppState(...))` is called (no annotation on the lambda return)
+- **THEN** `TypeError` is raised at registration whose message names both `"return annotation"` and `"app.singleton(T, factory)"` as the explicit-override fix
 
 ### Requirement: Singletons resolve via the request-scoped container
 
@@ -84,73 +84,50 @@ The `App` class SHALL expose `has_singleton(type_) -> bool` and `singletons() ->
 - **THEN** the call returns `True`
 - **AND** `app.singletons()[SqliteResource]` is the documented unresolved sentinel
 
-### Requirement: Async-factory singletons coalesce concurrent first-resolution
-
-When two or more coroutines concurrently request first-resolution of the same async-factory singleton, the container SHALL ensure the factory coroutine is awaited exactly once and all waiters receive the same resolved instance. The container SHALL use a per-type `asyncio.Lock` for this coalescing, created lazily on first async resolution of each type, so that concurrent first-touches of *different* async singletons do not serialize against each other.
-
-#### Scenario: Two concurrent first-resolution awaiters share one factory call
-
-- **GIVEN** `app.singleton(SqliteResource, build_sqlite_async)` not yet resolved
-- **WHEN** two coroutines concurrently trigger async resolution of `SqliteResource`
-- **THEN** `build_sqlite_async` is awaited exactly once
-- **AND** both coroutines observe the same resolved instance
-
-#### Scenario: Different async singletons resolve in parallel
-
-- **GIVEN** `app.singleton(SqliteResource, build_sqlite_async)` and `app.singleton(BrowserPool, build_browser_async)`, neither resolved
-- **WHEN** two coroutines concurrently trigger resolution of `SqliteResource` and `BrowserPool` respectively
-- **THEN** both factories are awaited concurrently
-- **AND** neither resolution blocks the other on a shared lock
-
-#### Scenario: Async factory failure leaves the singleton resolvable on retry
-
-- **GIVEN** `app.singleton(SqliteResource, build_sqlite_async)` where `build_sqlite_async` raises on first call
-- **WHEN** the first async resolution propagates the exception
-- **AND** a later async resolution is attempted after the failure condition is corrected
-- **THEN** the factory is awaited again
-- **AND** on success the resolved instance is cached for all subsequent resolves
-
-### Requirement: Sync `resolve` of an unresolved async singleton raises a precise error
-
-`container.resolve(T)` is synchronous. When `T` is registered with an async factory and has not yet been resolved (no cached instance), `container.resolve(T)` SHALL raise an error whose message names `T`, identifies the factory as async, and directs the caller to the framework's async resolve path (or to a startup warm-up via `@on_startup`). The container SHALL NOT attempt to run the event loop, schedule a task, or otherwise bridge sync-to-async transparently.
-
-#### Scenario: Sync resolve before async first-touch raises
-
-- **GIVEN** `app.singleton(SqliteResource, build_sqlite_async)` where `build_sqlite_async` has not been awaited
-- **WHEN** sync code calls `container.resolve(SqliteResource)`
-- **THEN** the call raises with a message naming `SqliteResource`, identifying the factory as async, and pointing the user at the async resolve path or `@on_startup` warm-up
-
-#### Scenario: Sync resolve after async first-touch returns cached instance
-
-- **GIVEN** an async-factory singleton already resolved via the async path
-- **WHEN** sync code calls `container.resolve(T)`
-- **THEN** the cached instance is returned without raising
-
 ### Requirement: `App.singleton` accepts `teardown=` for framework-managed shutdown
 
-`App.singleton(type_, factory, *, teardown=None)` SHALL accept an optional `teardown` keyword argument. When provided, `teardown` is a callable taking one positional argument (the resolved singleton instance). It MAY be sync (`def`) or async (`async def`); async teardowns are awaited automatically. The framework SHALL invoke registered teardowns on App lifespan exit, regardless of whether the App also has a user-supplied `lifespan=` callable or Router-contributed lifespans.
+`App.singleton(...)` SHALL NOT accept a `teardown=` keyword argument. Resource cleanup SHALL be carried by the resolved instance itself via Python's standard protocols. The framework SHALL probe the resolved instance for cleanup in the following order and SHALL wire whichever it finds into the App's `AsyncExitStack`:
 
-#### Scenario: Basic teardown fires on lifespan exit
+1. `__aexit__` (with matching `__aenter__`): the instance is entered via `__aenter__` at App `__aenter__` time and exited via `__aexit__` at App `__aexit__` time.
+2. `aclose()` (no `__aexit__`): `await instance.aclose()` is scheduled for App `__aexit__`.
+3. `close()` (neither of the above): `instance.close()` is scheduled for App `__aexit__` (sync or async `close()` is accepted; coroutine returns are awaited).
+4. None of the above: no teardown is registered for that singleton.
 
-- **GIVEN** `app.singleton(Resource, build, teardown=lambda r: r.close())`
-- **WHEN** the App's `lifespan_cm()` is entered and exited
-- **THEN** `Resource.close()` is called exactly once after the lifespan exits
+Passing `teardown=` SHALL raise `TypeError` whose message names the removal (`v0.35`) and points at the auto-detection rules.
 
-#### Scenario: Async teardown is awaited
+#### Scenario: `__aexit__` auto-detected
 
-- **GIVEN** `app.singleton(R, build, teardown=lambda r: r.aclose())` where `r.aclose()` returns a coroutine
-- **WHEN** the App's lifespan exits
-- **THEN** the coroutine is awaited to completion before `lifespan_cm()` returns
+- **GIVEN** `class DB: async def __aenter__(self): ...; async def __aexit__(self, *exc): ...` registered via `app.singleton(DB)`
+- **WHEN** `async with app:` enters and then exits
+- **THEN** `DB.__aenter__` ran once during App `__aenter__`
+- **AND** `DB.__aexit__` ran once during App `__aexit__`
+
+#### Scenario: `aclose` auto-detected
+
+- **GIVEN** a singleton instance with no `__aexit__` but with `async def aclose(self): ...`
+- **WHEN** App `__aexit__` runs
+- **THEN** `instance.aclose()` was awaited exactly once
+
+#### Scenario: `teardown=` kwarg raises
+
+- **WHEN** `app.singleton(DB, factory, teardown=lambda d: d.close())` is called
+- **THEN** `TypeError` is raised whose message contains `"teardown="` and `"__aexit__"`
 
 ### Requirement: Teardown order is topological (dependents before dependencies)
 
-When multiple singletons have registered teardowns AND their factories have parameter-graph dependencies on each other, the framework SHALL invoke teardowns in reverse-topological order: any singleton `T'` that another singleton `T` depends on (via `T`'s factory parameters) is torn down **after** `T`. Reverse-of-registration is NOT the contract; the topological derivation from the resolved DI graph is.
+Singleton entries SHALL be ordered topologically by the DI graph at App `__aenter__`: dependencies enter before dependents. App `__aexit__` SHALL unwind in reverse order: dependents exit before dependencies. The topology SHALL be derived from the existing factory-parameter graph; pure types with no provider edges SHALL preserve registration order as the tiebreaker.
 
-#### Scenario: BrowserPool depending on SqliteResource tears down first
+#### Scenario: Dependent enters after dependency
 
-- **GIVEN** `app.singleton(SqliteResource, build_sql, teardown=close_sql)` registered first, then `app.singleton(BrowserPool, build_pool, teardown=close_pool)` where `build_pool` declares a `SqliteResource` parameter
-- **WHEN** the App's lifespan exits
-- **THEN** `close_pool` is invoked before `close_sql`
+- **GIVEN** singleton `DB` and singleton `Repo(db: DB)` registered in that order
+- **WHEN** `async with app:` enters
+- **THEN** `DB.__aenter__` ran before `Repo.__aenter__`
+
+#### Scenario: Dependent exits before dependency
+
+- **GIVEN** the same setup
+- **WHEN** the `async with` block exits
+- **THEN** `Repo.__aexit__` ran before `DB.__aexit__`
 
 ### Requirement: Teardown failures are error-isolated
 
@@ -166,14 +143,13 @@ A teardown that raises `Exception` SHALL NOT prevent sibling teardowns from runn
 
 ### Requirement: Teardown without lifespan still fires
 
-If an App has registered teardowns but no user-supplied `lifespan=` and no Router-contributed lifespan, the App's `lifespan_cm()` SHALL still return an async context manager that runs the teardowns on exit. `App.has_lifespan()` SHALL return True in this case.
+Every registered singleton with a detected cleanup protocol SHALL have that cleanup invoked when the enclosing `async with app:` block exits — there is no separate "no lifespan registered" code path because every App is now its own async context manager.
 
-#### Scenario: App with only teardowns has a lifespan
+#### Scenario: App with only singletons unwinds correctly
 
-- **GIVEN** `app.singleton(R, build, teardown=close)` and no other lifespan registrations
-- **WHEN** `app.has_lifespan()` is called
-- **THEN** the call returns True
-- **AND** `async with app.lifespan_cm():` enters and exits cleanly, running `close` on exit
+- **GIVEN** an App with one singleton `DB` and no other lifecycle work
+- **WHEN** `async with app: ...` runs to completion
+- **THEN** `DB.__aenter__` ran on entry and `DB.__aexit__` ran on exit
 
 ### Requirement: Cycle in the singleton factory-parameter graph is handled deterministically
 
