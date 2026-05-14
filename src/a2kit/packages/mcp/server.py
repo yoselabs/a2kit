@@ -111,7 +111,7 @@ def _wrap_with_router_lazy_enter(fn: Any, app: Any, router: Any | None) -> Any:
 
     @functools.wraps(fn)
     async def _wrapped(*args: Any, **kwargs: Any) -> Any:
-        await app._ensure_router_entered(router)  # noqa: SLF001 -- framework hook
+        await app._ensure_router_entered(router)
         result = fn(*args, **kwargs)
         if inspect.isawaitable(result):
             result = await result
@@ -234,26 +234,33 @@ def _wrap_with_error_envelope(fn: Any, *, debug: bool) -> Any:
 def _wrap_with_dispatch_hook(
     fn: Any,
     hook: Any,
-    container: Any,
+    app: Any,
     *,
     ctx_param_name: str | None = None,
 ) -> Any:
-    """Apply the App's dispatch hook to resolve injectable kwargs before fn.
+    """Apply the App's dispatch hook + per-call lifecycle scope before fn.
 
-    The wrapper's ``__signature__`` is rewritten to expose only wire kwargs
-    (plus ``connection: str`` when the chain reaches it) so fastmcp's
-    schema gen sees the agent-facing surface, not the injectables.
+    Routes every dispatch through ``app._resolver.dispatch(fn, kwargs,
+    pre_hook=hook)`` (di-scoped-lifecycle §3): the async-CM opens a
+    per-call child container, runs ``hook`` for wire-side resolution
+    (e.g. connection-string → typed config), runs DI resolution on the
+    child (``Lazy[T]`` aware), yields merged kwargs, then unwinds
+    per-call cleanups on exit with exception preservation.
 
-    When ``ctx_param_name`` is set, the tool's original ``ctx`` parameter
-    is re-appended to the rewritten signature so FastMCP's introspection
-    sees it and injects the live ``Context`` at call time. The dispatch
-    hook then passes ``ctx`` through alongside container-resolved kwargs.
-    Without this, FastMCP sees a signature missing ``ctx``, does not bind
-    it, and the body receives a ``TypeError: missing 'ctx'`` at call
-    time (the v0.32 MCP-transport regression).
+    The wrapper's ``__signature__`` is rewritten to expose only wire
+    kwargs (plus ``connection: str`` when the chain reaches it) so
+    fastmcp's schema gen sees the agent-facing surface, not the
+    injectables. ``Lazy[T]`` params are filtered out by
+    ``wire_input_params``.
+
+    When ``ctx_param_name`` is set, the tool's original ``ctx``
+    parameter is re-appended to the rewritten signature so FastMCP's
+    introspection sees it and injects the live ``Context`` at call
+    time (closes the v0.32 MCP-transport regression).
     """
     from a2kit.signature import wire_input_params
 
+    container = app.container()
     wire_params, wire_scopes_needed = wire_input_params(fn, container)
     needs_conn = "connection" in wire_scopes_needed
 
@@ -262,13 +269,19 @@ def _wrap_with_dispatch_hook(
 
     @functools.wraps(fn)
     async def _wrapped(**kwargs: Any) -> Any:
-        resolved = hook(fn, kwargs)
-        if inspect.isawaitable(resolved):
-            resolved = await resolved
-        result = fn(**resolved)
-        if inspect.isawaitable(result):
-            result = await result
-        return result
+        # ctx is supplied by FastMCP — keep it out of dispatch's wire
+        # kwargs so the pre_hook doesn't see it, and merge back before
+        # invoking fn. The dispatch helper filters merged kwargs to fn's
+        # declared params, so unrecognized keys are dropped anyway, but
+        # explicitly partitioning avoids surprising the hook author.
+        ctx_value = kwargs.pop(ctx_param_name, None) if ctx_param_name else None
+        async with app._resolver.dispatch(fn, kwargs, pre_hook=hook) as merged:
+            if ctx_param_name is not None and ctx_value is not None:
+                merged[ctx_param_name] = ctx_value
+            result = fn(**merged)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
 
     # Build a signature that only mentions wire params (+ connection if needed).
     new_params: list[inspect.Parameter] = []
@@ -369,7 +382,7 @@ def _build_fastmcp_lifespan(app: Any, user_lifespan: Any | None) -> Any:
 
     @asynccontextmanager
     async def _lifespan(server: Any) -> Any:
-        server._a2kit_app = app  # noqa: SLF001 -- framework wiring back-reference
+        server._a2kit_app = app
         async with app:
             if user_lifespan is None:
                 yield None
@@ -442,7 +455,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
             wrapped = _wrap_with_dispatch_hook(
                 wrapped,
                 dispatch_hook,
-                container,
+                app,
                 ctx_param_name=meta.context_param_name,
             )
         # Always enter the LDD scope, even for no-ctx tools, so LDD

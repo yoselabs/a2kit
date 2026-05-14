@@ -131,6 +131,8 @@ def wire_input_params(
     the scope names come from the container (registered by consumer
     packages like ``a2kit.packages.connections``).
     """
+    from a2kit.packages.di.container import _lazy_inner_type
+
     base = user_input_params(fn)
     if container is None:
         return base, set()
@@ -139,6 +141,9 @@ def wire_input_params(
     for name, param in base.items():
         ann = hints.get(name, param.annotation)
         if container.has(ann):
+            continue
+        # Lazy[T] params are framework-injected closures, not wire-side.
+        if _lazy_inner_type(ann) is not None:
             continue
         out[name] = param
     scopes_needed = container.wire_scopes_used_by(fn)

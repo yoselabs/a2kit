@@ -1,6 +1,6 @@
 [project]
 name = "a2kit"
-version = "0.36.0"
+version = "0.37.0"
 description = "Fat tool decorator on top of FastMCP — protocol-agnostic core, opt-in plugin packages."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]
@@ -145,6 +145,11 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 # same class (root <-> children share private state). Cleanup-stack and
 # resolve-hints fallbacks catch broadly per CLAUDE.md case 1/case 2.
 "src/a2kit/packages/di/container.py" = ["SLF001"]
+# Production dispatch sites access app._resolver (Resolver protocol surface).
+# The underscore is convention-private but the attribute is the framework's
+# intentional handle for the dispatch helper. See dispatch-lifecycle-wiring.
+"src/a2kit/packages/mcp/server.py" = ["SLF001"]
+"src/a2kit/packages/cli/runtime.py" = ["SLF001"]
 "src/a2kit/packages/di/_cleanup_stack.py" = ["BLE001"]
 "src/a2kit/packages/di/_hints.py" = ["BLE001"]
 # CLI builder synthesizes Click commands from arbitrary tool signatures —

@@ -31,12 +31,14 @@ class ToolDescriptor:
 
 
 class DispatchHook(Protocol):
-    """Hook called before invoking a tool method.
+    """Wire-side pre-resolution hook for a tool dispatch.
 
-    Given the tool function and the wire-supplied kwargs, return the
-    kwargs to pass to ``fn``. The default identity hook returns the
-    input unchanged. Apps with registered providers install a non-identity
-    hook that resolves typed dependencies.
+    v0.37 contract (dispatch-lifecycle-wiring): given the tool function
+    and the wire-supplied kwargs, return wire-side resolved kwargs.
+    The hook does NOT perform DI — the framework runs
+    ``Container.resolve_params`` AFTER the hook on its output. Typical
+    use: convert a wire ``connection: str`` to a typed
+    ``ConnectionConfig`` instance.
     """
 
     def __call__(
@@ -46,20 +48,10 @@ class DispatchHook(Protocol):
     ) -> dict[str, Any] | Awaitable[dict[str, Any]]: ...
 
 
-def identity_dispatch_hook(
-    fn: Callable[..., Any],
-    wire_kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    """Default dispatch hook — pass kwargs through unchanged."""
-    del fn
-    return wire_kwargs
-
-
 __all__ = [
     "DispatchHook",
     "ToolDescriptor",
     "Visibility",
-    "identity_dispatch_hook",
     "list_",
     "read",
     "write",

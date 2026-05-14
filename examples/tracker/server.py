@@ -14,7 +14,7 @@ app = a2kit.App("tracker-mcp")
 app.add_router(ProjectsRouter())
 app.add_router(TasksRouter())
 install_connections(app, TrackerConn)
-app.provide(TrackerStore)
+app.provide(TrackerStore, per_call=True)
 
 
 def main() -> None:

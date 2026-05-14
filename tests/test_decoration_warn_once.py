@@ -18,7 +18,6 @@ import pytest
 from dataclasses import dataclass
 
 from a2kit import _verbs as tool_module
-from a2kit.packages.di.container import Container
 
 
 @dataclass
@@ -66,8 +65,10 @@ def test_l1_dispatch_hook_return_annotation_failure_warns_once(
     `except Exception` site without depending on which earlier introspection
     paths inside `wire_input_params` already swallow forward-ref failures.
     """
-    container = Container()
-    container.register(_Injectable, _Injectable)
+    import a2kit
+
+    app = a2kit.App("warn-once")
+    app.provide(_Injectable)
 
     def fn(*, marker: _Injectable):  # type: ignore[no-untyped-def]  # noqa: ANN202 -- no return annotation on purpose
         return None
@@ -89,8 +90,8 @@ def test_l1_dispatch_hook_return_annotation_failure_warns_once(
     monkeypatch.setattr(_typing, "get_type_hints", _raising_get_type_hints)
 
     with caplog.at_level(logging.WARNING, logger="a2kit.packages.mcp.server"):
-        wrapped = server_module._wrap_with_dispatch_hook(fn, hook, container)
-        server_module._wrap_with_dispatch_hook(fn, hook, container)
+        wrapped = server_module._wrap_with_dispatch_hook(fn, hook, app)
+        server_module._wrap_with_dispatch_hook(fn, hook, app)
 
     matches = [r for r in caplog.records if "_wrap_with_dispatch_hook" in r.message]
     assert len(matches) == 1, f"expected 1 WARN, got {len(matches)}: {[r.message for r in matches]}"

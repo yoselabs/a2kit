@@ -1,8 +1,7 @@
-# connections-dispatch-hook Specification
+# connections-dispatch-hook — delta
 
-## Purpose
-TBD - created by archiving change di-sync-and-unleak. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: Connection-string resolution runs at the dispatch hook seam
 
 The dispatch hook installed by `install_connections(app, *conn_types)` SHALL perform wire-side conversion only: it converts the `connection: str` wire kwarg into typed `ConnectionConfig` instances and surfaces them as wire kwargs for the tool. The hook MUST NOT call `container.apply_kwargs` or perform DI chain resolution — DI is the framework's responsibility, layered on top of the hook's output by `Container.dispatch`.
@@ -27,12 +26,19 @@ The dispatch hook installed by `install_connections(app, *conn_types)` SHALL per
 - **AND** wire and DI kwargs merge; the tool body runs inside the child's lifetime
 - **AND** the child container's cleanup stack unwinds on exit
 
-### Requirement: The string `"connection"` lives only in the connections package
+## REMOVED Requirements
 
-The literal `"connection"` SHALL appear only in `src/a2kit/packages/connections/` (and in tests that exercise connections behavior). It SHALL NOT appear in `src/a2kit/app.py`, `src/a2kit/packages/di/`, or any other module.
+### Requirement: Apps without Connections retain the sync container dispatch
 
-#### Scenario: Source grep audit
+**Reason:** With v0.36's per-call scope + `Container.dispatch` async-CM,
+all dispatch is now async (one child container per call). The sync
+fast-path for connection-less apps is removed — overhead is one
+`asyncio` coroutine per call, which the framework already pays for
+the wrapper chain. Consistency across hookful and hookless paths is
+worth more than the saved coroutine creation.
 
-- **WHEN** the literal string `"connection"` is searched across `src/a2kit/`
-- **THEN** matches occur only under `src/a2kit/packages/connections/`
-
+**Migration:** Consumer code that asserted `app._dispatch_hook` returns
+a dict (vs. an awaitable) SHALL update assertions. The framework
+documents `app._resolver.dispatch(...)` as the canonical entry; the
+`_dispatch_hook` attribute is removed in favor of an optional
+`pre_hook` passed into `dispatch`.

@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.37.0 — 2026-05-15
+
+Production dispatch sites (MCP transport + CLI runtime) now route every
+tool call through `Container.dispatch` — so per-call scope and `Lazy[T]`
+land on the real wire, not just direct-API use. The dispatch hook
+contract narrows to wire-side resolution only.
+
+### Breaking — dispatch hook contract narrowed
+
+| Removed                                       | Replacement                                                                  |
+|-----------------------------------------------|------------------------------------------------------------------------------|
+| `a2kit.tool.identity_dispatch_hook`           | No-op default — when no hook is installed, `Container.dispatch` runs without a `pre_hook` argument |
+| Hook returns full DI-resolved kwargs          | Hook returns wire-side resolved kwargs only (e.g. `connection: str` → typed `ConnectionConfig` instance). Framework runs `Container.resolve_params` after the hook on its output |
+| `app._dispatch_hook → container.apply_kwargs` | `app._resolver.dispatch(fn, kwargs, pre_hook=hook)` opens a per-call child container, calls the hook, runs DI (`Lazy[T]` aware), unwinds per-call cleanup on exit |
+| `app._dispatch_hook` returning a dict from a sync apps without connections | All dispatch now async — one child container per call. The sync fast-path is removed |
+
+Apps that defined a custom dispatch hook returning DI-resolved kwargs
+MUST split the work: the hook does wire-side conversion only, and the
+framework's `Container.dispatch` runs DI after on the hook's output.
+
+### Breaking — connection-coupled providers default to per-call
+
+| Before                                               | After                                                                       |
+|------------------------------------------------------|-----------------------------------------------------------------------------|
+| `install_connections(app, Cfg)` + `app.provide(Store)` | `install_connections(app, Cfg)` + `app.provide(Store, per_call=True)` if `Store.__init__` takes `Cfg` (or any other per-call type) — the scope-graph validator rejects app-scope factories depending on per-call types |
+
+Connection configs are inherently per-call (each dispatch can target a
+different connection), so `install_connection_dispatch` now registers
+them as `Scope.SCOPED` stub providers. Stores that take a connection
+config as a parameter inherit per-call semantics.
+
+### New — `Container.dispatch` grows `pre_hook` parameter
+
+`Container.dispatch(fn, wire_kwargs, *, pre_hook=None)` is the per-call
+dispatch async context manager. The `pre_hook` (sync or async) runs
+before DI to convert wire kwargs into typed values; wire-resolved
+typed instances are seeded as SCOPED providers on the per-call child
+container so chain resolution from any factory finds them. Used by
+both `mcp/server.py::_wrap_with_dispatch_hook` and
+`cli/runtime.py::_invoke_tool_in_process`.
+
+### New — `Lazy[T]` is now wire-aware
+
+`wire_input_params` filters `Lazy[T]` annotations out of the wire
+surface — MCP schema gen no longer tries to JSON-schematize a
+`Callable[[], Awaitable[T]]`. Tools declaring `Lazy[T]` work
+transparently on real MCP and CLI transports.
+
+---
+
 ## v0.36.0 — 2026-05-15
 
 DI is rebuilt as a standalone-shippable container with lazy first-use,

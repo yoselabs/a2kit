@@ -633,8 +633,11 @@ class Container:
         Auto-resolves ``pydantic_settings.BaseSettings`` subclasses via
         duck-typing if no explicit provider is registered.
         """
-        # SINGLETON: always resolved on the root container.
-        if self._root()._scope_of(type_) is Scope.SINGLETON:
+        # Check the calling container's scope metadata first — wire-seeded
+        # SCOPED types live only on the child; the root would resolve them
+        # as SINGLETON (the default) and miss them.
+        scope = self._scope_of(type_)
+        if scope is Scope.SINGLETON:
             cached = self._root()._singletons.get(type_, _UNRESOLVED)
             if cached is not _UNRESOLVED:
                 return cached
@@ -673,27 +676,66 @@ class Container:
         self,
         fn: Callable[..., Any],
         wire_kwargs: dict[str, Any] | None = None,
+        *,
+        pre_hook: Callable[..., Any] | None = None,
     ) -> Any:
         """Per-call dispatch helper for the framework.
 
-        Opens a child resolver, resolves ``fn``'s injectable kwargs
-        (including ``Lazy[T]`` closures), merges with ``wire_kwargs``,
-        yields the merged kwarg dict. On exit, unwinds the child's
-        cleanup stack — per-call resources see the propagating
-        exception via standard ``__aexit__`` semantics.
+        Opens a child resolver, optionally calls ``pre_hook`` for
+        wire-side resolution (e.g. connection-string → typed config),
+        resolves ``fn``'s injectable kwargs from the child container
+        (including ``Lazy[T]`` closures), merges everything, yields
+        the merged kwarg dict. On exit, unwinds the child's cleanup
+        stack — per-call resources see the propagating exception via
+        standard ``__aexit__`` semantics.
+
+        ``pre_hook`` contract: wire-side conversion only. The hook
+        receives ``(fn, dict(wire_kwargs))``, may be sync or async,
+        and returns a ``dict[str, Any]`` of wire-side resolved kwargs
+        (e.g. ``{"connection": <TrackerConn instance>}``). It MUST NOT
+        call DI (``apply_kwargs``, ``get``) — DI is the framework's
+        job, run after the hook on the hook's output.
 
         Example::
 
-            async with app._resolver.dispatch(tool_fn, {"connection": "x"}) as kw:
+            async def my_hook(fn, kw):
+                kw["connection"] = await store.load(kw["connection"])
+                return kw
+
+            async with app._resolver.dispatch(tool_fn, {"connection": "x"}, pre_hook=my_hook) as kw:
                 result = await tool_fn(**kw)
         """
-        wire = dict(wire_kwargs) if wire_kwargs else {}
+        wire: dict[str, Any] = dict(wire_kwargs) if wire_kwargs else {}
         async with self.child() as child:
+            if pre_hook is not None:
+                hook_result = pre_hook(fn, wire)
+                if inspect.isawaitable(hook_result):
+                    hook_result = await hook_result
+                wire = dict(hook_result) if hook_result else {}
+            # Seed the child with wire-resolved typed instances as
+            # SCOPED providers so chain resolution from any factory
+            # can find them. Walks ALL wire kwargs: each value's
+            # concrete class becomes a type-keyed seed on the child.
+            # Primitives (str/int/bool/etc.) seed too — harmless if
+            # nothing chains through them, useful if a tool actually
+            # takes the wire kwarg by type rather than by name.
+            for _wire_val in wire.values():
+                _t = type(_wire_val)
+                child._providers[_t] = (lambda v=_wire_val: v)
+                child._scope_metadata[_t] = Scope.SCOPED
+                child._scoped_cache[_t] = _wire_val
             resolved = await child.resolve_params(fn)
-            # Wire kwargs take precedence over resolved injectables only
-            # when the param name is present in both — typical wire-aware
-            # tools declare connection-style params alongside injectables.
-            merged: dict[str, Any] = {**resolved, **wire}
+            # Filter merged kwargs to fn's actual params so wire-side
+            # inputs that the hook used (e.g. raw connection string) but
+            # the tool doesn't declare are not passed through.
+            fn_param_names = {spec.name for spec in _params_for_method(fn)}
+            # Wire kwargs take precedence over resolved injectables when
+            # both name the same param (wire-aware tools declare
+            # connection-style params alongside injectables).
+            merged: dict[str, Any] = {
+                **{k: v for k, v in resolved.items() if k in fn_param_names},
+                **{k: v for k, v in wire.items() if k in fn_param_names},
+            }
             yield merged
 
     async def resolve_params(self, fn: Callable[..., Any]) -> dict[str, Any]:

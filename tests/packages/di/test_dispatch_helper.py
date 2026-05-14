@@ -95,3 +95,73 @@ async def test_dispatch_propagates_tool_exception_and_cleans_up() -> None:
     assert isinstance(_Tx.last_exc, _BodyError), (
         f"per-call cleanup did not see propagating exception, saw {_Tx.last_exc!r}"
     )
+
+
+# --- pre_hook plumbing (dispatch-lifecycle-wiring §2) ---------------------
+
+
+class _ConnCfg:
+    def __init__(self, host: str) -> None:
+        self.host = host
+
+
+class _Store:
+    def __init__(self, conn: _ConnCfg) -> None:
+        self.conn = conn
+
+
+def _make_store(conn: _ConnCfg) -> _Store:
+    return _Store(conn)
+
+
+@pytest.mark.asyncio
+async def test_pre_hook_runs_before_di_resolution() -> None:
+    """``pre_hook`` is awaited and its output replaces ``wire_kwargs`` before DI."""
+    call_log: list[str] = []
+
+    async def hook(fn: object, wire: dict) -> dict:
+        call_log.append("hook")
+        # Convert the wire connection string to a typed config.
+        return {**wire, "conn": _ConnCfg(wire["conn_str"])}
+
+    async def tool(conn: _ConnCfg, tx: _Tx) -> str:
+        call_log.append("tool")
+        return conn.host
+
+    app = a2kit.App("hook-order")
+    app.provide(_Tx, per_call=True)
+
+    async with app, app._resolver.dispatch(tool, {"conn_str": "h1"}, pre_hook=hook) as kw:
+        result = await tool(**kw)
+
+    assert call_log == ["hook", "tool"]
+    assert result == "h1"
+    # _Tx was DI-resolved alongside the hook-supplied conn:
+    assert _Tx.instances_created == 1
+
+
+@pytest.mark.asyncio
+async def test_pre_hook_output_seeds_chain_resolution() -> None:
+    """A wire-resolved typed config from the hook is visible to the DI chain.
+
+    The tool param is ``store: Store`` where ``Store``'s factory takes
+    ``conn: _ConnCfg``. The hook resolves ``conn`` from the wire string;
+    the chain finds the wire-resolved instance instead of trying to
+    construct one through a (non-existent) provider for ``_ConnCfg``.
+    """
+
+    async def hook(fn: object, wire: dict) -> dict:
+        return {**wire, "conn": _ConnCfg(wire["conn_str"])}
+
+    async def tool(store: _Store) -> str:
+        return store.conn.host
+
+    app = a2kit.App("chain-seed")
+    # _Store depends on _ConnCfg (seeded by hook per-call), so it must be
+    # per_call too — app-scope would violate the scope contract.
+    app.provide(_Store, _make_store, per_call=True)
+
+    async with app, app._resolver.dispatch(tool, {"conn_str": "h2"}, pre_hook=hook) as kw:
+        result = await tool(**kw)
+
+    assert result == "h2"

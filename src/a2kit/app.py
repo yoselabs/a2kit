@@ -9,8 +9,6 @@ from a2kit._lifecycle_helpers import (
 from a2kit.packages.di.container import (
     _UNRESOLVED,
     Container,
-    container_dispatch,
-    container_dispatch_async,
 )
 from a2kit.packages.di.scope import Scope
 from a2kit.routers import Router, RouterRegistry
@@ -140,19 +138,17 @@ class App:
 
     def _default_dispatch_hook(
         self,
-        fn: Callable[..., Any],
+        fn: Callable[..., Any],  # noqa: ARG002 -- protocol arg unused by identity hook; consumers (connection hook) use it
         wire_kwargs: dict[str, Any],
     ) -> Any:
-        """Default dispatch hook backed by the container.
+        """Default dispatch hook — identity over wire_kwargs.
 
-        Switches to the async resolution path if any singleton has an
-        async factory, so async-factory singletons are awaited on first
-        resolution. Otherwise stays synchronous (existing hot path,
-        identical behaviour for apps that never touch async factories).
+        v0.36+ contract: hooks are wire-side resolution only. The default
+        hook does nothing — wire kwargs pass through unchanged.
+        DI resolution (provider chain, ``Lazy[T]``, per-call scope) runs
+        inside ``Container.dispatch`` AFTER the hook, on the hook's output.
         """
-        if self._container.has_any_async_singletons():
-            return container_dispatch_async(fn, wire_kwargs, self._container)
-        return container_dispatch(fn, wire_kwargs, self._container)
+        return wire_kwargs
 
     def _install_health_tool(self) -> None:
         """Synthesize a built-in router carrying ``_meta.health``.

@@ -22,6 +22,8 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any
 
+from a2kit.packages.di.scope import Scope
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -55,30 +57,47 @@ def make_connection_hook(
     container: Container,
     stores: dict[type, ConnectionStore[Any]],
 ) -> Callable[..., Any]:
-    """Build an async dispatch hook that resolves ``connection`` before DI runs.
+    """Build an async dispatch hook that resolves the wire ``connection`` string.
 
-    ``stores`` maps each registered ConnectionConfig subclass to its store
-    (built by :func:`install_connection_dispatch`). The hook awaits the
-    appropriate store's ``load`` when a tool's parameter is one of the
-    registered config types.
+    v0.37 (dispatch-lifecycle-wiring): the hook performs **wire-side
+    conversion only**. It awaits the appropriate store's ``load`` to
+    turn the wire ``connection`` string into typed ``ConnectionConfig``
+    instances and surfaces them as wire kwargs by tool-param name.
+    It does NOT call ``container.apply_kwargs`` — DI is the framework's
+    responsibility, run by ``Container.dispatch`` after this hook on
+    the hook's output. Wire-resolved typed configs become SCOPED
+    providers on the per-call child container so chain resolution
+    finds them.
+
+    ``stores`` maps each registered ConnectionConfig subclass to its
+    store (built by :func:`install_connection_dispatch`).
     """
 
     async def hook(fn: Callable[..., Any], wire_kwargs: dict[str, Any]) -> dict[str, Any]:
-        conn = wire_kwargs.pop(_WIRE_CONN_KEY, None)
-        pre_resolved: dict[type, Any] = {}
+        out = dict(wire_kwargs)
+        conn = out.pop(_WIRE_CONN_KEY, None)
         if conn is not None:
             parts = tuple(p.strip() for p in conn.split(",")) if "," in conn else (conn,)
             for config_type, store in stores.items():
                 if len(parts) == 1:
-                    pre_resolved[config_type] = await store.load(parts[0])
+                    instance = await store.load(parts[0])
                 else:
-                    pre_resolved[config_type] = await store.load(*parts)
-                # If the tool method itself takes the config directly (no chain),
-                # also surface it as a direct wire kwarg.
+                    instance = await store.load(*parts)
+                # Always surface the resolved typed config in wire kwargs.
+                # Container.dispatch's wire-seeder picks it up by value type
+                # and registers a SCOPED provider on the per-call child so
+                # chain resolution from app-scope factories (e.g. Store →
+                # ConnectionConfig) finds the wire-resolved instance.
                 param_name = _fn_param_for_type(fn, config_type)
-                if param_name is not None and param_name not in wire_kwargs:
-                    wire_kwargs[param_name] = pre_resolved[config_type]
-        return container.apply_kwargs(fn, wire_kwargs, pre_resolved=pre_resolved)
+                if param_name is not None and param_name not in out:
+                    out[param_name] = instance
+                else:
+                    # Tool doesn't take the config directly. Use a stable
+                    # underscore-prefixed key so it survives into the
+                    # dispatch wire-seeder but the merged-kwargs filter
+                    # (to fn's declared params) strips it from the call.
+                    out[f"_a2k_seed_{config_type.__name__}"] = instance
+        return out
 
     return hook
 
@@ -110,7 +129,12 @@ def install_connection_dispatch(
     container.register_wire_scope(_WIRE_CONN_KEY, *conn_types)
     for ct in conn_types:
         if not container.has(ct):
-            container.register(ct, _stub_factory(ct))
+            # Register as a per-call (SCOPED) stub provider so chain
+            # resolution routes through the dispatch's child container,
+            # where the hook-wired wire-seeder has registered the actual
+            # typed instance. v0.36: connection configs are per-call by
+            # nature — each dispatch can target a different connection.
+            container.provide(ct, _stub_factory(ct), scope=Scope.SCOPED)
     app._dispatch_hook = make_connection_hook(container, stores)  # noqa: SLF001
 
 
