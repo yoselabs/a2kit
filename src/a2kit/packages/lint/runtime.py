@@ -40,7 +40,8 @@ def _list_tool_names(server: Any) -> list[str]:
         tools = server._tool_manager.list_tools()  # noqa: SLF001
     except AttributeError:
         return []
-    return [getattr(t, "name", "") for t in tools]
+    # FastMCP Tool entries always carry .name; no defensive default needed.
+    return [t.name for t in tools]
 
 
 def check_snapshot_presence(server: Any, config: dict[str, Any]) -> Iterable[CheckMessage]:

@@ -63,7 +63,16 @@ class Router:
     #: everywhere (default).
     visibility: ClassVar[str] = "all"
 
-    def __init__(self) -> None:
+    def __init__(self, **_kw: Any) -> None:
+        if _kw:
+            cls_name = type(self).__name__
+            msg = (
+                f"{cls_name}.__init__ received unexpected keyword "
+                f"arguments: {sorted(_kw)}. The base ``Router.__init__`` "
+                "accepts no kwargs; subclasses with their own __init__ "
+                "may take any args. See CHANGELOG.md for removals."
+            )
+            raise TypeError(msg)
         cls = type(self)
         # --- slug check ---------------------------------------------------- #
         slug = getattr(cls, "slug", None)

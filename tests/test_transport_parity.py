@@ -174,14 +174,16 @@ def test_case4_tool_both_parity_v032_blocker() -> None:
     assert _call_mcp(app, "tool_both", msg="x") == expected
 
 
-@pytest.mark.skip(
-    reason="Cross-transport parity gap: in-process dispatcher silently drops "
-    "unknown kwargs while FastMCP rejects them at the wire. This is a separate "
-    "parity issue, not in scope for fix-mcp-dispatch-strips-ctx."
-)
 def test_case5_unknown_kwarg_parity() -> None:
+    """Both transports reject unknown kwargs.
+
+    Post ``rebuild-test-client-on-real-context``, the CLI-side test
+    client routes through the real MCP transport and FastMCP's wire
+    validation surfaces unknown kwargs as ``ToolError`` on both
+    legs.
+    """
     app = _build_parity_app()
-    with pytest.raises(TypeError):
+    with pytest.raises(Exception):  # noqa: B017,BLE001 -- ToolError or TypeError
         _call_cli(app, "tool_none", msg="x", extra="y")
     with pytest.raises(Exception):  # noqa: B017,BLE001
         _call_mcp(app, "tool_none", msg="x", extra="y")

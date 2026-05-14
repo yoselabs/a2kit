@@ -14,6 +14,7 @@ reflects the aggregated status (0 ok, non-zero degraded).
 from __future__ import annotations
 
 import inspect
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 
     from a2kit.app import App
 
+
+_LOGGER = logging.getLogger("a2kit.health")
 
 META_NAMESPACE_PREFIX = "_meta."
 HEALTH_TOOL_NAME = "_meta.health"
@@ -111,8 +114,21 @@ async def _run_one_check(app: App, check: _RegisteredCheck) -> Any:
 
 
 def _app_version(app: App) -> str:
-    """Best-effort: the package version of the App's host module, else ``"unknown"``."""
-    return getattr(app, "version", None) or "unknown"
+    """Return the App's version string, or ``"unknown"``.
+
+    ``a2kit.App`` does not declare a ``version`` attribute today;
+    consumers may attach one ad-hoc. When absent the probe payload
+    reports ``"unknown"`` — an explicit sentinel, not a silently
+    swallowed AttributeError.
+    """
+    version = getattr(app, "version", None)
+    if version is None:
+        return "unknown"
+    if not isinstance(version, str):
+        msg = f"App.version must be a str (got {type(version).__name__}); the health probe stringifies as fallback"
+        _LOGGER.warning(msg)
+        return str(version)
+    return version
 
 
 __all__ = [

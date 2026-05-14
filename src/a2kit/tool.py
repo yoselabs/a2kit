@@ -231,15 +231,33 @@ def _stamp(
     return fn
 
 
+_WARN_ONCE_REPORT_SCHEMA: set[str] = set()
+
+
 def _compute_report_schema(report_type: type) -> dict[str, Any] | None:
-    """Best-effort JSON schema for a report type, used by adapters."""
+    """Best-effort JSON schema for a report type, used by adapters.
+
+    Decoration must not raise (per the @a2kit.read/write footgun
+    discipline), so failures here log at WARN and return None. The
+    _WARN_ONCE pattern bounds log noise across repeated decorations
+    of the same unschemable report type.
+    """
     try:
         from pydantic import TypeAdapter
     except ImportError:
         return None
     try:
         return TypeAdapter(report_type).json_schema()
-    except Exception:  # noqa: BLE001 -- decoration must not raise
+    except Exception as exc:  # noqa: BLE001 -- decoration must not raise; observe and degrade
+        qual = getattr(report_type, "__qualname__", repr(report_type))
+        if qual not in _WARN_ONCE_REPORT_SCHEMA:
+            _WARN_ONCE_REPORT_SCHEMA.add(qual)
+            logging.getLogger("a2kit").warning(
+                "_compute_report_schema(%s) failed: %s: %s",
+                qual,
+                type(exc).__name__,
+                exc,
+            )
         return None
 
 

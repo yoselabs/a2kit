@@ -408,12 +408,12 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
         fastmcp_kwargs["mask_error_details"] = not app_debug
     server = FastMCP(name=app.name, **fastmcp_kwargs)
 
-    reports_enabled = getattr(app, "ldd_reports", True)
-    events_enabled = getattr(app, "ldd_events", True)
-    app_sinks: tuple[Any, ...] = app.ldd.sinks if hasattr(app, "ldd") else ()
+    reports_enabled = app.ldd_reports
+    events_enabled = app.ldd_events
+    app_sinks: tuple[Any, ...] = app.ldd.sinks
 
-    container = app.container() if hasattr(app, "container") else None
-    dispatch_hook = app.dispatch_hook() if hasattr(app, "dispatch_hook") else None
+    container = app.container()
+    dispatch_hook = app.dispatch_hook()
 
     from a2kit.tool import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
