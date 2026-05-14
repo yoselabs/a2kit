@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased — v0.36 (di-scoped-lifecycle)
+
+DI is rebuilt as a standalone-shippable container with lazy first-use,
+per-call scope, and `Lazy[T]` for conditional injection. The `singleton`
+surface retires; `provide` is the single registration API.
+
+### Breaking — DI registration surface unified on `provide`
+
+| Removed                                | Replacement                                                                 |
+|----------------------------------------|-----------------------------------------------------------------------------|
+| `app.singleton(...)`                   | `app.provide(...)` — same three call shapes plus `per_call=True` opt-in     |
+| `app.has_singleton(T)`                 | `app.has_provider(T)`                                                       |
+| `app.singletons()`                     | `app.providers()`                                                           |
+| Eager singleton entry at `async with app:` | Lazy first-use: resources enter on first `Container.get(T)` (i.e. first dispatch that needs them) |
+| `aclose` / `close` cleanup auto-detection | Single-protocol convention: only `__aenter__`/`__aexit__` is honored. Wrap `aclose`/`close` resources in a class with `__aenter__`/`__aexit__` or use `@asynccontextmanager` |
+| Topological-order singleton entry      | Insertion-order via the per-scope cleanup stack; LIFO unwind                |
+| `_ensure()` lazy-init pattern          | Register the resource with `app.provide(T)`; its `__aenter__` enters lazily on first resolution |
+| `ctx.get(T)` service-locator           | Declare `Lazy[T]` as a tool param; deferred resolution without the antipattern |
+
+Each removed method raises `TypeError` with the migration recipe
+embedded; no aliases, no `DeprecationWarning`, no transitional period.
+
+### New — `Lazy[T]` for conditional dependency injection
+
+`a2kit.packages.di.Lazy[T]` is `Callable[[], Awaitable[T]]`. A parameter typed
+`Lazy[T]` receives a zero-arg async closure that, when awaited,
+resolves `T` through the current scope's resolver and records cleanup.
+Never awaited = `T` is never constructed and its `__aenter__` never
+runs. Solves the "five-resource tool only uses one" problem without
+service-locator antipatterns.
+
+### New — per-call scope via `per_call=True`
+
+`app.provide(T, factory, per_call=True)` opts a registration into the
+per-call scope: a fresh instance is built per dispatch, cached within
+that one call only, and cleaned up at call exit. Default
+`per_call=False` is app-scope.
+
+### New — standalone-shippable DI package
+
+`src/a2kit/packages/di/` is now self-contained (zero `from a2kit.*`
+imports outside the package) and exposes `Scope`, `Resolver` protocol,
+`Container`, `CleanupStack` ready for extraction to a standalone PyPI
+package. `App._resolver` is typed as the `Resolver` protocol so
+consumer code only sees the four-method surface (`get`, `provide`,
+`child`, `aclose`).
+
+### New — `Container.dispatch(fn, wire_kwargs)` helper
+
+Async context manager for the per-call dispatch path: opens a child
+resolver, calls `resolve_params(fn)` (Lazy[T]-aware), yields merged
+kwargs, unwinds per-call cleanup on exit with exception preservation.
+Production wiring into MCP transport and CLI runtime ships with the
+a2web migration.
+
+### New — `pydantic_settings.BaseSettings` auto-resolution
+
+A tool parameter typed as a `BaseSettings` subclass auto-resolves
+without explicit `provide()` registration — the container duck-types
+the subclass check (no `pydantic_settings` import inside the container
+module) and zero-arg-constructs at first use, picking up env values
+via pydantic's standard machinery.
+
+---
+
 ## v0.35.0 — 2026-05-14
 
 This release combines the never-tagged v0.34 wave (MCP wire-error

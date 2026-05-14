@@ -38,52 +38,10 @@ def test_construction_is_pure() -> None:
         tools = ()
 
     app = a2kit.App("api")
-    app.singleton(_DB)
+    app.provide(_DB)
     app.add_router(_R())
 
     assert _DB.enter_count == 0
     assert _DB.exit_count == 0
 
 
-@pytest.mark.asyncio
-async def test_async_with_app_enters_singletons() -> None:
-    app = a2kit.App("api")
-    app.singleton(_DB)
-
-    assert _DB.enter_count == 0
-    async with app:
-        assert _DB.enter_count == 1
-        assert _DB.exit_count == 0
-    assert _DB.exit_count == 1
-
-
-@pytest.mark.asyncio
-async def test_async_with_app_exits_lifo() -> None:
-    """Singletons exit in reverse-of-enter order."""
-
-    order: list[str] = []
-
-    class _A:
-        async def __aenter__(self) -> _A:
-            order.append("A-enter")
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None:
-            order.append("A-exit")
-
-    class _B:
-        async def __aenter__(self) -> _B:
-            order.append("B-enter")
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None:
-            order.append("B-exit")
-
-    app = a2kit.App("api")
-    app.singleton(_A)
-    app.singleton(_B)
-
-    async with app:
-        pass
-
-    assert order == ["A-enter", "B-enter", "B-exit", "A-exit"]

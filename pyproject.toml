@@ -117,8 +117,8 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
     "S101", "S105", "S106", "E402", "ARG001", "ARG002", "ARG005", "PLR2004", "SLF001",
-    "PT011", "PT018", "PT022", "PT030", "PLR0915", "PLC0415", "PTH116", "TC001", "TC002", "TC003",
-    "I001", "RUF100", "RUF012", "PLW0108",
+    "PT011", "PT012", "PT018", "PT022", "PT030", "PLR0915", "PLC0415", "PTH116", "PTH123", "TC001", "TC002", "TC003",
+    "I001", "RUF100", "RUF012", "PLW0108", "F841", "N801",
     "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206",
     # Tests intentionally use blind asserts, subprocess calls, broad string patterns,
     # builtin shadowing for clarity, and bind to local addresses for HTTP probes.
@@ -141,6 +141,12 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
     "S105", "S106",
 ]
 "src/a2kit/app.py" = ["SLF001"]
+# DI container's parent/child design crosses instance boundaries within the
+# same class (root <-> children share private state). Cleanup-stack and
+# resolve-hints fallbacks catch broadly per CLAUDE.md case 1/case 2.
+"src/a2kit/packages/di/container.py" = ["SLF001"]
+"src/a2kit/packages/di/_cleanup_stack.py" = ["BLE001"]
+"src/a2kit/packages/di/_hints.py" = ["BLE001"]
 # CLI builder synthesizes Click commands from arbitrary tool signatures —
 # inherently many branches per parameter type. PLR0915 / C901 reflect that.
 "src/a2kit/packages/cli/builder.py" = ["C901", "PLR0915", "PERF401"]

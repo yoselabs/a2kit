@@ -123,29 +123,29 @@ def test_testclient_renamed_call_raises_typeerror() -> None:
 
 
 def test_app_singleton_class_form() -> None:
-    """README claims ``app.singleton(SomeClass)`` registers under the class."""
+    """README claims ``app.provide(SomeClass)`` registers under the class."""
 
     class _Resource:
         pass
 
     app = a2kit.App("x")
-    app.singleton(_Resource)
-    assert _Resource in app.singletons()
+    app.provide(_Resource)
+    assert _Resource in app.providers()
 
 
 def test_app_singleton_factory_form() -> None:
-    """README claims ``app.singleton(factory)`` registers under the return type."""
+    """README claims ``app.provide(factory)`` registers under the return type."""
     app = a2kit.App("x")
-    app.singleton(_make_resource_for_factory_test)
-    assert _ResourceForFactoryTest in app.singletons()
+    app.provide(_make_resource_for_factory_test)
+    assert _ResourceForFactoryTest in app.providers()
 
 
 def test_app_singleton_explicit_base_form() -> None:
-    """README claims ``app.singleton(BaseClass, factory)`` registers under base."""
+    """README claims ``app.provide(BaseClass, factory)`` registers under base."""
     app = a2kit.App("x")
-    app.singleton(_BaseForOverride, _make_sub_for_override)
-    assert _BaseForOverride in app.singletons()
-    assert _SubForOverride not in app.singletons()
+    app.provide(_BaseForOverride, _make_sub_for_override)
+    assert _BaseForOverride in app.providers()
+    assert _SubForOverride not in app.providers()
 
 
 def test_app_lifespan_kwarg_removed() -> None:

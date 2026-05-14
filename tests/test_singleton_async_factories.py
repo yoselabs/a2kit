@@ -46,7 +46,7 @@ def test_register_singleton_accepts_async_factory() -> None:
         return _Resource("async")
 
     container.register_singleton(_Resource, factory)
-    assert container.has_singleton(_Resource)
+    assert container.has_provider(_Resource)
     assert container.has_async_singleton(_Resource)
 
 
@@ -193,8 +193,8 @@ def test_two_apps_have_isolated_async_singletons() -> None:
     async def make_b() -> _Resource:
         return _Resource("from-b")
 
-    app_a.singleton(_Resource, make_a)
-    app_b.singleton(_Resource, make_b)
+    app_a.provide(_Resource, make_a)
+    app_b.provide(_Resource, make_b)
 
     async def go() -> tuple[_Resource, _Resource]:
         a = await app_a.container().aresolve(_Resource)
@@ -214,7 +214,7 @@ def test_has_singleton_true_after_async_registration() -> None:
         return _Resource("y")
 
     container.register_singleton(_Resource, factory)
-    assert container.has_singleton(_Resource)
+    assert container.has_provider(_Resource)
 
 
 def test_provide_still_rejects_async_factories() -> None:
@@ -245,7 +245,7 @@ def test_dispatch_through_async_singleton() -> None:
         await asyncio.sleep(0)
         return _DispatchStore("dispatch-ok")
 
-    app = a2kit.App("dispatch").singleton(_DispatchStore, make_store).add_router(_DispatchRouter())
+    app = a2kit.App("dispatch").provide(_DispatchStore, make_store).add_router(_DispatchRouter())
 
     from a2kit.testing import client
 

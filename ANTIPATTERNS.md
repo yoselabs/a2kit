@@ -631,3 +631,168 @@ fields on `A2KitMetaExtras`, not as string keys.
 Citation: `src/a2kit/metadata.py::A2KitMetaExtras`;
 `src/a2kit/packages/lint/rules/purity.py::rule_extra_namespace`
 (enforces the attribute-name set).
+
+## v0.36 — DI scoped-lifecycle anti-patterns
+
+### `_ensure()` lazy-init on a `provide()`-registered class
+
+```python
+# Don't:
+class BrowserPool:
+    def __init__(self) -> None:
+        self._b = None
+
+    async def _ensure(self) -> Browser:
+        if self._b is None:
+            self._b = await launch_browser()
+        return self._b
+
+app.provide(BrowserPool)
+```
+
+The lazy-init pattern made sense before the container had lifecycle
+awareness. In v0.36 the container enters the resource on first
+`Container.get(T)` and unwinds on scope exit — `_ensure()` duplicates
+machinery the framework already provides and leaks resource state on
+exception. Register the resource with `__aenter__`/`__aexit__` and let
+the container drive entry/exit:
+
+```python
+# Do:
+class BrowserPool:
+    async def __aenter__(self) -> "BrowserPool":
+        self._b = await launch_browser()
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self._b.close()
+
+app.provide(BrowserPool)
+```
+
+### Parameterized lambdas as factories
+
+```python
+# Don't:
+app.provide(SqliteResource, lambda conn: SqliteResource(conn))
+```
+
+Lambdas can't carry parameter type annotations, so the framework
+can't chain-resolve `conn` from another registered provider. The
+factory looks injectable but isn't. Use `def`:
+
+```python
+# Do:
+def make_sqlite(conn: ConnectionConfig) -> SqliteResource:
+    return SqliteResource(conn)
+
+app.provide(SqliteResource, make_sqlite)
+
+# Or just register the class directly — its __init__ annotations work:
+app.provide(SqliteResource)  # SqliteResource.__init__(self, conn: ConnectionConfig)
+```
+
+### `aclose` / `close` without `__aenter__`/`__aexit__`
+
+```python
+# Don't:
+class HttpClient:
+    async def aclose(self) -> None:
+        await self._session.close()
+```
+
+In v0.35 the framework auto-detected `aclose` / `close` as cleanup
+hooks. v0.36 retires that — only `__aenter__`/`__aexit__` is honored
+(single-protocol convention). Resources with bare `aclose` / `close`
+methods will NOT be cleaned up at app exit. Wrap them:
+
+```python
+# Do:
+class HttpClient:
+    async def __aenter__(self) -> "HttpClient":
+        self._session = await new_session()
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self._session.close()
+```
+
+Or use `@asynccontextmanager`:
+
+```python
+@asynccontextmanager
+async def make_http_client() -> HttpClient:
+    session = await new_session()
+    try:
+        yield HttpClient(session)
+    finally:
+        await session.close()
+
+app.provide(HttpClient, make_http_client)
+```
+
+### Service-locator: `ctx.get(T)` for conditional dependencies
+
+```python
+# Don't:
+async def extract(url: str, ctx: ToolContext) -> str:
+    if needs_js(url):
+        browser = await ctx.get(Browser)  # service locator
+        return await browser.scrape(url)
+    return await plain_get(url)
+```
+
+Service-locator pulls hide dependencies from the function signature —
+the tool's wire surface no longer documents what it needs. Use
+`Lazy[T]` instead; same conditional-entry semantics, declared in the
+signature:
+
+```python
+# Do:
+from a2kit.packages.di import Lazy
+
+async def extract(url: str, browser: Lazy[Browser]) -> str:
+    if needs_js(url):
+        b = await browser()
+        return await b.scrape(url)
+    return await plain_get(url)
+```
+
+See `docs/patterns/conditional-deps.md`.
+
+### App-scope factory depending on a per-call type
+
+```python
+# Don't:
+class Reporter:
+    def __init__(self, tx: Transaction) -> None:
+        self._tx = tx
+
+app.provide(Transaction, per_call=True)
+app.provide(Reporter)  # app-scope by default — depends on a per-call type
+```
+
+The framework rejects this at `async with app:` with a clear scope
+violation. Per-call types live for one dispatch; an app-scope instance
+would cache a stale per-call value. Either move `Reporter` to per-call
+too, or use `Lazy[Transaction]` so the closure resolves the per-call
+type from the live dispatch scope at use time.
+
+Citation: `src/a2kit/packages/di/container.py::_validate_scope_graph`.
+
+### `app.override(T, fake)` does not exist — re-register instead
+
+```python
+# Don't:
+app.override(LLM, FakeLLM())  # AttributeError — method removed
+```
+
+There is no dedicated test-override seam. Re-register the type at the
+composition root; `provide()` is last-write-wins:
+
+```python
+# Do (in build_test_app):
+app.provide(LLM, lambda: FakeLLM())
+```
+
+See `docs/patterns/test-overrides.md`.

@@ -1,31 +1,38 @@
-"""Synchronous, feature-agnostic DI container.
+"""Standalone-shippable DI package — sync legacy + async scoped lifecycle.
 
-The container is a typed map plus parameter-annotation chain resolution.
-It knows nothing about specific features (no ``"connection"``, no
-``"tenant"``, no feature-name strings anywhere). Async resource lifecycle
-lives outside the container — either at the app composition root (lifespan
-pattern) or inside resource classes (lazy-init pattern).
+Two surface layers coexist during the v0.36 transition:
 
-Wire-input transformation (e.g. resolving a ``connection: str`` to a typed
-``ConnectionConfig``) happens at the dispatch hook seam in the consumer
-package (``a2kit.packages.connections``), not in the container.
+- Legacy: ``register`` / ``register_singleton`` / ``resolve`` / ``aresolve`` /
+  ``apply_kwargs`` — sync-friendly path used by the existing dispatcher.
+- New (di-scoped-lifecycle): ``provide(scope=...)`` / async ``get(T)`` /
+  ``child()`` / ``aclose`` / ``__aenter__`` / ``__aexit__`` plus the
+  :class:`Scope` enum and :class:`Resolver` protocol.
 
-See ``openspec/specs/request-scoped-di/spec.md`` and
-``openspec/specs/di-container-package/spec.md`` for the binding contract.
+Future extraction to a standalone PyPI package: this directory contains
+NO ``from a2kit.*`` imports outside ``a2kit.packages.di``. See
+``test_no_a2kit_imports_inside_di_package``.
 """
 
 from __future__ import annotations
 
+from a2kit.packages.di._lazy import Lazy
 from a2kit.packages.di.container import (
     Container,
     Factory,
     UnresolvableType,
     container_dispatch,
+    container_dispatch_async,
 )
+from a2kit.packages.di.resolver import Resolver
+from a2kit.packages.di.scope import Scope
 
 __all__ = [
     "Container",
     "Factory",
+    "Lazy",
+    "Resolver",
+    "Scope",
     "UnresolvableType",
     "container_dispatch",
+    "container_dispatch_async",
 ]

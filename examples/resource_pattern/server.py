@@ -140,7 +140,7 @@ def build_managed_state() -> _ManagedAppState:
 
 app = a2kit.App("resource-pattern-demo")
 app.add_router(FakeShopRouter())
-app.singleton(AppState, build_managed_state)
+app.provide(AppState, build_managed_state)
 
 
 def main() -> None:

@@ -5,129 +5,113 @@ TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpos
 ## Requirements
 ### Requirement: App exposes `singleton(T, factory=None)` registration
 
-The `a2kit.App` class SHALL expose `singleton(...)` that registers a typed factory whose resolved instance is cached on the `App` and shared across all dispatches that resolve the type. The method SHALL accept three call shapes: (a) `singleton(SomeClass)` where the class itself is the factory and the registered type is the class; (b) `singleton(factory)` where the factory's return-type annotation provides the registered type (sync `def`, `async def`, or annotated lambda are accepted); (c) `singleton(BaseClass, factory)` for explicit override where the factory returns a subtype but the registration should be under the base. The call SHALL return `self` for chaining. When the one-arg form receives a callable with no return type annotation, the framework SHALL raise `TypeError` at registration naming the call site and proposing both fixes (annotate the factory or pass the type explicitly).
+**Renamed and reshaped: `singleton(...)` becomes `provide(..., per_call=False)`.** The `a2kit.App` class SHALL expose `provide(...)` as the unified registration API for typed factories whose resolved instances are cached and shared. App-scope caching is the default behavior (`per_call=False`, kwarg omitted). The method SHALL accept three call shapes preserved from the prior `singleton` surface: (a) `provide(SomeClass)` where the class itself is the factory and the registered type is the class; (b) `provide(factory)` where the factory's return-type annotation provides the registered type (sync `def`, `async def`, or annotated-return generators are accepted; unannotated lambdas with non-zero parameters remain forbidden); (c) `provide(BaseClass, factory)` for explicit override where the factory returns a subtype but the registration should be under the base. The call SHALL return `self` for chaining.
+
+When the one-arg form receives a callable with no return type annotation, the framework SHALL raise `TypeError` at registration naming the call site and proposing both fixes (annotate the factory or pass the type explicitly).
+
+The previous public method name `singleton(...)` SHALL be removed. Calling `app.singleton(...)` SHALL raise `TypeError` whose message names `app.singleton`, the removal version (`v0.36`), and points at `app.provide(...)` as the replacement.
 
 #### Scenario: Class-as-factory form (zero-arg ctor)
 
-- **WHEN** `app.singleton(AppState)` is called with no second argument
-- **THEN** `AppState` itself is used as the factory at resolve time
+- **WHEN** `app.provide(AppState)` is called with no second argument
+- **THEN** `AppState` itself is used as the factory at first resolve
 - **AND** the registered type is `AppState`
 - **AND** the call returns `self`
 
 #### Scenario: Factory-only form with return annotation
 
 - **GIVEN** `async def build_state() -> AppState: ...`
-- **WHEN** `app.singleton(build_state)` is called
+- **WHEN** `app.provide(build_state)` is called
 - **THEN** the registered type is `AppState` (read from the return annotation)
 - **AND** the call returns `self`
 
 #### Scenario: Explicit base-type override
 
 - **GIVEN** `class SubState(AppState): ...` and `def make() -> SubState: ...`
-- **WHEN** `app.singleton(AppState, make)` is called
+- **WHEN** `app.provide(AppState, make)` is called
 - **THEN** the registered type is `AppState` (not `SubState`)
 
 #### Scenario: Unannotated factory raises with hint
 
-- **WHEN** `app.singleton(lambda: AppState(...))` is called (no annotation on the lambda return)
-- **THEN** `TypeError` is raised at registration whose message names both `"return annotation"` and `"app.singleton(T, factory)"` as the explicit-override fix
+- **WHEN** `app.provide(lambda: AppState(...))` is called (no annotation on the lambda return)
+- **THEN** `TypeError` is raised at registration whose message names both `"return annotation"` and `"app.provide(T, factory)"` as the explicit-override fix
+
+#### Scenario: Removed `singleton` method raises with hint
+
+- **WHEN** `app.singleton(AppState, factory)` is called
+- **THEN** `TypeError` is raised
+- **AND** the message contains `"app.singleton"`, `"v0.36"`, and `"app.provide"`
 
 ### Requirement: Singletons resolve via the request-scoped container
 
-A registered singleton SHALL be reachable via `container.resolve(T)` exactly like a `provide`-registered type. The container SHALL receive the cached instance on every resolve after the first. Resolution is synchronous.
+**Reshaped: resolution is async and lazy, not sync and eager.** An app-scope registration SHALL be reachable via `Resolver.get(T)` (async). The first call to `get(T)` after registration SHALL invoke the factory exactly once, await the result if the factory is async, run `__aenter__` if the resolved instance implements the async context manager protocol, record the cleanup callable on the App-scope cleanup stack, and cache the resolved instance. Subsequent `get(T)` calls on any scope (including child scopes opened by the dispatcher) SHALL return the cached instance without re-entering the factory.
 
-#### Scenario: Singleton resolved twice returns the same instance
+Concurrent first-touch resolutions of the same app-scope type SHALL coalesce on a per-type `asyncio.Lock` — the factory and `__aenter__` SHALL be invoked at most once across the racing callers. Synchronous `Container.resolve(T)` of an app-scope type whose factory has not yet been awaited SHALL raise `ValueError` directing the caller to use the async resolution path.
 
-- **GIVEN** `app.singleton(AppState, factory)` where `factory` returns a fresh instance each time it is called
-- **WHEN** the container resolves `AppState` twice (across two dispatches or two `resolve` calls)
+#### Scenario: App-scope resolved twice returns the same instance
+
+- **GIVEN** `app.provide(AppState, factory)` where `factory` returns a fresh instance each time it is called
+- **WHEN** the container resolves `AppState` twice (across two dispatches or two `get` calls)
 - **THEN** both resolves return the same object
 - **AND** `factory` was invoked exactly once
+- **AND** `AppState.__aenter__` was invoked exactly once if the class implements the async context manager protocol
 
-#### Scenario: Singleton dependency chains
+#### Scenario: App-scope dependency chain resolves transitively
 
-- **GIVEN** `app.singleton(AppState, lambda settings: AppState(settings))` and `app.provide(Settings, load_settings)` (both sync)
+- **GIVEN** `app.provide(AppState, lambda settings: AppState(settings))` and the parameter `settings: SmtpSettings` resolves automatically because `SmtpSettings` is a `BaseSettings` subclass
 - **WHEN** a tool method declares `state: AppState`
-- **THEN** the container resolves `Settings` (per-dispatch), then resolves `AppState` once via the lambda
+- **THEN** the framework resolves `SmtpSettings` first (zero-arg `BaseSettings` construction), then resolves `AppState` once via the lambda
 - **AND** subsequent dispatches reuse the cached `AppState` and do not re-call the factory
+
+#### Scenario: Concurrent first-touches coalesce
+
+- **GIVEN** an async-factory app-scope registration for `SqliteResource`
+- **WHEN** ten concurrent tasks each trigger first-resolution of `SqliteResource`
+- **THEN** the factory is awaited exactly once
+- **AND** `SqliteResource.__aenter__` runs exactly once
+- **AND** all ten tasks share the same resolved instance
 
 ### Requirement: Singletons are App-scoped, not process-scoped
 
-Two distinct `App` instances in the same process, each registering `singleton(T, ...)`, SHALL produce two distinct cached instances of `T`. The cache lives on the `App`, not on `T` and not in any process-global storage. This holds for both sync and async factory shapes; per-type locks for async coalescing live on the `Container`, not in process-global state.
+Two distinct `App` instances in the same process, each registering `provide(T, ...)` (with `per_call=False`, the default), SHALL produce two distinct cached instances of `T`. The cache lives on the `App`'s container, not on `T` and not in any process-global storage. This holds for both sync and async factory shapes; per-type locks for async coalescing live on the `Container`, not in process-global state.
 
-#### Scenario: Two Apps, two singleton instances (sync)
+#### Scenario: Two Apps, two app-scope instances (sync)
 
-- **GIVEN** `app_a = App("a").singleton(AppState, factory_a)` and `app_b = App("b").singleton(AppState, factory_b)`
+- **GIVEN** `app_a = App("a").provide(AppState, factory_a)` and `app_b = App("b").provide(AppState, factory_b)`
 - **WHEN** both Apps resolve `AppState`
 - **THEN** the instance bound to `app_a`'s dispatch is distinct from the instance bound to `app_b`'s dispatch
 
-#### Scenario: Two Apps, two singleton instances (async)
+#### Scenario: Two Apps, two app-scope instances (async)
 
-- **GIVEN** `app_a.singleton(SqliteResource, build_sqlite_async)` and `app_b.singleton(SqliteResource, build_sqlite_async)` registered with the same async factory function
+- **GIVEN** `app_a.provide(SqliteResource, build_sqlite_async)` and `app_b.provide(SqliteResource, build_sqlite_async)` registered with the same async factory function
 - **WHEN** both Apps trigger async resolution of `SqliteResource`
 - **THEN** the factory is awaited once per App
 - **AND** each App caches its own distinct instance
 
 ### Requirement: Introspection surface
 
-The `App` class SHALL expose `has_singleton(type_) -> bool` and `singletons() -> dict[type, Any]`. `has_singleton` SHALL return `True` once a singleton has been registered (before or after first resolve), regardless of whether the factory is sync or async. `singletons()` SHALL return a snapshot dict mapping registered types to their cached instances (or to a documented sentinel value for not-yet-resolved entries, which applies equally to async-factory singletons that have not yet been awaited).
+**Renamed: `has_singleton` → `has_provider`, `singletons()` → `providers()`.** The `App` class SHALL expose `has_provider(type_) -> bool` and `providers() -> dict[type, Any]`. `has_provider` SHALL return `True` once a registration exists (before or after first resolve), regardless of whether the factory is sync or async or the scope is app or per-call. `providers()` SHALL return a snapshot dict mapping registered types to their cached instances (for app-scope only), or to a documented sentinel value (`UNRESOLVED`) for not-yet-resolved entries (which applies to lazy app-scope entries by default and to async-factory entries that have not yet been awaited). Per-call entries SHALL appear in `providers()` with a dedicated `PER_CALL` sentinel since they have no app-scope cache.
 
-#### Scenario: has_singleton before resolution (sync factory)
+Calling the removed names `has_singleton(...)` or `singletons()` SHALL raise `TypeError` whose message names the renamed method and the removal version.
 
-- **GIVEN** `app.singleton(AppState, factory)` registered with a sync factory but not yet resolved
-- **WHEN** test code calls `app.has_singleton(AppState)`
+#### Scenario: has_provider before resolution (sync factory)
+
+- **GIVEN** `app.provide(AppState, factory)` registered with a sync factory but not yet resolved
+- **WHEN** test code calls `app.has_provider(AppState)`
 - **THEN** the call returns `True`
 
-#### Scenario: has_singleton before resolution (async factory)
+#### Scenario: has_provider before resolution (async factory)
 
-- **GIVEN** `app.singleton(SqliteResource, build_sqlite_async)` registered with an async factory but not yet awaited
-- **WHEN** test code calls `app.has_singleton(SqliteResource)`
+- **GIVEN** `app.provide(SqliteResource, build_sqlite_async)` registered with an async factory but not yet awaited
+- **WHEN** test code calls `app.has_provider(SqliteResource)`
 - **THEN** the call returns `True`
-- **AND** `app.singletons()[SqliteResource]` is the documented unresolved sentinel
+- **AND** `app.providers()[SqliteResource]` is the documented `UNRESOLVED` sentinel
 
-### Requirement: `App.singleton` accepts `teardown=` for framework-managed shutdown
+#### Scenario: Renamed introspection method raises with hint
 
-`App.singleton(...)` SHALL NOT accept a `teardown=` keyword argument. Resource cleanup SHALL be carried by the resolved instance itself via Python's standard protocols. The framework SHALL probe the resolved instance for cleanup in the following order and SHALL wire whichever it finds into the App's `AsyncExitStack`:
-
-1. `__aexit__` (with matching `__aenter__`): the instance is entered via `__aenter__` at App `__aenter__` time and exited via `__aexit__` at App `__aexit__` time.
-2. `aclose()` (no `__aexit__`): `await instance.aclose()` is scheduled for App `__aexit__`.
-3. `close()` (neither of the above): `instance.close()` is scheduled for App `__aexit__` (sync or async `close()` is accepted; coroutine returns are awaited).
-4. None of the above: no teardown is registered for that singleton.
-
-Passing `teardown=` SHALL raise `TypeError` whose message names the removal (`v0.35`) and points at the auto-detection rules.
-
-#### Scenario: `__aexit__` auto-detected
-
-- **GIVEN** `class DB: async def __aenter__(self): ...; async def __aexit__(self, *exc): ...` registered via `app.singleton(DB)`
-- **WHEN** `async with app:` enters and then exits
-- **THEN** `DB.__aenter__` ran once during App `__aenter__`
-- **AND** `DB.__aexit__` ran once during App `__aexit__`
-
-#### Scenario: `aclose` auto-detected
-
-- **GIVEN** a singleton instance with no `__aexit__` but with `async def aclose(self): ...`
-- **WHEN** App `__aexit__` runs
-- **THEN** `instance.aclose()` was awaited exactly once
-
-#### Scenario: `teardown=` kwarg raises
-
-- **WHEN** `app.singleton(DB, factory, teardown=lambda d: d.close())` is called
-- **THEN** `TypeError` is raised whose message contains `"teardown="` and `"__aexit__"`
-
-### Requirement: Teardown order is topological (dependents before dependencies)
-
-Singleton entries SHALL be ordered topologically by the DI graph at App `__aenter__`: dependencies enter before dependents. App `__aexit__` SHALL unwind in reverse order: dependents exit before dependencies. The topology SHALL be derived from the existing factory-parameter graph; pure types with no provider edges SHALL preserve registration order as the tiebreaker.
-
-#### Scenario: Dependent enters after dependency
-
-- **GIVEN** singleton `DB` and singleton `Repo(db: DB)` registered in that order
-- **WHEN** `async with app:` enters
-- **THEN** `DB.__aenter__` ran before `Repo.__aenter__`
-
-#### Scenario: Dependent exits before dependency
-
-- **GIVEN** the same setup
-- **WHEN** the `async with` block exits
-- **THEN** `Repo.__aexit__` ran before `DB.__aexit__`
+- **WHEN** `app.has_singleton(AppState)` or `app.singletons()` is called
+- **THEN** `TypeError` is raised
+- **AND** the message names the new method (`has_provider` or `providers`) and the removal version (`v0.36`)
 
 ### Requirement: Teardown failures are error-isolated
 
@@ -141,24 +125,65 @@ A teardown that raises `Exception` SHALL NOT prevent sibling teardowns from runn
 - **AND** `app.teardown_failures` contains exactly one tuple `(B, RuntimeError("boom"))`
 - **AND** an `error`-level log line was emitted naming `B` and the exception
 
-### Requirement: Teardown without lifespan still fires
+### Requirement: App-scope is the default scope of `provide`
 
-Every registered singleton with a detected cleanup protocol SHALL have that cleanup invoked when the enclosing `async with app:` block exits — there is no separate "no lifespan registered" code path because every App is now its own async context manager.
+The `App.provide(...)` method SHALL accept a keyword-only `per_call: bool = False` argument. When `per_call=False` (the default, equivalent to omitting the kwarg), the registered type SHALL be cached on the App's root container for the App's lifetime. When `per_call=True`, the registration SHALL participate in the per-call scope contract (see `di-per-call-scope`).
 
-#### Scenario: App with only singletons unwinds correctly
+#### Scenario: per_call omitted defaults to app-scope
 
-- **GIVEN** an App with one singleton `DB` and no other lifecycle work
-- **WHEN** `async with app: ...` runs to completion
-- **THEN** `DB.__aenter__` ran on entry and `DB.__aexit__` ran on exit
+- **GIVEN** `app.provide(AppState, factory)` with no `per_call` kwarg
+- **WHEN** two dispatches each resolve `AppState`
+- **THEN** both dispatches receive the same cached instance
+- **AND** the factory was invoked exactly once across the two dispatches
 
-### Requirement: Cycle in the singleton factory-parameter graph is handled deterministically
+#### Scenario: per_call=False explicit reads identically
 
-If the registered-singletons-with-teardowns subgraph contains a cycle (which the container's resolution-cycle detection should prevent in practice), `teardown_order()` SHALL break the cycle by emitting the lowest-`id` type and continuing, AND emit a `WARN`-level log line identifying the cycle and the break point.
+- **GIVEN** `app.provide(AppState, factory, per_call=False)` (explicit)
+- **WHEN** two dispatches each resolve `AppState`
+- **THEN** behavior is identical to omitting `per_call` (same cached instance, factory invoked once)
 
-#### Scenario: Cycle break is deterministic
+### Requirement: App-scope resolution is lazy by default
 
-- **GIVEN** a synthetic registration where two singletons mutually reference each other as factory parameters (constructed by direct provider manipulation in a test)
-- **WHEN** `teardown_order()` is invoked
-- **THEN** the call returns both types in a deterministic order (lowest-`id` first)
-- **AND** a `WARN` log line is emitted identifying the cycle members and the break point
+App-scope registrations SHALL NOT be entered at `App.__aenter__`. The first dispatch that resolves a given app-scope type SHALL trigger its factory invocation and `__aenter__` call. An app-scope type that no dispatch ever resolves SHALL NOT have its factory invoked, regardless of registration order or graph reachability.
+
+#### Scenario: Unused app-scope resource never entered
+
+- **GIVEN** `app.provide(BrowserPool)` and `app.provide(SqliteResource)` both registered, where `BrowserPool` implements `__aenter__`/`__aexit__`
+- **WHEN** the App is entered, a tool that resolves only `SqliteResource` is dispatched, and the App exits
+- **THEN** `BrowserPool.__aenter__` was never invoked
+- **AND** `BrowserPool.__aexit__` was never invoked
+- **AND** the App close completes normally
+
+#### Scenario: First dispatch warms the resource; subsequent dispatches reuse
+
+- **GIVEN** `app.provide(BrowserPool)` (lazy by default)
+- **WHEN** the first dispatch needs `BrowserPool` and resolves it, then a second dispatch needs `BrowserPool` and resolves it
+- **THEN** `BrowserPool.__aenter__` ran exactly once (during the first dispatch's resolution)
+- **AND** both dispatches received the same instance
+
+### Requirement: pydantic-settings subclasses auto-resolve without explicit registration
+
+The container SHALL auto-resolve a requested type `T` when `T` is a subclass of `pydantic_settings.BaseSettings` and no explicit provider for `T` is registered. Auto-resolution SHALL invoke `T()` (zero-arg construction; pydantic-settings reads env on construction) and cache the result at app-scope. This rule SHALL be the only special-case auto-resolution rule applied by the container; no other zero-arg-constructible class is auto-resolved.
+
+The container SHALL NOT import `pydantic_settings` directly. Subclass detection SHALL use duck-typing (e.g., `hasattr(cls, "model_config")` plus inheritance hierarchy walk) so the container remains usable without pydantic installed.
+
+#### Scenario: Settings class resolved without registration
+
+- **GIVEN** `class SmtpSettings(BaseSettings): host: str; model_config = SettingsConfigDict(env_prefix="SMTP_")` and `SMTP_HOST=localhost` in the environment
+- **WHEN** a tool declares `settings: SmtpSettings` and is dispatched
+- **THEN** the framework constructs `SmtpSettings()` (which reads env)
+- **AND** the tool receives a `SmtpSettings(host="localhost")` instance
+
+#### Scenario: Non-BaseSettings type with no registration raises
+
+- **GIVEN** a class `Foo` (not a `BaseSettings` subclass) with no registration
+- **WHEN** a tool declares `foo: Foo` and is dispatched
+- **THEN** `UnresolvableType` is raised naming `Foo` and the tool
+
+#### Scenario: BaseSettings cached across dispatches
+
+- **GIVEN** `SmtpSettings` auto-resolved on first dispatch
+- **WHEN** a second dispatch also needs `SmtpSettings`
+- **THEN** both dispatches receive the same `SmtpSettings` instance
+- **AND** the constructor was invoked exactly once
 

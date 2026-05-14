@@ -324,7 +324,7 @@ class _State:
 
 def test_peek_resolves_registered_singleton() -> None:
     app = a2kit.App("t")
-    app.singleton(_State, lambda: _State())
+    app.provide(_State, lambda: _State())
     s = peek(app, _State)
     assert isinstance(s, _State)
     s2 = peek(app, _State)
@@ -339,8 +339,8 @@ def test_singleton_accepts_async_factory_at_registration() -> None:
         return _State()
 
     app = a2kit.App("t")
-    app.singleton(_State, factory)
-    assert app.has_singleton(_State)
+    app.provide(_State, factory)
+    assert app.has_provider(_State)
 
 
 def test_peek_raises_when_no_provider() -> None:

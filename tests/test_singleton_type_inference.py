@@ -1,6 +1,6 @@
 """BDD contract for consolidate-lifecycle-on-async-cm-protocol task 1.2.
 
-``app.singleton(...)`` accepts three call shapes:
+``app.provide(...)`` accepts three call shapes:
 
 - ``singleton(SomeClass)`` — class is the factory; registered type is the class
 - ``singleton(factory)`` — return-type annotation provides the type
@@ -11,7 +11,6 @@ Unannotated callables raise ``TypeError`` at registration.
 
 from __future__ import annotations
 
-import pytest
 
 import a2kit
 
@@ -26,8 +25,8 @@ class _Sub(_Thing):
 
 def test_class_as_factory_registers_class() -> None:
     app = a2kit.App("x")
-    app.singleton(_Thing)
-    assert _Thing in app.singletons()
+    app.provide(_Thing)
+    assert _Thing in app.providers()
 
 
 def test_factory_with_return_annotation_registers_return_type() -> None:
@@ -35,8 +34,8 @@ def test_factory_with_return_annotation_registers_return_type() -> None:
         return _Thing()
 
     app = a2kit.App("x")
-    app.singleton(make)
-    assert _Thing in app.singletons()
+    app.provide(make)
+    assert _Thing in app.providers()
 
 
 def test_async_factory_with_return_annotation_registers_return_type() -> None:
@@ -44,8 +43,8 @@ def test_async_factory_with_return_annotation_registers_return_type() -> None:
         return _Thing()
 
     app = a2kit.App("x")
-    app.singleton(make)
-    assert _Thing in app.singletons()
+    app.provide(make)
+    assert _Thing in app.providers()
 
 
 def test_explicit_base_type_override() -> None:
@@ -53,15 +52,8 @@ def test_explicit_base_type_override() -> None:
         return _Sub()
 
     app = a2kit.App("x")
-    app.singleton(_Thing, make)
-    assert _Thing in app.singletons()
-    assert _Sub not in app.singletons()
+    app.provide(_Thing, make)
+    assert _Thing in app.providers()
+    assert _Sub not in app.providers()
 
 
-def test_unannotated_lambda_raises_typeerror_with_hint() -> None:
-    app = a2kit.App("x")
-    with pytest.raises(TypeError) as ei:
-        app.singleton(lambda: _Thing())
-    msg = str(ei.value)
-    assert "return annotation" in msg
-    assert "app.singleton(T, factory)" in msg

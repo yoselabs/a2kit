@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from a2kit.app import UNRESOLVED, App
+from a2kit.app import App
 from a2kit.packages.di.container import UnresolvableType
 
 
@@ -74,7 +74,7 @@ def test_singleton_method_form_caches() -> None:
         return _State(f"build{calls['n']}")
 
     app = App("t")
-    app.singleton(_State, factory)
+    app.provide(_State, factory)
     a = app.container().resolve(_State)
     b = app.container().resolve(_State)
     assert a is b
@@ -82,13 +82,13 @@ def test_singleton_method_form_caches() -> None:
 
 
 def test_singleton_class_as_factory_form() -> None:
-    """``app.singleton(T)`` (no factory) registers T as its own factory.
+    """``app.provide(T)`` (no factory) registers T as its own factory.
 
     Class-as-factory uses ``T.__init__`` at resolve time and chains DI for
     any annotated constructor parameters.
     """
     app = App("t")
-    app.singleton(_State)
+    app.provide(_State)
     s = app.container().resolve(_State)
     assert isinstance(s, _State)
 
@@ -96,8 +96,8 @@ def test_singleton_class_as_factory_form() -> None:
 def test_two_apps_independent_singletons() -> None:
     app_a = App("a")
     app_b = App("b")
-    app_a.singleton(_State, lambda: _State("A"))
-    app_b.singleton(_State, lambda: _State("B"))
+    app_a.provide(_State, lambda: _State("A"))
+    app_b.provide(_State, lambda: _State("B"))
     sa = app_a.container().resolve(_State)
     sb = app_b.container().resolve(_State)
     assert sa is not sb
@@ -112,29 +112,8 @@ def test_singleton_async_factory_accepted_at_registration() -> None:
         return _State("async")
 
     app = App("t")
-    app.singleton(_State, factory)
-    assert app.has_singleton(_State)
-
-
-def test_provide_async_factory_rejected() -> None:
-    async def factory() -> _Settings:
-        return _Settings()
-
-    app = App("t")
-    with pytest.raises(ValueError, match="async"):
-        app.provide(_Settings, factory)
-
-
-def test_has_singleton_and_singletons_introspection() -> None:
-    app = App("t")
-    app.singleton(_State, lambda: _State())
-    assert app.has_singleton(_State) is True
-    snap = app.singletons()
-    assert _State in snap
-    assert snap[_State] is UNRESOLVED
-    app.container().resolve(_State)
-    snap2 = app.singletons()
-    assert isinstance(snap2[_State], _State)
+    app.provide(_State, factory)
+    assert app.has_provider(_State)
 
 
 def test_singleton_chain_with_provide() -> None:
@@ -144,7 +123,7 @@ def test_singleton_chain_with_provide() -> None:
     def make_store(settings: _Settings) -> _Store:
         return _Store(settings)
 
-    app.singleton(_Store, make_store)
+    app.provide(_Store, make_store)
     a = app.container().resolve(_Store)
     b = app.container().resolve(_Store)
     assert a is b
@@ -154,7 +133,7 @@ def test_singleton_chain_with_provide() -> None:
 def test_provide_then_singleton_last_write_wins() -> None:
     app = App("t")
     app.provide(_State, lambda: _State("via_provide"))
-    app.singleton(_State, lambda: _State("via_singleton"))
+    app.provide(_State, lambda: _State("via_singleton"))
     a = app.container().resolve(_State)
     b = app.container().resolve(_State)
     assert a is b

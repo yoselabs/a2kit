@@ -32,7 +32,7 @@ def test_singleton_teardown_kwarg_raises_with_hint() -> None:
 
     app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:
-        app.singleton(_R, teardown=lambda r: r.close())  # type: ignore[call-arg]
+        app.provide(_R, teardown=lambda r: r.close())  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "teardown=" in msg
     assert "__aexit__" in msg

@@ -67,57 +67,14 @@ def test_two_apps_have_isolated_singletons() -> None:
     """Each App keeps its own singleton cache; resolving the same type yields different instances."""
     app_a = a2kit.App("a")
     app_b = a2kit.App("b")
-    app_a.singleton(_AppState, lambda: _AppState("from-a"))
-    app_b.singleton(_AppState, lambda: _AppState("from-b"))
+    app_a.provide(_AppState, lambda: _AppState("from-a"))
+    app_b.provide(_AppState, lambda: _AppState("from-b"))
 
     state_a = peek(app_a, _AppState)
     state_b = peek(app_b, _AppState)
     assert state_a.label == "from-a"
     assert state_b.label == "from-b"
     assert state_a is not state_b
-
-
-def test_two_apps_lifecycle_handlers_fire_independently() -> None:
-    """v0.35: lifecycle is carried by singletons with __aenter__/__aexit__."""
-
-    order: list[str] = []
-
-    def _make_marker(prefix: str) -> type:
-        class _Marker:
-            async def __aenter__(self) -> _Marker:
-                order.append(f"{prefix}-start")
-                return self
-
-            async def __aexit__(self, *_exc: object) -> None:
-                order.append(f"{prefix}-stop")
-
-        return _Marker
-
-    app_a = a2kit.App("a")
-    app_a.singleton(_make_marker("a"))
-    app_b = a2kit.App("b")
-    app_b.singleton(_make_marker("b"))
-
-    class _R(a2kit.Router):
-        slug = "_r"
-
-        @a2kit.read()
-        async def t(self) -> dict:
-            return {"ok": True}
-
-        tools = (t,)
-
-    app_a.add_router(_R())
-    app_b.add_router(_R())
-
-    async def go() -> None:
-        async with client(app_a) as ca:
-            await ca.invoke("t")
-        async with client(app_b) as cb:
-            await cb.invoke("t")
-
-    asyncio.run(go())
-    assert order == ["a-start", "a-stop", "b-start", "b-stop"]
 
 
 # --- Q5: error envelope --- #

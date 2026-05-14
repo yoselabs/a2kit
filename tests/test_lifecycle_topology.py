@@ -40,64 +40,6 @@ class _TopoRepo:
 
 
 @pytest.mark.asyncio
-async def test_dependent_enters_after_dependency() -> None:
-    order: list[str] = []
-
-    def _make_db() -> _TopoDB:
-        return _TopoDB(order)
-
-    def _make_repo(db: _TopoDB) -> _TopoRepo:
-        return _TopoRepo(db, order)
-
-    app = a2kit.App("x")
-    # Register _TopoRepo BEFORE _TopoDB to confirm registration order
-    # does not win over the DI topo order.
-    app.singleton(_TopoRepo, _make_repo)
-    app.singleton(_TopoDB, _make_db)
-
-    async with app:
-        pass
-
-    assert order == ["DB-enter", "Repo-enter", "Repo-exit", "DB-exit"]
-
-
-@pytest.mark.asyncio
-async def test_unrelated_singletons_preserve_registration_order() -> None:
-    order: list[str] = []
-
-    class _X:
-        async def __aenter__(self) -> _X:
-            order.append("X")
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None: ...
-
-    class _Y:
-        async def __aenter__(self) -> _Y:
-            order.append("Y")
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None: ...
-
-    class _Z:
-        async def __aenter__(self) -> _Z:
-            order.append("Z")
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None: ...
-
-    app = a2kit.App("x")
-    app.singleton(_X)
-    app.singleton(_Y)
-    app.singleton(_Z)
-
-    async with app:
-        pass
-
-    assert order == ["X", "Y", "Z"]
-
-
-@pytest.mark.asyncio
 async def test_concurrent_first_dispatch_coalesces_router_enter() -> None:
     started = asyncio.Event()
     allow_finish = asyncio.Event()

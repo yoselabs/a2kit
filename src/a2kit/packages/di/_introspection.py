@@ -43,7 +43,7 @@ def _factory_callable(factory: Factory) -> Callable[..., Any]:
 
 def _factory_params(factory: Factory) -> list[_ParamSpec]:
     """List the factory's input parameters (skipping ``self``)."""
-    from a2kit.signature import resolve_hints
+    from a2kit.packages.di._hints import resolve_hints
 
     target = _factory_callable(factory)
     hints = resolve_hints(target)

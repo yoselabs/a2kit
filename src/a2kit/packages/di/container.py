@@ -27,18 +27,21 @@ consumer's dispatch hook, before the container sees kwargs.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import logging
 import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from a2kit.packages.di._cleanup_stack import CleanupStack
 from a2kit.packages.di._introspection import (
     Factory,
     UnresolvableType,
     _factory_params,
     _ParamSpec,
 )
+from a2kit.packages.di.scope import Scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -86,6 +89,27 @@ class Container:
         # live in the consumer's dispatch hook. Schema generation consults
         # this to synthesize the wire-side string param.
         self._wire_scopes: dict[str, set[type]] = {}
+
+        # --- new di-scoped-lifecycle state --------------------------------
+        # Registered scope per type. Defaults to SINGLETON for ``provide`` /
+        # ``register_singleton``; SCOPED entries are child-container-scoped.
+        self._scope_metadata: dict[type, Scope] = {}
+        # Per-container cleanup stack. Root container holds app-scope
+        # cleanups; child containers hold per-call cleanups.
+        self._cleanup_stack: CleanupStack = CleanupStack()
+        # Set once :meth:`__aenter__` has been called on this container —
+        # blocks further ``provide`` registrations.
+        self._sealed: bool = False
+        # Parent (root) container for child containers. ``None`` for the
+        # root. Children share the parent's providers + scope_metadata +
+        # app-scope cache but maintain their own scoped cache + cleanup.
+        self._parent: Container | None = None
+        # Per-call (SCOPED) cache. Empty on root; populated on children.
+        self._scoped_cache: dict[type, Any] = {}
+        # Per-type async locks for lifecycle-aware ``get(T)`` so concurrent
+        # first-touches coalesce. Separate from the older
+        # ``_async_singleton_locks`` used by the legacy ``aresolve`` path.
+        self._get_locks: dict[type, asyncio.Lock] = {}
 
     # -- registration --------------------------------------------------- #
 
@@ -291,11 +315,20 @@ class Container:
         factory runs at most once. Resolving sub-dependencies of an async
         factory uses this same path, so an async factory may depend on
         other async singletons.
+
+        v0.36 bridge: when ``type_`` was registered via the new
+        ``provide(...)`` API (has scope metadata), delegate to
+        :meth:`get` so ``__aenter__`` / cleanup wire through the per-scope
+        cleanup stack uniformly.
         """
         if cache is None:
             cache = {}
         if chain is None:
             chain = []
+        # New-API bridge: any type registered via `provide()` carries scope
+        # metadata; route through `get` so lifecycle is honored.
+        if type_ in self._scope_metadata:
+            return await self.get(type_)
         cached = self._cached_or_none(type_, cache)
         if cached is not _MISSING:
             return cached
@@ -508,6 +541,325 @@ class Container:
         # Locks are rebuilt lazily; drop any held by overridden types.
         self._async_singleton_locks = {t: lock for t, lock in self._async_singleton_locks.items() if t in self._async_factories}
 
+    # -- di-scoped-lifecycle public surface ----------------------------- #
+
+    def provide(
+        self,
+        type_: type,
+        factory: Factory | None = None,
+        *,
+        scope: Scope = Scope.SINGLETON,
+    ) -> None:
+        """Register ``factory`` (or ``type_`` itself) for ``type_`` at ``scope``.
+
+        Last-write-wins: a second :meth:`provide` for the same type
+        silently overrides the prior provider (composition-root override
+        pattern; no special test-only API needed).
+
+        Raises ``TypeError`` if called after :meth:`__aenter__` (the
+        container is sealed against further registration).
+
+        For ``Scope.SCOPED`` the factory may be sync or async; the
+        per-call child container will await it during resolution.
+        """
+        if self._sealed:
+            msg = (
+                f"Container is sealed after __aenter__; cannot provide({type_!r}). "
+                "Register all providers at composition time, before "
+                "`async with app:` enters. To override a provider for a test, "
+                "re-register it in the composition root before app entry."
+            )
+            raise TypeError(msg)
+
+        if factory is None:
+            factory = type_
+
+        # Class-as-factory: validate annotations exist for required params.
+        if inspect.isclass(factory):
+            for spec in _factory_params(factory):
+                if not spec.has_default and spec.annotation is inspect.Parameter.empty:
+                    msg = (
+                        f"provider for {type_!r}: parameter {spec.name!r} lacks an annotation"
+                    )
+                    raise ValueError(msg)
+
+        is_async = inspect.iscoroutinefunction(factory)
+        if scope is Scope.SINGLETON:
+            if is_async:
+                self._async_factories.add(type_)
+            else:
+                self._async_factories.discard(type_)
+            if type_ not in self._singletons:
+                self._singletons[type_] = _UNRESOLVED
+            else:
+                # Re-registration overrides any cached value too.
+                self._singletons[type_] = _UNRESOLVED
+        else:
+            # SCOPED: don't pre-register in singletons cache; ensure no
+            # stale singleton entry survives from a prior provide() call.
+            self._singletons.pop(type_, None)
+            self._async_factories.discard(type_)
+
+        self._providers[type_] = factory
+        self._scope_metadata[type_] = scope
+
+    def has_provider(self, type_: Any) -> bool:
+        """True when this container (or its parent) holds a provider for ``type_``."""
+        if type_ in self._providers:
+            return True
+        if self._parent is not None:
+            return self._parent.has_provider(type_)
+        return False
+
+    def providers_view(self) -> dict[type, Factory]:
+        """Snapshot of (parent-chain-aware) provider map."""
+        merged: dict[type, Factory] = {}
+        if self._parent is not None:
+            merged.update(self._parent.providers_view())
+        merged.update(self._providers)
+        return merged
+
+    async def get(self, type_: type) -> Any:
+        """Lifecycle-aware resolve honoring scope, ``__aenter__``, cleanup.
+
+        Resolution order:
+
+        1. SINGLETON cache hit on root → return cached value.
+        2. SCOPED cache hit on this child → return cached value.
+        3. Otherwise: take per-type lock, double-check cache, build the
+           instance (chain-resolving constructor deps via :meth:`get`),
+           enter ``__aenter__`` if present, record cleanup, cache.
+
+        Auto-resolves ``pydantic_settings.BaseSettings`` subclasses via
+        duck-typing if no explicit provider is registered.
+        """
+        # SINGLETON: always resolved on the root container.
+        if self._root()._scope_of(type_) is Scope.SINGLETON:
+            cached = self._root()._singletons.get(type_, _UNRESOLVED)
+            if cached is not _UNRESOLVED:
+                return cached
+            return await self._root()._build_singleton(type_)
+
+        # SCOPED on this child (or transient — TRANSIENT not on App surface yet).
+        if type_ in self._scoped_cache:
+            return self._scoped_cache[type_]
+
+        # SCOPED resolution happens on the child holding the per-call cache.
+        return await self._build_scoped(type_)
+
+    def child(self) -> Container:
+        """Open a child container for a per-call (SCOPED) lifetime.
+
+        Shares the parent's providers + scope metadata + app-scope cache.
+        Holds its own scoped cache and cleanup stack. Re-entry of the
+        parent's app-scope resources does NOT happen — they are resolved
+        once and reused.
+        """
+        child = Container()
+        child._parent = self._root()
+        return child
+
+    async def aclose(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: object | None = None,
+    ) -> None:
+        """Unwind this container's cleanup stack in LIFO order."""
+        await self._cleanup_stack.aclose(exc_type, exc, tb)
+
+    @contextlib.asynccontextmanager
+    async def dispatch(
+        self,
+        fn: Callable[..., Any],
+        wire_kwargs: dict[str, Any] | None = None,
+    ) -> Any:
+        """Per-call dispatch helper for the framework.
+
+        Opens a child resolver, resolves ``fn``'s injectable kwargs
+        (including ``Lazy[T]`` closures), merges with ``wire_kwargs``,
+        yields the merged kwarg dict. On exit, unwinds the child's
+        cleanup stack — per-call resources see the propagating
+        exception via standard ``__aexit__`` semantics.
+
+        Example::
+
+            async with app._resolver.dispatch(tool_fn, {"connection": "x"}) as kw:
+                result = await tool_fn(**kw)
+        """
+        wire = dict(wire_kwargs) if wire_kwargs else {}
+        async with self.child() as child:
+            resolved = await child.resolve_params(fn)
+            # Wire kwargs take precedence over resolved injectables only
+            # when the param name is present in both — typical wire-aware
+            # tools declare connection-style params alongside injectables.
+            merged: dict[str, Any] = {**resolved, **wire}
+            yield merged
+
+    async def resolve_params(self, fn: Callable[..., Any]) -> dict[str, Any]:
+        """Resolve ``fn``'s parameter kwargs, honoring ``Lazy[T]`` annotations.
+
+        For each parameter:
+
+        - Annotation is ``Lazy[T]`` (``Callable[[], Awaitable[T]]``):
+          inject a zero-arg async closure that resolves ``T`` via
+          :meth:`get` when first awaited. Never invoked = ``T`` never
+          built.
+        - Annotation is a registered (or auto-resolvable) type ``T``:
+          eagerly call ``await self.get(T)`` and inject the instance.
+        - Otherwise: omit — caller treats as wire kwarg.
+        """
+        out: dict[str, Any] = {}
+        for spec in _params_for_method(fn):
+            ann = spec.annotation
+            lazy_inner = _lazy_inner_type(ann)
+            if lazy_inner is not None:
+                out[spec.name] = self._make_lazy_closure(lazy_inner)
+                continue
+            if self.has_provider(ann) or _looks_like_basesettings(ann):
+                out[spec.name] = await self.get(ann)
+        return out
+
+    def _make_lazy_closure(self, type_: type) -> Callable[[], Any]:
+        async def _lazy() -> Any:
+            return await self.get(type_)
+
+        return _lazy
+
+    async def __aenter__(self) -> Container:
+        """Enter the container's lifecycle scope.
+
+        Root container: seals registration, validates the provider graph
+        (rejects app-scope factories depending on scoped types).
+
+        Child container: no-op; child enters its scope on construction.
+        """
+        if self._parent is None:
+            self._validate_scope_graph()
+            self._sealed = True
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        tb: object | None = None,
+    ) -> None:
+        """Exit the container's lifecycle scope, unwinding cleanups."""
+        await self.aclose(exc_type, exc, tb)
+
+    # -- internal helpers for the new surface --------------------------- #
+
+    def _root(self) -> Container:
+        return self if self._parent is None else self._parent
+
+    def _scope_of(self, type_: type) -> Scope:
+        scope = self._scope_metadata.get(type_)
+        if scope is not None:
+            return scope
+        if self._parent is not None:
+            return self._parent._scope_of(type_)
+        # Unregistered types default to SINGLETON resolution semantics
+        # (BaseSettings auto-resolve falls under this).
+        return Scope.SINGLETON
+
+    def _provider_for(self, type_: type) -> Factory | None:
+        f = self._providers.get(type_)
+        if f is not None:
+            return f
+        if self._parent is not None:
+            return self._parent._provider_for(type_)
+        return None
+
+    async def _build_singleton(self, type_: type) -> Any:
+        root = self._root()
+        lock = root._get_locks.setdefault(type_, asyncio.Lock())
+        async with lock:
+            cached = root._singletons.get(type_, _UNRESOLVED)
+            if cached is not _UNRESOLVED:
+                return cached
+            instance = await self._construct(type_, scope=Scope.SINGLETON)
+            root._singletons[type_] = instance
+            return instance
+
+    async def _build_scoped(self, type_: type) -> Any:
+        instance = await self._construct(type_, scope=Scope.SCOPED)
+        self._scoped_cache[type_] = instance
+        return instance
+
+    async def _construct(self, type_: type, *, scope: Scope) -> Any:
+        """Build an instance via the registered (or auto-resolved) factory.
+
+        Chain-resolves constructor parameters via :meth:`get` on the
+        appropriate container. Enters ``__aenter__`` if the instance is
+        a context manager, then records cleanup on the right scope's stack.
+        """
+        factory = self._provider_for(type_)
+        if factory is None:
+            # BaseSettings auto-resolve (duck-typed; no pydantic import).
+            if _looks_like_basesettings(type_):
+                # pydantic-settings reads env at zero-arg construction; skip
+                # parameter introspection of its `__init__(__pydantic_self__, **data)`.
+                result: Any = type_()
+            else:
+                raise UnresolvableType(type_, [])
+        else:
+            kwargs = await self._construct_kwargs(factory)
+            result = factory(**kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+
+        # Enter __aenter__ / generator-yield (single-protocol convention).
+        instance, aexit = await _enter_lifecycle(result)
+
+        # Record cleanup on the appropriate stack.
+        target = self._root() if scope is Scope.SINGLETON else self
+        if aexit is not None:
+            target._cleanup_stack.record(type_, aexit)
+
+        return instance
+
+    async def _construct_kwargs(self, factory: Factory) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        for spec in self._params_for(factory):
+            ann = spec.annotation
+            if ann is inspect.Parameter.empty:
+                if spec.has_default:
+                    continue
+                msg = f"factory {factory!r}: parameter {spec.name!r} lacks an annotation"
+                raise ValueError(msg)
+            if self.has_provider(ann) or _looks_like_basesettings(ann):
+                kwargs[spec.name] = await self.get(ann)
+                continue
+            if spec.has_default:
+                continue
+            raise UnresolvableType(ann, [])
+        return kwargs
+
+    def _validate_scope_graph(self) -> None:
+        """Reject app-scope factories that depend on per-call types."""
+        for type_, scope in self._scope_metadata.items():
+            if scope is not Scope.SINGLETON:
+                continue
+            factory = self._providers.get(type_)
+            if factory is None:
+                continue
+            for spec in self._params_for(factory):
+                dep = spec.annotation
+                dep_scope = self._scope_metadata.get(dep)
+                if dep_scope is Scope.SCOPED:
+                    msg = (
+                        f"scope violation: app-scope depends on per-call. "
+                        f"App-scope provider for {type_!r} declares parameter "
+                        f"{spec.name!r} of per-call type {dep!r}. "
+                        "Per-call types live for one dispatch; an app-scope "
+                        "instance would cache a stale per-call value. "
+                        "Either move the dependent to per-call too, or use "
+                        "`Lazy[" + getattr(dep, "__name__", repr(dep)) + "]` "
+                        "to defer resolution into the call scope."
+                    )
+                    raise TypeError(msg)
+
     # -- internal ------------------------------------------------------- #
 
     def _params_for(self, factory: Factory) -> list[_ParamSpec]:
@@ -548,9 +900,86 @@ class _Missing:
 _MISSING: Any = _Missing()
 
 
+def _lazy_inner_type(ann: Any) -> type | None:  # noqa: PLR0911
+    """If ``ann`` is ``Lazy[T]`` / ``Callable[[], Awaitable[T]]``, return ``T``.
+
+    Recognizes the user-facing ``a2kit.Lazy`` alias plus the equivalent
+    raw ``Callable[[], Awaitable[T]]`` shape. Returns ``None`` for any
+    other annotation.
+    """
+    import typing as _typing
+    from collections.abc import Awaitable as _Awaitable
+    from collections.abc import Callable as _Callable
+
+    origin = _typing.get_origin(ann)
+    if origin is None:
+        return None
+    if origin not in (_Callable, _typing.Callable):  # type: ignore[attr-defined]
+        return None
+    args = _typing.get_args(ann)
+    if len(args) != 2:
+        return None
+    # Callable[[arg_types...], ret_type]
+    callable_args, ret = args
+    if callable_args != []:
+        return None
+    ret_origin = _typing.get_origin(ret)
+    if ret_origin not in (_Awaitable, _typing.Awaitable):  # type: ignore[attr-defined]
+        return None
+    inner = _typing.get_args(ret)
+    if len(inner) != 1:
+        return None
+    t = inner[0]
+    if isinstance(t, type):
+        return t
+    return None
+
+
+def _looks_like_basesettings(type_: Any) -> bool:
+    """Duck-typed detection of ``pydantic_settings.BaseSettings`` subclasses.
+
+    Walks ``type_.__mro__`` looking for a class whose ``__module__`` starts
+    with ``pydantic_settings`` and whose ``__name__`` is ``BaseSettings``.
+    Duck-typed on purpose: the container stays usable without the optional
+    settings dependency installed.
+    """
+    if not inspect.isclass(type_):
+        return False
+    for base in type_.__mro__:
+        mod = getattr(base, "__module__", "") or ""
+        name = getattr(base, "__name__", "")
+        if name == "BaseSettings" and mod.startswith("pydantic_settings"):
+            return True
+    return False
+
+
+async def _enter_lifecycle(result: Any) -> tuple[Any, Callable[..., Any] | None]:
+    """Single-protocol entry: only ``__aenter__``/``__aexit__`` is honored.
+
+    Returns ``(instance, aexit_callable_or_None)``. The ``aexit`` callable
+    forwards ``(exc_type, exc, tb)`` to the resource's ``__aexit__`` so
+    per-call resources see the propagating body exception (matching the
+    Python ``async with`` protocol).
+
+    ``aclose`` / ``close`` are NOT auto-detected — wrap such resources in
+    a class with ``__aenter__``/``__aexit__`` or use ``@asynccontextmanager``.
+
+    Partial-entry safety: nothing is returned to the caller until
+    ``__aenter__`` succeeded.
+    """
+    if hasattr(result, "__aenter__") and hasattr(result, "__aexit__"):
+        instance = await result.__aenter__()
+
+        async def _aexit(exc_type: Any = None, exc: Any = None, tb: Any = None) -> None:
+            await result.__aexit__(exc_type, exc, tb)
+
+        return instance, _aexit
+    return result, None
+
+
 def _params_for_method(fn: Callable[..., Any]) -> list[_ParamSpec]:
     """Method-aware variant of :func:`_factory_params` (skips ``self``)."""
-    from a2kit.signature import resolve_hints
+    from a2kit.packages.di._hints import resolve_hints
 
     hints = resolve_hints(fn)
     try:

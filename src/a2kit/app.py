@@ -4,7 +4,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from a2kit._lifecycle_helpers import (
-    register_instance_cleanup,
     resolve_singleton_args,
 )
 from a2kit.packages.di.container import (
@@ -13,6 +12,7 @@ from a2kit.packages.di.container import (
     container_dispatch,
     container_dispatch_async,
 )
+from a2kit.packages.di.scope import Scope
 from a2kit.routers import Router, RouterRegistry
 from a2kit.tool import ToolDescriptor
 
@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     import click
+
+    from a2kit.packages.di.resolver import Resolver
 
 
 #: Singleton-not-yet-resolved sentinel. Importable as ``from a2kit.app import UNRESOLVED``.
@@ -103,9 +105,6 @@ class App:
         # Test-seam: TestClient sessions claim this slot via __aenter__ so
         # overlapping sessions on the same App fail loud.
         self._test_override_owner: Any = None
-        # Singleton AsyncExitStack owned by the App's lifecycle. Populated
-        # in ``__aenter__``, unwound in ``__aexit__``.
-        self._singleton_stack: Any = None
         # Routers that successfully entered via ``__aenter__`` during this
         # App's lifecycle. LIFO unwound on App ``__aexit__``.
         self._entered_routers: dict[str, Router] = {}
@@ -255,66 +254,102 @@ class App:
 
     def provide(
         self,
-        type_: type,
-        factory: Callable[..., Any] | None = None,
+        arg1: Any,
+        arg2: Any = None,
+        *,
+        per_call: bool = False,
+        **_kw: Any,
     ) -> App:
-        """Register a typed provider for ``type_``.
+        """Register a typed provider — the unified DI registration API.
 
-        When ``factory`` is omitted, the class itself is the factory and
-        the container introspects ``type_.__init__`` at resolve time.
-        Factories MUST be synchronous.
+        Three call shapes (same as the removed ``singleton``):
+
+        - ``app.provide(SomeClass)`` — the class itself is the factory;
+          registered under the class.
+        - ``app.provide(factory)`` — type inferred from the factory's
+          return-type annotation. Sync ``def``, ``async def``, and
+          annotated lambdas accepted.
+        - ``app.provide(BaseClass, factory)`` — explicit base-type
+          override when the factory returns a subtype.
+
+        ``per_call=True`` opts a registration into the per-call scope:
+        a fresh instance is built per dispatch, cached within that one
+        call only, and cleaned up at call exit. Default ``per_call=False``
+        is app-scope (one instance per App, lazily entered on first use,
+        cleaned up on app exit).
+
+        Cleanup auto-detection: only ``__aenter__``/``__aexit__`` is
+        honored (single-protocol convention from v0.36). ``aclose`` /
+        ``close`` are NOT auto-detected — wrap them in a class with
+        ``__aenter__``/``__aexit__`` or use ``@asynccontextmanager``.
         """
-        self._container.register(type_, factory)
+        if "teardown" in _kw:
+            msg = (
+                "app.provide(..., teardown=...) was removed in v0.36 along with "
+                "app.singleton. Move cleanup onto the resource itself via "
+                "__aexit__ — the framework auto-detects __aenter__/__aexit__ "
+                "and unwinds via the per-scope cleanup stack."
+            )
+            raise TypeError(msg)
+        if _kw:
+            msg = (
+                f"app.provide() received unexpected keyword arguments: {sorted(_kw)}. "
+                "Supported kwargs are `per_call`."
+            )
+            raise TypeError(msg)
+        type_, factory = resolve_singleton_args(arg1, arg2)
+        scope = Scope.SCOPED if per_call else Scope.SINGLETON
+        self._container.provide(type_, factory, scope=scope)
         return self
 
     def has_provider(self, type_: type) -> bool:
-        return self._container.has(type_)
+        return self._container.has_provider(type_)
+
+    def providers(self) -> dict[type, Any]:
+        """Snapshot of registered providers (parent-chain-aware)."""
+        return self._container.providers_view()
 
     def container(self) -> Container:
         """Return the App's container. Never None (eager-init)."""
         return self._container
 
-    # --- DI: App-scoped singletons -------------------------------------- #
+    @property
+    def _resolver(self) -> Resolver:
+        """The App's resolver, typed as the :class:`Resolver` protocol.
 
-    def singleton(self, arg1: Any, arg2: Any = None, **_kw: Any) -> App:
-        """Register a factory whose result is cached for the lifetime of this App.
+        Framework / test code uses this to open child resolvers per
+        dispatch via ``app._resolver.child()``. Production tool code
+        receives resolved dependencies via parameter annotations; it
+        SHOULD NOT call ``_resolver.get`` directly — that's a service
+        locator antipattern.
 
-        Three call shapes:
-
-        - ``app.singleton(SomeClass)`` — the class itself is the factory;
-          the registered type is the class.
-        - ``app.singleton(factory)`` — type is inferred from the
-          factory's return-type annotation. Sync ``def``, ``async def``,
-          and annotated lambdas are all accepted.
-        - ``app.singleton(BaseClass, factory)`` — explicit base-type
-          override for the case where the factory returns a subtype.
-
-        Cleanup is auto-detected on the resolved instance during App
-        ``__aenter__``: ``__aexit__`` (paired with ``__aenter__``),
-        ``aclose``, ``close`` — first match wins. There is no
-        ``teardown=`` kwarg; move cleanup onto the resource itself via
-        the protocol. Async factories are awaited on first resolution.
+        Typed as ``Resolver`` (not ``Container``) so consumer code is
+        decoupled from the concrete implementation — only ``get``,
+        ``provide``, ``child``, ``aclose`` are stable surface.
         """
-        if "teardown" in _kw:
-            msg = (
-                "app.singleton(..., teardown=...) was removed in v0.35. "
-                "Move cleanup onto the resource itself via __aexit__, "
-                "aclose, or close — the framework auto-detects it."
-            )
-            raise TypeError(msg)
-        if _kw:
-            msg = f"app.singleton() received unexpected keyword arguments: {sorted(_kw)}"
-            raise TypeError(msg)
-        type_, factory = resolve_singleton_args(arg1, arg2)
-        self._container.register_singleton(type_, factory)
-        return self
+        return self._container
 
-    def has_singleton(self, type_: type) -> bool:
-        return self._container.has_singleton(type_)
+    # --- removed singleton surface (v0.36) ------------------------------ #
+
+    def singleton(self, *args: Any, **kwargs: Any) -> App:  # noqa: ARG002
+        msg = (
+            "app.singleton(...) was removed in v0.36. Use app.provide(...) instead — "
+            "same three call shapes, plus the new `per_call=True` opt-in. "
+            "See CHANGELOG: di-scoped-lifecycle."
+        )
+        raise TypeError(msg)
+
+    def has_singleton(self, type_: type) -> bool:  # noqa: ARG002
+        msg = (
+            "app.has_singleton(T) was removed in v0.36. Use app.has_provider(T)."
+        )
+        raise TypeError(msg)
 
     def singletons(self) -> dict[type, Any]:
-        """Snapshot of registered singletons; unresolved entries carry :data:`UNRESOLVED`."""
-        return self._container.singletons()
+        msg = (
+            "app.singletons() was removed in v0.36. Use app.providers()."
+        )
+        raise TypeError(msg)
 
     # --- Lazy router entry (v0.35 consolidate-lifecycle) ----------------- #
 
@@ -369,42 +404,27 @@ class App:
     async def __aenter__(self) -> App:
         """Enter the App's lifecycle.
 
-        Singletons enter eagerly in topological order over the DI graph
-        restricted to the registered set, with registration order as
-        the tiebreaker between unrelated singletons. Each resolved
-        instance is probed for cleanup protocol (``__aexit__``,
-        ``aclose``, ``close`` — first match wins) and the corresponding
-        cleanup is registered on an ``AsyncExitStack`` owned by the
-        App. Routers enter lazily on first dispatch.
+        Lazy first-use (v0.36 di-scoped-lifecycle):
 
-        Exit order: routers unwind first in LIFO of enter order,
-        followed by the AsyncExitStack (LIFO of singleton entry).
+        - Container's ``__aenter__`` runs: validates the provider graph
+          (rejects app-scope factories that depend on per-call types)
+          and seals the container against further ``provide()`` calls.
+        - NO eager resource entry. App-scope resources enter on first
+          ``Container.get(T)``, which means first dispatch that needs them.
+        - Routers carrying ``__aenter__`` enter lazily on first dispatch
+          of any of their tools.
+
+        Exit order: routers unwind first (LIFO of enter order), then
+        the container's cleanup stack unwinds (LIFO of resolution order).
         """
-        from contextlib import AsyncExitStack
-
-        stack = AsyncExitStack()
-        await stack.__aenter__()
-        try:
-            for type_ in self._container.singleton_entry_order():
-                if self._container.has_async_singleton(type_):
-                    instance = await self._container.aresolve(type_)
-                else:
-                    instance = self._container.resolve(type_)
-                await register_instance_cleanup(stack, instance)
-        except BaseException:
-            await stack.__aexit__(None, None, None)
-            raise
-        self._singleton_stack = stack
+        await self._container.__aenter__()
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool | None:
-        stack = self._singleton_stack
-        self._singleton_stack = None
         try:
             await self._unwind_entered_routers(exc_type, exc, tb)
         finally:
-            if stack is not None:
-                await stack.__aexit__(exc_type, exc, tb)
+            await self._container.__aexit__(exc_type, exc, tb)
         return None
 
     def dispatch_hook(self) -> Callable[..., Any]:

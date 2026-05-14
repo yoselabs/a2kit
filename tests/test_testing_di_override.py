@@ -43,7 +43,7 @@ class _SingletonRouter(a2kit.Router):
 
 
 def test_override_replaces_singleton() -> None:
-    app = a2kit.App("t").singleton(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -55,7 +55,7 @@ def test_override_replaces_singleton() -> None:
 
 
 def test_override_is_restored_on_normal_exit() -> None:
-    app = a2kit.App("t").singleton(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
 
     async def first() -> None:
         async with client(app) as c:
@@ -73,7 +73,7 @@ def test_override_is_restored_on_normal_exit() -> None:
 
 
 def test_override_is_restored_on_exception() -> None:
-    app = a2kit.App("t").singleton(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
 
     async def boomy() -> None:
         async with client(app) as c:
@@ -107,7 +107,7 @@ def test_override_of_unregistered_type_is_removed_on_exit() -> None:
 
 
 def test_last_write_wins_within_session() -> None:
-    app = a2kit.App("t").singleton(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -120,7 +120,7 @@ def test_last_write_wins_within_session() -> None:
 
 
 def test_override_on_overlapping_session_raises() -> None:
-    app = a2kit.App("t").singleton(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
 
     async def go() -> None:
         async with client(app):
@@ -139,7 +139,7 @@ def test_override_works_via_peek() -> None:
     """`peek` and `override` are read/write complements — peek sees the fake."""
     from a2kit.testing import peek
 
-    app = a2kit.App("t").singleton(_LLM, lambda: _LLM("real"))
+    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real"))
 
     async def go() -> None:
         async with client(app) as c:
@@ -157,7 +157,7 @@ def test_async_factory_singleton_override_works() -> None:
     async def make_llm() -> _LLM:
         return _LLM("async-real")
 
-    app = a2kit.App("t").singleton(_LLM, make_llm).add_router(_SingletonRouter())
+    app = a2kit.App("t").provide(_LLM, make_llm).add_router(_SingletonRouter())
 
     async def go() -> None:
         async with client(app) as c:

@@ -524,58 +524,99 @@ framing layer below the dispatcher.
   raised from `find_context_param` at decoration time when the
   annotation form is Optional/Union with `None`.
 
-## Q-Teardown. Singleton teardown contract
+## Q-DI. Scoped DI lifecycle contract (v0.36)
 
-**Policy.** `app.singleton(T, factory, *, teardown=fn)` registers a
-shutdown callback the framework invokes on App lifespan exit. The
-framework owns three guarantees:
+**Policy.** `app.provide(T, factory, *, per_call=False)` is the single
+registration API. Two scopes are recognized:
 
-1. **Topological order — dependents before dependencies.** When
-   multiple singletons have registered teardowns AND their factories
-   declare each other as parameters (forming a dependency edge),
-   teardowns fire in reverse-topological order. A pool whose factory
-   takes a sqlite handle is closed before sqlite, regardless of
-   registration order. Reverse-of-registration is *not* the contract.
-2. **Error isolation.** A teardown that raises `Exception` does NOT
-   prevent sibling teardowns from running. The framework catches the
-   exception, appends `(type, exc)` to `App.teardown_failures`,
-   emits an `error`-level log line via the `a2kit.lifecycle` logger
-   with class, message, and singleton type name, and continues. The
-   framework does NOT re-raise teardown failures from `lifespan_cm()`.
-3. **Cycles handled deterministically.** If the singleton
-   factory-parameter graph contains a cycle (which the container's
-   resolution-cycle detection should prevent in practice), the
-   teardown walk breaks the cycle at the lowest-`id(type)` member
-   and emits a `WARN`-level log line identifying the cycle.
+- **App-scope (default, `per_call=False`)** — one instance per App,
+  cached on the root container. Enters lazily on first
+  `Container.get(T)` (i.e. first dispatch that needs it). Unwinds
+  on `async with app:` exit.
+- **Per-call (`per_call=True`)** — fresh instance per dispatch,
+  cached within that call's child container. Unwinds when the call
+  returns or raises.
 
-**Composition with user / Router lifespans.** Framework teardowns run
-**after** all user and Router lifespan `finally` blocks have fully
-exited. User code can still hand-roll teardowns (which run first,
-inside their own scope); the framework provides the safety net for
-explicitly-registered `teardown=` callbacks (which run after).
+The framework owns five guarantees:
 
-**Async teardowns.** `teardown=` may be sync (`def`) or async
-(`async def`); awaitable returns are awaited. Same convention as the
-dispatch hook.
+1. **Lazy first-use.** `async with app:` does NOT enter resources
+   eagerly. The container's `__aenter__` runs the scope-graph
+   validation and seals registration; resources warm at first
+   `Container.get(T)`. Concurrent first-touches coalesce on a
+   per-type `asyncio.Lock`; the factory is awaited at most once.
+2. **LIFO cleanup with per-resource isolation.** Each scope (root
+   container, child container) holds its own `CleanupStack`. Resources
+   are recorded on the stack only after `__aenter__` succeeds
+   (partial-entry safety). On scope exit, entries unwind in LIFO
+   order; a failing `__aexit__` is logged at WARN on
+   `a2kit.di.cleanup` and sibling cleanups still run. Body exception
+   wins at the call site via standard async-with semantics.
+3. **Single-protocol convention.** Only `__aenter__`/`__aexit__` is
+   auto-detected. `aclose` / `close` are NOT honored — wrap such
+   resources in a class with `__aenter__`/`__aexit__` or use
+   `@asynccontextmanager`. Removing the multi-protocol detection
+   eliminated three failure modes (sync `close` returning awaitable
+   silently skipped, `aclose` on a class that also had `__aexit__`,
+   etc).
+4. **Scope graph validation.** App-scope factories MUST NOT depend on
+   per-call types. Per-call types live for one dispatch; an app-scope
+   instance would cache a stale per-call value. The framework rejects
+   this at `async with app:` with a `TypeError` naming the violating
+   types. Use `Lazy[T]` to defer per-call resolution into the call
+   scope instead.
+5. **Container sealed after enter.** `provide()` after `async with app:`
+   raises `TypeError`. Test overrides land BEFORE entering the App,
+   at the composition root; `provide()` is last-write-wins, so
+   re-registration silently replaces the prior factory.
 
-**Programmatic introspection.** `App.teardown_failures` is a list of
-`(type, exc)` tuples, empty on clean shutdown. Tests pin this attribute
-to assert shutdown ran clean. The `a2kit.exceptions.A2KitSingletonTeardownError`
-class aggregates failures for callers who want to construct an
-exception object from `app.teardown_failures` themselves — the framework
-never raises it.
+**Async factories.** `provide()` accepts both sync (`def`) and async
+(`async def`) factories. The container awaits the result and the
+returned instance's `__aenter__`. Class-as-factory introspects
+`__init__` parameter annotations for chained DI.
 
-**Why owned by the framework.** Three problems with hand-rolled
-shutdown patterns (`finally: for c in reversed(closers): try: ...`):
-the boilerplate scales linearly with resource count; `try/except: pass`
-silently masks failures; reverse-of-registration is *incorrect* when
-the DI graph diverges from registration order (pool depending on
-sqlite, registered second). Framework ownership centralizes correct
-ordering, error isolation, and observability.
+**`Lazy[T]`** (`a2kit.packages.di.Lazy`) is
+`Callable[[], Awaitable[T]]`. A parameter typed `Lazy[T]` receives a
+zero-arg async closure that, when awaited, resolves `T` through the
+current scope's resolver and records cleanup. Never awaited = `T` is
+never built and its `__aenter__` never runs. The dispatcher recognizes
+both the alias and the raw `Callable[[], Awaitable[T]]` shape.
 
-**Regression test.** `tests/test_singleton_teardown.py` — covers
-topological ordering, error isolation, async teardown, cycle handling,
-and composition with user lifespans.
+**Per-call dispatch helper.** `Container.dispatch(fn, wire_kwargs)` is
+an async context manager that opens a child resolver, resolves the
+tool's params (Lazy[T]-aware), yields merged kwargs, and unwinds
+per-call cleanup on exit with exception propagation through each
+`__aexit__`. Production wiring into MCP transport and CLI runtime
+lands with the a2web canonical-consumer migration.
+
+**`pydantic_settings.BaseSettings` auto-resolution.** A tool param
+typed as a `BaseSettings` subclass auto-resolves without explicit
+`provide()` registration. The container duck-types the subclass check
+(no `pydantic_settings` import inside the container module) and
+zero-arg-constructs at first use, picking up env values via pydantic's
+standard machinery.
+
+**Resolver protocol.** `app._resolver` is typed as the `Resolver`
+protocol (`get` / `provide` / `child` / `aclose`) — consumer code
+sees only the four-method surface, decoupled from the concrete
+`Container`. The DI package at `src/a2kit/packages/di/` is
+standalone-shippable (zero `from a2kit.*` imports outside the
+package; gated by a static test).
+
+**Regression tests.** `tests/packages/di/` covers lazy first-use,
+per-call scope, `Lazy[T]` semantics, cleanup-stack LIFO + isolation +
+partial-entry safety + three named upstream-bug regressions
+(cpython #137517, MCP SDK #1213, trio #1243), single-protocol
+convention, BaseSettings duck-typing, Resolver protocol conformance,
+standalone-isolation gate, and the dispatch-helper contract.
+
+The v0.35 `teardown=` / topological-ordering / `App.teardown_failures`
+machinery is **retired in v0.36** — single-protocol `__aenter__`/`__aexit__`
+on the resource itself + the per-scope cleanup stack subsume it.
+Topological order is no longer guaranteed (insertion-order LIFO via
+the stack replaces it); if a dependent needs to enter before its
+dependency, declare the dependency as a constructor parameter and the
+container's chain resolution enters them in dependency-first order
+naturally.
 
 ## See also
 

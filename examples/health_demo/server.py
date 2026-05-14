@@ -26,10 +26,12 @@ _state = _State()
 
 
 class _SqliteResource:
-    """Singleton owning the (fake) sqlite open/close pair.
+    """App-scope resource owning the (fake) sqlite open/close pair.
 
-    v0.35: the framework auto-detects ``__aenter__``/``__aexit__`` on
-    resolved singletons and wires them into the App's lifecycle.
+    v0.36 lazy first-use: ``__aenter__`` runs on first ``Container.get``,
+    not eagerly at ``async with app:``. The ``_sqlite_open`` health check
+    below declares the resource as a parameter, which forces resolution
+    (and entry) when the health tool runs.
     """
 
     async def __aenter__(self) -> _SqliteResource:
@@ -41,7 +43,7 @@ class _SqliteResource:
 
 
 app = a2kit.App("health-demo")
-app.singleton(_SqliteResource)
+app.provide(_SqliteResource)
 
 
 @app.health_check
@@ -51,10 +53,10 @@ async def _ping() -> a2kit.HealthResult:
 
 
 @app.health_check
-async def _sqlite_open() -> a2kit.HealthResult:
-    """Readiness gate — passes only after lifecycle opened sqlite."""
+async def _sqlite_open(sqlite: _SqliteResource) -> a2kit.HealthResult:
+    """Readiness gate — declares the resource so resolution enters it."""
     if not _state.sqlite_open:
-        return a2kit.HealthResult.fail("sqlite not opened yet (lifecycle hasn't run)")
+        return a2kit.HealthResult.fail("sqlite not opened yet")
     return a2kit.HealthResult.ok()
 
 

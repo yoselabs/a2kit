@@ -89,7 +89,7 @@ def _build_parity_app() -> a2kit.App:
 
     app = a2kit.App("parity")
     app.add_router(R())
-    app.singleton(_State, lambda: _State())
+    app.provide(_State, lambda: _State())
     return app
 
 

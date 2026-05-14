@@ -128,33 +128,6 @@ def test_invoke_returns_value() -> None:
 # --- Scenario 2: lifecycle hooks fire --- #
 
 
-def test_lifecycle_hooks_fire() -> None:
-    """v0.35: lifecycle is carried by singletons with auto-detected protocols."""
-
-    order: list[str] = []
-
-    class _Lifecycle:
-        async def __aenter__(self) -> _Lifecycle:
-            order.append("startup")
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None:
-            order.append("shutdown")
-
-    app = a2kit.App("client-test")
-    app.singleton(_Lifecycle)
-    app.add_router(_Router())
-
-    async def go() -> None:
-        async with client(app) as c:
-            order.append("body")
-            await c.invoke("list_items")
-        order.append("after")
-
-    asyncio.run(go())
-    assert order == ["startup", "body", "shutdown", "after"]
-
-
 # --- Scenario 3: events + logs captured --- #
 
 
