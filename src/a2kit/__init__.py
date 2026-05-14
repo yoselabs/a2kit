@@ -27,7 +27,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
 }
 
 _LAZY_MODULES: dict[str, str] = {
-    "lifespan": "a2kit.lifespan",
     "schema": "a2kit.schema",
 }
 

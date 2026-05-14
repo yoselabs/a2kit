@@ -78,28 +78,25 @@ def test_two_apps_have_isolated_singletons() -> None:
 
 
 def test_two_apps_lifecycle_handlers_fire_independently() -> None:
-    from contextlib import asynccontextmanager
+    """v0.35: lifecycle is carried by singletons with __aenter__/__aexit__."""
 
     order: list[str] = []
 
-    @asynccontextmanager
-    async def lifespan_a(app):
-        order.append("a-start")
-        try:
-            yield
-        finally:
-            order.append("a-stop")
+    def _make_marker(prefix: str) -> type:
+        class _Marker:
+            async def __aenter__(self) -> _Marker:
+                order.append(f"{prefix}-start")
+                return self
 
-    @asynccontextmanager
-    async def lifespan_b(app):
-        order.append("b-start")
-        try:
-            yield
-        finally:
-            order.append("b-stop")
+            async def __aexit__(self, *_exc: object) -> None:
+                order.append(f"{prefix}-stop")
 
-    app_a = a2kit.App("a", lifespan=lifespan_a)
-    app_b = a2kit.App("b", lifespan=lifespan_b)
+        return _Marker
+
+    app_a = a2kit.App("a")
+    app_a.singleton(_make_marker("a"))
+    app_b = a2kit.App("b")
+    app_b.singleton(_make_marker("b"))
 
     class _R(a2kit.Router):
         slug = "_r"

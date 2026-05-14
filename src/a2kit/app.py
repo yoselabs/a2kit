@@ -1,8 +1,6 @@
-from __future__ import annotations  # noqa: A2K014
+from __future__ import annotations
 
-import inspect
 import logging
-from contextlib import asynccontextmanager, nullcontext
 from typing import TYPE_CHECKING, Any
 
 from a2kit._lifecycle_helpers import (
@@ -50,19 +48,16 @@ class App:
 
     Lifecycle:
 
-    Pass a ``lifespan`` callable to ``__init__``. It MUST be defined
-    with ``async def`` and SHOULD be decorated with
-    ``@contextlib.asynccontextmanager``. The signature is fixed at
-    exactly one positional parameter, the :class:`App` instance.
-    Startup work goes before ``yield``; shutdown work goes after
-    ``yield`` (typically in a ``finally`` block). Resolve startup
-    dependencies inside the body via
-    ``await app.container().aresolve(T)``.
+    ``a2kit.App`` is its own async context manager. ``async with app:``
+    enters all registered singletons eagerly (in registration order,
+    topological-DI ordering deferred), auto-detecting their cleanup
+    protocol (``__aexit__`` / ``aclose`` / ``close``). Routers carrying
+    ``__aenter__`` enter lazily on first dispatch of any of their tools
+    and unwind on App exit in LIFO order.
 
-    Multiple lifespans (e.g. App + per-Router contributions) compose
-    via :func:`a2kit.lifespan.compose`. Routers contribute via
-    ``Router.lifespan``; ``App.add_router`` composes them into the
-    final lifespan returned by :meth:`lifespan_cm`.
+    Construction is pure: ``a2kit.App(...)`` plus ``add_router`` /
+    ``singleton`` / ``provide`` calls trigger no async work — useful
+    for unit tests that introspect wiring without entering the App.
     """
 
     def __init__(
@@ -71,8 +66,10 @@ class App:
         *,
         health_tool: bool = False,
         debug: bool = False,
-        lifespan: Callable[[Any], Any] | None = None,
+        **_kw: Any,
     ) -> None:
+        if _kw:
+            self._raise_unexpected_kwargs(name, _kw)
         self.name = name
         self.debug = debug
         self._routers = RouterRegistry()
@@ -92,57 +89,48 @@ class App:
         env_off = os.environ.get("A2KIT_LDD", "").lower() == "off"
         self._ldd_reports = not env_off
         self._ldd_events = not env_off
-        # Lifespan plumbing. Reject sync ``def`` at construction.
-        if lifespan is not None and not _is_async_callable(lifespan):
-            msg = (
-                f"App({name!r}, lifespan=...): lifespan callable "
-                f"{lifespan!r} MUST be defined with 'async def' (and "
-                "decorated with @contextlib.asynccontextmanager). Sync "
-                "'def' lifespans are not supported; move sync setup work "
-                "inside the async body as plain statements."
-            )
-            raise TypeError(msg)
-        self._lifespan: Callable[[Any], Any] | None = lifespan
-        self._lifecycle_started: bool = False
-        # Router-declared lifespan context managers, composed into the
-        # final lifespan returned by ``lifespan_cm`` via
-        # ``a2kit.lifespan.compose``. Order matches ``add_router`` calls.
-        self._router_lifespans: list[Router] = []
         # Typed event registry. Lazy import keeps the cold-start path off
         # `a2kit.packages.ldd` for apps that never touch typed events.
         from a2kit.packages.ldd import _AppLdd
 
         self.ldd = _AppLdd()
 
-        # Health probe (round-2). Disabled by default — opt in via constructor.
+        # Health probe — disabled by default; opt in via constructor.
         from a2kit.packages.health import HealthRegistry
 
         self._health: HealthRegistry = HealthRegistry(enabled=health_tool)
         # Test-seam: TestClient sessions claim this slot via __aenter__ so
-        # overlapping sessions on the same App fail loud. Production code
-        # never touches this attribute.
+        # overlapping sessions on the same App fail loud.
         self._test_override_owner: Any = None
-        # Singleton-teardown failures (per ``singleton-teardown-topological``):
-        # populated on lifespan exit by ``_run_teardowns``. Empty list on
-        # clean shutdown; never raised (the framework records and logs but
-        # does not propagate teardown failures). Inspected by tests +
-        # post-mortem callers.
-        self.teardown_failures: list[tuple[type, Exception]] = []
-        # v0.35 lifecycle scaffolding (parallel-paths during cutover):
-        # ``__aenter__``/``__aexit__`` populate these; ``lifespan_cm()``
-        # remains the inner composition until the full rewrite lands.
-        self._lifecycle_cm: Any = None
+        # Singleton AsyncExitStack owned by the App's lifecycle. Populated
+        # in ``__aenter__``, unwound in ``__aexit__``.
         self._singleton_stack: Any = None
         # Routers that successfully entered via ``__aenter__`` during this
-        # App's lifecycle. LIFO unwound on App ``__aexit__``. Populated
-        # lazily by the dispatcher on first tool call belonging to a
-        # router that declares ``__aenter__``.
+        # App's lifecycle. LIFO unwound on App ``__aexit__``.
         self._entered_routers: dict[str, Router] = {}
-        # Per-router asyncio.Lock for first-touch coalescing. Created
-        # lazily on demand.
+        # Per-router asyncio.Lock for first-touch coalescing.
         self._router_locks: dict[str, Any] = {}
         if health_tool:
             self._install_health_tool()
+
+    @staticmethod
+    def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
+        """Raise ``TypeError`` for any kwarg removed in v0.35.
+
+        Each known-removed kwarg gets a migration-hint message. Other
+        unknown kwargs raise the standard "unexpected kwargs" shape.
+        """
+        if "lifespan" in kw:
+            msg = (
+                f"App({name!r}, lifespan=...) was removed in v0.35. "
+                "Express imperative bookends as a marker singleton "
+                "(``class _Warmup: __aenter__/__aexit__``; "
+                "``app.singleton(_Warmup)``) or move the work into "
+                "``main()`` before ``async with app:``. See CHANGELOG."
+            )
+            raise TypeError(msg)
+        msg = f"App({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for v0.35 removals."
+        raise TypeError(msg)
 
     def _default_dispatch_hook(
         self,
@@ -281,17 +269,10 @@ class App:
 
     # --- DI: App-scoped singletons -------------------------------------- #
 
-    def singleton(
-        self,
-        arg1: Any,
-        arg2: Any = None,
-        *,
-        teardown: Callable[[Any], Any] | None = None,
-    ) -> App:
+    def singleton(self, arg1: Any, arg2: Any = None, **_kw: Any) -> App:
         """Register a factory whose result is cached for the lifetime of this App.
 
-        Three call shapes (per
-        ``consolidate-lifecycle-on-async-cm-protocol``):
+        Three call shapes:
 
         - ``app.singleton(SomeClass)`` — the class itself is the factory;
           the registered type is the class.
@@ -303,17 +284,22 @@ class App:
 
         Cleanup is auto-detected on the resolved instance during App
         ``__aenter__``: ``__aexit__`` (paired with ``__aenter__``),
-        ``aclose``, ``close`` — first match wins. The ``teardown=`` kwarg
-        is accepted during the v0.34→v0.35 parallel-paths cutover and
-        will raise ``TypeError`` once the migration completes; new code
-        SHOULD move cleanup onto the resource itself via the protocol.
-
-        Async factories are awaited on first resolution under a
-        per-type ``asyncio.Lock``; subsequent resolves return the
-        cached instance.
+        ``aclose``, ``close`` — first match wins. There is no
+        ``teardown=`` kwarg; move cleanup onto the resource itself via
+        the protocol. Async factories are awaited on first resolution.
         """
+        if "teardown" in _kw:
+            msg = (
+                "app.singleton(..., teardown=...) was removed in v0.35. "
+                "Move cleanup onto the resource itself via __aexit__, "
+                "aclose, or close — the framework auto-detects it."
+            )
+            raise TypeError(msg)
+        if _kw:
+            msg = f"app.singleton() received unexpected keyword arguments: {sorted(_kw)}"
+            raise TypeError(msg)
         type_, factory = resolve_singleton_args(arg1, arg2)
-        self._container.register_singleton(type_, factory, teardown=teardown)
+        self._container.register_singleton(type_, factory)
         return self
 
     def has_singleton(self, type_: type) -> bool:
@@ -322,129 +308,6 @@ class App:
     def singletons(self) -> dict[type, Any]:
         """Snapshot of registered singletons; unresolved entries carry :data:`UNRESOLVED`."""
         return self._container.singletons()
-
-    async def warm_async_singletons(self) -> None:
-        """Resolve every registered async-factory singleton through the container.
-
-        Iterates the App's singleton registry, awaits each entry whose
-        factory is async (sync entries are left alone), and populates the
-        container cache. Idempotent: subsequent calls observe cached
-        instances and do not re-await the factory. Concurrent callers
-        coalesce on the per-type lock already provided by the container,
-        so the factory runs at most once across the App.
-
-        The canonical call site is the App's lifespan body before
-        ``yield``::
-
-            @asynccontextmanager
-            async def lifespan(app):
-                await app.warm_async_singletons()
-                yield
-        """
-        container = self._container
-        # Snapshot keys so concurrent registration does not perturb the
-        # iteration; the container's per-type lock handles the rest.
-        for type_ in list(container.singletons()):
-            if container.has_async_singleton(type_):
-                await container.aresolve(type_)
-
-    def lifespan_cm(self) -> Any:
-        """Return the App's composed lifespan as an async context manager.
-
-        Composes (in order) the user-supplied ``lifespan=`` callable
-        followed by every Router's ``lifespan`` method via
-        :func:`a2kit.lifespan.compose`. Wraps the composition with
-        ``_wrap_with_teardowns`` when any singleton has a registered
-        teardown (per ``singleton-teardown-topological``) so framework
-        teardowns fire after all user/Router lifespans have fully exited.
-
-        Returns ``nullcontext()`` only when the App has neither a
-        user/Router lifespan nor any registered teardown.
-
-        Used by the CLI runner, the test client, and the FastMCP
-        adapter to obtain a single async-with for the whole App
-        lifecycle.
-        """
-        from a2kit.lifespan import compose as _compose
-
-        legs: list[Callable[[Any], Any]] = []
-        if self._lifespan is not None:
-            legs.append(self._lifespan)
-        legs.extend(_router_lifespan_factory(r) for r in self._router_lifespans)
-        has_teardowns = bool(self._container._teardowns)
-        if not legs:
-            if has_teardowns:
-                return self._wrap_with_teardowns(nullcontext())
-            return nullcontext()
-        composed = _compose(*legs)
-        inner = composed(self)
-        if has_teardowns:
-            return self._wrap_with_teardowns(inner)
-        return inner
-
-    def has_lifespan(self) -> bool:
-        """True iff this App contributes startup or shutdown work.
-
-        Used by the CLI runner and FastMCP adapter to decide whether to
-        wire a lifespan context manager at all. Returns True when a
-        user lifespan, a Router lifespan, OR a singleton teardown is
-        registered (per ``singleton-teardown-topological``).
-        """
-        if self._lifespan is not None or self._router_lifespans:
-            return True
-        return bool(self._container._teardowns)
-
-    def _wrap_with_teardowns(self, inner_cm: Any) -> Any:
-        """Wrap an inner lifespan CM with framework-managed teardowns.
-
-        On exit (after inner_cm has fully exited), walks
-        ``container.teardown_order()`` and invokes each registered
-        teardown. Error-isolated: failures recorded on
-        :attr:`teardown_failures` and logged, sibling teardowns
-        continue.
-        """
-
-        @asynccontextmanager
-        async def _cm() -> Any:
-            async with inner_cm as user_state:
-                yield user_state
-            await self._run_teardowns()
-
-        return _cm()
-
-    async def _run_teardowns(self) -> None:
-        """Invoke registered singleton teardowns in topological order.
-
-        Per ``singleton-teardown-topological``: dependents are torn down
-        before their dependencies; each teardown runs inside its own
-        ``try/except Exception``; failures are recorded on
-        :attr:`teardown_failures` and emitted as ``error``-level Python
-        log lines.
-        """
-        container = self._container
-        order = container.teardown_order()
-        if not order:
-            return
-        for t in order:
-            instance = container._singletons.get(t)
-            if instance is None or instance is UNRESOLVED:
-                continue
-            fn = container._teardowns.get(t)
-            if fn is None:
-                continue
-            try:
-                result = fn(instance)
-                if inspect.isawaitable(result):
-                    await result
-            except Exception as exc:  # noqa: BLE001 -- error-isolation is the contract
-                self.teardown_failures.append((t, exc))
-                _LIFECYCLE_LOG.error(
-                    "singleton teardown failed: type=%s class=%s message=%s",
-                    t.__name__,
-                    type(exc).__name__,
-                    exc,
-                )
-                _LIFECYCLE_LOG.debug("singleton teardown traceback for %s", t.__name__, exc_info=True)
 
     # --- Lazy router entry (v0.35 consolidate-lifecycle) ----------------- #
 
@@ -499,25 +362,16 @@ class App:
     async def __aenter__(self) -> App:
         """Enter the App's lifecycle.
 
-        Composition order (during the parallel-paths cutover for
-        ``consolidate-lifecycle-on-async-cm-protocol``):
+        Singletons enter eagerly in registration order. Each resolved
+        instance is probed for cleanup protocol (``__aexit__``,
+        ``aclose``, ``close`` — first match wins) and the corresponding
+        cleanup is registered on an ``AsyncExitStack`` owned by the
+        App. Routers enter lazily on first dispatch.
 
-        1. Singletons enter eagerly in registration order. Each
-           resolved instance is probed for cleanup protocol
-           (``__aexit__``, ``aclose``, ``close`` — first match wins)
-           and the corresponding cleanup is registered on an
-           ``AsyncExitStack`` owned by the App.
-        2. The legacy lifespan composition (:meth:`lifespan_cm`) is
-           entered AFTER singletons. This composes any user
-           ``lifespan=`` callable plus Router ``lifespan`` classmethods.
-           When neither is in use this is a no-op.
-
-        Exit order is the reverse: legacy lifespan unwinds first
-        (LIFO inside the composition), then singletons via the
-        AsyncExitStack (LIFO of registration). Topological singleton
-        ordering — promised by the spec delta — is the registration-
-        order tiebreaker today; an explicit DI-graph walk lands when
-        the parallel-paths bridge is removed.
+        Exit order: routers unwind first in LIFO of enter order,
+        followed by the AsyncExitStack (LIFO of singleton registration).
+        Topological DI-graph ordering for singletons is a deferred
+        refinement; registration order is the contract today.
         """
         from contextlib import AsyncExitStack
 
@@ -530,32 +384,21 @@ class App:
                 else:
                     instance = self._container.resolve(type_)
                 await register_instance_cleanup(stack, instance)
-            self._singleton_stack = stack
-            self._lifecycle_cm = self.lifespan_cm()
-            await self._lifecycle_cm.__aenter__()
         except BaseException:
             await stack.__aexit__(None, None, None)
-            self._singleton_stack = None
             raise
+        self._singleton_stack = stack
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool | None:
-        cm = self._lifecycle_cm
         stack = self._singleton_stack
-        self._lifecycle_cm = None
         self._singleton_stack = None
-        suppressed: bool | None = None
         try:
-            # Routers that entered lazily during dispatch unwind first,
-            # before user/Router-classmethod lifespans and singleton
-            # auto-cleanup. LIFO of enter order.
             await self._unwind_entered_routers(exc_type, exc, tb)
-            if cm is not None:
-                suppressed = await cm.__aexit__(exc_type, exc, tb)
         finally:
             if stack is not None:
                 await stack.__aexit__(exc_type, exc, tb)
-        return suppressed
+        return None
 
     def dispatch_hook(self) -> Callable[..., Any]:
         return self._dispatch_hook
@@ -646,41 +489,3 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
             )
         )
     return out
-
-
-def _is_async_callable(fn: Any) -> bool:
-    """True iff ``fn`` is an async-def callable or ``@asynccontextmanager``-wrapped.
-
-    ``@asynccontextmanager`` wraps an async generator; the resulting
-    callable has ``__wrapped__`` pointing at the original async
-    generator function, which :func:`inspect.iscoroutinefunction` and
-    :func:`inspect.isasyncgenfunction` detect via the wrapper's own
-    ``_recreate_cm``-style shape. We accept any of:
-
-    - ``inspect.iscoroutinefunction(fn)`` — bare ``async def``
-    - ``inspect.isasyncgenfunction(fn)`` — bare ``async def`` generator
-    - ``inspect.iscoroutinefunction(fn.__wrapped__)`` or
-      ``inspect.isasyncgenfunction(fn.__wrapped__)`` —
-      ``@asynccontextmanager``-decorated, ``@functools.wraps``-preserving
-    """
-    if inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn):
-        return True
-    wrapped = getattr(fn, "__wrapped__", None)
-    return wrapped is not None and (inspect.iscoroutinefunction(wrapped) or inspect.isasyncgenfunction(wrapped))
-
-
-def _router_lifespan_factory(router: Router) -> Callable[[Any], Any]:
-    """Wrap a Router's ``lifespan`` method as a ``lifespan(app)`` callable.
-
-    The Router-side surface is ``async def lifespan(self):`` (no ``app``
-    parameter — Routers already hold their dependencies). The composed
-    lifespan callable shape is ``async def lifespan(app):``; this
-    adapter discards the ``app`` argument and calls ``router.lifespan()``.
-    """
-
-    def _adapter(_app: Any) -> Any:
-        return router.lifespan()  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
-
-    _adapter.__qualname__ = f"{type(router).__name__}.lifespan"  # for log labels
-    _adapter.__name__ = f"{type(router).__name__}.lifespan"
-    return _adapter

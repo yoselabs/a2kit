@@ -12,7 +12,6 @@ Run::
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import a2kit
@@ -26,16 +25,23 @@ class _State:
 _state = _State()
 
 
-@asynccontextmanager
-async def lifespan(app: a2kit.App):
-    _state.sqlite_open = True
-    try:
-        yield
-    finally:
+class _SqliteResource:
+    """Singleton owning the (fake) sqlite open/close pair.
+
+    v0.35: the framework auto-detects ``__aenter__``/``__aexit__`` on
+    resolved singletons and wires them into the App's lifecycle.
+    """
+
+    async def __aenter__(self) -> _SqliteResource:
+        _state.sqlite_open = True
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
         _state.sqlite_open = False
 
 
-app = a2kit.App("health-demo", health_tool=True, lifespan=lifespan)
+app = a2kit.App("health-demo", health_tool=True)
+app.singleton(_SqliteResource)
 
 
 @app.health_check

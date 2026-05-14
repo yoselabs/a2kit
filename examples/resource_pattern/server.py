@@ -26,7 +26,6 @@ Run::
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
@@ -120,28 +119,28 @@ class FakeShopRouter(a2kit.Router):
 
 
 # --------------------------------------------------------------------- #
-# App composition — singleton state, DI-aware lifecycle close.
+# App composition — singleton state with auto-detected close().
 # --------------------------------------------------------------------- #
+# v0.35: ``AppState`` has no ``__aexit__``/``aclose``/``close``, so the
+# framework runs ``state.counter.close()`` via the wrapper class below.
 
 
-@asynccontextmanager
-async def lifespan(app: a2kit.App):
-    """Resolve the singleton state and close it on shutdown.
+class _ManagedAppState(AppState):
+    """Wrapper exposing ``aclose()`` so the framework's lifecycle
+    auto-detection cleans up ``state.counter`` at App ``__aexit__``."""
 
-    Optional: fail-fast warm-up so misconfig surfaces at startup instead
-    of the first tool call. Uncomment the ``_ensure`` line to enable.
-    """
-    state = await app.container().aresolve(AppState)
-    # await state.counter._ensure()  # uncomment for fail-fast warm-up
-    try:
-        yield
-    finally:
-        await state.counter.close()
+    async def aclose(self) -> None:
+        await self.counter.close()
 
 
-app = a2kit.App("resource-pattern-demo", lifespan=lifespan)
+def build_managed_state() -> _ManagedAppState:
+    inner = build_state()
+    return _ManagedAppState(counter=inner.counter)
+
+
+app = a2kit.App("resource-pattern-demo")
 app.add_router(FakeShopRouter())
-app.singleton(AppState, build_state)
+app.singleton(AppState, build_managed_state)
 
 
 def main() -> None:

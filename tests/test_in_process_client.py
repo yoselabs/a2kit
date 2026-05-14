@@ -128,19 +128,20 @@ def test_invoke_returns_value() -> None:
 
 
 def test_lifecycle_hooks_fire() -> None:
-    from contextlib import asynccontextmanager
+    """v0.35: lifecycle is carried by singletons with auto-detected protocols."""
 
     order: list[str] = []
 
-    @asynccontextmanager
-    async def lifespan(app):
-        order.append("startup")
-        try:
-            yield
-        finally:
+    class _Lifecycle:
+        async def __aenter__(self) -> _Lifecycle:
+            order.append("startup")
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
             order.append("shutdown")
 
-    app = a2kit.App("client-test", lifespan=lifespan)
+    app = a2kit.App("client-test")
+    app.singleton(_Lifecycle)
     app.add_router(_Router())
 
     async def go() -> None:

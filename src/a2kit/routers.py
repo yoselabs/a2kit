@@ -29,11 +29,11 @@ class Router:
       each entry is either a type (registered as its own factory) or a
       ``(type, factory)`` tuple. Installed onto the App during
       ``add_router``.
-    - ``lifespan: classmethod | method`` — a single
-      ``@asynccontextmanager async def lifespan(self):`` method. When
-      defined, ``App.add_router`` composes it into the App's top-level
-      lifespan via ``a2kit.lifespan.compose(...)``. Pre-``yield`` body
-      runs at App startup; post-``yield`` runs at shutdown.
+    - ``__aenter__`` / ``__aexit__`` instance methods (Python's
+      async-CM protocol). Subclasses opt in by implementing both. When
+      present, ``__aenter__`` runs lazily on first dispatch of any
+      tool belonging to this Router; ``__aexit__`` runs at App
+      ``__aexit__`` time in LIFO of enter order.
 
     The discovery surface is closed to these four attributes; no
     ``install(self, app)`` hook, no ``on_startup``/``on_shutdown``

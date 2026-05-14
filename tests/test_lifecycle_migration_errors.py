@@ -13,8 +13,6 @@ import pytest
 
 import a2kit
 
-pytestmark = pytest.mark.skip(reason="contract for consolidate-lifecycle-on-async-cm-protocol; un-skip when impl lands")
-
 
 def test_app_lifespan_kwarg_raises_with_hint() -> None:
     @asynccontextmanager

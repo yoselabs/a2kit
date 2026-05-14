@@ -97,20 +97,27 @@ def test_dispatch_provides_ambient_ctx_to_primitives() -> None:
     asyncio.run(go())
 
 
-def test_lifespan_body_using_ldd_primitive_raises() -> None:
-    """Lifespan body runs BEFORE any dispatch; primitives must fail loud."""
-    from contextlib import asynccontextmanager
+def test_singleton_aenter_using_ldd_primitive_raises() -> None:
+    """Singleton ``__aenter__`` runs BEFORE any dispatch; primitives must fail loud.
 
-    @asynccontextmanager
-    async def lifespan(app):
-        await ldd_info("from-lifespan")  # no ambient ctx — must raise
-        yield
+    v0.35: this scenario previously lived inside a ``lifespan=`` body;
+    the eqivalent now is any code that runs during App ``__aenter__``
+    (singleton lifecycles).
+    """
 
-    app = a2kit.App("noctx", lifespan=lifespan)
+    class _Probe:
+        async def __aenter__(self) -> _Probe:
+            await ldd_info("from-singleton-aenter")  # no ambient ctx — must raise
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None: ...
+
+    app = a2kit.App("noctx")
+    app.singleton(_Probe)
 
     async def go() -> None:
         with pytest.raises(AmbientContextMissing):
-            async with app.lifespan_cm():
+            async with app:
                 pass
 
     asyncio.run(go())

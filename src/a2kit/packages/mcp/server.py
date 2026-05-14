@@ -359,32 +359,17 @@ def _router_for_tool(app: Any, fn: Any) -> Any | None:
 def _build_fastmcp_lifespan(app: Any, user_lifespan: Any | None) -> Any:
     """Build a FastMCP-shaped ``lifespan(server)`` adapter for the App.
 
-    FastMCP passes its server instance to ``lifespan=`` callbacks. a2kit's
-    user-facing surface is ``async def lifespan(app)``. This adapter:
-
-    - sets ``server._a2kit_app = app`` as a back-reference so middleware
-      and other power-user code can recover the :class:`a2kit.App` from
-      the FastMCP server,
-    - enters the App's composed lifespan (user ``lifespan=`` plus every
-      ``Router.lifespan``, via :func:`a2kit.lifespan.compose`) by calling
-      ``app.lifespan_cm()``,
-    - inside that, also enters any FastMCP-shaped ``user_lifespan(server)``
-      the caller passed through ``build_mcp_server(lifespan=...)`` so
-      power users can still plug in FastMCP-native lifespans.
-
-    If the App has no a2kit lifespan, this only wraps the
-    ``user_lifespan`` (or yields ``None`` if absent).
+    Sets ``server._a2kit_app = app`` as a back-reference for middleware
+    and enters ``async with app:`` so singletons enter eagerly and
+    routers are positioned to enter lazily on first dispatch. When a
+    FastMCP-shaped ``user_lifespan(server)`` is provided, it nests
+    inside the App lifecycle.
     """
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
     async def _lifespan(server: Any) -> Any:
         server._a2kit_app = app  # noqa: SLF001 -- framework wiring back-reference
-        # v0.35: ``async with app:`` is canonical; ``app.lifespan_cm()``
-        # is composed inside ``App.__aenter__`` during the parallel-paths
-        # cutover. This wires the new path through the FastMCP slot so
-        # routers' lazy ``__aenter__`` and singleton auto-cleanup
-        # participate in the server's lifespan.
         async with app:
             if user_lifespan is None:
                 yield None

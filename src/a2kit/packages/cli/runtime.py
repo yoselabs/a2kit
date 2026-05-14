@@ -101,25 +101,20 @@ def invoke_tool_sync(
 ) -> str:
     """Synchronous adapter — run :func:`_invoke_tool_in_process` to completion.
 
-    When ``app`` is provided and has a registered lifespan, the lifespan
-    is entered before the tool body and exited after — both inside the
-    same :func:`asyncio.run` loop so any state opened in startup
-    (e.g. async sqlite connections) is bound to the loop the tool body
-    uses. Lifecycle dispatches once per process; subsequent
-    ``invoke_tool_sync`` calls within the same process skip the
-    lifespan entirely — in practice the CLI dispatches one tool per
-    process so this is rarely exercised.
+    When ``app`` is provided, the App's lifecycle (``async with app:``)
+    wraps the tool body so singletons enter eagerly and routers enter
+    lazily on dispatch — both inside the same :func:`asyncio.run` loop
+    so any state opened in startup is bound to the loop the tool body
+    uses.
     """
 
     sinks: tuple[Any, ...] = ()
-    if app is not None and hasattr(app, "ldd"):
+    if app is not None:
         sinks = app.ldd.sinks
 
     async def _runner() -> str:
-        run_lifecycle = app is not None and getattr(app, "has_lifespan", lambda: False)()
-        if run_lifecycle and not app._lifecycle_started:  # noqa: SLF001 -- intentional, lifecycle state is App-scoped
-            app._lifecycle_started = True  # noqa: SLF001
-            async with app.lifespan_cm():
+        if app is not None:
+            async with app:
                 return await _invoke_tool_in_process(
                     fn,
                     kwargs,

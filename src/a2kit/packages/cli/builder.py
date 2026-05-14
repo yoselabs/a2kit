@@ -452,11 +452,11 @@ def _register_serve(typer_app: Any, app: App) -> None:
 def _register_health(typer_app: Any, app: App) -> None:
     """Register the ``health`` shorthand for ``_meta.health``.
 
-    v0.33: runs the aggregated probe by calling
-    :func:`a2kit.packages.health.run_checks` directly under the App's
-    ``lifespan_cm()``. The test-client (and its ``pytest`` import) are NOT
-    imported by this path, so ``<app> health`` works on fresh non-dev
-    installs.
+    Runs the aggregated probe by calling
+    :func:`a2kit.packages.health.run_checks` inside the App's async-CM
+    lifecycle (``async with app:``). The test-client (and its
+    ``pytest`` import) are NOT imported by this path, so
+    ``<app> health`` works on fresh non-dev installs.
     """
     import asyncio
     import json as _json
@@ -469,7 +469,7 @@ def _register_health(typer_app: Any, app: App) -> None:
         """Run aggregated health probe; exits non-zero on degraded."""
 
         async def _run() -> dict[str, Any]:
-            async with app.lifespan_cm():
+            async with app:
                 return await run_checks(app)
 
         result = asyncio.run(_run())
