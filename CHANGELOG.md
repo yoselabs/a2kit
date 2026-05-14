@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v0.36 (di-scoped-lifecycle)
+## v0.36.0 — 2026-05-15
 
 DI is rebuilt as a standalone-shippable container with lazy first-use,
 per-call scope, and `Lazy[T]` for conditional injection. The `singleton`
