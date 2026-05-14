@@ -200,23 +200,23 @@ def _stamp(
     annotations_explicit: Any = None,
     visibility: Visibility | None = None,
     reports: type | None = None,
-    list_view: Any | None = None,  # noqa: A2K-CORE-CLEAN
+    list_view: Any | None = None,
     timeout: float | int | str | None = None,
 ) -> F:
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
-    extras_kwargs: dict[str, Any] = {"visibility": visibility}  # noqa: A2K-CORE-CLEAN
+    extras_kwargs: dict[str, Any] = {"visibility": visibility}
     if reports is not None:
-        extras_kwargs["report_type"] = reports  # noqa: A2K-CORE-CLEAN
+        extras_kwargs["report_type"] = reports
         schema = _compute_report_schema(reports)
         if schema is not None:
-            extras_kwargs["report_schema"] = schema  # noqa: A2K-CORE-CLEAN
-    if list_view is not None:  # noqa: A2K-CORE-CLEAN
-        extras_kwargs["list_view"] = list_view  # noqa: A2K-CORE-CLEAN
+            extras_kwargs["report_schema"] = schema
+    if list_view is not None:
+        extras_kwargs["list_view"] = list_view
     parsed_timeout = _parse_timeout(timeout)
     if parsed_timeout is not None:
-        extras_kwargs["timeout_seconds"] = parsed_timeout  # noqa: A2K-CORE-CLEAN
+        extras_kwargs["timeout_seconds"] = parsed_timeout
     extras = A2KitMetaExtras(**extras_kwargs)
     meta = A2KitMeta(
         tool_name=resolved_name,
@@ -231,14 +231,14 @@ def _stamp(
     return fn
 
 
-def _compute_report_schema(report_type: type) -> dict[str, Any] | None:  # noqa: A2K-CORE-CLEAN
+def _compute_report_schema(report_type: type) -> dict[str, Any] | None:
     """Best-effort JSON schema for a report type, used by adapters."""
     try:
         from pydantic import TypeAdapter
     except ImportError:
         return None
     try:
-        return TypeAdapter(report_type).json_schema()  # noqa: A2K-CORE-CLEAN
+        return TypeAdapter(report_type).json_schema()
     except Exception:  # noqa: BLE001 -- decoration must not raise
         return None
 
@@ -498,7 +498,7 @@ def list_(
             ),
             visibility=visibility,
             reports=reports,
-            list_view=settings,  # noqa: A2K-CORE-CLEAN
+            list_view=settings,
             timeout=timeout,
         )
 

@@ -40,12 +40,12 @@ class A2KitMetaExtras(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    report_type: type | None = None  # noqa: A2K-CORE-CLEAN
-    report_schema: dict[str, Any] | None = None  # noqa: A2K-CORE-CLEAN
-    router_slug: str | None = None  # noqa: A2K-CORE-CLEAN
-    visibility: str | None = None  # noqa: A2K-CORE-CLEAN
-    list_view: ListViewSettings | None = None  # noqa: A2K-CORE-CLEAN
-    timeout_seconds: float | None = None  # noqa: A2K-CORE-CLEAN
+    report_type: type | None = None
+    report_schema: dict[str, Any] | None = None
+    router_slug: str | None = None
+    visibility: str | None = None
+    list_view: ListViewSettings | None = None
+    timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

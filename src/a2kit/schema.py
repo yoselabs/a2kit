@@ -111,11 +111,11 @@ def compute_schema(fn: Callable[..., Any], container: Any | None = None) -> dict
         out["tags"] = sorted(meta.tags)
         out["meta"] = {
             "verb": meta.verb,
-            "router": meta.extras.router_slug,  # noqa: A2K-CORE-CLEAN
+            "router": meta.extras.router_slug,
         }
-        report_schema = meta.extras.report_schema  # noqa: A2K-CORE-CLEAN
-        if report_schema is not None:  # noqa: A2K-CORE-CLEAN
-            out["reportSchema"] = report_schema  # noqa: A2K-CORE-CLEAN
+        report_schema = meta.extras.report_schema
+        if report_schema is not None:
+            out["reportSchema"] = report_schema
     return out
 
 

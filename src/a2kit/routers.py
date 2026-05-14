@@ -13,8 +13,9 @@ class Router:
 
     Every subclass MUST declare two class attributes:
 
-    - ``slug: ClassVar[str]`` — non-empty string literal identifying the
-      router. Visible to type checkers and to ``grep``. The framework
+    - ``slug: str`` — non-empty string literal identifying the router.
+      Visible to type checkers and to ``grep``. Set as a class-level
+      assignment in the subclass body (``slug = "x"``). The framework
       does NOT derive the slug from ``type(self).__name__``.
     - ``tools: ClassVar[tuple[Callable[..., Any], ...]]`` — every method
       decorated with ``@a2kit.read/write/list_/tool`` that this router
@@ -42,8 +43,11 @@ class Router:
     # Subclasses MUST override these two attributes; the base class does
     # NOT provide defaults so missing-attribute access raises a clear
     # ``TypeError`` in ``Router.__init__`` (with the subclass name in the
-    # message).
-    slug: ClassVar[str]
+    # message). ``slug`` is annotated as plain ``str`` (not ``ClassVar``)
+    # so reads via ``self.slug`` / ``router.slug`` type-check uniformly.
+    # Subclass class-scope assignment ``slug = "x"`` continues to be the
+    # documented form.
+    slug: str
     tools: ClassVar[tuple[Callable[..., Any], ...]]
 
     #: Per-tool exception enrichers. Subclasses override with a class-level tuple
@@ -64,13 +68,8 @@ class Router:
         # --- slug check ---------------------------------------------------- #
         slug = getattr(cls, "slug", None)
         if not isinstance(slug, str) or not slug:
-            msg = (
-                f"Router subclass {cls.__name__!r} must define class attribute "
-                f"'slug: ClassVar[str]'. Example: `slug = \"{cls.__name__.lower()}\"`."
-            )
+            msg = f"Router subclass {cls.__name__!r} must define class attribute 'slug: str'. Example: `slug = \"{cls.__name__.lower()}\"`."
             raise TypeError(msg)
-        # Stamp instance attribute for fast lookup; matches pre-refactor shape.
-        self.slug = slug  # ty: ignore[invalid-attribute-access]
 
         # --- tools check --------------------------------------------------- #
         tools = getattr(cls, "tools", None)
@@ -103,12 +102,12 @@ class Router:
                     f"it from the `tools` tuple."
                 )
                 raise TypeError(msg)
-            if meta.extras.router_slug is None:  # noqa: A2K-CORE-CLEAN
-                meta.extras.router_slug = self.slug  # noqa: A2K-CORE-CLEAN
+            if meta.extras.router_slug is None:
+                meta.extras.router_slug = self.slug
             # Resolve effective visibility: per-tool kwarg (if explicitly set)
             # → Router class attr → "all" baseline. Per-tool None means inherit.
-            if meta.extras.visibility is None:  # noqa: A2K-CORE-CLEAN
-                meta.extras.visibility = type(self).visibility  # noqa: A2K-CORE-CLEAN, A2K-EXTRA-NAMESPACE
+            if meta.extras.visibility is None:
+                meta.extras.visibility = type(self).visibility  # noqa: A2K-EXTRA-NAMESPACE
             bound.append(bound_method)
 
         self._tools: list[Callable[..., Any]] = bound

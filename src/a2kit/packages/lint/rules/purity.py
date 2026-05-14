@@ -1,16 +1,13 @@
 """Core-purity rules.
 
-- A2K-CORE-CLEAN — ``src/a2kit/*.py`` (excluding ``packages/``) MAY NOT reference
-  feature-specific identifiers (``connection``, ``enricher``, ``list_view``,
-  ``report_type``, ``report_schema``, ``router_slug``) by name.
 - A2K-EXTRA-NAMESPACE — attributes assigned through ``A2KitMeta.extras`` must
   be one of the typed-extras field names declared on
   :class:`a2kit.metadata.A2KitMetaExtras`.
 
-The post-R4 surface ``meta.extras.<attr> = ...`` no longer carries arbitrary
-string keys; the rule shifts from "namespace your key string" to "this
-attribute is declared on the typed extras model." Larger purity-rule rework
-lives in the sibling ``loud-degrade-everywhere`` proposal.
+A2K-CORE-CLEAN (the string-token blocklist on core source) was retired in
+v0.34. The typed-extras model itself enforces "feature-specific attributes
+must be declared on A2KitMetaExtras"; A2K-EXTRA-NAMESPACE catches the same
+class of bug structurally rather than by token-matching.
 """
 
 from __future__ import annotations
@@ -19,7 +16,6 @@ import ast
 from typing import TYPE_CHECKING
 
 from a2kit.packages.lint.static import (
-    A2K_CORE_CLEAN,
     A2K_EXTRA_NAMESPACE,
     LintMessage,
     _msg,
@@ -31,19 +27,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-_FORBIDDEN_CORE_TOKENS = frozenset(
-    {
-        "connection",
-        "connection_key",
-        "connections",
-        "enricher",
-        "list_view",
-        "report_type",
-        "report_schema",
-        "router_slug",
-    }
-)
-
 #: Permitted attribute names on ``A2KitMeta.extras`` / ``A2KitMetaExtras(...)``.
 _TYPED_EXTRAS_FIELDS = frozenset(
     {
@@ -54,51 +37,6 @@ _TYPED_EXTRAS_FIELDS = frozenset(
         "list_view",
     }
 )
-
-
-def _is_core_path(filename: str) -> bool:
-    """True for files in ``src/a2kit/*.py`` outside ``packages/``."""
-    norm = filename.replace("\\", "/")
-    if "src/a2kit/" not in norm:
-        return False
-    after = norm.split("src/a2kit/", 1)[1]
-    if "/" not in after:
-        return True
-    head = after.split("/", 1)[0]
-    return head != "packages"
-
-
-def _node_identifier(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    if isinstance(node, ast.arg):
-        return node.arg
-    if isinstance(node, ast.keyword):
-        return node.arg
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return node.name
-    return None
-
-
-def rule_core_clean(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
-    if not _is_core_path(filename):
-        return
-    noqa = parse_noqa(source)
-    for node in ast.walk(tree):
-        ident = _node_identifier(node)
-        if ident is None or ident not in _FORBIDDEN_CORE_TOKENS:
-            continue
-        line = getattr(node, "lineno", 1)
-        if suppressed(noqa, A2K_CORE_CLEAN, line):
-            continue
-        yield _msg(
-            A2K_CORE_CLEAN,
-            filename,
-            node,
-            f"core source MUST NOT reference feature identifier {ident!r}; move to a2kit.packages.* and attach via A2KitMeta.extras",
-        )
 
 
 def _extras_attribute_writes(tree: ast.AST) -> Iterable[tuple[ast.AST, str]]:
@@ -155,4 +93,4 @@ def rule_extra_namespace(tree: ast.AST, filename: str, source: str) -> Iterable[
         )
 
 
-__all__ = ["rule_core_clean", "rule_extra_namespace"]
+__all__ = ["rule_extra_namespace"]
