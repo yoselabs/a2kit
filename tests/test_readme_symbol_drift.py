@@ -27,6 +27,10 @@ import pytest
 
 import a2kit
 from a2kit.app import App
+
+# Alias under a non-Test-prefixed name so pytest does not try to collect
+# the framework's TestClient as a test class.
+from a2kit.packages.testing.client import TestClient as _TestClient
 from a2kit.routers import Router
 
 README = Path(__file__).resolve().parent.parent / "README.md"
@@ -115,6 +119,35 @@ _PATTERN_A2KIT_SUBMODULE = re.compile(r"@?a2kit\.([a-z_][a-z0-9_]*)\.([A-Za-z_][
 _PATTERN_A2KIT_TOPLEVEL = re.compile(r"@?a2kit\.([A-Za-z_][A-Za-z0-9_]*)")
 _PATTERN_APP = re.compile(r"(?:^|[^A-Za-z0-9_])@?(?:App|app)\.([A-Za-z_][A-Za-z0-9_]*)")
 _PATTERN_ROUTER = re.compile(r"(?:^|[^A-Za-z0-9_])Router\.([A-Za-z_][A-Za-z0-9_]*)")
+# canonical-api-drift-gate: catch ``client.X`` / ``c.X`` references where the
+# variable is a TestClient instance. Method drift on the test client (rename,
+# removal) shows up at README parse time rather than at consumer-migration
+# time.
+_PATTERN_TESTCLIENT = re.compile(r"(?:^|[^A-Za-z0-9_])(?:client|c)\.([A-Za-z_][A-Za-z0-9_]*)")
+# Methods that may legitimately appear after ``client.`` / ``c.`` in README
+# code blocks but are NOT on TestClient — e.g. ``self.client.aclose()`` where
+# the local ``client`` is an ``httpx.AsyncClient``. We accept these as
+# example-code idioms rather than canonical-API claims.
+_TESTCLIENT_FALSE_POSITIVES: frozenset[str] = frozenset(
+    {
+        # httpx.AsyncClient methods (README examples have a local `client`
+        # that is an httpx client, not a TestClient).
+        "aclose",
+        "get",
+        "post",
+        "put",
+        "delete",
+        "stream",
+        # TestClient instance attrs set in __init__; resolvable on
+        # instances but not via hasattr(class, attr).
+        "events",
+        "progress",
+        "logs",
+        "reports",
+        "progress_with_message",
+        "app",
+    }
+)
 
 
 def _resolve_a2kit_attr(name: str) -> tuple[bool, str]:
@@ -158,6 +191,14 @@ def _resolve_router_attr(name: str) -> tuple[bool, str]:
     return False, f"hasattr(a2kit.Router, {name!r}) is False"
 
 
+def _resolve_testclient_attr(name: str) -> tuple[bool, str]:
+    if name in _TESTCLIENT_FALSE_POSITIVES:
+        return True, ""
+    if hasattr(_TestClient, name):
+        return True, ""
+    return False, f"hasattr(TestClient, {name!r}) is False"
+
+
 def _skip_chunk(chunk: str) -> bool:
     """Heuristic: skip chunks that don't look like Python code or API claims."""
     # Skip shell commands, URLs, env var snippets.
@@ -182,7 +223,7 @@ _SUBMODULE_NAMES: frozenset[str] = frozenset(
 )
 
 
-def _drift_in_chunk(chunk: str, line_no: int) -> list[tuple[str, int, str]]:
+def _drift_in_chunk(chunk: str, line_no: int) -> list[tuple[str, int, str]]:  # noqa: C901 -- pattern-by-pattern dispatch is the clear shape
     """Yield drift entries for one code chunk."""
     out: list[tuple[str, int, str]] = []
     for m in _PATTERN_A2KIT_SUBMODULE.finditer(chunk):
@@ -211,6 +252,12 @@ def _drift_in_chunk(chunk: str, line_no: int) -> list[tuple[str, int, str]]:
         ok, reason = _resolve_router_attr(attr)
         if not ok:
             out.append((f"Router.{attr}", line_no, reason))
+
+    for m in _PATTERN_TESTCLIENT.finditer(chunk):
+        attr = m.group(1)
+        ok, reason = _resolve_testclient_attr(attr)
+        if not ok:
+            out.append((f"TestClient.{attr}", line_no, reason))
 
     return out
 

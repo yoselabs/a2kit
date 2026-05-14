@@ -5,6 +5,12 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
+from a2kit._list_helpers import (
+    check_list_return_annotation as _check_list_return_annotation,
+)
+from a2kit._list_helpers import (
+    derive_selectable_fields as _derive_selectable_fields,
+)
 from a2kit.exceptions import InvalidToolReturnTypeError
 from a2kit.metadata import A2KitMeta, A2KitMetaExtras, set_meta
 from a2kit.signature import find_context_param
@@ -13,8 +19,6 @@ Visibility = Literal["hidden", "cli", "all"]
 
 _log = logging.getLogger(__name__)
 _WARN_ONCE_RESOLVE_RETURN: set[str] = set()
-_WARN_ONCE_SELECTABLE: set[str] = set()
-_WARN_ONCE_BARE_COLLECTION: set[str] = set()
 
 if TYPE_CHECKING:
     from mcp.types import ToolAnnotations
@@ -142,8 +146,6 @@ def _check_return_scope(fn: Callable[..., Any]) -> None:
 
 _RESERVED_TOOL_NAME_PREFIX = "_meta."
 _BUILTIN_RESERVED_TOOL_NAMES = frozenset({"_meta.health"})
-
-_COLLECTION_ORIGINS: tuple[type, ...] = (list, tuple, set, frozenset)
 
 
 def _check_reserved_name(tool_name: str) -> None:
@@ -521,85 +523,6 @@ def list_(
         )
 
     return deco
-
-
-def _check_list_return_annotation(fn: Callable[..., Any]) -> None:
-    """Validate ``@a2kit.list_`` return is ``list[T]`` / ``tuple[T,...]`` / ``set[T]`` / ``frozenset[T]``.
-
-    Raises ``TypeError`` at decoration time if origin is not a supported
-    collection or if no return annotation is declared. Bare collections
-    (no type parameter) emit a one-time ``RuntimeWarning``.
-    """
-    import typing
-    import warnings
-
-    fn_name = getattr(fn, "__name__", "<callable>")
-    ret = _resolve_return_annotation(fn)
-    if ret is None and "return" not in fn.__annotations__:
-        raise TypeError(
-            f"@a2kit.list_: function {fn_name!r} has no return annotation; "
-            f"list tools require a `list[T]` (or tuple/set/frozenset of T) return annotation."
-        )
-    origin = typing.get_origin(ret)
-    if origin in _COLLECTION_ORIGINS:
-        args = typing.get_args(ret)
-        if not args:
-            key = getattr(fn, "__qualname__", fn_name)
-            if key not in _WARN_ONCE_BARE_COLLECTION:
-                _WARN_ONCE_BARE_COLLECTION.add(key)
-                warnings.warn(
-                    f"@a2kit.list_: function {fn_name!r} return annotation lacks a type parameter; "
-                    f"selectable-field derivation will be empty.",
-                    RuntimeWarning,
-                    stacklevel=3,
-                )
-        return
-    if isinstance(ret, type) and ret in _COLLECTION_ORIGINS:
-        # bare `list` / `tuple` / `set` / `frozenset` without subscript
-        key = getattr(fn, "__qualname__", fn_name)
-        if key not in _WARN_ONCE_BARE_COLLECTION:
-            _WARN_ONCE_BARE_COLLECTION.add(key)
-            warnings.warn(
-                f"@a2kit.list_: function {fn_name!r} return annotation lacks a type parameter; selectable-field derivation will be empty.",
-                RuntimeWarning,
-                stacklevel=3,
-            )
-        return
-    raise TypeError(
-        f"@a2kit.list_: function {fn_name!r} return annotation is {ret!r}; "
-        f"expected `list[T]` (or `tuple[T, ...]` / `set[T]` / `frozenset[T]`)."
-    )
-
-
-def _derive_selectable_fields(fn: Callable[..., Any]) -> tuple[str, ...]:
-    """Walk ``list[T]`` return annotation; return ``T``'s fields, or ()."""
-    import typing
-    from typing import get_type_hints
-
-    try:
-        hints = get_type_hints(fn)
-    except Exception as exc:  # noqa: BLE001 -- decoration must not raise; degrade observably
-        name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
-        if name not in _WARN_ONCE_SELECTABLE:
-            _WARN_ONCE_SELECTABLE.add(name)
-            _log.warning("_derive_selectable_fields: get_type_hints failed for %s: %s", name, exc)
-        return ()
-    ret = hints.get("return")
-    origin = typing.get_origin(ret) if ret is not None else None
-    if origin not in (list, tuple, set, frozenset):
-        return ()
-    args = typing.get_args(ret) if ret is not None else ()
-    if not args:
-        return ()
-    inner = args[0]
-    fields_attr = getattr(inner, "__pydantic_fields__", None)
-    if fields_attr is not None:
-        return tuple(fields_attr.keys())
-    import dataclasses
-
-    if dataclasses.is_dataclass(inner):
-        return tuple(f.name for f in dataclasses.fields(inner))
-    return ()
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ class _DataRow:
     b: str
 
 
+from a2kit import _list_helpers as list_helpers_module
 from a2kit.packages.mcp import listview as listview_module
 from a2kit.packages.mcp import server as server_module
 from a2kit.packages.otel import middleware as otel_middleware_module
@@ -37,7 +38,10 @@ def _reset_warn_once_sets() -> None:
     """Each test starts with empty dedupe sets across all five sites."""
     server_module._WARN_ONCE.clear()
     tool_module._WARN_ONCE_RESOLVE_RETURN.clear()
-    tool_module._WARN_ONCE_SELECTABLE.clear()
+    # ``_WARN_ONCE_SELECTABLE`` migrated to a2kit._list_helpers in v0.35
+    # (see split-oversized-core-files). The dedup contract is unchanged.
+    list_helpers_module._WARN_ONCE_SELECTABLE.clear()
+    list_helpers_module._WARN_ONCE_BARE_COLLECTION.clear()
     listview_module._WARN_ONCE.clear()
     otel_middleware_module._WARN_ONCE.clear()
 

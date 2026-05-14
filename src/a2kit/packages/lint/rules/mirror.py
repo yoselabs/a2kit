@@ -39,6 +39,15 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # tests/test_singleton_type_inference.py +
         # tests/test_singleton_lifecycle_detection.py.
         "src/a2kit/_lifecycle_helpers.py",
+        # why: pure helpers extracted from a2kit/packages/di/container.py
+        # to keep container.py under the SLOC budget; behavior covered
+        # end-to-end through every singleton/provider test that exercises
+        # the DI container.
+        "src/a2kit/packages/di/_introspection.py",
+        # why: ``@a2kit.list_`` annotation helpers extracted from
+        # a2kit/tool.py to keep tool.py under the SLOC budget; behavior
+        # covered by tests/test_list_verb.py / tests/test_verb_annotations.py.
+        "src/a2kit/_list_helpers.py",
     }
 )
 
