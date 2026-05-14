@@ -37,6 +37,11 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # why: schema generation is tested end-to-end through tool
         # registration and CLI/MCP schema commands; no isolated tests.
         "src/a2kit/schema.py",
+        # why: pure helpers extracted from a2kit/app.py to keep app.py
+        # under the SLOC budget; behavior covered by
+        # tests/test_singleton_type_inference.py +
+        # tests/test_singleton_lifecycle_detection.py.
+        "src/a2kit/_lifecycle_helpers.py",
     }
 )
 

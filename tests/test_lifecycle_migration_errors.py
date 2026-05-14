@@ -47,7 +47,7 @@ def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
         async def lifespan(self) -> None:  # type: ignore[override]
             yield
 
-        @a2kit.read
+        @a2kit.read()
         async def x(self) -> dict:  # type: ignore[override]
             return {}
 

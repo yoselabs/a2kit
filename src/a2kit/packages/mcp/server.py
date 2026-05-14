@@ -99,6 +99,27 @@ def _wrap_with_ldd_state(
     return _wrapped
 
 
+def _wrap_with_router_lazy_enter(fn: Any, app: Any, router: Any | None) -> Any:
+    """Ensure the bound router has entered via ``__aenter__`` before dispatch.
+
+    No-op when the router has no ``__aenter__`` method (most routers).
+    First-touch coalesces under a per-router lock owned by the App
+    (see :meth:`a2kit.App._ensure_router_entered`).
+    """
+    if router is None or not hasattr(router, "__aenter__"):
+        return fn
+
+    @functools.wraps(fn)
+    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        await app._ensure_router_entered(router)  # noqa: SLF001 -- framework hook
+        result = fn(*args, **kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+
+    return _wrapped
+
+
 def _wrap_with_router_enrichers(fn: Any, router: Any | None) -> Any:
     if router is None:
         return fn
@@ -359,7 +380,12 @@ def _build_fastmcp_lifespan(app: Any, user_lifespan: Any | None) -> Any:
     @asynccontextmanager
     async def _lifespan(server: Any) -> Any:
         server._a2kit_app = app  # noqa: SLF001 -- framework wiring back-reference
-        async with app.lifespan_cm():
+        # v0.35: ``async with app:`` is canonical; ``app.lifespan_cm()``
+        # is composed inside ``App.__aenter__`` during the parallel-paths
+        # cutover. This wires the new path through the FastMCP slot so
+        # routers' lazy ``__aenter__`` and singleton auto-cleanup
+        # participate in the server's lifespan.
+        async with app:
             if user_lifespan is None:
                 yield None
             else:
@@ -426,6 +452,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
         if meta.extras.timeout_seconds is not None:
             inner = _wrap_with_timeout(inner, seconds=meta.extras.timeout_seconds)
         wrapped = _wrap_with_router_enrichers(inner, router)
+        wrapped = _wrap_with_router_lazy_enter(wrapped, app, router)
         if container is not None and dispatch_hook is not None:
             wrapped = _wrap_with_dispatch_hook(
                 wrapped,

@@ -1,10 +1,14 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: A2K014
 
 import inspect
 import logging
 from contextlib import asynccontextmanager, nullcontext
 from typing import TYPE_CHECKING, Any
 
+from a2kit._lifecycle_helpers import (
+    register_instance_cleanup,
+    resolve_singleton_args,
+)
 from a2kit.packages.di.container import (
     _UNRESOLVED,
     Container,
@@ -124,6 +128,19 @@ class App:
         # does not propagate teardown failures). Inspected by tests +
         # post-mortem callers.
         self.teardown_failures: list[tuple[type, Exception]] = []
+        # v0.35 lifecycle scaffolding (parallel-paths during cutover):
+        # ``__aenter__``/``__aexit__`` populate these; ``lifespan_cm()``
+        # remains the inner composition until the full rewrite lands.
+        self._lifecycle_cm: Any = None
+        self._singleton_stack: Any = None
+        # Routers that successfully entered via ``__aenter__`` during this
+        # App's lifecycle. LIFO unwound on App ``__aexit__``. Populated
+        # lazily by the dispatcher on first tool call belonging to a
+        # router that declares ``__aenter__``.
+        self._entered_routers: dict[str, Router] = {}
+        # Per-router asyncio.Lock for first-touch coalescing. Created
+        # lazily on demand.
+        self._router_locks: dict[str, Any] = {}
         if health_tool:
             self._install_health_tool()
 
@@ -199,6 +216,20 @@ class App:
                 "its `slug` class attribute"
             )
             raise ValueError(msg)
+        # ``Router.lifespan`` classmethod is removed in v0.35
+        # (``consolidate-lifecycle-on-async-cm-protocol``). Subclasses
+        # must implement ``__aenter__``/``__aexit__`` on the instance
+        # instead. Raise loud with the migration hint per CLAUDE.md
+        # "no backward compat shims".
+        cls = type(router)
+        if "lifespan" in cls.__dict__:
+            msg = (
+                f"Router subclass {cls.__name__!r}: `lifespan` classmethod "
+                "was removed in v0.35. Implement `__aenter__` and "
+                "`__aexit__` on the Router instance instead (the framework "
+                "detects the async-CM protocol at add_router time)."
+            )
+            raise TypeError(msg)
         _validate_router_tools(router)
         self._routers.add(router)
         self._descriptors.extend(_build_descriptors(router))
@@ -209,12 +240,6 @@ class App:
                 self.provide(ptype, pfactory)
             else:
                 self.provide(entry)
-        # Router-declared lifespan composes into the App's final
-        # ``lifespan_cm`` via ``a2kit.lifespan.compose``. Stored in
-        # ``add_router`` order; reverse-unwound on shutdown.
-        cls = type(router)
-        if "lifespan" in cls.__dict__:
-            self._router_lifespans.append(router)
         return self
 
     def add_cli(self, command: click.Command) -> App:
@@ -258,44 +283,37 @@ class App:
 
     def singleton(
         self,
-        type_: type,
-        factory: Callable[..., Any] | None = None,
+        arg1: Any,
+        arg2: Any = None,
         *,
         teardown: Callable[[Any], Any] | None = None,
     ) -> App:
         """Register a factory whose result is cached for the lifetime of this App.
 
-        Method-call form is the only path (v0.33): the decorator form
-        ``@app.singleton(T)`` was removed to free the signature for
-        ``teardown=``.
+        Three call shapes (per
+        ``consolidate-lifecycle-on-async-cm-protocol``):
 
-        - ``app.singleton(T, factory)`` registers ``factory`` and returns
-          ``self`` for chaining.
-        - ``app.singleton(T)`` (no factory) registers ``T`` as its own
-          class-as-factory.
-        - ``app.singleton(T, factory, teardown=fn)`` additionally
-          registers a shutdown callback (per
-          ``singleton-teardown-topological``). The framework invokes
-          ``teardown(instance)`` on lifespan exit, in topological order
-          (dependents first), error-isolated, with failures recorded on
-          :attr:`teardown_failures`. ``teardown`` may be sync or async.
+        - ``app.singleton(SomeClass)`` — the class itself is the factory;
+          the registered type is the class.
+        - ``app.singleton(factory)`` — type is inferred from the
+          factory's return-type annotation. Sync ``def``, ``async def``,
+          and annotated lambdas are all accepted.
+        - ``app.singleton(BaseClass, factory)`` — explicit base-type
+          override for the case where the factory returns a subtype.
 
-        The factory MAY be sync (``def``) or async (``async def``). An
-        async factory is awaited on first resolution; subsequent resolves
-        return the cached instance. Concurrent first-resolution calls
-        coalesce on a per-type ``asyncio.Lock`` — the factory runs at
-        most once. Sync ``container.resolve(T)`` on an unresolved async
-        singleton raises a clear error; warm-up via
-        :meth:`warm_async_singletons` called from the App's lifespan
-        body (or any first call from inside the event loop) primes the
-        cache.
+        Cleanup is auto-detected on the resolved instance during App
+        ``__aenter__``: ``__aexit__`` (paired with ``__aenter__``),
+        ``aclose``, ``close`` — first match wins. The ``teardown=`` kwarg
+        is accepted during the v0.34→v0.35 parallel-paths cutover and
+        will raise ``TypeError`` once the migration completes; new code
+        SHOULD move cleanup onto the resource itself via the protocol.
 
-        This is the primary path for async-opened resources (DB pools,
-        HTTP clients, browser handles). Hand-rolled lazy-init resource
-        classes are no longer necessary for the common case.
+        Async factories are awaited on first resolution under a
+        per-type ``asyncio.Lock``; subsequent resolves return the
+        cached instance.
         """
-        target = factory if factory is not None else type_
-        self._container.register_singleton(type_, target, teardown=teardown)
+        type_, factory = resolve_singleton_args(arg1, arg2)
+        self._container.register_singleton(type_, factory, teardown=teardown)
         return self
 
     def has_singleton(self, type_: type) -> bool:
@@ -427,6 +445,117 @@ class App:
                     exc,
                 )
                 _LIFECYCLE_LOG.debug("singleton teardown traceback for %s", t.__name__, exc_info=True)
+
+    # --- Lazy router entry (v0.35 consolidate-lifecycle) ----------------- #
+
+    async def _ensure_router_entered(self, router: Router) -> None:
+        """Enter ``router`` via ``__aenter__`` exactly once during this App's lifecycle.
+
+        Called from the per-transport dispatch wrappers before invoking
+        the tool method. No-op for routers without ``__aenter__``.
+        Concurrent first-touch coalesces on a per-router
+        ``asyncio.Lock``. Failed ``__aenter__`` does NOT cache the router
+        in ``_entered_routers``; the next dispatch retries.
+        """
+        if not hasattr(router, "__aenter__"):
+            return
+        slug = router.slug
+        if slug in self._entered_routers:
+            return
+        import asyncio
+
+        lock = self._router_locks.get(slug)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._router_locks[slug] = lock
+        async with lock:
+            if slug in self._entered_routers:
+                return
+            await router.__aenter__()  # type: ignore[func-returns-value]  # ty: ignore[call-non-callable]
+            self._entered_routers[slug] = router
+
+    async def _unwind_entered_routers(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        """LIFO unwind of routers that entered via ``__aenter__`` during the
+        App's lifecycle. Each ``__aexit__`` failure is logged at ERROR;
+        unwinding continues so sibling routers still exit.
+        """
+        for slug in reversed(list(self._entered_routers)):
+            router = self._entered_routers[slug]
+            try:
+                await router.__aexit__(exc_type, exc, tb)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+            except Exception as inner:  # noqa: BLE001 -- error-isolation per spec
+                _LIFECYCLE_LOG.error(
+                    "router teardown failed: slug=%s class=%s message=%s",
+                    slug,
+                    type(inner).__name__,
+                    inner,
+                )
+                _LIFECYCLE_LOG.debug("router teardown traceback for %s", slug, exc_info=True)
+        self._entered_routers.clear()
+        self._router_locks.clear()
+
+    # --- async context manager protocol (v0.35 consolidate-lifecycle) ----- #
+
+    async def __aenter__(self) -> App:
+        """Enter the App's lifecycle.
+
+        Composition order (during the parallel-paths cutover for
+        ``consolidate-lifecycle-on-async-cm-protocol``):
+
+        1. Singletons enter eagerly in registration order. Each
+           resolved instance is probed for cleanup protocol
+           (``__aexit__``, ``aclose``, ``close`` — first match wins)
+           and the corresponding cleanup is registered on an
+           ``AsyncExitStack`` owned by the App.
+        2. The legacy lifespan composition (:meth:`lifespan_cm`) is
+           entered AFTER singletons. This composes any user
+           ``lifespan=`` callable plus Router ``lifespan`` classmethods.
+           When neither is in use this is a no-op.
+
+        Exit order is the reverse: legacy lifespan unwinds first
+        (LIFO inside the composition), then singletons via the
+        AsyncExitStack (LIFO of registration). Topological singleton
+        ordering — promised by the spec delta — is the registration-
+        order tiebreaker today; an explicit DI-graph walk lands when
+        the parallel-paths bridge is removed.
+        """
+        from contextlib import AsyncExitStack
+
+        stack = AsyncExitStack()
+        await stack.__aenter__()
+        try:
+            for type_ in list(self._container.singletons()):
+                if self._container.has_async_singleton(type_):
+                    instance = await self._container.aresolve(type_)
+                else:
+                    instance = self._container.resolve(type_)
+                await register_instance_cleanup(stack, instance)
+            self._singleton_stack = stack
+            self._lifecycle_cm = self.lifespan_cm()
+            await self._lifecycle_cm.__aenter__()
+        except BaseException:
+            await stack.__aexit__(None, None, None)
+            self._singleton_stack = None
+            raise
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool | None:
+        cm = self._lifecycle_cm
+        stack = self._singleton_stack
+        self._lifecycle_cm = None
+        self._singleton_stack = None
+        suppressed: bool | None = None
+        try:
+            # Routers that entered lazily during dispatch unwind first,
+            # before user/Router-classmethod lifespans and singleton
+            # auto-cleanup. LIFO of enter order.
+            await self._unwind_entered_routers(exc_type, exc, tb)
+            if cm is not None:
+                suppressed = await cm.__aexit__(exc_type, exc, tb)
+        finally:
+            if stack is not None:
+                await stack.__aexit__(exc_type, exc, tb)
+        return suppressed
 
     def dispatch_hook(self) -> Callable[..., Any]:
         return self._dispatch_hook

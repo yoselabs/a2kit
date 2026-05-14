@@ -10,8 +10,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
-
-pytestmark = pytest.mark.skip(reason="contract for consolidate-lifecycle-on-async-cm-protocol; un-skip when impl lands")
+from a2kit.testing import client as _testing_client
 
 
 @pytest.mark.asyncio
@@ -27,7 +26,7 @@ async def test_router_does_not_enter_on_app_aenter() -> None:
 
         async def __aexit__(self, *_exc: object) -> None: ...
 
-        @a2kit.read
+        @a2kit.read()
         async def fetch(self) -> dict:  # type: ignore[override]
             return {"ok": True}
 
@@ -52,7 +51,7 @@ async def test_first_dispatch_enters_router_once() -> None:
 
         async def __aexit__(self, *_exc: object) -> None: ...
 
-        @a2kit.read
+        @a2kit.read()
         async def fetch(self) -> dict:  # type: ignore[override]
             return {"ok": True}
 
@@ -60,7 +59,7 @@ async def test_first_dispatch_enters_router_once() -> None:
 
     app = a2kit.App("x")
     app.add_router(_GH())
-    async with a2kit.testing.client(app) as client:
+    async with _testing_client(app) as client:
         await client.invoke("gh.fetch")
         assert entered == ["gh"]
         await client.invoke("gh.fetch")
@@ -82,7 +81,7 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
         async def __aexit__(self, *_exc: object) -> None:
             exited.append("gh")
 
-        @a2kit.read
+        @a2kit.read()
         async def gh_fetch(self) -> dict:  # type: ignore[override]
             return {}
 
@@ -98,7 +97,7 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
         async def __aexit__(self, *_exc: object) -> None:
             exited.append("sl")
 
-        @a2kit.read
+        @a2kit.read()
         async def sl_fetch(self) -> dict:  # type: ignore[override]
             return {}
 
@@ -107,7 +106,7 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
     app = a2kit.App("x")
     app.add_router(_GH())
     app.add_router(_SL())
-    async with a2kit.testing.client(app) as client:
+    async with _testing_client(app) as client:
         await client.invoke("gh.gh_fetch")
 
     assert entered == ["gh"]
@@ -124,7 +123,7 @@ async def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
         async def lifespan(self) -> None:  # type: ignore[override]
             yield
 
-        @a2kit.read
+        @a2kit.read()
         async def x(self) -> dict:
             return {}  # type: ignore[override]
 

@@ -13,8 +13,6 @@ import pytest
 
 import a2kit
 
-pytestmark = pytest.mark.skip(reason="contract for consolidate-lifecycle-on-async-cm-protocol; un-skip when impl lands")
-
 
 @pytest.mark.asyncio
 async def test_aexit_protocol_detected() -> None:
@@ -79,6 +77,7 @@ async def test_no_cleanup_protocol_is_fine() -> None:
         pass
 
 
+@pytest.mark.skip(reason="parallel-paths phase: teardown= still accepted; un-skip at atomic cutover")
 @pytest.mark.asyncio
 async def test_teardown_kwarg_raises_with_hint() -> None:
     class _R:

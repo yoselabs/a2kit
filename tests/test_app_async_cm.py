@@ -15,8 +15,6 @@ import pytest
 
 import a2kit
 
-pytestmark = pytest.mark.skip(reason="contract for consolidate-lifecycle-on-async-cm-protocol; un-skip when impl lands")
-
 
 class _DB:
     enter_count = 0

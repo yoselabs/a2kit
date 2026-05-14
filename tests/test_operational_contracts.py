@@ -67,8 +67,8 @@ def test_two_apps_have_isolated_singletons() -> None:
     """Each App keeps its own singleton cache; resolving the same type yields different instances."""
     app_a = a2kit.App("a")
     app_b = a2kit.App("b")
-    app_a.singleton(_AppState, factory=lambda: _AppState("from-a"))
-    app_b.singleton(_AppState, factory=lambda: _AppState("from-b"))
+    app_a.singleton(_AppState, lambda: _AppState("from-a"))
+    app_b.singleton(_AppState, lambda: _AppState("from-b"))
 
     state_a = peek(app_a, _AppState)
     state_b = peek(app_b, _AppState)

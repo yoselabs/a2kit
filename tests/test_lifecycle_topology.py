@@ -11,10 +11,12 @@ import asyncio
 import pytest
 
 import a2kit
+from a2kit.testing import client as _testing_client
 
-pytestmark = pytest.mark.skip(reason="contract for consolidate-lifecycle-on-async-cm-protocol; un-skip when impl lands")
 
-
+@pytest.mark.skip(
+    reason="parallel-paths phase: singletons currently enter in registration order; DI-graph topological order lands at atomic cutover"
+)
 @pytest.mark.asyncio
 async def test_dependent_enters_after_dependency() -> None:
     order: list[str] = []
@@ -66,7 +68,7 @@ async def test_concurrent_first_dispatch_coalesces_router_enter() -> None:
 
         async def __aexit__(self, *_exc: object) -> None: ...
 
-        @a2kit.read
+        @a2kit.read()
         async def get(self) -> dict:  # type: ignore[override]
             return {}
 
@@ -75,7 +77,7 @@ async def test_concurrent_first_dispatch_coalesces_router_enter() -> None:
     app = a2kit.App("x")
     app.add_router(_R())
 
-    async with a2kit.testing.client(app) as client:
+    async with _testing_client(app) as client:
         t1 = asyncio.create_task(client.invoke("r.get"))
         t2 = asyncio.create_task(client.invoke("r.get"))
         await started.wait()
@@ -101,7 +103,7 @@ async def test_router_aenter_failure_does_not_cache_entered_state() -> None:
 
         async def __aexit__(self, *_exc: object) -> None: ...
 
-        @a2kit.read
+        @a2kit.read()
         async def get(self) -> dict:  # type: ignore[override]
             return {}
 
@@ -110,7 +112,7 @@ async def test_router_aenter_failure_does_not_cache_entered_state() -> None:
     app = a2kit.App("x")
     app.add_router(_R())
 
-    async with a2kit.testing.client(app) as client:
+    async with _testing_client(app) as client:
         with pytest.raises(Exception):  # noqa: BLE001 -- shape of exception is router-impl-defined
             await client.invoke("r.get")
         # Second dispatch retries __aenter__ since first failed.
