@@ -78,9 +78,10 @@ class App:
         self._mcp_middlewares: list[Any] = []
         # Eager container init — sync, ~80 LOC, always available.
         self._container: Container = Container()
-        # Default dispatch hook is sync container_dispatch. Consumer packages
-        # (e.g. connections) can replace it with an async wrap that does wire
-        # preprocessing before delegating to container.apply_kwargs.
+        # Default dispatch hook is identity over wire kwargs. Consumer
+        # packages (e.g. connections) install a hook that performs
+        # wire-side conversion only; DI runs after the hook inside
+        # ``Container.dispatch`` on the hook's output.
         self._dispatch_hook: Callable[..., Any] = self._default_dispatch_hook
         # LDD kill-switch — env A2KIT_LDD=off disables both channels at
         # startup; ``set_ldd(...)`` and CLI flags override per-invocation.

@@ -1,20 +1,22 @@
 """Dispatch hook for connection-string resolution.
 
 The connections package owns ``"connection"`` as a wire kwarg. Apps that
-opt into connections install a dispatch hook that runs BEFORE the container
-resolves typed dependencies:
+opt into connections install a dispatch hook that performs wire-side
+conversion only:
 
 1. Pulls ``connection: str`` out of wire kwargs (if present).
 2. Awaits ``store.load(connection)`` to materialize the typed
    ``ConnectionConfig`` instance.
-3. Substitutes the instance into wire kwargs under the parameter name the
-   tool method expects.
-4. Hands off to ``container.apply_kwargs(fn, wire_kwargs)`` synchronously
-   for the rest of DI.
+3. Surfaces the instance under the tool's parameter name (when the tool
+   declares the config directly), or under a stable
+   ``_a2k_seed_<TypeName>`` key (when the tool reaches the config
+   through a chain) — either way the framework's ``Container.dispatch``
+   wire-seeder picks it up by value type and registers it as a SCOPED
+   provider on the per-call child container.
 
-The container itself contains no reference to ``"connection"``. The magic
-name lives in this file (and the consumer's own config / store) — nowhere
-else in a2kit.
+DI (provider chain resolution, ``Lazy[T]``, per-call lifecycle) is the
+framework's job, run by ``Container.dispatch`` AFTER this hook on its
+output. The container itself contains no reference to ``"connection"``.
 """
 
 from __future__ import annotations

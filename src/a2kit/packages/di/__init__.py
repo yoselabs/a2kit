@@ -1,12 +1,19 @@
-"""Standalone-shippable DI package — sync legacy + async scoped lifecycle.
+"""Standalone-shippable DI package.
 
-Two surface layers coexist during the v0.36 transition:
+Primary surface (v0.36+):
 
-- Legacy: ``register`` / ``register_singleton`` / ``resolve`` / ``aresolve`` /
-  ``apply_kwargs`` — sync-friendly path used by the existing dispatcher.
-- New (di-scoped-lifecycle): ``provide(scope=...)`` / async ``get(T)`` /
-  ``child()`` / ``aclose`` / ``__aenter__`` / ``__aexit__`` plus the
-  :class:`Scope` enum and :class:`Resolver` protocol.
+- ``Container.provide(t, factory, *, scope=...)`` — registration
+- ``Container.dispatch(fn, wire_kwargs, *, pre_hook=None)`` — per-call dispatch async-CM
+- ``Container.resolve_params(fn)`` — DI resolution with ``Lazy[T]`` awareness
+- ``Container.get(t)``, ``child()``, ``aclose()``, ``__aenter__``/``__aexit__``
+- :class:`Scope`, :class:`Resolver` Protocol, :class:`Lazy` alias
+
+Legacy surface (still present for TestClient seam + sync test paths):
+``register`` / ``register_singleton`` / ``resolve`` / ``aresolve`` /
+``has`` / ``has_async_singleton``. Scheduled for separate retirement.
+
+The ``apply_kwargs`` / ``container_dispatch`` family is retired in v0.38
+(dispatch routes through ``Container.dispatch`` exclusively).
 
 Future extraction to a standalone PyPI package: this directory contains
 NO ``from a2kit.*`` imports outside ``a2kit.packages.di``. See
@@ -20,8 +27,6 @@ from a2kit.packages.di.container import (
     Container,
     Factory,
     UnresolvableType,
-    container_dispatch,
-    container_dispatch_async,
 )
 from a2kit.packages.di.resolver import Resolver
 from a2kit.packages.di.scope import Scope
@@ -33,6 +38,4 @@ __all__ = [
     "Resolver",
     "Scope",
     "UnresolvableType",
-    "container_dispatch",
-    "container_dispatch_async",
 ]

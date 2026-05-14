@@ -1,27 +1,25 @@
 """Typed DI container — feature-agnostic, sync + async resolution paths.
 
-Resolution flow per tool call::
+Resolution surface (post-v0.37 dispatch-lifecycle-wiring):
 
-    wire kwargs
-        │
-        ▼
-    Container.apply_kwargs / apply_kwargs_async(fn, wire_kwargs)
-        │
-        ▼
-    For each fn kwarg whose type is a registered provider:
-        Container.resolve / aresolve(T) walks the chain (factories'
-        parameter annotations) with per-call cache.
-        │
-        ▼
-    fn called with merged dict (wire + resolved injectables)
+- ``Container.dispatch(fn, wire_kwargs, *, pre_hook=None)`` — async-CM
+  for per-call dispatch (opens a child, runs the optional pre_hook,
+  runs ``resolve_params`` for DI, yields merged kwargs, unwinds
+  per-call cleanup on exit).
+- ``Container.resolve_params(fn)`` — resolves a function's parameters
+  through DI, ``Lazy[T]``-aware.
+- ``Container.get(t)`` — async lifecycle-aware resolve honoring scope,
+  ``__aenter__``, cleanup recording.
+- ``Container.provide(t, factory, *, scope)`` / ``has_provider`` /
+  ``providers_view`` — v0.36 registration surface.
 
-The container has NO feature-specific knowledge. Per-call ``provide``
-factories MUST be synchronous; singleton factories MAY be async (first
-resolution awaits; subsequent resolves return the cached value). The
-sync ``resolve`` path raises on an unresolved async singleton, directing
-the caller to ``aresolve`` or ``warm_async_singletons`` warm-up. Wire-input
-transformation (e.g. ``connection: str`` → typed config) lives in the
-consumer's dispatch hook, before the container sees kwargs.
+Legacy surface (still in place for TestClient seam + sync test paths):
+``register`` / ``register_singleton`` / ``resolve`` / ``aresolve`` /
+``has`` / ``has_async_singleton``. Scheduled for separate retirement.
+
+Wire-input transformation (e.g. ``connection: str`` → typed config)
+lives in the consumer's dispatch hook (``pre_hook`` arg), wire-side only
+— DI runs after, on the hook's output.
 """
 
 from __future__ import annotations
@@ -423,82 +421,6 @@ class Container:
                 continue
             raise UnresolvableType(spec.annotation, new_chain)
         return kwargs
-
-    # -- partition + dispatch ------------------------------------------- #
-
-    def partition_kwargs(self, fn: Callable[..., Any]) -> tuple[set[str], set[str]]:
-        """Return ``(wire_keys, injectable_keys)`` for ``fn``."""
-        wire: set[str] = set()
-        injectable: set[str] = set()
-        for spec in _params_for_method(fn):
-            if self.has(spec.annotation):
-                injectable.add(spec.name)
-                continue
-            wire.add(spec.name)
-        return wire, injectable
-
-    def apply_kwargs(
-        self,
-        fn: Callable[..., Any],
-        wire_kwargs: dict[str, Any],
-        *,
-        pre_resolved: dict[type, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Resolve injectable kwargs for ``fn`` and merge with ``wire_kwargs``.
-
-        Wire kwargs are passed through; injectable kwargs are resolved via
-        :meth:`resolve`. Synchronous; no coroutines are awaited. Raises
-        on unresolved async-factory singletons — use
-        :meth:`apply_kwargs_async` from any caller that already runs in
-        an event loop.
-
-        ``pre_resolved`` is an optional ``{type → instance}`` map. Consumer
-        dispatch hooks that do async work upstream (e.g. awaiting a
-        connection store) seed pre-resolved instances here so the container's
-        chain resolution sees them without ever calling their factories.
-        """
-        params = _params_for_method(fn)
-        param_names = {p.name for p in params}
-        cache: dict[type, Any] = dict(pre_resolved) if pre_resolved else {}
-        out: dict[str, Any] = {}
-        for spec in params:
-            if spec.name in wire_kwargs:
-                out[spec.name] = wire_kwargs[spec.name]
-                continue
-            if self.has(spec.annotation):
-                out[spec.name] = self.resolve(spec.annotation, cache=cache)
-                continue
-            # Wire kwarg with no value supplied → omit; caller diagnoses.
-        for k, v in wire_kwargs.items():
-            if k in param_names and k not in out:
-                out[k] = v
-        return out
-
-    async def apply_kwargs_async(
-        self,
-        fn: Callable[..., Any],
-        wire_kwargs: dict[str, Any],
-        *,
-        pre_resolved: dict[type, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Async variant of :meth:`apply_kwargs` that awaits async-factory
-        singletons on first resolution. Hot path (cached singletons + sync
-        providers) is functionally identical to the sync variant."""
-        params = _params_for_method(fn)
-        param_names = {p.name for p in params}
-        cache: dict[type, Any] = dict(pre_resolved) if pre_resolved else {}
-        out: dict[str, Any] = {}
-        for spec in params:
-            if spec.name in wire_kwargs:
-                out[spec.name] = wire_kwargs[spec.name]
-                continue
-            if self.has(spec.annotation):
-                out[spec.name] = await self.aresolve(spec.annotation, cache=cache)
-                continue
-        for k, v in wire_kwargs.items():
-            if k in param_names and k not in out:
-                out[k] = v
-        return out
 
     def has_async_singleton(self, type_: type) -> bool:
         return type_ in self._async_factories
@@ -1040,38 +962,8 @@ def _params_for_method(fn: Callable[..., Any]) -> list[_ParamSpec]:
     return out
 
 
-def container_dispatch(
-    fn: Callable[..., Any],
-    wire_kwargs: dict[str, Any],
-    container: Container,
-) -> dict[str, Any]:
-    """Resolve a tool method's kwargs through ``container`` (sync).
-
-    The default dispatch hook for apps with no async-factory singletons.
-    Connection-aware apps install a different hook (in
-    ``a2kit.packages.connections.dispatch``) that runs an async pre-step
-    before delegating to this function.
-    """
-    return container.apply_kwargs(fn, wire_kwargs)
-
-
-async def container_dispatch_async(
-    fn: Callable[..., Any],
-    wire_kwargs: dict[str, Any],
-    container: Container,
-) -> dict[str, Any]:
-    """Async resolve a tool method's kwargs through ``container``.
-
-    The default dispatch hook for apps with at least one async-factory
-    singleton. Hot path is identical to the sync variant.
-    """
-    return await container.apply_kwargs_async(fn, wire_kwargs)
-
-
 __all__ = [
     "Container",
     "Factory",
     "UnresolvableType",
-    "container_dispatch",
-    "container_dispatch_async",
 ]

@@ -113,30 +113,6 @@ def test_async_singleton_factory_accepted() -> None:
     assert c.has_async_singleton(_Cfg)
 
 
-def test_partition_kwargs_distinguishes_wire_from_injectable() -> None:
-    c = Container()
-    c.register(_Cfg)
-    c.register(_Store)
-
-    def fn(*, store: _Store, task_id: str, limit: int = 10) -> None:  # noqa: ARG001
-        return None
-
-    wire, inject = c.partition_kwargs(fn)
-    assert wire == {"task_id", "limit"}
-    assert inject == {"store"}
-
-
-def test_apply_kwargs_resolves_injectables() -> None:
-    c = Container()
-    c.register(_Cfg)
-    c.register(_Store)
-
-    def fn(*, store: _Store, n: int) -> dict:  # noqa: ARG001
-        return {}
-
-    out = c.apply_kwargs(fn, {"n": 5})
-    assert isinstance(out["store"], _Store)
-    assert out["n"] == 5
 
 
 def test_replace_provider_last_write_wins() -> None:
