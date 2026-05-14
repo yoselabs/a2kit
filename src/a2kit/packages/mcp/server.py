@@ -415,7 +415,7 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
     container = app.container()
     dispatch_hook = app.dispatch_hook()
 
-    from a2kit._verbs import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
+    from a2kit._verb_validators import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
     for desc in app.tools():
         fn = desc.fn

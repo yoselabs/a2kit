@@ -52,9 +52,7 @@ The `__init__.py` count SHALL equal `2 + N + R` where:
 
 ### Requirement: Core source tree is at most 12 files
 
-The total count of Python source files at the top level of `src/a2kit/`
-(`src/a2kit/*.py`, excluding `__init__.py` and `__main__.py`, and
-excluding the `packages/` subtree) SHALL be at most 12.
+Core source SHALL contain at most 12 Python files at the top level of `src/a2kit/` (excluding `__init__.py`, `__main__.py`, and the `packages/` subtree).
 
 #### Scenario: Core file count under threshold
 - **WHEN** `find src/a2kit -maxdepth 1 -type f -name "*.py" -not -name "__init__.py" -not -name "__main__.py" | wc -l` is run
@@ -98,11 +96,7 @@ Source comments SHALL only document non-obvious **why** (hidden constraints, inv
 
 ### Requirement: `_APP_CTX` lives in `packages/cli/app_ctx`
 
-The shared `_APP_CTX: ContextVar` used by `build_full_cli` and
-`serve_command` to propagate the active `App` across lazy subcommand
-dispatches SHALL be defined in `a2kit.packages.cli.app_ctx`. Both adapters
-import from there. The previous Phase-3.1 location
-(`a2kit.packages.mcp.cli._APP_CTX`) is replaced; no compatibility re-export.
+`_APP_CTX: ContextVar` SHALL be defined exactly once, in `a2kit.packages.cli.app_ctx`, and SHALL be used by `build_full_cli` and `serve_command` to propagate the active `App` across lazy subcommand dispatches. The previous Phase-3.1 location (`a2kit.packages.mcp.cli._APP_CTX`) is replaced; no compatibility re-export.
 
 #### Scenario: Canonical location
 - **WHEN** the source tree is inspected

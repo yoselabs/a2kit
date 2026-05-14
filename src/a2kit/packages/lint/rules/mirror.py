@@ -55,6 +55,13 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # tests/test_list_verb.py, tests/test_timeout_decorator.py,
         # tests/test_audit_loud_failure.py, tests/test_decoration_warn_once.py.
         "src/a2kit/_verbs.py",
+        # why: pure introspection helpers for the verb decorators
+        # (return-shape validators + reserved-name guards) extracted
+        # from _verbs.py per tidy-review-followups to give _verbs.py
+        # headroom under the A2K014 SLOC budget; behavior covered
+        # indirectly through every verb-decorated tool's stamp call
+        # and the decoration-warn-once tests.
+        "src/a2kit/_verb_validators.py",
     }
 )
 

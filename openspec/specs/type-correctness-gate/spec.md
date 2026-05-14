@@ -30,10 +30,7 @@ The repository SHALL pass `uv run ty check src/` AND `uv run ty check tests/` wi
 
 ### Requirement: ty diagnostics suppressed only via inline `# ty: ignore[code]`
 
-In source files under `src/a2kit/`, ty diagnostics MAY be suppressed with
-inline `# ty: ignore[<rule-code>]` comments. Each such comment SHALL include
-a `# why:` explanation on the same line or the line above. The total count
-of `# ty: ignore` comments across `src/a2kit/` SHALL be ≤ 10.
+ty diagnostics in `src/a2kit/` SHALL only be suppressed via inline `# ty: ignore[<rule-code>]` comments. Each such comment SHALL include a `# why:` explanation on the same line or the line above. The total count of `# ty: ignore` comments across `src/a2kit/` SHALL be ≤ 10.
 
 #### Scenario: Inline ignore has rationale
 - **WHEN** a file contains `# ty: ignore[<code>]`
