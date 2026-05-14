@@ -33,6 +33,22 @@ app.singleton(BaseClass, factory)           # explicit base-type override
 `App` construction stays pure (no async work, no resource entry) — use
 that for wiring-only tests. `async with app:` is the only entry point.
 
+### Behaviour — singleton entry order is now DI-topological
+
+Singletons enter in topological order over the DI sub-graph restricted
+to the registered set; registration order is the tiebreaker between
+unrelated singletons. Previously singletons entered strictly in
+registration order.
+
+| Before                                                 | Now                                                          |
+|--------------------------------------------------------|--------------------------------------------------------------|
+| `app.singleton(Repo); app.singleton(DB)` → Repo enters first | `DB` enters first (Repo depends on DB via its factory)  |
+| Registration order strictly preserved                  | Registration order kept ONLY between unrelated singletons    |
+
+If a test asserts singleton entry order, switch the assertion to
+DI-topological order. Apps that already registered dependencies before
+their dependents see no change.
+
 ---
 
 ## v0.34 series (released prior to the v0.35 lifecycle consolidation)

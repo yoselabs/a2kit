@@ -70,7 +70,7 @@ def test_parse_timeout_bool_rejected() -> None:
 
 def test_parse_timeout_other_type_rejected() -> None:
     with pytest.raises(TypeError):
-        _parse_timeout([60])  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: intentional type mismatch — exercises error path or removed surface
+        _parse_timeout([60])  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
 
 
 # ----------------------------------------------------------- decorator stamps

@@ -42,7 +42,7 @@ def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
     class _R(a2kit.Router):
         slug = "r"
 
-        async def lifespan(self) -> None:  # type: ignore[override]  # ty: ignore[invalid-return-type]  # why: intentional type mismatch — exercises error path or removed surface
+        async def lifespan(self) -> None:  # type: ignore[override]  # ty: ignore[invalid-return-type]  # why: test fixture deliberately returns mismatched shape to exercise downstream branching
             yield
 
         @a2kit.read()
@@ -68,4 +68,4 @@ def test_unknown_app_kwarg_raises_standard_message() -> None:
 
 def test_a2kit_lifespan_module_removed() -> None:
     with pytest.raises(ImportError):
-        import a2kit.lifespan  # noqa: F401  # ty: ignore[unresolved-import]  # why: intentional type mismatch — exercises error path or removed surface
+        import a2kit.lifespan  # noqa: F401  # ty: ignore[unresolved-import]  # why: test exercises a removed/migrated import path to assert it raises

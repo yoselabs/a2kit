@@ -129,7 +129,7 @@ def test_enricher_fires_before_registration() -> None:
         # Enricher runs innermost; the outermost wire-error envelope
         # then wraps the enriched RuntimeError into ToolError(json).
         with pytest.raises(ToolError) as ei:
-            await bt.fn()  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
+            await bt.fn()  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
         payload = _json.loads(str(ei.value))
         assert payload["class"] == "RuntimeError"
         assert payload["message"] == "enriched: kaboom"

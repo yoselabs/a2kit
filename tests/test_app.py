@@ -46,7 +46,7 @@ def test_add_mcp_middleware_appends() -> None:
 def test_app_has_no_use_method() -> None:
     app = a2kit.App("p")
     with pytest.raises(AttributeError):
-        app.use(_Probe())  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
+        app.use(_Probe())  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
 
 
 def test_app_has_no_connect_method() -> None:

@@ -8,6 +8,8 @@ raises `AmbientContextMissing` — fail loud, never silently no-op.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
+from typing import Any
 
 import pytest
 
@@ -24,7 +26,7 @@ from a2kit.packages.cli.context import StderrToolContext
 from a2kit.packages.ldd import EventRegistry
 
 
-def _run(coro: asyncio.coroutines) -> None:  # ty: ignore[invalid-type-form]  # why: intentional type mismatch — exercises error path or removed surface
+def _run(coro: Coroutine[Any, Any, None]) -> None:
     asyncio.run(coro)
 
 

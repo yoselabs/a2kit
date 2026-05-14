@@ -15,7 +15,7 @@ def _reset_warn_once() -> None:
 
 
 def test_resolve_hints_returns_empty_dict_on_failure(caplog: pytest.LogCaptureFixture) -> None:
-    def fn(x: ThereIsNoSuchType) -> None:  # type: ignore[name-defined]  # noqa: F821, ARG001  # ty: ignore[unresolved-reference]  # why: intentional type mismatch — exercises error path or removed surface
+    def fn(x: ThereIsNoSuchType) -> None:  # type: ignore[name-defined]  # noqa: F821, ARG001  # ty: ignore[unresolved-reference]  # why: annotation references a deliberately-undefined name to trigger get_type_hints failure
         ...
 
     with caplog.at_level(logging.WARNING, logger="a2kit.signature"):
@@ -25,7 +25,7 @@ def test_resolve_hints_returns_empty_dict_on_failure(caplog: pytest.LogCaptureFi
 
 
 def test_resolve_hints_warns_once_per_qualname(caplog: pytest.LogCaptureFixture) -> None:
-    def fn(x: ThereIsNoSuchType) -> None:  # type: ignore[name-defined]  # noqa: F821, ARG001  # ty: ignore[unresolved-reference]  # why: intentional type mismatch — exercises error path or removed surface
+    def fn(x: ThereIsNoSuchType) -> None:  # type: ignore[name-defined]  # noqa: F821, ARG001  # ty: ignore[unresolved-reference]  # why: annotation references a deliberately-undefined name to trigger get_type_hints failure
         ...
 
     with caplog.at_level(logging.WARNING, logger="a2kit.signature"):

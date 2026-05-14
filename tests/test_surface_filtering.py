@@ -41,7 +41,7 @@ def test_cli_builder_mounts_all_tiers() -> None:
     from a2kit.packages.cli.builder import build_full_cli
 
     cli = build_full_cli(_app())
-    surf_group = cli.commands["surf"]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
+    surf_group = cli.commands["surf"]  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
     cmd_names = set(surf_group.commands.keys())
     assert "cli-only" in cmd_names or "cli_only" in cmd_names
     assert "hidden-op" in cmd_names or "hidden_op" in cmd_names
@@ -53,7 +53,7 @@ def test_cli_hidden_tier_marked_hidden_in_click() -> None:
     from a2kit.packages.cli.builder import build_full_cli
 
     cli = build_full_cli(_app())
-    surf_group = cli.commands["surf"]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
+    surf_group = cli.commands["surf"]  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
     # Resolve name (Typer kebab-cases by default).
     hidden_cmd_name = "hidden-op" if "hidden-op" in surf_group.commands else "hidden_op"
     hidden_cmd = surf_group.commands[hidden_cmd_name]
@@ -91,7 +91,7 @@ def test_default_visibility_visible_on_both() -> None:
     cli = build_full_cli(app)
     server = build_mcp_server(app)
 
-    surf_group = cli.commands["surf"]  # ty: ignore[unresolved-attribute]  # why: intentional type mismatch — exercises error path or removed surface
+    surf_group = cli.commands["surf"]  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
 
     async def _names() -> set[str]:
         return {t.name for t in await server.list_tools()}
