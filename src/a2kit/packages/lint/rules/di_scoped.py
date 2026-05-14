@@ -137,13 +137,30 @@ def rule_parameterized_lambda_factory(tree: ast.AST, filename: str, source: str)
 # --- A2K017 — Lazy[T] suggestion for conditional-use deps -----------------
 
 
+_PRIMITIVE_NAMES = frozenset({"str", "int", "float", "bool", "bytes", "None"})
+
+
+def _is_primitive_ann(ann: ast.expr) -> bool:
+    """True for ``str``/``int``/etc., ``X | None``, ``Optional[X]`` over primitives."""
+    if isinstance(ann, ast.Name) and ann.id in _PRIMITIVE_NAMES:
+        return True
+    if isinstance(ann, ast.Constant) and ann.value is None:
+        return True
+    # PEP 604: `X | None` parses as ``BinOp(left, BitOr, right)``.
+    if isinstance(ann, ast.BinOp) and isinstance(ann.op, ast.BitOr):
+        return _is_primitive_ann(ann.left) and _is_primitive_ann(ann.right)
+    # ``Optional[X]`` → Subscript(value=Name('Optional'), slice=X).
+    if isinstance(ann, ast.Subscript) and isinstance(ann.value, ast.Name) and ann.value.id == "Optional":
+        return _is_primitive_ann(ann.slice)
+    return False
+
+
 def _is_typed_param(arg: ast.arg) -> bool:
     """True when an arg has a non-trivial type annotation (not str/int/bool/etc)."""
     ann = arg.annotation
     if ann is None:
         return False
-    # Skip primitives and Lazy[T] (already optimized).
-    if isinstance(ann, ast.Name) and ann.id in {"str", "int", "float", "bool", "bytes", "None"}:
+    if _is_primitive_ann(ann):
         return False
     # Lazy[T] params already optimized; skip.
     return not (isinstance(ann, ast.Subscript) and isinstance(ann.value, ast.Name) and ann.value.id == "Lazy")

@@ -169,6 +169,35 @@ def test_a2k017_silent_for_str_primitive_params() -> None:
     assert _lazy_findings(src) == []
 
 
+def test_a2k017_silent_for_optional_primitive_pep604() -> None:
+    """``project_id: str | None`` is a primitive shape, not a DI candidate."""
+    src = """
+    import a2kit
+
+    @a2kit.read()
+    async def list_tasks(project_id: str | None = None) -> list:
+        if project_id is not None:
+            return [project_id]
+        return []
+    """
+    assert _lazy_findings(src) == []
+
+
+def test_a2k017_silent_for_optional_primitive_typing() -> None:
+    """``project_id: Optional[str]`` is a primitive shape, not a DI candidate."""
+    src = """
+    import a2kit
+    from typing import Optional
+
+    @a2kit.read()
+    async def list_tasks(project_id: Optional[str] = None) -> list:
+        if project_id is not None:
+            return [project_id]
+        return []
+    """
+    assert _lazy_findings(src) == []
+
+
 def test_a2k017_silent_when_already_lazy() -> None:
     src = """
     import a2kit
