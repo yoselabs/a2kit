@@ -143,42 +143,45 @@ def test_ambient_context_missing_mode_missing_ctx_param_message() -> None:
 
 
 class _NoCtxRouter(a2kit.Router):
-    """A router whose tool body calls LDD but the signature omits `ctx`."""
+    """A router whose tool body calls LDD but the signature omits `ctx`.
+
+    Post relax-ldd-ambient-requirement: dispatch synthesizes ambient
+    ctx for tools without a declared ctx param, so the LDD emission
+    here succeeds rather than raising Mode B.
+    """
 
     slug = "_noctx"
 
     @a2kit.read()
     async def fire(self) -> dict[str, str]:
-        # Intentional: no ctx param. Mode B should raise.
+        # No ctx param; LDD emits through the framework-synthesized ambient.
         await ldd_event("forbidden")
         return {"ok": "no"}
 
     tools = (fire,)
 
 
-def test_ambient_context_missing_mode_b_via_real_dispatch() -> None:
-    """v0.33 Mode B reachable through real dispatch — tool body uses LDD without `ctx` param.
+def test_ambient_dispatch_succeeds_without_ctx_param() -> None:
+    """Post relax-ldd-ambient-requirement: framework dispatch synthesizes
+    ambient ctx for every tool, regardless of signature. A tool body
+    that emits LDD without declaring ``ctx`` succeeds; the captured
+    event surfaces on the test client.
 
-    Post ``rebuild-test-client-on-real-context`` the test client routes
-    through the real MCP transport; the exception surfaces as
-    ``ToolError`` carrying the a2kit-owned envelope. The exception
-    class name is preserved in ``payload["class"]``; the Mode B
-    discrimination is preserved in the message text ("did not declare").
+    Mode B (`MODE_MISSING_CTX_PARAM`) becomes unreachable from a
+    framework dispatch; it still raises if external code manually
+    constructs ``ldd_state_for_call(ctx=None)`` (see the unit test
+    above), which is documented misuse.
     """
-    import json as _json
-
-    from fastmcp.exceptions import ToolError
-
     from a2kit.testing import client
 
     app = a2kit.App("noctx-dispatch").add_router(_NoCtxRouter())
 
     async def go() -> None:
         async with client(app) as c:
-            with pytest.raises(ToolError) as excinfo:
-                await c.invoke("fire")
-            payload = _json.loads(str(excinfo.value))
-            assert payload["class"] == "AmbientContextMissing"
-            assert "did not declare" in payload["message"]
+            result = await c.invoke("fire")
+            # Tool body returned its sentinel; no AmbientContextMissing.
+            assert result == {"ok": "no"}
+            # LDD emission reached the test client's event capture.
+            assert any(e["name"] == "forbidden" for e in c.events), f"event 'forbidden' missing from captures: {c.events}"
 
     asyncio.run(go())

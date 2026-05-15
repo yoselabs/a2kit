@@ -165,88 +165,92 @@ At registration time (whether via decoration or via
 
 ### Requirement: LDD primitives require an active tool dispatch
 
-The library's LDD primitives (`a2kit.ldd.event`, `a2kit.ldd.report`, `a2kit.ldd.log`, `a2kit.ldd.debug`, `a2kit.ldd.info`, `a2kit.ldd.warning`, `a2kit.ldd.error`, and `EventRegistry.emit_typed`) SHALL be callable only from code paths reached during an active tool dispatch — that is, while the dispatcher's ambient `ldd_state_for_call` scope is in effect for the current task. This includes:
+LDD primitives (`a2kit.ldd.event` / `report` / `log` / `debug` / `info` / `warning` / `error` and `EventRegistry.emit_typed`) SHALL be callable from any code path reached during an active tool dispatch — that is, while the dispatcher's ambient `ldd_state_for_call` scope is in effect for the current task. This includes:
 
-- the tool body itself,
+- the tool body itself (whether or not it declares `ctx`),
 - helper functions and coroutines it calls directly or indirectly,
 - async tasks spawned via `asyncio.gather`, `create_task`, or `TaskGroup`
   (Python's `contextvars` copy-on-task semantics carry the ambient ctx
   into the spawned task), and
-- DI factories (including `app.singleton` async factories) instantiated
+- DI factories (including `app.provide` async factories) instantiated
   *lazily during dispatch* as a dependency of the running tool.
 
 The primitives SHALL NOT be callable from any pre-dispatch context:
 lifecycle hooks (`on_startup`, `on_shutdown`), module-import-time code,
 or any other code path running outside an active `ldd_state_for_call`
-scope. Violations SHALL raise `AmbientContextMissing` rather than
-silently no-op.
+scope. Violations SHALL raise `AmbientContextMissing` (Mode A) rather
+than silently no-op.
 
-The `OPERATIONAL_CONTRACTS.md` document SHALL include an explicit clause
-stating this rule, so downstream apps know where LDD telemetry is and is
-not legal.
+The `OPERATIONAL_CONTRACTS.md` document SHALL include an explicit
+clause stating this rule, so downstream apps know where LDD telemetry
+is and is not legal.
 
-#### Scenario: tool body usage is legal
+#### Scenario: tool body usage is legal regardless of ctx declaration
 
-- **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext) -> None: await a2kit.ldd.event("x", k=1)`
-- **WHEN** the tool runs under any transport (MCP, CLI, TestClient)
-- **THEN** the event is delivered and no exception is raised
+- **GIVEN** two tools, one declaring `ctx: a2kit.ToolContext` and one not, both calling `await a2kit.ldd.event("x", k=1)` in their bodies
+- **WHEN** each tool runs under any transport
+- **THEN** both events are delivered to sinks and no exception is raised
+- **AND** the wire emission (MCP log notification or CLI stderr line) fires for both
 
-#### Scenario: lifecycle hook usage raises
+#### Scenario: lifecycle hook usage still raises
 
 - **GIVEN** an `on_startup` hook calling `await a2kit.ldd.info("booting")`
 - **WHEN** the app starts up
-- **THEN** the lifecycle dispatch surfaces `AmbientContextMissing`
+- **THEN** the lifecycle dispatch surfaces `AmbientContextMissing` (Mode A)
 
 #### Scenario: lazy singleton factory during dispatch is legal
 
 - **GIVEN** an async singleton factory registered via
-  `app.singleton(Pool, async_factory)` where `async_factory` body calls
+  `app.provide(Pool, async_factory)` where `async_factory` body calls
   `await a2kit.ldd.info("pool initializing")`
 - **AND** the singleton has not yet been instantiated when a tool dispatch begins
 - **WHEN** the tool resolves `Pool` for the first time during its dispatch,
   causing `async_factory` to run inside the dispatch's ambient ctx scope
 - **THEN** the LDD primitive in the factory body SHALL succeed and emit
-  the event normally; `AmbientContextMissing` SHALL NOT be raised
-
-#### Scenario: contract documented in OPERATIONAL_CONTRACTS.md
-
-- **WHEN** a reader opens `OPERATIONAL_CONTRACTS.md`
-- **THEN** there is a section naming the LDD primitives and stating that
-  they require an active tool dispatch, and explicitly clarifying that
-  lazy DI factories instantiated during dispatch ARE legal call sites
-  while lifecycle hooks, module init, and other pre-dispatch contexts
-  are NOT
+  the event normally
 
 ### Requirement: `AmbientContextMissing` distinguishes pre-dispatch vs missing-ctx-param failure modes
 
-When an LDD primitive raises `AmbientContextMissing`, the exception message SHALL distinguish two failure modes so the author sees an actionable hint at the call site:
+The library SHALL raise `AmbientContextMissing` only when an LDD
+primitive is called outside an active tool dispatch (Mode A). Inside
+any framework dispatch, the ambient `ctx` is guaranteed non-None —
+the dispatcher's wrapper synthesizes it for every dispatched tool,
+regardless of whether the tool's signature declares
+`ctx: a2kit.ToolContext`.
 
-- **Mode A — no active dispatch.** The dispatcher's ambient `ldd_state_for_call` scope is not in effect (contextvar unset). This covers module-import-time calls, pre-dispatch lifecycle code, and orphan task contexts. The message SHALL state "called outside an active tool dispatch" and point at the standard remediation (move into a tool body, or use the test harness's `ldd_state_for_call(ctx=...)` context manager).
+The `AmbientContextMissing.MODE_MISSING_CTX_PARAM` constant SHALL be
+retained for backward-compatible external reference but SHALL be
+documented as historical: no framework code path raises it. Tools
+whose body does not declare `ctx` no longer trip Mode B — LDD
+primitives emit through the framework-synthesized ambient ctx.
 
-- **Mode B — dispatch active but tool body did not declare `ctx`.** The contextvar IS set (the dispatcher entered a scope) but `state.ctx is None` because the tool function does not declare a `ctx: a2kit.ToolContext` parameter. The message SHALL state that the tool body called an LDD primitive without declaring the `ctx` parameter, and SHALL instruct the author to add `ctx: a2kit.ToolContext` to the tool signature (the dispatcher will bind it ambient) or remove the LDD call.
+Mode A (`no active dispatch`) continues to fire for module-import-time
+calls, pre-dispatch lifecycle code (`on_startup` / `on_shutdown`),
+and orphan task contexts.
 
-Both modes SHALL raise the same exception class (`AmbientContextMissing`); only the message differs.
+This change aligns the framework with LDD's log-driven-development
+purpose: structured log emission (sink-side) is the primary value;
+wire-side emission is incidental and never gates whether the
+primitive succeeds.
 
-#### Scenario: Mode A — pre-dispatch call
+#### Scenario: Mode A — pre-dispatch call still raises
 
 - **GIVEN** code at module top level calling `a2kit.ldd.event("x", k=1)`
 - **WHEN** the module is imported
 - **THEN** `AmbientContextMissing` is raised
 - **AND** the message contains "called outside an active tool dispatch"
-- **AND** the message points at the test harness's `ldd_state_for_call(ctx=...)` context manager as a remediation
 
-#### Scenario: Mode B — tool body without ctx parameter
+#### Scenario: Tool without ctx param inside dispatch — no raise
 
-- **GIVEN** a tool `async def t(self, *, x: int) -> int:` (no `ctx` declared) whose body calls `await a2kit.ldd.event("y", k=1)`
-- **WHEN** the tool runs under any transport
-- **THEN** `AmbientContextMissing` is raised
-- **AND** the message identifies the failure as "tool body did not declare `ctx: a2kit.ToolContext` as a parameter"
-- **AND** the message instructs the author to add the `ctx` parameter or remove the LDD call
+- **GIVEN** a tool `async def fetch(*, url: str) -> dict: await a2kit.ldd.event("fetch", url=url); return {}`
+- **WHEN** the tool runs under any transport (MCP, CLI, TestClient)
+- **THEN** `AmbientContextMissing` is NOT raised
+- **AND** the event is captured by all configured sinks
+- **AND** the wire side emits via the synthesized ambient ctx (MCP log notification or CLI stderr line)
 
-#### Scenario: Tool body with ctx parameter still works
+#### Scenario: MODE_MISSING_CTX_PARAM constant preserved
 
-- **GIVEN** a tool `async def t(self, *, ctx: a2kit.ToolContext, x: int) -> int:` whose body calls `await a2kit.ldd.event("y", k=1)`
-- **WHEN** the tool runs under any transport
-- **THEN** no exception is raised
-- **AND** the event is delivered normally
+- **WHEN** external code references `AmbientContextMissing.MODE_MISSING_CTX_PARAM`
+- **THEN** the attribute resolves to a string value
+- **AND** no framework code path raises with that mode
 

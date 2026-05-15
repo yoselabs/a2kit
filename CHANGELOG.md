@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Changed — LDD primitives work without `ctx` in tool signature
+
+Closes a2web round-10 Friction B. The MCP wrapper now synthesizes a
+`_a2kit_ctx` parameter into the rewritten signature for every tool
+whose body does not declare `ctx`, so FastMCP injects ctx
+unconditionally and a2kit extracts it for ambient binding. The CLI
+runtime mirrors the change: `StderrToolContext()` is synthesized for
+ambient binding even when the tool body doesn't declare ctx. Result:
+**ambient `ctx` is non-None inside any framework dispatch**, and LDD
+primitives no longer raise `AmbientContextMissing.MODE_MISSING_CTX_PARAM`
+from a dispatched tool body.
+
+Consumers can drop `ctx: a2kit.ToolContext` parameters from tools
+that didn't actually use ctx in the body. The `del ctx` ceremony
+is gone.
+
+`MODE_MISSING_CTX_PARAM` constant is retained for backward
+compatibility but is now unreachable from framework code paths. The
+raise still fires for external misuse: manually entering
+`ldd_state_for_call(ctx=None)` and then calling an LDD primitive
+preserves the loud-fail (this is the only documented misuse path).
+
+Why this aligns with LDD: LDD = Log-Driven Development. The primary
+audience for LDD output is a post-hoc reader (an AI agent diagnosing
+what happened from structured logs), not a live wire observer. Sink
+emission is the core value; wire emission is the secondary live-UX
+nicety. Gating sink emission on wire-side availability was incidental
+complexity; removing that gate aligns behavior with intent.
+
+Companion: `_wrap_with_dispatch_hook` now preserves the original
+function's return annotation in the rewritten signature
+(`__signature__.return_annotation` + `__annotations__["return"]`).
+Previously this was set only on `__annotations__`, which the
+PEP 362 path skips when `__signature__` is present — masked by the
+prior early-exit for tools without DI injectables; surfaced now that
+the wrapper runs for ctx-synthesis even on those tools.
+
 ### Added — `a2kit.testing` helpers
 
 Three helpers ship to delete boilerplate every consumer's

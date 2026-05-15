@@ -361,13 +361,24 @@ register it through an internal builder (see
 their `ctx` from an ambient `ContextVar` set by the dispatcher for the
 duration of one tool invocation. They take NO `ctx` argument.
 
-"Active dispatch" is the conjunction of two conditions: a tool body
-is currently running under an `ldd_state_for_call(ctx=...)` scope
-**and** the tool declared a `ctx: ToolContext` parameter that the
-dispatcher bound. Either missing — calling from module-level code,
-`@on_startup`, `@on_shutdown`, any other pre-dispatch context, or
-from inside a tool that omitted its `ctx` declaration — raises
-`a2kit.exceptions.AmbientContextMissing`.
+"Active dispatch" means: a tool body (or any helper / phase function
+it transitively calls) is currently running under an
+`ldd_state_for_call(ctx=...)` scope that the framework opened around
+the dispatch. The dispatcher synthesizes a non-None ambient `ctx` for
+**every** framework-dispatched tool, regardless of whether the tool's
+body declares `ctx: ToolContext` in its signature. Calling from
+module-level code, `@on_startup`, `@on_shutdown`, or any other
+pre-dispatch context raises `a2kit.exceptions.AmbientContextMissing`
+(Mode A — "no active dispatch"). Calling from inside a tool that
+omitted its `ctx` declaration **does not raise** — the framework's
+synthesized ambient ctx handles it (relax-ldd-ambient-requirement,
+2026-05-15).
+
+The legacy Mode B (`MODE_MISSING_CTX_PARAM`) constant is retained
+for backward compatibility but is unreachable from framework code
+paths. The raise still fires for external misuse, e.g. manually
+constructing `ldd_state_for_call(ctx=None)` and then calling an LDD
+primitive — that's documented misuse, not a normal path.
 
 Lazy singleton factories instantiated **during** a dispatch are
 reachable from the active scope and may call LDD primitives. The
@@ -391,10 +402,14 @@ the delegated-to `a2kit.ldd.log`. The error names the primitive and
 points at the test seam. **There is no silent no-op fallback**; fail
 loud, fix the call site.
 
-The failure mode is uniform across all three transports (MCP / CLI /
-TestClient): none of them synthesize a fake context when the tool
-omits `ctx`. A no-ctx tool that calls `await a2kit.ldd.event(...)`
-raises identically on every dispatcher.
+The "active dispatch" behavior is uniform across all three transports
+(MCP / CLI / TestClient): all of them synthesize a non-None ambient
+ctx for every dispatched tool, so a no-ctx tool that calls
+`await a2kit.ldd.event(...)` succeeds identically on every
+dispatcher. The wire-side emission goes through whichever concrete
+context the active transport provided (real `fastmcp.Context` for
+MCP / TestClient, `StderrToolContext` for CLI); the sink-side
+emission fires unconditionally inside any dispatch.
 
 Tests that want to exercise LDD primitives directly (without a full
 tool dispatch) have two paths:

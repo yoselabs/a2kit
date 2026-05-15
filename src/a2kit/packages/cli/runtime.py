@@ -62,9 +62,19 @@ async def _invoke_tool_in_process(
         # ctx + LDD scope + optional timeout wrap the fn body — all run
         # INSIDE the dispatch async-with so per-call cleanups see the
         # propagating exception (if any).
+        #
+        # Post relax-ldd-ambient-requirement: ambient ctx is always
+        # non-None inside a framework dispatch. When the tool declared
+        # ctx, inject the synthesized StderrToolContext into call_kwargs
+        # so the body receives it. When the tool did NOT declare ctx,
+        # still synthesize a StderrToolContext for ambient binding but
+        # do NOT inject into call_kwargs (the body has no such param).
         if ctx_param_name and ctx_param_name not in call_kwargs:
             call_kwargs[ctx_param_name] = StderrToolContext()
-        ctx_for_ldd: Any = call_kwargs.get(ctx_param_name) if ctx_param_name else None
+        if ctx_param_name:
+            ctx_for_ldd: Any = call_kwargs.get(ctx_param_name)
+        else:
+            ctx_for_ldd = StderrToolContext()
 
         with ldd_state_for_call(
             ctx=ctx_for_ldd,

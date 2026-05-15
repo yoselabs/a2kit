@@ -65,24 +65,32 @@ def _wrap_with_ldd_state(
     """Set the per-call LDD contextvar (including the ambient ``ctx``)
     before invoking ``fn``.
 
-    The tool's signature is preserved unchanged; ``ctx: a2kit.ToolContext``
-    (= ``fastmcp.Context``) is injected directly by FastMCP when declared.
-    The free functions ``a2kit.ldd.event``/``report``/``log`` (and
-    shorthands) read the ambient ``_LDD_STATE`` set here — tool authors
-    and helper functions never pass ``ctx`` explicitly.
+    Post relax-ldd-ambient-requirement: ambient ``ctx`` is always
+    non-None inside a framework dispatch. When the tool declared
+    ``ctx``, the dispatcher reads it from kwargs by the declared name.
+    When the tool did NOT declare ctx, the rewritten wrapper signature
+    carries a synthesized ``_a2kit_ctx`` parameter
+    (see :data:`SYNTHESIZED_CTX_PARAM_NAME`); FastMCP injects ctx by
+    type, and the wrapper extracts via that synthesized name. In
+    either case, the wrapper pops the synthesized name from kwargs
+    before invoking ``fn`` so the tool body never sees a kwarg it
+    didn't declare.
 
-    When ``ctx_param_name`` is ``None`` (tool doesn't declare ctx), the
-    LDD scope is still entered with ``ctx=None`` so LDD primitives raise
-    ``AmbientContextMissing`` in Mode B (`missing_ctx_param`) rather
-    than Mode A (`no_dispatch`). This matches the CLI runtime's
-    unconditional ``ldd_state_for_call`` binding at
-    ``cli/runtime.py:42-58`` for cross-transport parity.
+    The free functions ``a2kit.ldd.event``/``report``/``log`` (and
+    shorthands) read the ambient ``_LDD_STATE`` set here — tool
+    authors and helper functions never pass ``ctx`` explicitly.
     """
     from a2kit.ldd import ldd_state_for_call
 
     @functools.wraps(fn)
     async def _wrapped(*args: Any, **kwargs: Any) -> Any:
-        ctx_obj = kwargs.get(ctx_param_name) if ctx_param_name else None
+        if ctx_param_name:
+            ctx_obj = kwargs.get(ctx_param_name)
+        else:
+            # Tool body did not declare ctx; the rewritten signature
+            # carries the synthesized name so FastMCP injected ctx.
+            # Pop so the body never sees the framework-internal kwarg.
+            ctx_obj = kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
         with ldd_state_for_call(
             ctx=ctx_obj,
             events_enabled=events_enabled,
@@ -264,8 +272,14 @@ def _wrap_with_dispatch_hook(
     wire_params, wire_scopes_needed = wire_input_params(fn, container)
     needs_conn = "connection" in wire_scopes_needed
 
-    if not _has_injectables(fn, container):
-        return fn  # no rewrite needed
+    # Skip wrapping only when there's truly nothing to do: no DI
+    # injectables AND the tool already declares ctx (so FastMCP can
+    # introspect ctx from fn's original signature without our help).
+    # Post relax-ldd-ambient-requirement: tools without a declared
+    # ctx still need a wrapper to synthesize ``_a2kit_ctx`` into the
+    # rewritten signature so FastMCP injects ctx for ambient binding.
+    if not _has_injectables(fn, container) and ctx_param_name is not None:
+        return fn  # ctx already in fn's signature, no DI to wire; no rewrite needed
 
     @functools.wraps(fn)
     async def _wrapped(**kwargs: Any) -> Any:
@@ -274,7 +288,15 @@ def _wrap_with_dispatch_hook(
         # invoking fn. The dispatch helper filters merged kwargs to fn's
         # declared params, so unrecognized keys are dropped anyway, but
         # explicitly partitioning avoids surprising the hook author.
+        #
+        # Post relax-ldd-ambient-requirement: tools without ctx in
+        # signature have a synthesized ``_a2kit_ctx`` in the rewritten
+        # wrapper signature (so FastMCP still injects). Pop it here so
+        # the dispatch hook + tool body never see the framework-internal
+        # name; the LDD wrapper (which runs inside `fn`'s wrapper chain)
+        # already extracted it for ambient binding.
         ctx_value = kwargs.pop(ctx_param_name, None) if ctx_param_name else None
+        kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
         async with app._resolver.dispatch(fn, kwargs, pre_hook=hook) as merged:
             if ctx_param_name is not None and ctx_value is not None:
                 merged[ctx_param_name] = ctx_value
@@ -303,27 +325,57 @@ def _wrap_with_dispatch_hook(
             )
         )
     _ensure_ctx_in_rewritten_signature(fn, new_params, ctx_param_name)
+    _install_rewritten_signature(fn, _wrapped, new_params)
+    return _wrapped
 
-    # ``__signature__`` is an established convention for callable objects
-    # (PEP 362) but isn't part of the static function-attribute set, so we
-    # set it via ``setattr`` to keep the type checker happy without a
-    # suppression marker.
-    setattr(_wrapped, "__signature__", inspect.Signature(parameters=new_params))  # noqa: B010
-    # Preserve return annotation for output-schema gen.
+
+def _install_rewritten_signature(
+    fn: Any,
+    wrapped: Any,
+    new_params: list[inspect.Parameter],
+) -> None:
+    """Set ``wrapped.__signature__`` and ``wrapped.__annotations__["return"]``
+    to mirror ``fn``'s return type while exposing only ``new_params``
+    on the wire side.
+
+    Without this, tools with structured return types (``list[_Item]``,
+    Pydantic models, etc.) lose their FastMCP output-schema after the
+    rewrite. Decoration must not raise; failures degrade to leaving
+    the return type unset and a one-shot WARN line.
+    """
+    ret_ann: Any = inspect.Signature.empty
     try:
         from typing import get_type_hints
 
-        ret = get_type_hints(fn).get("return")
-        if ret is not None:
-            ann = dict(getattr(_wrapped, "__annotations__", {}))
-            ann["return"] = ret
-            _wrapped.__annotations__ = ann
+        ret_ann = get_type_hints(fn).get("return", inspect.Signature.empty)
     except Exception as exc:  # noqa: BLE001 -- decoration must not raise; degrade observably
         name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
         if name not in _WARN_ONCE:
             _WARN_ONCE.add(name)
-            _log.warning("_wrap_with_dispatch_hook: failed to copy return annotation for %s: %s", name, exc)
-    return _wrapped
+            _log.warning("_wrap_with_dispatch_hook: failed to resolve return annotation for %s: %s", name, exc)
+
+    # ``__signature__`` is the PEP 362 introspection target FastMCP
+    # consults; setattr keeps the type checker happy without
+    # suppression markers.
+    setattr(  # noqa: B010
+        wrapped,
+        "__signature__",
+        inspect.Signature(parameters=new_params, return_annotation=ret_ann),
+    )
+    # Defensive fallback for any path that reads __annotations__ directly.
+    if ret_ann is not inspect.Signature.empty:
+        ann = dict(getattr(wrapped, "__annotations__", {}))
+        ann["return"] = ret_ann
+        wrapped.__annotations__ = ann
+
+
+#: Framework-reserved parameter name used when synthesizing a ctx
+#: parameter into the rewritten MCP wrapper signature for tools whose
+#: body does not declare ``ctx``. The single-underscore prefix is the
+#: standard "private-ish" Python convention; the ``_a2kit_`` prefix is
+#: reserved by the framework. Tool body authors never see this name —
+#: the wrapper pops it from kwargs before invoking the body.
+SYNTHESIZED_CTX_PARAM_NAME = "_a2kit_ctx"
 
 
 def _ensure_ctx_in_rewritten_signature(
@@ -331,24 +383,57 @@ def _ensure_ctx_in_rewritten_signature(
     new_params: list[inspect.Parameter],
     ctx_param_name: str | None,
 ) -> None:
-    """Append the tool's original ``ctx`` Parameter to ``new_params`` so
-    FastMCP introspects it and binds the live ``Context`` at call time.
+    """Append a ``ctx`` Parameter to ``new_params`` so FastMCP
+    introspects it and binds the live ``Context`` at call time.
 
-    Raises :class:`A2KitContextBindingBroken` if the invariant is broken
-    post-append (defensive guard against future wrapper-chain changes).
+    Two cases per relax-ldd-ambient-requirement:
+
+    1. **Tool declared ctx** (``ctx_param_name`` is set): re-append the
+       tool's original ``Parameter`` (preserves the consumer's chosen
+       name + annotation). The wrapper later passes ctx through to the
+       tool body kwargs.
+    2. **Tool did NOT declare ctx**: synthesize a Parameter named
+       ``_a2kit_ctx`` annotated ``fastmcp.Context`` (the resolved class,
+       not a string). FastMCP injects ctx based on the type annotation
+       regardless of name. The wrapper extracts via the synthesized
+       name into ambient state, then pops it before invoking the body
+       (the tool's original signature has no such param).
+
+    The result is a framework-level invariant: every dispatched tool's
+    rewritten signature includes a ctx Parameter, so ambient ctx is
+    always non-None inside any framework dispatch.
+
+    Raises :class:`A2KitContextBindingBroken` if the post-append
+    invariant is broken (defensive guard against future wrapper-chain
+    changes).
     """
     from a2kit.exceptions import A2KitContextBindingBroken
 
-    if not ctx_param_name:
+    if ctx_param_name:
+        if ctx_param_name not in {p.name for p in new_params}:
+            orig_ctx_param = inspect.signature(fn).parameters[ctx_param_name]
+            new_params.append(orig_ctx_param.replace(kind=inspect.Parameter.KEYWORD_ONLY))
+        if ctx_param_name not in {p.name for p in new_params}:
+            raise A2KitContextBindingBroken(
+                fn_name=getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>")),
+                ctx_param_name=ctx_param_name,
+            )
         return
-    if ctx_param_name not in {p.name for p in new_params}:
-        orig_ctx_param = inspect.signature(fn).parameters[ctx_param_name]
-        new_params.append(orig_ctx_param.replace(kind=inspect.Parameter.KEYWORD_ONLY))
-    if ctx_param_name not in {p.name for p in new_params}:
-        raise A2KitContextBindingBroken(
-            fn_name=getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>")),
-            ctx_param_name=ctx_param_name,
+
+    # Tool did not declare ctx: synthesize one so FastMCP injects ctx
+    # for ambient state binding. The body never sees this kwarg — the
+    # wrapper pops it before calling fn.
+    if SYNTHESIZED_CTX_PARAM_NAME in {p.name for p in new_params}:
+        return  # consumer collision? defensive — should never happen given _a2kit_ prefix
+    import fastmcp
+
+    new_params.append(
+        inspect.Parameter(
+            name=SYNTHESIZED_CTX_PARAM_NAME,
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation=fastmcp.Context,
         )
+    )
 
 
 def _has_injectables(fn: Any, container: Any) -> bool:
@@ -458,11 +543,12 @@ def build_mcp_server(app: Any, **fastmcp_kwargs: Any) -> FastMCP:
                 app,
                 ctx_param_name=meta.context_param_name,
             )
-        # Always enter the LDD scope, even for no-ctx tools, so LDD
-        # primitives called without a declared ctx raise
-        # ``AmbientContextMissing`` in Mode B (`missing_ctx_param`)
-        # rather than Mode A (`no_dispatch`). Cross-transport parity
-        # with the CLI runtime (cli/runtime.py:42-58).
+        # Always enter the LDD scope. Post relax-ldd-ambient-requirement,
+        # the dispatch-hook wrapper synthesizes ctx into the rewritten
+        # signature for tools whose body doesn't declare ``ctx``; the
+        # ldd_state wrapper extracts it from the synthesized name so
+        # ambient ``ctx`` is always non-None inside any dispatch.
+        # Cross-transport parity with the CLI runtime (cli/runtime.py).
         wrapped = _wrap_with_ldd_state(
             wrapped,
             ctx_param_name=meta.context_param_name,
