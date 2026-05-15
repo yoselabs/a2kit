@@ -15,6 +15,8 @@ CLI invocation will fail with a clear error message::
 
 from __future__ import annotations
 
+from fastmcp import Context as FastMCPContext
+
 import a2kit
 
 
@@ -22,7 +24,7 @@ class TextRouter(a2kit.Router):
     slug = "text"
 
     @a2kit.read(open_world=True, title="Summarize via LLM Sampling")
-    async def summarize(self, *, ctx: a2kit.ToolContext, text: str) -> dict[str, str]:
+    async def summarize(self, *, ctx: FastMCPContext, text: str) -> dict[str, str]:
         """Summarize ``text`` by asking the MCP client to sample its LLM.
 
         On MCP transport this returns the LLM's summary string. On CLI

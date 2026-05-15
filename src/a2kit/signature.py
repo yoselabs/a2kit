@@ -40,17 +40,23 @@ def resolve_hints(fn: Callable[..., Any]) -> dict[str, Any]:
 
 
 def _is_tool_context(ann: Any) -> bool:
-    """Identity check for the ``a2kit.ToolContext`` annotation.
+    """Identity check for the ``a2kit.ToolContext`` Protocol annotation.
 
-    Cold-start preserving: only consults ``sys.modules`` for ``fastmcp``. If
-    fastmcp hasn't been imported in this process, the annotation cannot be
-    ``fastmcp.Context`` (its class identity wouldn't exist), so we
-    short-circuit. If fastmcp has been imported, identity-compare against
-    ``fastmcp.Context``. The lazy ``a2kit.ToolContext`` re-export triggers
-    fastmcp import only when a user accesses the symbol.
+    Primary path: match the a2kit-owned ``ToolContext`` Protocol. The Protocol
+    lives in ``a2kit._context_protocol`` and is the canonical contract.
+
+    Backward-compat path: consumers who annotated ``ctx: fastmcp.Context``
+    directly (bypassing ``a2kit.ToolContext``) still match — when fastmcp
+    is loaded, identity-compare against ``fastmcp.Context`` as a secondary
+    check. Cold-start preserved: we only consult ``sys.modules`` for fastmcp,
+    so a bare ``import a2kit`` still does not pull fastmcp.
     """
     if ann is None or ann is inspect.Parameter.empty:
         return False
+    from a2kit._context_protocol import ToolContext as _ToolContextProto
+
+    if ann is _ToolContextProto:
+        return True
     import sys as _sys
 
     fastmcp_mod = _sys.modules.get("fastmcp")
@@ -63,8 +69,8 @@ def _is_optional_tool_context(ann: Any) -> bool:
     """Detect ``Context | None`` / ``Optional[Context]`` / ``Union[Context, None]``.
 
     Returns ``True`` when the annotation is a Union/Optional whose members
-    include both ``fastmcp.Context`` (or its ``a2kit.ToolContext`` re-export)
-    and ``NoneType``. This shape is rejected by ``find_context_param``: the
+    include both a ToolContext-shaped type (``a2kit.ToolContext`` Protocol or
+    ``fastmcp.Context``) and ``NoneType``. Rejected by ``find_context_param``: the
     dispatcher always binds ``ctx`` when declared, so the Optional form is
     misleading typing with no runtime path producing ``None``.
     """

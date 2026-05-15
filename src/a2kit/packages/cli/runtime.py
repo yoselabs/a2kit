@@ -75,6 +75,8 @@ async def _invoke_tool_in_process(
             ctx_for_ldd: Any = call_kwargs.get(ctx_param_name)
         else:
             ctx_for_ldd = StderrToolContext()
+        # why: post relax-ldd-ambient-requirement, CLI always synthesizes a
+        # StderrToolContext for ambient binding; ctx_for_ldd is never None.
 
         with ldd_state_for_call(
             ctx=ctx_for_ldd,

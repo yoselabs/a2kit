@@ -46,6 +46,8 @@ from a2kit.exceptions import AmbientContextMissing, ReportTypeMismatch, ReportTy
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
+    from a2kit._context_protocol import ToolContext
+
 
 #: Process-start timestamp; used as the ``elapsed_ms`` basis when LDD calls
 #: happen outside a tool dispatch (e.g. lifecycle hooks).
@@ -171,7 +173,7 @@ def _elapsed_ms_from(state: _LddState) -> int:
 @contextlib.contextmanager
 def ldd_state_for_call(
     *,
-    ctx: Any,
+    ctx: ToolContext,
     events_enabled: bool = True,
     reports_enabled: bool = True,
     report_type: type | None = None,

@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from fastmcp import Context as ToolContext  # noqa: A2K-IMPORT-DISCIPLINE
-
+    from a2kit._context_protocol import ToolContext as ToolContext
     from a2kit.app import App
     from a2kit.exceptions import A2KitError
     from a2kit.routers import Router
@@ -21,7 +20,7 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "read": ("a2kit.tool", "read"),
     "write": ("a2kit.tool", "write"),
     "list_": ("a2kit.tool", "list_"),
-    "ToolContext": ("fastmcp", "Context"),
+    "ToolContext": ("a2kit._context_protocol", "ToolContext"),
     "A2KitError": ("a2kit.exceptions", "A2KitError"),
     "HealthResult": ("a2kit.packages.health", "HealthResult"),
 }

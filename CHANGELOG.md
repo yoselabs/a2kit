@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Changed — `a2kit.ToolContext` is now a Protocol
+
+`a2kit.ToolContext` is no longer a lazy re-export of `fastmcp.Context`; it
+is an a2kit-owned `@runtime_checkable typing.Protocol` declared in
+`a2kit._context_protocol`. The Protocol names the cross-transport contract
+(log family, `report_progress`, `request_id`, `client_id`, `elicit`,
+state-store methods); concrete implementations satisfy it structurally —
+`fastmcp.Context` under MCP, `StderrToolContext` under CLI, future
+transports plug in without subclassing.
+
+Identity change: `a2kit.ToolContext is fastmcp.Context` is now `False`
+(previously `True`). Consumer code annotating `ctx: a2kit.ToolContext`
+continues to work unchanged — both impls satisfy the Protocol. Tools
+needing MCP-only methods (`sample`, `list_resources`, `send_notification`)
+should annotate `ctx: fastmcp.Context` directly.
+
+The MCP wrapper rewrites the ctx parameter annotation in the generated
+signature/annotations to `fastmcp.Context` before FastMCP schema
+generation (pydantic cannot schema-generate Protocols). Cold-start
+budget preserved — the Protocol lives in a2kit; bare `import a2kit`
+still leaves `fastmcp` absent from `sys.modules`.
+
+Companion: `ldd_state_for_call(ctx=...)` parameter is now typed
+`ToolContext` (was `Any`). Static type checkers reject
+`ldd_state_for_call(ctx=None)`; the runtime Mode B raise remains a
+defense-in-depth backstop for code paths that bypass typing.
+`StderrToolContext` now exposes `request_id` (per-instance UUID4 hex)
+and `client_id` (`None` on CLI) so it structurally conforms to the
+Protocol.
+
 ### Changed — LDD primitives work without `ctx` in tool signature
 
 Closes a2web round-10 Friction B. The MCP wrapper now synthesizes a

@@ -43,6 +43,13 @@
 
 - [ ] 5.1 The function itself doesn't change. Update its docstring (`packages/ldd/__init__.py:211-228`) to clarify it's about *wire-format dispatch* (real fastmcp uses `ctx.log(extra=...)`; other impls use `_emit`), not about contract identity.
 
+## 5b. Tighten `ldd_state_for_call` ctx annotation
+
+- [ ] 5b.1 Change `ldd_state_for_call(*, ctx: Any, ...)` to `ctx: ToolContext` at `packages/ldd/__init__.py:172`. Type checker now rejects `ldd_state_for_call(ctx=None)`; runtime Mode B raise stays as a backstop for code that bypasses typing.
+- [ ] 5b.2 Internal call sites in `mcp/server.py` (`_wrap_with_ldd_state`) and `cli/runtime.py` (`_invoke_tool_in_process`) currently get `ctx_obj` from `kwargs.get(...)` / `kwargs.pop(..., None)` — typed `Any | None`. Add `assert ctx_obj is not None` after extraction with a `why:` comment explaining the post-relax invariant.
+- [ ] 5b.3 The Mode B unit test (`tests/test_ambient_ldd_ctx.py::test_ambient_context_missing_mode_missing_ctx_param_message`) explicitly passes `ctx=None` to test misuse. Add `# type: ignore[arg-type]` with a comment noting this is intentional misuse coverage.
+- [ ] 5b.4 Verify `make lint` + `uv run ty check src/` stay green after the changes.
+
 ## 6. Update `a2kit.ToolContext`-related docstrings / references
 
 - [ ] 6.1 Sweep `src/a2kit/**/*.py` for "fastmcp.Context" references in docstrings; update to "`a2kit.ToolContext` (a Protocol; concrete impl depends on transport)" where it describes the contract rather than the wire-format detail.

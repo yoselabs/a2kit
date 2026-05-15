@@ -29,13 +29,14 @@ from a2kit.packages.cli.context import StderrToolContext
 
 
 class _NullToolContext(StderrToolContext):
-    """No-op ``fastmcp.Context``-shaped shim. All wire methods drop silently."""
+    """No-op ``a2kit.ToolContext`` shim. All wire methods drop silently."""
 
     __slots__ = ()
 
-    #: Fixed sentinel exposed via ``ctx.request_id`` — useful for log assertions.
-    request_id: str = "null-context"
-    client_id: str | None = None
+    def __init__(self) -> None:
+        super().__init__()
+        # Fixed sentinel exposed via ``ctx.request_id`` — useful for log assertions.
+        self.request_id = "null-context"
 
     def _emit(
         self,

@@ -131,7 +131,9 @@ def test_ambient_context_missing_mode_missing_ctx_param_message() -> None:
     async def go() -> None:
         # Enter the scope WITHOUT a ctx (mimics dispatch on a tool that
         # omitted `ctx: ToolContext` from its signature).
-        with ldd_state_for_call(ctx=None):
+        # ctx=None intentionally exercises the Mode B misuse path —
+        # bypass the (stricter, post-context-as-protocol) static type check.
+        with ldd_state_for_call(ctx=None):  # ty: ignore[invalid-argument-type]
             with pytest.raises(AmbientContextMissing) as excinfo:
                 await ldd_event("missing-ctx")
             msg = str(excinfo.value)

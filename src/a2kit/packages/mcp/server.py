@@ -91,6 +91,15 @@ def _wrap_with_ldd_state(
             # carries the synthesized name so FastMCP injected ctx.
             # Pop so the body never sees the framework-internal kwarg.
             ctx_obj = kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
+        # why: under FastMCP dispatch the rewritten signature always has a
+        # ctx param so FastMCP injects a live Context. Direct-call test
+        # paths (e.g. ``bt.fn()`` bypassing FastMCP) hit None — fall back
+        # to a StderrToolContext so ambient binding is still non-None and
+        # LDD primitives don't trip Mode B unrelated to the actual issue.
+        if ctx_obj is None:
+            from a2kit.packages.cli.context import StderrToolContext
+
+            ctx_obj = StderrToolContext()
         with ldd_state_for_call(
             ctx=ctx_obj,
             events_enabled=events_enabled,
@@ -239,6 +248,35 @@ def _wrap_with_error_envelope(fn: Any, *, debug: bool) -> Any:
     return _wrapped
 
 
+def _ctx_annotation_passthrough(fn: Any, ctx_param_name: str) -> Any:
+    """Wrap ``fn`` rewriting the ctx param annotation to ``fastmcp.Context``.
+
+    Used when no DI is needed but the tool's ctx annotation is the a2kit
+    Protocol; pydantic cannot schema-generate Protocols, so we swap to the
+    concrete fastmcp class for FastMCP's introspection while preserving
+    call semantics.
+    """
+    import fastmcp as _fastmcp
+
+    orig_sig = inspect.signature(fn)
+    passthrough_params: list[inspect.Parameter] = []
+    for name, p in orig_sig.parameters.items():
+        if name == ctx_param_name:
+            passthrough_params.append(p.replace(annotation=_fastmcp.Context))
+        else:
+            passthrough_params.append(p)
+
+    @functools.wraps(fn)
+    async def _passthrough(*args: Any, **kwargs: Any) -> Any:
+        result = fn(*args, **kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+
+    _install_rewritten_signature(fn, _passthrough, passthrough_params)
+    return _passthrough
+
+
 def _wrap_with_dispatch_hook(
     fn: Any,
     hook: Any,
@@ -279,7 +317,11 @@ def _wrap_with_dispatch_hook(
     # ctx still need a wrapper to synthesize ``_a2kit_ctx`` into the
     # rewritten signature so FastMCP injects ctx for ambient binding.
     if not _has_injectables(fn, container) and ctx_param_name is not None:
-        return fn  # ctx already in fn's signature, no DI to wire; no rewrite needed
+        # ctx already in fn's signature, no DI to wire — but ``__annotations__``
+        # may still carry the ``a2kit.ToolContext`` Protocol, which pydantic
+        # cannot schema-generate. Build a thin passthrough that rewrites the
+        # ctx annotation to ``fastmcp.Context`` for FastMCP introspection.
+        return _ctx_annotation_passthrough(fn, ctx_param_name)
 
     @functools.wraps(fn)
     async def _wrapped(**kwargs: Any) -> Any:
@@ -362,11 +404,19 @@ def _install_rewritten_signature(
         "__signature__",
         inspect.Signature(parameters=new_params, return_annotation=ret_ann),
     )
-    # Defensive fallback for any path that reads __annotations__ directly.
+    # Rewrite ``__annotations__`` to match the rewritten signature.
+    # functools.wraps copies the original ``fn.__annotations__`` which
+    # may include an ``a2kit.ToolContext`` Protocol annotation — pydantic
+    # cannot schema-generate Protocols. Sync ``__annotations__`` with the
+    # rewritten params so any path that introspects via ``__annotations__``
+    # (pydantic, get_type_hints) sees the same shape as ``__signature__``.
+    new_annotations: dict[str, Any] = {}
+    for param in new_params:
+        if param.annotation is not inspect.Parameter.empty:
+            new_annotations[param.name] = param.annotation
     if ret_ann is not inspect.Signature.empty:
-        ann = dict(getattr(wrapped, "__annotations__", {}))
-        ann["return"] = ret_ann
-        wrapped.__annotations__ = ann
+        new_annotations["return"] = ret_ann
+    wrapped.__annotations__ = new_annotations
 
 
 #: Framework-reserved parameter name used when synthesizing a ctx
@@ -411,8 +461,21 @@ def _ensure_ctx_in_rewritten_signature(
 
     if ctx_param_name:
         if ctx_param_name not in {p.name for p in new_params}:
+            import fastmcp
+
             orig_ctx_param = inspect.signature(fn).parameters[ctx_param_name]
-            new_params.append(orig_ctx_param.replace(kind=inspect.Parameter.KEYWORD_ONLY))
+            # The rewritten signature feeds FastMCP/pydantic schema generation.
+            # ``a2kit.ToolContext`` is a Protocol that pydantic cannot
+            # schema-generate; substitute ``fastmcp.Context`` (the concrete
+            # class FastMCP injects under the MCP transport) in the wrapper
+            # signature. Tool body still receives the live ctx and its own
+            # annotation is unchanged.
+            new_params.append(
+                orig_ctx_param.replace(
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    annotation=fastmcp.Context,
+                )
+            )
         if ctx_param_name not in {p.name for p in new_params}:
             raise A2KitContextBindingBroken(
                 fn_name=getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>")),

@@ -1,19 +1,20 @@
-"""CLI ``fastmcp.Context``-shaped stub — emits compact LDD lines to stderr.
+"""CLI implementation of :class:`a2kit.ToolContext` Protocol.
 
-Mirrors the public surface of ``fastmcp.Context`` for tools that need to run
-under either transport. Methods that are structurally MCP-only (sampling,
-resource listing, prompt registries, notifications) raise
+Emits compact LDD lines to stderr. Methods that are structurally MCP-only
+(sampling, resource listing, prompt registries, notifications) raise
 :class:`MCPOnlyError` with a clear pointer at the MCP transport.
 
-All async signatures match ``fastmcp.Context`` so a tool written portably with
-``await ctx.info(...)`` / ``await ctx.report_progress(...)`` works on both
-transports.
+The class structurally satisfies the ``a2kit.ToolContext`` Protocol; under the
+MCP transport, ``fastmcp.Context`` satisfies the same Protocol. A tool written
+portably with ``await ctx.info(...)`` / ``await ctx.report_progress(...)``
+works on both.
 """
 
 from __future__ import annotations
 
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -72,21 +73,20 @@ class _StubResourceResult:
 
 
 class StderrToolContext:
-    """CLI stub mimicking ``fastmcp.Context``'s public interface.
+    """Implementation of :class:`a2kit.ToolContext` for the CLI transport.
 
-    Logging / progress / event / report methods render compact LDD lines to
-    stderr. State (``set_state`` / ``get_state`` / ``delete_state``) lives in
+    Logging / progress methods render compact LDD lines to stderr.
+    State (``set_state`` / ``get_state`` / ``delete_state``) lives in
     a per-instance dict. ``read_resource`` handles ``file://`` URIs only.
-    ``elicit`` runs a primitive ``input()`` loop. Everything else raises
+    ``elicit`` runs a primitive ``input()`` loop. MCP-only methods raise
     :class:`MCPOnlyError`.
 
-    The constructor's ``report_type`` / ``tool_name`` / ``reports_enabled`` /
-    ``events_enabled`` kwargs are accepted for API compatibility — the
-    runtime now sets these via :func:`a2kit.ldd.ldd_state_for_call` before
-    each tool dispatch.
+    ``request_id`` is a per-instance UUID4 (no wire-level request frame on
+    CLI; the UUID is purely a correlation token for LDD lines). ``client_id``
+    is ``None`` on CLI — there is no remote client.
     """
 
-    __slots__ = ("_start_ts", "_state")
+    __slots__ = ("_start_ts", "_state", "client_id", "request_id")
 
     def __init__(
         self,
@@ -98,6 +98,8 @@ class StderrToolContext:
     ) -> None:
         self._start_ts = time.monotonic()
         self._state: dict[str, Any] = {}
+        self.request_id: str = uuid.uuid4().hex
+        self.client_id: str | None = None
 
     # --- Logging (fastmcp.Context-shaped, all async) ---------------------- #
     #

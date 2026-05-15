@@ -126,6 +126,33 @@ from "CLI stub" at runtime to pick the right wire format
 about wire-format dispatch, not contract identity. fastmcp.Context
 satisfies both itself AND the Protocol; the runtime check still works.
 
+### Tighten `ldd_state_for_call(ctx=...)` annotation
+
+Today the contextmanager declares `ctx: Any`, which allows
+`ldd_state_for_call(ctx=None)` to type-check. Post relax-ldd-
+ambient-requirement, that call shape is the only documented misuse
+path that still trips Mode B at runtime. The annotation change
+moves the loophole-closure from runtime-only to type-checked:
+
+```python
+def ldd_state_for_call(*, ctx: ToolContext, ...): ...
+```
+
+Internal framework call sites that get ctx from `kwargs.pop(..., None)`
+or `kwargs.get(...)` (typed `Any | None`) gain an
+`assert ctx_obj is not None` with a `why:` comment documenting the
+post-relax invariant. The runtime Mode B raise stays as
+defense-in-depth for code paths that escape typing via `cast(Any,
+None)` or `# type: ignore`.
+
+The single unit test that intentionally passes `ctx=None` to verify
+Mode B raises gets a `# type: ignore[arg-type]` comment — that test
+is explicitly testing misuse, so the type-bypass marker reflects
+the intent.
+
+Bundled into this change because the annotation change touches
+ToolContext semantics. Same area, same review context.
+
 ## Out of scope
 
 - **Feature Protocols** (`Elicitable`, `Samplable`, etc.). Parked
