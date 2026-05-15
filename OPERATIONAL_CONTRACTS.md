@@ -627,6 +627,56 @@ dependency, declare the dependency as a constructor parameter and the
 container's chain resolution enters them in dependency-first order
 naturally.
 
+## Q-HealthChecks. `@app.health_check` kwargs route through the DI resolver
+
+**Policy.** `@app.health_check`-registered function kwargs resolve
+through the same DI path as tool dispatch
+(`Container.resolve_params` → `_construct` → `_enter_lifecycle`).
+Resources passed as health-check kwargs are entered via `__aenter__`
+on first resolution and exit follows the standard scope rules.
+
+For singleton resources (the default for `app.provide(T, factory)`
+without `per_call=True`), this means:
+
+- **First reference anywhere in the app** — by a tool dispatch, an
+  earlier health probe, anything — enters the resource exactly once.
+  The instance is cached on the root container's `_singletons`.
+- **Subsequent health probes** hit the cache and do NOT re-enter.
+- **Exit fires at app shutdown** via `Container.aclose()`, NOT per
+  probe.
+
+For per-call resources (`per_call=True`), enter/exit fires per
+health-probe invocation (each probe gets a fresh instance on the
+per-call child container).
+
+Concretely: by the time a check body runs, the resource has been
+entered. Whether *this* probe did the entering or an earlier call
+site did, the consumer's body sees a fully-initialised resource.
+
+```python
+@app.health_check
+async def _probe(sqlite: SqliteResource) -> a2kit.HealthResult:
+    # sqlite is entered. Do not call _ensure() or any other
+    # consumer-internal "ready" method — the resolver already
+    # entered the resource via __aenter__.
+    if not await sqlite.ping():
+        return a2kit.HealthResult.fail("sqlite ping failed")
+    return a2kit.HealthResult.ok()
+```
+
+**What this rules out.** Calling consumer-internal helpers like
+`await sqlite._ensure()` inside a health-check body to "make sure
+the resource is ready" is redundant and pokes a private surface.
+The framework's DI lifecycle is the public contract; rely on it.
+
+**Why this matters for testing.** `tests/test_health_check_resource_entry.py`
+pins this contract with a `SpyResource` exercising the four singleton
+scenarios (first-probe-enters, second-probe-reuses, exit-at-lifespan,
+shared-singleton-enters-once) plus the lower-level `run_checks(app)`
+API used by the CLI `<app> health` subcommand. Any change to the
+resolution path that breaks the resource-entry contract trips these
+tests.
+
 ## See also
 
 - `CHANGELOG.md` — release-by-release history of behavioral changes.

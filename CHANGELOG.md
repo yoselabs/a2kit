@@ -26,6 +26,29 @@ and A2):
 Both consumers of the prior hand-rolled patterns (e.g. a2web's
 `conftest.py` lines 34-45 and 71-79) can delete those helpers.
 
+### Clarified — `@app.health_check` kwargs enter resources
+
+The health-probe path has always routed kwargs through the v0.36
+DI resolver (`Container.resolve_params` → `_construct` →
+`_enter_lifecycle`), entering resources via `__aenter__`. The
+contract lived only in the `_run_one_check` docstring; it now ships
+as `OPERATIONAL_CONTRACTS.md` Q-HealthChecks with a pinning test
+(`tests/test_health_check_resource_entry.py`).
+
+No behaviour change. Consumers calling
+`await sqlite._ensure()` (or any other internal "ready" method)
+inside a health-check body can drop those calls — the resource is
+already entered.
+
+Important nuance: for singleton resources (the default), enter fires
+exactly once across the app's lifetime and exit fires at app
+shutdown, NOT per probe. The probe receives a ready resource; it
+isn't necessarily the call that entered it.
+
+(Per a2web round-10 feedback Friction F. No new API surface —
+`Resource.warm_up()` was considered and rejected as redundant with
+the existing `__aenter__` contract.)
+
 ## v0.38.0 — 2026-05-15
 
 The pre-v0.36 DI surface on `Container` is retired. The new path
