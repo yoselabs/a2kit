@@ -489,10 +489,12 @@ The signature-level test lives in `tests/test_resolve_hints.py`.
 
 ## Q-Ctx. Context binding invariants
 
-**Policy.** When a tool function declares a parameter typed
-`a2kit.ToolContext` (the re-export of `fastmcp.Context`), the dispatcher
-SHALL bind it on every transport. Implementations and contributors
-must honor three invariants:
+**Policy.** `a2kit.ToolContext` names the cross-transport ctx contract
+as an `@runtime_checkable typing.Protocol` (in `a2kit._context_protocol`).
+Concrete implementations satisfy it structurally: `fastmcp.Context` under
+MCP, `StderrToolContext` under CLI. When a tool declares a parameter typed
+`a2kit.ToolContext`, the dispatcher SHALL bind it on every transport.
+Four invariants:
 
 1. **Always bound when declared.** On MCP, FastMCP injects the live
    `Context` at call time. On CLI, the runtime synthesizes a
@@ -514,6 +516,15 @@ must honor three invariants:
    `_wrap_with_dispatch_hook` raises `A2KitContextBindingBroken` if
    this is ever violated by a future wrapper-chain change — the App
    fails to build before serving any request.
+4. **Pydantic-friendly annotations.** The rewritten signature swaps
+   `a2kit.ToolContext` for `fastmcp.Context` so FastMCP/pydantic
+   schema generation has a concrete class to work with (Protocols
+   cannot be schema-generated). `_install_rewritten_signature` syncs
+   `__annotations__` with the rewritten params; the thin
+   `_ctx_annotation_passthrough` wrapper handles the no-DI early-exit
+   case. Tools needing MCP-only methods (`sample`, `list_resources`)
+   annotate `ctx: fastmcp.Context` directly and pay the import cost
+   themselves — they are in MCP territory anyway.
 
 **Why this matters.** v0.32 shipped a regression where the MCP
 wrapper chain dropped `ctx` from the rewritten signature, breaking
