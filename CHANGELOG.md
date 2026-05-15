@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v0.39.0 — 2026-05-16
+
+Round-10 a2web feedback wave: six frictions shipped + one
+architectural cleanup. The headline is **ambient `ctx` is now
+non-None inside any framework dispatch** (drop the `del ctx`
+ceremony) and **`a2kit.ToolContext` is now an a2kit-owned
+Protocol** (the implicit `fastmcp.Context` contract is now
+explicit). Three testing helpers (`a2kit.testing.lazy`,
+`ambient_for_tests`, `resolve`) delete consumer `conftest.py`
+boilerplate. `Lazy[T]` recognition extended from tool params
+to factory params (spec drift closed). The `@app.health_check`
+resource-entry contract is now pinned in `OPERATIONAL_CONTRACTS`.
+
 ### Changed — `a2kit.ToolContext` is now a Protocol
 
 `a2kit.ToolContext` is no longer a lazy re-export of `fastmcp.Context`; it
