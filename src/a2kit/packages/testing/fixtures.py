@@ -6,6 +6,10 @@ no DI-swap helper — tests construct routers with fake factories directly:
     app = a2kit.App("test")
     app.add_router(TasksRouter(fake_get_store))
 
+`ambient_for_tests` establishes an LDD ambient so tests that call
+orchestrator / phase functions directly (bypassing
+``TestClient.invoke``) don't trip :class:`AmbientContextMissing`.
+
 v0.33: ``pytest`` is imported lazily inside the fixture bodies so that
 ``import a2kit.packages.testing`` does not require pytest at import time.
 Production CLI subcommands (notably ``<app> health``) decouple from this
@@ -20,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 import a2kit
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
 
@@ -41,6 +45,38 @@ def _app_impl() -> a2kit.App:
     return a2kit.App("test")
 
 
+def _ambient_for_tests_impl() -> Iterator[None]:
+    """Wrap a test in an LDD ambient with events + reports disabled.
+
+    Tests that call orchestrator or phase functions directly (bypassing
+    :func:`a2kit.testing.client`) would otherwise raise
+    :class:`AmbientContextMissing` on the first ``a2kit.ldd.event(...)``
+    call. This fixture establishes the ambient with a no-op
+    :func:`a2kit.testing.null_context` so the call completes silently.
+
+    Opt-in by design. Consumers wanting project-wide ambient re-export
+    with ``autouse=True`` in their own ``conftest.py``::
+
+        # consumer's conftest.py
+        from a2kit.testing import ambient_for_tests as _a
+        ambient_for_tests = pytest.fixture(autouse=True)(_a.__wrapped__)
+
+    Defaults match the universal pattern: ``events_enabled=False``,
+    ``reports_enabled=False``, ``ctx=null_context()``. Consumers needing
+    a different shape wrap :func:`a2kit.ldd.ldd_state_for_call`
+    themselves — this fixture is the 95% case, not a kitchen sink.
+    """
+    from a2kit.ldd import ldd_state_for_call
+    from a2kit.packages.testing.null_context import null_context
+
+    with ldd_state_for_call(
+        ctx=null_context(),
+        events_enabled=False,
+        reports_enabled=False,
+    ):
+        yield
+
+
 # Decorate at module load only if pytest is importable. When pytest is not
 # installed (production CLI on a non-dev venv), the names below stay as
 # plain functions — ``import a2kit.packages.testing`` succeeds, just no
@@ -50,9 +86,11 @@ try:
 
     cassette = pytest.fixture(_cassette_impl)
     app = pytest.fixture(_app_impl)
+    ambient_for_tests = pytest.fixture(_ambient_for_tests_impl)
 except ImportError:
     cassette = _cassette_impl  # type: ignore[assignment]
     app = _app_impl  # type: ignore[assignment]
+    ambient_for_tests = _ambient_for_tests_impl  # type: ignore[assignment]
 
 
-__all__ = ["app", "cassette"]
+__all__ = ["ambient_for_tests", "app", "cassette"]

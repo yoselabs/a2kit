@@ -6,19 +6,46 @@ Public API:
   - :class:`SchemaSnapshotMismatch` — raised on snapshot drift.
   - :func:`compute_schema` — extract a tool's schema dict.
   - :func:`peek` — synchronous container peek (test-only).
+  - :func:`lazy` — wrap a value as a :data:`a2kit.packages.di.Lazy` thunk.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from a2kit.packages.testing.exceptions import SchemaSnapshotMismatch
-from a2kit.packages.testing.fixtures import app, cassette
+from a2kit.packages.testing.fixtures import ambient_for_tests, app, cassette
 from a2kit.packages.testing.null_context import null_context
 from a2kit.packages.testing.snapshots import compute_schema
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from a2kit.app import App
+
+_T = TypeVar("_T")
+
+
+def lazy(value: _T) -> Callable[[], Awaitable[_T]]:
+    """Wrap ``value`` in a zero-arg async thunk matching ``Lazy[T]``.
+
+    ``Lazy[T] = Callable[[], Awaitable[T]]`` (see
+    :mod:`a2kit.packages.di._lazy`) is the tool-seam shape for
+    deferred dependencies. In tests, you usually have a pre-built
+    fake and want to inject it where a tool expects ``Lazy[T]``::
+
+        fake_browser = make_fake_browser()
+        await client.invoke("fetch", browser=a2kit.testing.lazy(fake_browser))
+
+    The returned thunk yields the original ``value`` by identity on
+    every call — no copy, no caching wrapper. Callers needing
+    per-call freshness build their own thunk.
+    """
+
+    async def _thunk() -> _T:
+        return value
+
+    return _thunk
 
 
 def peek(app_: App, type_: type) -> Any:
@@ -59,9 +86,11 @@ def peek(app_: App, type_: type) -> Any:
 
 __all__ = [
     "SchemaSnapshotMismatch",
+    "ambient_for_tests",
     "app",
     "cassette",
     "compute_schema",
+    "lazy",
     "null_context",
     "peek",
 ]

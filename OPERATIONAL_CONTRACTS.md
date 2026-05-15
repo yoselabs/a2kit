@@ -397,8 +397,17 @@ omits `ctx`. A no-ctx tool that calls `await a2kit.ldd.event(...)`
 raises identically on every dispatcher.
 
 Tests that want to exercise LDD primitives directly (without a full
-tool dispatch) wrap with the `ldd_state_for_call(ctx=stub, ...)`
-context manager — same seam the framework uses internally.
+tool dispatch) have two paths:
+
+1. **Wrap explicitly with `ldd_state_for_call(ctx=stub, ...)`** — same
+   seam the framework uses internally. Fine for one-off tests that
+   want bespoke flag combinations.
+2. **Use the `a2kit.testing.ambient_for_tests` pytest fixture** —
+   the 95% case. Wraps the test in an LDD ambient with
+   `ctx=null_context()`, `events_enabled=False`,
+   `reports_enabled=False`. Opt-in (not autouse-by-default);
+   consumers wanting project-wide ambient re-export with
+   `autouse=True` in their own `conftest.py`.
 
 `asyncio.gather`, `create_task`, and `TaskGroup` propagate the
 ambient ctx via Python's `contextvars` copy-on-task semantics, so

@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added — `a2kit.testing` helpers
+
+Two helpers ship to delete boilerplate every consumer's
+`conftest.py` reinvents (per a2web round-10 feedback Friction A1
+and A2):
+
+- `a2kit.testing.lazy(value)` — wrap a pre-built fake into the
+  `Lazy[T] = Callable[[], Awaitable[T]]` shape used at the tool
+  seam. One-liner factory; thunk yields the original value by
+  identity on every call. Useful for injecting fakes through DI
+  override into tools that declare `browser: Lazy[BrowserPool]`
+  etc.
+- `a2kit.testing.ambient_for_tests` — pytest fixture that
+  establishes an LDD ambient with events + reports disabled so
+  tests calling orchestrator or phase functions directly
+  (bypassing `TestClient.invoke`) don't trip
+  `AmbientContextMissing`. Opt-in (not autouse-by-default);
+  consumers wanting project-wide ambient re-export under
+  `autouse=True` in their own `conftest.py`. Preserves the
+  loud-by-default contract outside opt-in tests.
+
+Both consumers of the prior hand-rolled patterns (e.g. a2web's
+`conftest.py` lines 34-45 and 71-79) can delete those helpers.
+
 ## v0.38.0 — 2026-05-15
 
 The pre-v0.36 DI surface on `Container` is retired. The new path

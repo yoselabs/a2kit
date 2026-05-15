@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from a2kit.packages.testing import (
     SchemaSnapshotMismatch,
+    ambient_for_tests,
     app,
     cassette,
     compute_schema,
+    lazy,
     null_context,
     peek,
 )
@@ -20,10 +22,12 @@ from a2kit.packages.testing.client import TestClient, client
 __all__ = [
     "SchemaSnapshotMismatch",
     "TestClient",
+    "ambient_for_tests",
     "app",
     "cassette",
     "client",
     "compute_schema",
+    "lazy",
     "null_context",
     "peek",
 ]
