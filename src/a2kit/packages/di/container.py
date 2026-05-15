@@ -545,6 +545,15 @@ class Container:
                     continue
                 msg = f"factory {factory!r}: parameter {spec.name!r} lacks an annotation"
                 raise ValueError(msg)
+            lazy_inner = _lazy_inner_type(ann)
+            if lazy_inner is not None:
+                # Spec di-conditional-injection §1 — factory params with
+                # Lazy[T] receive a deferred closure, same as tool kwargs.
+                # Scope correctness for SINGLETON factories enclosing
+                # Lazy[per-call-T] is enforced at app-entry by
+                # ``_validate_scope_graph``.
+                kwargs[spec.name] = self._make_lazy_closure(lazy_inner)
+                continue
             if self.has_provider(ann) or _looks_like_basesettings(ann):
                 kwargs[spec.name] = await self.get(ann)
                 continue
@@ -554,7 +563,15 @@ class Container:
         return kwargs
 
     def _validate_scope_graph(self) -> None:
-        """Reject app-scope factories that depend on per-call types."""
+        """Reject app-scope factories that depend on per-call types,
+        directly or via ``Lazy[per-call-T]``.
+
+        ``_make_lazy_closure`` captures ``self`` — the container the
+        factory is being resolved on. SINGLETON factories resolve on
+        root, so a captured ``Lazy[per-call-T]`` closure would call
+        ``root.get(per-call-T)`` later, populating ``root._scoped_cache``
+        and silently breaking per-call semantics. Reject at app entry.
+        """
         for type_, scope in self._scope_metadata.items():
             if scope is not Scope.SINGLETON:
                 continue
@@ -563,6 +580,8 @@ class Container:
                 continue
             for spec in self._params_for(factory):
                 dep = spec.annotation
+
+                # Direct per-call dep — original guard.
                 dep_scope = self._scope_metadata.get(dep)
                 if dep_scope is Scope.SCOPED:
                     msg = (
@@ -574,6 +593,25 @@ class Container:
                         "Either move the dependent to per-call too, or use "
                         "`Lazy[" + getattr(dep, "__name__", repr(dep)) + "]` "
                         "to defer resolution into the call scope."
+                    )
+                    raise TypeError(msg)
+
+                # Lazy[per-call-T] dep — mirror guard.
+                lazy_inner = _lazy_inner_type(dep)
+                if lazy_inner is not None and self._scope_metadata.get(lazy_inner) is Scope.SCOPED:
+                    inner_name = getattr(lazy_inner, "__name__", repr(lazy_inner))
+                    msg = (
+                        f"scope violation: app-scope captures Lazy[per-call]. "
+                        f"App-scope provider for {type_!r} declares parameter "
+                        f"{spec.name!r} of type `Lazy[{inner_name}]` where "
+                        f"`{inner_name}` is per-call. The captured closure "
+                        f"would resolve `{inner_name}` on the root container, "
+                        "pinning a single instance for the app's lifetime and "
+                        "breaking per-call semantics. Either move "
+                        f"`{inner_name}` to app-scope (`per_call=False`), or "
+                        f"make `{getattr(type_, '__name__', repr(type_))}` "
+                        "per-call (`per_call=True`) so the closure captures "
+                        "the per-call child container."
                     )
                     raise TypeError(msg)
 

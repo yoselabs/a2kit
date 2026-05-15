@@ -49,6 +49,29 @@ isn't necessarily the call that entered it.
 `Resource.warm_up()` was considered and rejected as redundant with
 the existing `__aenter__` contract.)
 
+### Fixed — `Lazy[T]` honored in factory parameters
+
+`di-conditional-injection` spec promised `Lazy[T]` recognition for
+**both** tool and factory parameters; the implementation only
+honored tool dispatch (`Container.resolve_params`). Factories
+declaring `Lazy[T]` raised `UnresolvableType` at first resolution.
+This release closes the drift:
+
+- `Container._construct_kwargs` now recognises `Lazy[T]` and
+  injects the same deferred closure as the tool-dispatch path.
+- The scope-graph validator (`Container._validate_scope_graph`)
+  gains a mirror guard rejecting SINGLETON factories that declare
+  `Lazy[per-call-T]` parameters — the captured closure would
+  resolve per-call types on root and silently break per-call
+  semantics. Error raised at `async with app:` with a migration
+  hint pointing at the two valid alternatives (move inner to
+  app-scope, or make the outer factory per-call).
+
+Enables aggregates like `AppState` to carry `Lazy[BrowserPool]`
+fields built via DI; tool signatures collapse from three
+injectables (`state`, `browser_pool`, `llm_extractor`) to one
+(`state`). Per a2web round-10 feedback Friction E.
+
 ## v0.38.0 — 2026-05-15
 
 The pre-v0.36 DI surface on `Container` is retired. The new path

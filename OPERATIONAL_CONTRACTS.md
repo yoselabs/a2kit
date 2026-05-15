@@ -587,8 +587,18 @@ returned instance's `__aenter__`. Class-as-factory introspects
 `Callable[[], Awaitable[T]]`. A parameter typed `Lazy[T]` receives a
 zero-arg async closure that, when awaited, resolves `T` through the
 current scope's resolver and records cleanup. Never awaited = `T` is
-never built and its `__aenter__` never runs. The dispatcher recognizes
-both the alias and the raw `Callable[[], Awaitable[T]]` shape.
+never built and its `__aenter__` never runs. The framework recognizes
+both the alias and the raw `Callable[[], Awaitable[T]]` shape, in
+**tool** parameters AND **factory** parameters — aggregates built by
+a factory can carry `Lazy[T]` fields, populated via DI at construction.
+
+Scope-graph guard: a SINGLETON factory declaring
+`Lazy[per-call-T]` is rejected at `async with app:` time because
+`_make_lazy_closure` captures the resolving container (root for
+SINGLETON factories); a later `root.get(per-call-T)` would pin the
+per-call type to root's cache for the app's lifetime. Migration: move
+the inner type to app-scope, or make the outer factory per-call so
+the closure captures the per-call child container.
 
 **Per-call dispatch helper.** `Container.dispatch(fn, wire_kwargs)` is
 an async context manager that opens a child resolver, resolves the
