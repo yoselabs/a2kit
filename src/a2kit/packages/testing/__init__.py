@@ -59,7 +59,8 @@ def peek(app_: App, type_: type) -> Any:
         assert state.config.foo == "bar"
 
     Driven by ``asyncio.run`` over ``Container.get`` — works from sync test
-    bodies. For async tests, call ``await app.container().get(T)`` directly.
+    bodies. For async tests, use :func:`resolve` (the async sibling of this
+    helper).
     """
     import asyncio
 
@@ -84,6 +85,33 @@ def peek(app_: App, type_: type) -> Any:
     return cached
 
 
+async def resolve(app_: App, type_: type) -> Any:
+    """Async DI resolution test seam — the async sibling of :func:`peek`.
+
+    Runs the full DI resolution chain on ``app``'s container: builds
+    ``type_`` via the registered factory (chain-resolving constructor
+    parameters), enters ``__aenter__`` for resources, records cleanup
+    on the appropriate scope's stack. Subsequent calls return cached
+    instances per the registered scope (SINGLETON across the app,
+    SCOPED within one per-call child container).
+
+    Where :func:`peek` reads already-cached singletons from
+    ``Container._singletons``, ``resolve`` triggers the full
+    resolution chain — useful when a test needs the resolved value
+    of a type that has not been touched by any tool dispatch yet.
+
+    Callers SHOULD invoke this inside an entered app context::
+
+        async with a2kit.testing.client(app) as c:
+            state = await a2kit.testing.resolve(app, AppState)
+
+    Calling outside an entered app leaves resources half-entered
+    with no scope to exit them — matches today's behaviour of
+    ``await app.container().get(T)``.
+    """
+    return await app_.container().get(type_)
+
+
 __all__ = [
     "SchemaSnapshotMismatch",
     "ambient_for_tests",
@@ -93,4 +121,5 @@ __all__ = [
     "lazy",
     "null_context",
     "peek",
+    "resolve",
 ]

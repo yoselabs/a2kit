@@ -4,9 +4,9 @@
 
 ### Added — `a2kit.testing` helpers
 
-Two helpers ship to delete boilerplate every consumer's
-`conftest.py` reinvents (per a2web round-10 feedback Friction A1
-and A2):
+Three helpers ship to delete boilerplate every consumer's
+`conftest.py` reinvents (per a2web round-10 feedback Friction A1,
+A2, and A3):
 
 - `a2kit.testing.lazy(value)` — wrap a pre-built fake into the
   `Lazy[T] = Callable[[], Awaitable[T]]` shape used at the tool
@@ -22,9 +22,19 @@ and A2):
   consumers wanting project-wide ambient re-export under
   `autouse=True` in their own `conftest.py`. Preserves the
   loud-by-default contract outside opt-in tests.
+- `a2kit.testing.resolve(app, T)` — async sibling of `peek`. Runs
+  the full DI resolution chain on the app's container: builds T
+  via the registered factory, chain-resolves constructor params,
+  enters `__aenter__`, records cleanup on the appropriate scope's
+  stack. Subsequent calls return cached instances per scope.
+  Call inside `async with app:` or
+  `async with a2kit.testing.client(app):` so cleanups have a
+  scope. Collapses consumer-side `make_default_state(...)` helpers
+  to a one-liner.
 
-Both consumers of the prior hand-rolled patterns (e.g. a2web's
-`conftest.py` lines 34-45 and 71-79) can delete those helpers.
+Consumers of the prior hand-rolled patterns (e.g. a2web's
+`conftest.py` lines 34-45, 48-68, and 71-79) can delete those
+helpers.
 
 ### Clarified — `@app.health_check` kwargs enter resources
 

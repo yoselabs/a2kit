@@ -16,6 +16,7 @@ from a2kit.packages.testing import (
     lazy,
     null_context,
     peek,
+    resolve,
 )
 from a2kit.packages.testing.client import TestClient, client
 
@@ -30,4 +31,5 @@ __all__ = [
     "lazy",
     "null_context",
     "peek",
+    "resolve",
 ]
