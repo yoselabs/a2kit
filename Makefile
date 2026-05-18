@@ -1,4 +1,4 @@
-.PHONY: test lint format check examples bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline
+.PHONY: test lint format check examples bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check
 
 bootstrap:
 	uv sync --all-extras --dev
@@ -64,3 +64,12 @@ mutate-baseline:
 	uv run mutmut run
 	uv run mutmut results > .mutmut-baseline.txt
 	@echo "baseline written to .mutmut-baseline.txt"
+
+# ADR index — regenerates docs/adr/INDEX.md from frontmatter. Run on
+# every ADR change; pre-commit enforces --check mode so the on-disk
+# INDEX never drifts.
+adr-index:
+	uv run python scripts/adr_index.py
+
+adr-check:
+	uv run python scripts/adr_index.py --check

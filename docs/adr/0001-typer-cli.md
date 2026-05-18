@@ -1,3 +1,14 @@
+---
+id: "0001"
+status: accepted
+date: 2026-05-13
+last_reviewed: 2026-05-13
+supersedes: []
+superseded_by: null
+tags: [cli, infrastructure, dependency]
+deciders: [Denis Tomilin]
+---
+
 # ADR 0001: Replace hand-rolled Click reflection with Typer
 
 ## Status

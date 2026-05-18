@@ -17,6 +17,12 @@ repos:
         entry: uv run ruff format --check
         language: system
         pass_filenames: true
+      - id: adr-index
+        name: ADR frontmatter valid + index up to date
+        entry: uv run python scripts/adr_index.py --check
+        language: system
+        pass_filenames: false
+        files: ^docs/adr/(.*\.md|schema\.json)$
       - id: actionlint
         name: actionlint
         entry: actionlint

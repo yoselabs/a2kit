@@ -1,3 +1,14 @@
+---
+id: "0002"
+status: accepted
+date: 2026-05-13
+last_reviewed: 2026-05-13
+supersedes: []
+superseded_by: null
+tags: [surface, authoring, annotations]
+deciders: [Denis Tomilin]
+---
+
 # ADR 0002: Pydantic.Field as the per-parameter author annotation surface
 
 ## Status

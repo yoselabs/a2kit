@@ -1,0 +1,132 @@
+---
+id: "0004"
+status: accepted
+date: 2026-05-18
+last_reviewed: 2026-05-18
+supersedes: []
+superseded_by: null
+tags: [surface, packaging, architecture]
+deciders: [Denis Tomilin]
+---
+
+# ADR 0004: Package layout — tiered surfaces by audience size
+
+## Status
+
+Accepted, 2026-05-18.
+
+## Summary
+
+In the context of a2kit's public Python surface, facing repeated friction filings asking us to promote specialized primitives (`Lazy`, `LddEmission`, introspection types, sink-author types, internal exceptions) to the top-level `a2kit.*` namespace, we decided for an explicit three-tier layout — `a2kit.*` for the 95% verb-authoring surface, `a2kit.<domain>` re-export modules for cohesive audiences, `a2kit.packages.*` as the canonical implementation home for everything else — and against a flat top-level namespace, to achieve a top-level surface that names only what most tool authors actually use and a coherent place to direct specialized consumers, accepting that some non-95% surfaces will be imported from a longer path that signals "you are operating outside the default audience."
+
+## The problem
+
+The top-level `a2kit.*` namespace is the front door. Every symbol that lives there is implicitly part of the 95% authoring surface — what a tool author needs to write a tool. Every symbol the consumer has to import from a longer path carries a signal: "this is a specialized surface."
+
+Without an explicit rule for what belongs where, two failure modes appear:
+
+1. **Crowding the front door.** Each round of consumer feedback produces requests to promote frequently-touched primitives to top level. The argument is always "this is the most-touched X primitive at the Y seam." If we accept these requests piecemeal, the top-level surface accumulates DI types, LDD types, sink-author types, introspection types, exception subclasses, etc. The "95% authoring surface" comment in `src/a2kit/__init__.py:13` becomes a lie, and the front door stops being a useful filter.
+
+2. **Hiding deliberate isolation.** Some surfaces are deliberately not promoted — DI primitives (`Lazy`), sink-author types (`LddEmission`), introspection types (`A2KitMeta`, `RouterRegistry`, `UNRESOLVED`). The reasons are coherent (DI is a sub-system; sink authors are a small audience; introspection types are for framework integrators) but they are not written down anywhere durable. Each filing that proposes promotion has to be argued from scratch, and the answer ("no, here is why") lives only in conversation.
+
+The concrete symptom: a2web round 10 filed Friction C asking for `a2kit.Lazy` and `a2kit.LddEmission` top-level promotion. Round 11 carried the same ask forward unchanged. There was no recorded reason to point at; only the bare comment in `__init__.py` saying "the 95% authoring surface only." That comment is necessary but not sufficient — it states the rule without justifying it or naming what falls outside.
+
+## What we considered (and why this one)
+
+### Option 1: Flat top-level, promote on demand
+
+Anything frequently used gets promoted to `a2kit.*`. The argument: shorter import paths help authors.
+
+Why it lost: the front door stops being a filter. After three or four rounds of promotions, `a2kit.*` contains thirty symbols spanning verbs, DI, LDD, exceptions, introspection, schema, testing helpers — and a new author reading `import a2kit` no longer has a coherent mental model of what the library is. The signal-to-noise ratio of the namespace collapses. This is the trajectory we are already on if we accept Friction C; the ADR exists to refuse it.
+
+### Option 2: Two tiers — `a2kit.*` (public) and `a2kit._internal.*` (private)
+
+Standard library convention: `_thread` is private, `threading` is public. Apply the same: top-level is public, anything under an underscore-prefixed module is private.
+
+Why it lost: the boundary is wrong-shaped for a2kit. `Lazy`, `LddEmission`, `A2KitMeta` are **not private** — they are real public APIs consumed by real downstream code (DI authors, sink authors, framework integrators). Hiding them under `_internal` would be a lie. They are public surfaces with smaller audiences than the 95%-author verbs. Privacy is not the right axis; audience size is.
+
+### Option 3: Three tiers by audience size (chosen)
+
+The actual structure already in the codebase:
+
+- **Tier 1 — `a2kit.*`** — the 95% verb-authoring surface. Every Python tool author imports from here. ≤10 names.
+- **Tier 2 — `a2kit.<domain>`** — cohesive re-export modules for specific audiences (e.g. `a2kit.testing` for test authors, `a2kit.schema` for schema introspectors). Each module is itself a small coherent surface for one audience.
+- **Tier 3 — `a2kit.packages.*`** — canonical implementation home. The owning module is where the symbol *lives* (e.g. `a2kit.packages.di.Lazy`, `a2kit.packages.ldd.LddEmission`, `a2kit.packages.testing.client.TestClient`). Tier 2 modules import from here and re-export. Specialized consumers who do not have a Tier 2 module for their audience import directly from Tier 3.
+
+Why it wins:
+
+- It matches the existing codebase. `a2kit.testing` (Tier 2) already re-exports from `a2kit.packages.testing` (Tier 3). `a2kit.*` (Tier 1) already uses lazy attribute access (`_LAZY_ATTRS` in `src/a2kit/__init__.py`) to selectively expose ~10 names. The ADR documents what we already do, so existing code does not move.
+- The axis is audience size, which is the axis that actually matters. The question "does this belong at top level?" becomes "does every tool author touch this?" — answerable from real data.
+- Promotions become explicit: a Tier-3 → Tier-2 promotion means "this audience deserves a discoverable namespace." A Tier-2 → Tier-1 promotion means "this is now part of the 95% surface." Both decisions are loud and require an ADR; they are not piecemeal `_LAZY_ATTRS` table edits.
+
+### Option 4: Status quo — comment in `__init__.py`, decide each filing on its own
+
+Why it lost: that is what we have today and it has cost two consecutive feedback rounds re-litigating Friction C with no recorded rationale. The doctrine doc (`docs/CONSUMER_FEEDBACK_DOCTRINE.md`) explicitly says "cite ADRs when declining filings that touch recorded decisions" (rule F5). Without this ADR, the framework cannot cite a recorded decision when refusing promotions, because none exists.
+
+## The decision
+
+a2kit's Python surface is structured in three tiers, by **audience size**:
+
+### Tier 1 — `a2kit.*` (the front door)
+
+The 95% verb-authoring surface. A name lives here only if essentially every tool author uses it.
+
+Current Tier-1 names (defined in `src/a2kit/__init__.py`'s `_LAZY_ATTRS`):
+
+- `App`, `Router` — composition
+- `read`, `write`, `list_` — the three tool decorators
+- `ToolContext` — the protocol authors type their `ctx` parameter against
+- `A2KitError` — the umbrella exception for `except a2kit.A2KitError:`
+- `HealthResult` — return type for `@app.health_check`
+- `run` — the CLI entrypoint
+- `schema` — lazy submodule (the only Tier-1 module re-export)
+
+Promotion of a new name to Tier 1 requires a new ADR. Adding `_LAZY_ATTRS` table entries without an ADR is forbidden.
+
+### Tier 2 — `a2kit.<domain>` (discoverable per-audience modules)
+
+A coherent namespace for a specific audience that is larger than "specialized consumer" but smaller than "every tool author." Each Tier-2 module is a thin re-export from its Tier-3 home, similar to `a2kit/testing.py:1` re-exporting from `a2kit.packages.testing`.
+
+Current Tier-2 modules:
+
+- `a2kit.testing` — test authors (`peek`, `app`, `client`, `TestClient`, `cassette`, `compute_schema`, `lazy`, `null_context`, `resolve`, `ambient_for_tests`, `SchemaSnapshotMismatch`).
+- `a2kit.schema` — schema introspectors (lazy submodule).
+
+A new Tier-2 module appears when a coherent audience emerges with enough surfaces to warrant a single import root. Examples that *might* justify future Tier-2 modules: `a2kit.di` (if DI authoring grows beyond `Lazy`), `a2kit.ldd` (if sink authoring grows beyond one or two types). Neither is justified today; both are deferred to "if/when the audience materializes."
+
+### Tier 3 — `a2kit.packages.*` (the canonical implementation home)
+
+Every symbol's true home. Tier-1 and Tier-2 modules are thin re-exports from here. Tier-3 imports work and are not discouraged — they are simply the longer path that signals "specialized consumer."
+
+`a2kit.packages.*` is **not private**. It is the public canonical home. Consumers reading code can grep for the long path and find the implementation file in one step, which is a real navigation advantage over deeply chained re-exports.
+
+The rule: every named public symbol lives in exactly one Tier-3 module. Tier-1 and Tier-2 names are re-exports, never definitions.
+
+### Boundary clarifications
+
+- **`ToolContext`** is the one Tier-1 name that is *not* re-exported from `a2kit.packages.*`. It lives at `a2kit._context_protocol.ToolContext` (a private module) because it is a lazy re-export from `fastmcp.Context` and the cold-start budget forbids eager `fastmcp` import. This is a deliberate exception, documented in `CLAUDE.md` core principle 2.
+- **Exceptions.** `A2KitError` is Tier 1 (umbrella). Subclasses (`AmbientContextMissing`, `SchemaSnapshotMismatch`, etc.) live at Tier 3 and are imported directly. Promoting any subclass to Tier 1 requires an ADR.
+- **`HealthResult`** is Tier 1 (return type of a Tier-1 decorator). The associated `HealthCheck` registry type stays Tier 3.
+
+## Consequences
+
+### Positive
+
+- Filings asking to promote a Tier-3 surface (DI, LDD, sink-author, introspection types) can be declined by citing this ADR, with one paragraph of reason rather than a fresh argument each time.
+- The "95% authoring surface" claim in `src/a2kit/__init__.py:13` now has a written, durable definition rather than living as a heuristic in the framework author's head.
+- New audiences map cleanly onto the tiering. When a future SDK / transport produces a coherent author audience, the answer is "Tier 2 module under `a2kit.<domain>`," not "thirty more symbols at top level."
+- Cross-language ports (Rust, TypeScript) get a reusable layout convention. The audience axis is language-agnostic; the three-tier shape ports as-is.
+
+### Negative
+
+- Specialized consumers pay the cost of longer import paths. `from a2kit.packages.di import Lazy` is two more dotted segments than `from a2kit import Lazy`. This is the deliberate signal that says "you are outside the default audience"; it is not free.
+- The `a2kit.packages.*` path looks unconventional to Python authors used to flat library namespaces (`from numpy import ...`, `from pandas import ...`). New consumers will ask why we do not flatten. The answer — audience-size tiering — is now in this ADR and the consumer-feedback doctrine.
+- Tier-2 modules require maintenance: every new Tier-3 name in their audience has to be added to the re-export `__all__`. The cost is small but real.
+- Some filings will still relitigate the boundary. The ADR does not prevent the conversation; it shortens it from "argue from scratch" to "argue against ADR 0004's reasoning." That second conversation is higher-bar but still possible.
+
+## References
+
+- `src/a2kit/__init__.py` — Tier-1 lazy-import table (`_LAZY_ATTRS`) and the "95% authoring surface" comment this ADR formalizes.
+- `src/a2kit/testing.py` — canonical Tier-2 module, re-exporting from Tier-3.
+- `docs/CONSUMER_FEEDBACK_DOCTRINE.md` — F3 and F5 (refuse use-case-specific asks, cite ADRs).
+- `CLAUDE.md` core principle 2 — "no multiple ways of doing the same thing," which constrains how Tier-1/Tier-2 re-exports relate to Tier-3 originals.

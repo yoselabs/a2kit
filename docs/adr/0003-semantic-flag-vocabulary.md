@@ -1,3 +1,14 @@
+---
+id: "0003"
+status: accepted
+date: 2026-05-13
+last_reviewed: 2026-05-13
+supersedes: []
+superseded_by: null
+tags: [surface, authoring, decorators]
+deciders: [Denis Tomilin]
+---
+
 # ADR 0003: Semantic-flag vocabulary on verb decorators
 
 ## Status

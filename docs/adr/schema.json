@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yoselabs/a2kit/docs/adr/schema.json",
+  "title": "a2kit ADR frontmatter",
+  "description": "Validates the YAML frontmatter block of every docs/adr/NNNN-*.md file. The frontmatter is the agent-grep layer: structured metadata an LLM can read without loading the body. The body itself is unconstrained prose per docs/adr/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "status",
+    "date",
+    "last_reviewed",
+    "supersedes",
+    "superseded_by",
+    "tags",
+    "deciders"
+  ],
+  "properties": {
+    "id": {
+      "description": "Four-digit zero-padded ADR id. Must match the NNNN prefix on the filename.",
+      "type": "string",
+      "pattern": "^[0-9]{4}$"
+    },
+    "status": {
+      "description": "Lifecycle state. proposed = open for debate. accepted = load-bearing decision. deprecated = no longer recommended but not replaced. superseded = replaced by a later ADR (set superseded_by).",
+      "type": "string",
+      "enum": ["proposed", "accepted", "deprecated", "superseded"]
+    },
+    "date": {
+      "description": "Original acceptance date, ISO 8601 (YYYY-MM-DD). Never changes after acceptance.",
+      "type": "string",
+      "format": "date"
+    },
+    "last_reviewed": {
+      "description": "Most recent re-validation date, ISO 8601 (YYYY-MM-DD). Bumped when the ADR is reaffirmed in a periodic review. Drives the staleness CI gate.",
+      "type": "string",
+      "format": "date"
+    },
+    "supersedes": {
+      "description": "List of ADR ids this one replaces. Empty list if none.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9]{4}$"
+      },
+      "uniqueItems": true
+    },
+    "superseded_by": {
+      "description": "Id of the ADR that replaced this one. null if not superseded. When non-null, status must be 'superseded'.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9]{4}$" }
+      ]
+    },
+    "tags": {
+      "description": "Free-text tags for filtering. Lowercase kebab-case. Examples: cli, surface, authoring, dispatcher, lifecycle, packaging, architecture, infrastructure.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "deciders": {
+      "description": "Humans who signed off on the decision. Free-text names; useful for accountability and routing future questions.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    }
+  }
+}
