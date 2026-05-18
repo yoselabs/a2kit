@@ -417,12 +417,22 @@ tool dispatch) have two paths:
 1. **Wrap explicitly with `ldd_state_for_call(ctx=stub, ...)`** — same
    seam the framework uses internally. Fine for one-off tests that
    want bespoke flag combinations.
-2. **Use the `a2kit.testing.ambient_for_tests` pytest fixture** —
-   the 95% case. Wraps the test in an LDD ambient with
+2. **Use one of the `a2kit.testing` ambient fixtures** — the 95%
+   case. Both wrap the test in an LDD ambient with
    `ctx=null_context()`, `events_enabled=False`,
-   `reports_enabled=False`. Opt-in (not autouse-by-default);
-   consumers wanting project-wide ambient re-export with
-   `autouse=True` in their own `conftest.py`.
+   `reports_enabled=False`. Decision rule:
+   - **`ambient_for_tests`** — per-test opt-in. Declare it as a
+     fixture parameter on tests that want ambient. Some tests in
+     the same module can bind, others stay loud.
+   - **`ambient_for_tests_autouse`** — project-wide binding. Import
+     once in `conftest.py` and every test in scope binds ambient
+     without declaring a fixture parameter. Pre-decorated peer of
+     the bare fixture; behaviour identical.
+
+   The historical `__wrapped__` re-export pattern (consumer's own
+   `conftest.py` calling `pytest.fixture(autouse=True)(_a.__wrapped__)`)
+   still works and remains valid for code already using it. New
+   consumers should pick one of the two named fixtures above.
 
 `asyncio.gather`, `create_task`, and `TaskGroup` propagate the
 ambient ctx via Python's `contextvars` copy-on-task semantics, so

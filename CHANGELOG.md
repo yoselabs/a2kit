@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+## v0.39.3 — 2026-05-19
+
+Patch release addressing a2web round-11 feedback. One additive
+testing helper plus a small doctrine refinement. No behaviour
+changes outside the new fixture; no wire-format changes.
+
+### Added — `a2kit.testing.ambient_for_tests_autouse`
+
+Pre-decorated autouse peer of `a2kit.testing.ambient_for_tests`.
+Consumers wanting project-wide ambient binding now write a single
+`from a2kit.testing import ambient_for_tests_autouse` in
+`conftest.py` instead of the three-line `__wrapped__` re-export
+pattern. Both flavors share defaults (`events_enabled=False`,
+`reports_enabled=False`, `ctx=null_context()`); the only difference
+is the framework-level `autouse=True` decoration. Decision rule:
+project-wide binding → `_autouse`; per-test opt-in → bare fixture.
+The historical `__wrapped__` re-export remains valid and is
+documented in `OPERATIONAL_CONTRACTS.md` for consumers already on
+it. Addresses a2web `A2KIT_FEEDBACK_v0.39.md` Note 1.
+
+### Changed — `CONSUMER_FEEDBACK_DOCTRINE.md` names the misdiagnosis taxonomy
+
+Under C3, a short "Known misdiagnosis shapes" subsection names
+**Shape A3** ("right primitive, wrong use case") and **Shape E**
+("correct design mistaken for accidental ceremony") so future
+filings can pattern-match against recurring patterns. The filing
+template's misdiagnosis self-check gains an optional one-line shape
+hint. No substantive rule change — the F2 / C2 worked examples that
+landed in v0.39.2 already covered the substance; this round just
+names the patterns.
+
+### Declined
+
+- a2web round-11 Carry-over C (canonical surface promotion of
+  `a2kit.Lazy` / `a2kit.LddEmission`) and Carry-over D
+  (`pydantic.Field` description sugar) remain parked in
+  `A2KIT_WISHES_DEFERRED.md` entries 7 and 8 — no fresh signal
+  this round.
+
 ## v0.39.2 — 2026-05-18
 
 Docs, examples, and CI-coverage release. No a2kit source changes, no

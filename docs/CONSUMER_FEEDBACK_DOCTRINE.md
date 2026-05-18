@@ -103,6 +103,15 @@ Every friction filing should answer, before submission:
 
 The fourth point is the misdiagnosis self-check. It does not have to be exhaustive — one or two plausible "if we are wrong about this, it's because…" lines are enough. They turn the filing from a demand into a hypothesis, which is what the framework needs to evaluate it fairly.
 
+#### Known misdiagnosis shapes
+
+Two recurring shapes are worth naming so future filings can pattern-match against them. Both surfaced in a2web round 10 / 11 and are recorded here as a vocabulary, not new rules — the underlying discipline is C3 itself.
+
+- **Shape A3 — right primitive, wrong use case.** The consumer files a helper request describing use case X, and the framework ships a primitive that *would* solve use case X. On adoption, the consumer discovers their original code wasn't actually use case X — it was use case Y, which the new primitive doesn't address. The primitive is correct; the mapping was wrong. (See F2's worked example: `resolve(app, T)` vs `make_default_state`.) Self-check question: *"What use case does the proposed primitive replace, and is the code I'm describing the same shape?"*
+- **Shape E — design mistaken for accidental ceremony.** The consumer files "the framework forces me to write N lines," and the framework ships a capability that collapses those N lines. On adoption, the consumer discovers the N-line shape was correct design, not ceremony — the explicit split was load-bearing. (See C2's worked example: `Lazy[T]` in factory params vs the `AppState` always-on / lazy split.) Self-check question: *"If the framework shipped exactly what I asked for, would the resulting code be better, or just shorter?"*
+
+Filings should self-classify against these shapes in the misdiagnosis self-check line when applicable. New shapes added here as they surface in future rounds.
+
 ### C4. Cite ADRs when proposing changes that touch recorded decisions
 
 Before filing a friction that proposes changing a public surface, check `docs/adr/` for relevant accepted decisions. If the ask contradicts an ADR, name it in the filing and argue against the ADR's reasoning directly. Do not file in ignorance of the existing record.
@@ -169,6 +178,7 @@ The loop's value is in the **back edges**: retractions and adoption reports. The
 
 **Misdiagnosis self-check.**
 - "If we are wrong about this, it is probably because <plausible alternative>."
+- Does this filing pattern-match a known shape? (See "Known misdiagnosis shapes" under C3 — Shape A3 / Shape E.) Optional; one line if yes.
 
 **Relevant ADRs.**
 - ADRs we checked and how this filing relates (supports / contradicts / orthogonal).

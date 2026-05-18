@@ -14,7 +14,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from a2kit.packages.testing.exceptions import SchemaSnapshotMismatch
-from a2kit.packages.testing.fixtures import ambient_for_tests, app, cassette
+from a2kit.packages.testing.fixtures import (
+    ambient_for_tests,
+    ambient_for_tests_autouse,
+    app,
+    cassette,
+)
 from a2kit.packages.testing.null_context import null_context
 from a2kit.packages.testing.snapshots import compute_schema
 
@@ -115,6 +120,7 @@ async def resolve(app_: App, type_: type) -> Any:
 __all__ = [
     "SchemaSnapshotMismatch",
     "ambient_for_tests",
+    "ambient_for_tests_autouse",
     "app",
     "cassette",
     "compute_schema",

@@ -10,6 +10,7 @@ from __future__ import annotations
 from a2kit.packages.testing import (
     SchemaSnapshotMismatch,
     ambient_for_tests,
+    ambient_for_tests_autouse,
     app,
     cassette,
     compute_schema,
@@ -24,6 +25,7 @@ __all__ = [
     "SchemaSnapshotMismatch",
     "TestClient",
     "ambient_for_tests",
+    "ambient_for_tests_autouse",
     "app",
     "cassette",
     "client",

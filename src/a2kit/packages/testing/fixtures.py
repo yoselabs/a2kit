@@ -9,6 +9,8 @@ no DI-swap helper — tests construct routers with fake factories directly:
 `ambient_for_tests` establishes an LDD ambient so tests that call
 orchestrator / phase functions directly (bypassing
 ``TestClient.invoke``) don't trip :class:`AmbientContextMissing`.
+`ambient_for_tests_autouse` is the pre-decorated autouse peer for
+consumers that want project-wide binding via a single import.
 
 v0.33: ``pytest`` is imported lazily inside the fixture bodies so that
 ``import a2kit.packages.testing`` does not require pytest at import time.
@@ -54,14 +56,19 @@ def _ambient_for_tests_impl() -> Iterator[None]:
     call. This fixture establishes the ambient with a no-op
     :func:`a2kit.testing.null_context` so the call completes silently.
 
-    Opt-in by design. Consumers wanting project-wide ambient re-export
-    with ``autouse=True`` in their own ``conftest.py``::
+    Opt-in by design. Two adoption shapes are supported:
 
-        # consumer's conftest.py
-        from a2kit.testing import ambient_for_tests as _a
-        ambient_for_tests = pytest.fixture(autouse=True)(_a.__wrapped__)
+    - **Per-test opt-in** — declare ``ambient_for_tests`` in a test
+      signature. The 5% case where some tests want ambient and others
+      do not. Use this fixture.
+    - **Project-wide binding** — import the pre-decorated peer
+      :data:`ambient_for_tests_autouse` once in ``conftest.py``. The
+      95% case. One-line import, no ``__wrapped__`` ceremony::
 
-    Defaults match the universal pattern: ``events_enabled=False``,
+          # consumer's conftest.py
+          from a2kit.testing import ambient_for_tests_autouse  # noqa: F401
+
+    Both flavors share defaults: ``events_enabled=False``,
     ``reports_enabled=False``, ``ctx=null_context()``. Consumers needing
     a different shape wrap :func:`a2kit.ldd.ldd_state_for_call`
     themselves — this fixture is the 95% case, not a kitchen sink.
@@ -87,10 +94,12 @@ try:
     cassette = pytest.fixture(_cassette_impl)
     app = pytest.fixture(_app_impl)
     ambient_for_tests = pytest.fixture(_ambient_for_tests_impl)
+    ambient_for_tests_autouse = pytest.fixture(autouse=True)(_ambient_for_tests_impl)
 except ImportError:
     cassette = _cassette_impl  # type: ignore[assignment]
     app = _app_impl  # type: ignore[assignment]
     ambient_for_tests = _ambient_for_tests_impl  # type: ignore[assignment]
+    ambient_for_tests_autouse = _ambient_for_tests_impl  # type: ignore[assignment]
 
 
-__all__ = ["ambient_for_tests", "app", "cassette"]
+__all__ = ["ambient_for_tests", "ambient_for_tests_autouse", "app", "cassette"]
