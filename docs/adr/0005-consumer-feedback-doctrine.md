@@ -114,9 +114,9 @@ keep one-off declines in the conversation that produced them.
 Why it wins:
 
 - Addresses both failure modes directly. Re-litigation is killed
-  by F5 (record decisions in ADRs) + C4 (consumers cite ADRs
+  by F5 (record decisions in ADRs) and C4 (consumers cite ADRs
   before filing). Misdiagnosis is killed by C3 (the self-check)
-  + F2 (ship primitive, not mapping).
+  combined with F2 (ship primitive, not mapping).
 - Stays decoupled from any one consumer's round cadence. The
   framework repo records *decisions*, not *interactions*.
 - The doctrine itself can evolve via subsequent ADRs that

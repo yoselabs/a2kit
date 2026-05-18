@@ -227,6 +227,13 @@ dev = [
     "python-frontmatter>=1.1",
     "jinja2>=3.1",
     "jsonschema>=4",
+    # Pre-commit framework — runs the staleness gates (ADR frontmatter
+    # validity + INDEX freshness, ruff, ty, etc.) on every commit. Without
+    # this, the .pre-commit-config.yaml hooks are decorative.
+    "pre-commit>=4",
+    # Markdown linter for docs/. Python-native (matches the rest of the
+    # tooling stack); no Node toolchain. Configured in .pymarkdown.json.
+    "pymarkdownlnt>=0.9",
 ]
 
 [tool.mutmut]

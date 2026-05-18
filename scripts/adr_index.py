@@ -57,7 +57,8 @@ the links to read full bodies only when needed.
 {%- for adr in active %}
 | [{{ adr.id }}]({{ adr.filename }}) | {{ adr.status }} | {{ adr.title }} | {{ adr.tags | join(", ") }} | {{ adr.summary }} |
 {%- endfor %}
-{% if superseded %}
+{%- if superseded %}
+
 ## Superseded
 
 | ID | Title | Superseded by |
@@ -65,8 +66,9 @@ the links to read full bodies only when needed.
 {%- for adr in superseded %}
 | [{{ adr.id }}]({{ adr.filename }}) | {{ adr.title }} | [{{ adr.superseded_by }}]({{ adr.superseded_by_filename }}) |
 {%- endfor %}
-{% endif %}
-{% if deprecated %}
+{%- endif %}
+{%- if deprecated %}
+
 ## Deprecated
 
 | ID | Title | Last reviewed |
@@ -74,7 +76,7 @@ the links to read full bodies only when needed.
 {%- for adr in deprecated %}
 | [{{ adr.id }}]({{ adr.filename }}) | {{ adr.title }} | {{ adr.last_reviewed }} |
 {%- endfor %}
-{% endif %}
+{%- endif %}
 """
 
 

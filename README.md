@@ -198,6 +198,7 @@ app.singleton(AppState, build_state)
 ```
 
 What you get:
+
 - AppState fields never Optional. Every call site sees a real resource.
 - Locks live inside resources, not leaking into state.
 - DI stays sync. Composition is plain `__init__`.
@@ -582,7 +583,6 @@ outside an active dispatch (lifecycle hook, module-level code, or a
 tool that omitted `ctx`) raises
 `a2kit.exceptions.AmbientContextMissing`. See
 [OPERATIONAL_CONTRACTS.md](OPERATIONAL_CONTRACTS.md) Q8.
-
 
 ## Migration from v0.x
 

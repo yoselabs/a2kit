@@ -1,7 +1,9 @@
-.PHONY: test lint format check examples bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check
+.PHONY: test lint format check examples bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check markdown-lint
 
 bootstrap:
 	uv sync --all-extras --dev
+	uv run pre-commit install --install-hooks
+	uv run pre-commit install --hook-type pre-push
 
 test:
 	uv run pytest
@@ -73,3 +75,9 @@ adr-index:
 
 adr-check:
 	uv run python scripts/adr_index.py --check
+
+# Markdown lint — runs pymarkdownlnt across docs/, CHANGELOG.md, README.md.
+# Config in .pymarkdown.json. Use `uv run pymarkdown --config .pymarkdown.json
+# fix <path>` to auto-fix structural issues (blank lines, list markers, etc.).
+markdown-lint:
+	uv run pymarkdown --config .pymarkdown.json scan docs/ CHANGELOG.md README.md

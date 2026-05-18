@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: a2kit-lint
         name: a2kit static lint
-        entry: uv run a2kit lint src/ tests/ examples/
+        entry: uv run a2kit lint static src/ tests/ examples/
         language: system
         pass_filenames: false
         always_run: true
@@ -12,17 +12,25 @@ repos:
         entry: uv run ruff check
         language: system
         pass_filenames: true
+        types_or: [python, pyi]
       - id: ruff-format
         name: ruff format
         entry: uv run ruff format --check
         language: system
         pass_filenames: true
+        types_or: [python, pyi]
       - id: adr-index
         name: ADR frontmatter valid + index up to date
         entry: uv run python scripts/adr_index.py --check
         language: system
         pass_filenames: false
         files: ^docs/adr/(.*\.md|schema\.json)$
+      - id: pymarkdown
+        name: markdown lint (pymarkdownlnt)
+        entry: uv run pymarkdown --config .pymarkdown.json scan
+        language: system
+        pass_filenames: true
+        files: ^(docs/.*\.md|README\.md|CHANGELOG\.md|AGENTS\.md|CLAUDE\.md)$
       - id: actionlint
         name: actionlint
         entry: actionlint
