@@ -2,9 +2,10 @@
 
 ## Unreleased
 
+## v0.39.1 — 2026-05-18
+
 Documentation and governance work. No code changes, no behaviour
-changes, no wire-format changes. The release line that ships this
-will be tagged as a docs-only release.
+changes, no wire-format changes. Patch release.
 
 ### Added — deterministic ADR pipeline
 
