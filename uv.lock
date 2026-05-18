@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "a2kit"
-version = "0.39.1"
+version = "0.39.2"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -23,6 +23,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+examples-mcp-google-auth = [
+    { name = "cryptography" },
+    { name = "py-key-value-aio", extra = ["disk"] },
+]
 otel = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
@@ -58,9 +62,11 @@ requires-dist = [
     { name = "anyio", specifier = ">=4" },
     { name = "cel-python", specifier = ">=0.5,<0.6" },
     { name = "click", specifier = ">=8" },
+    { name = "cryptography", marker = "extra == 'examples-mcp-google-auth'", specifier = ">=42" },
     { name = "fastmcp", specifier = ">=3.2,<4" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.20" },
+    { name = "py-key-value-aio", extras = ["disk"], marker = "extra == 'examples-mcp-google-auth'", specifier = ">=0.4" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "pydantic-settings", specifier = ">=2.14,<3" },
     { name = "syrupy", marker = "extra == 'testing'", specifier = ">=4" },
@@ -68,7 +74,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.25,<1" },
     { name = "vcrpy", marker = "extra == 'testing'", specifier = ">=6" },
 ]
-provides-extras = ["testing", "otel"]
+provides-extras = ["testing", "otel", "examples-mcp-google-auth"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -770,6 +776,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/99/b4/eee71d1e338bc1f9bd3539b46b70e303dac061324b759c9a80fa3c96d90d/diff_cover-10.2.0.tar.gz", hash = "sha256:61bf83025f10510c76ef6a5820680cf61b9b974e8f81de70c57ac926fa63872a", size = 102473, upload-time = "2026-01-09T01:59:07.605Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/2c/61eeb887055a37150db824b6bf830e821a736580769ac2fea4eadb0d613f/diff_cover-10.2.0-py3-none-any.whl", hash = "sha256:59c328595e0b8948617cc5269af9e484c86462e2844bfcafa3fb37f8fca0af87", size = 56748, upload-time = "2026-01-09T01:59:06.028Z" },
+]
+
+[[package]]
+name = "diskcache"
+version = "5.6.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/21/1c1ffc1a039ddcc459db43cc108658f32c57d271d7289a2794e401d0fdb6/diskcache-5.6.3.tar.gz", hash = "sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc", size = 67916, upload-time = "2023-08-31T06:12:00.316Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/27/4570e78fc0bf5ea0ca45eb1de3818a23787af9b390c0b0a0033a1b8236f9/diskcache-5.6.3-py3-none-any.whl", hash = "sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19", size = 45550, upload-time = "2023-08-31T06:11:58.822Z" },
 ]
 
 [[package]]
@@ -1805,6 +1820,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pathvalidate"
+version = "3.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fa/2a/52a8da6fe965dea6192eb716b357558e103aea0a1e9a8352ad575a8406ca/pathvalidate-3.3.1.tar.gz", hash = "sha256:b18c07212bfead624345bb8e1d6141cdcf15a39736994ea0b94035ad2b1ba177", size = 63262, upload-time = "2025-06-15T09:07:20.736Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/70/875f4a23bfc4731703a5835487d0d2fb999031bd415e7d17c0ae615c18b7/pathvalidate-3.3.1-py3-none-any.whl", hash = "sha256:5263baab691f8e1af96092fa5137ee17df5bdfbd6cff1fcac4d6ef4bc2e1735f", size = 24305, upload-time = "2025-06-15T09:07:19.117Z" },
+]
+
+[[package]]
 name = "pendulum"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2023,6 +2047,10 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+disk = [
+    { name = "diskcache" },
+    { name = "pathvalidate" },
+]
 filetree = [
     { name = "aiofile" },
     { name = "anyio" },

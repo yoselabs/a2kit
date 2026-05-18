@@ -2,6 +2,68 @@
 
 ## Unreleased
 
+## v0.39.2 — 2026-05-18
+
+Docs, examples, and CI-coverage release. No a2kit source changes, no
+behaviour changes, no wire-format changes. Patch release.
+
+### Added — three ADRs locking the MCP auth boundary
+
+- **ADR 0010** (proposed): authentication is an MCP-mode concern
+  only; the CLI never authenticates. a2kit core, the CLI transport,
+  and tool bodies stay auth-agnostic. Recorded consequence: AI
+  agents that only speak remote MCP (ChatGPT custom connectors,
+  Claude web, Gemini web, hosted Desktop variants) cannot reach
+  CLI-only operations — the answer is to lift the operation as an
+  MCP verb, not retrofit auth into the CLI.
+- **ADR 0011** (proposed): prescribed FastMCP auth recipe.
+  `GoogleProvider` with Fernet-wrapped filesystem `py-key-value`
+  store, a stable `jwt_signing_key` from env, a `StaticTokenVerifier`
+  bearer escape hatch, Streamable HTTP transport, and a GCP "Testing"
+  consent screen for beta gating. Self-hosted-OIDC sub-recipe
+  documented as the named deviation. Encodes the pitfalls (in-memory
+  storage, missing `jwt_signing_key`, Testing-mode 7-day token expiry,
+  DCR-incompatible clients).
+- **ADR 0012** (proposed): MCP deployment topology — one OAuth app
+  per server, no gateway. Records why current MCP gateway projects
+  (MetaMCP, mcp-context-forge, MCPJungle, et al.) are not ready for
+  the "one Google login fronts N MCPs" use case without operating a
+  real IdP, and names the Authelia-in-front-of-Google anti-pattern.
+  Re-evaluation triggers: server count > 3, gateway-ecosystem
+  maturity, or a multi-tenant use case landing.
+
+### Added — remote-MCP-access pattern doc
+
+`docs/patterns/remote-mcp-access.md` documents the canonical shape
+for an a2kit-based remote MCP serving web-only AI clients with
+Google auth: per-user `UserSession` via per-call DI, workspace dirs
+named by `sha256(email)[:16]` (raw email never in the path, `_email`
+forensics file written on first creation), and a four-category
+liftability rubric (lift / lift-with-care / don't-lift / never-lift)
+for deciding which operations belong in a remote MCP at all.
+Composes existing a2kit primitives only — no new framework code.
+
+### Added — `examples/mcp_google_auth/` lintable reference
+
+End-to-end implementation of the ADR 0011 recipe and the pattern
+doc. Three verbs (`whoami`, `note_write`, `note_read`) over per-user
+workspace directories, two composition roots (CLI for local dev,
+MCP for production), and a smoke test that exercises the per-user
+workspace contract through a2kit's in-process test client. Runs in
+~1 second. `make example-smoke` and the CI workflow now run the
+smoke test on every commit, so a2kit-side changes that break the
+recipe fail at the framework boundary before reaching downstream
+consumers. Google-mode dependencies (`py-key-value-aio[disk]`,
+`cryptography`) live in the new `examples-mcp-google-auth` optional
+group; bearer-only mode (used by the smoke test) needs neither.
+
+### Added — `make example-smoke` and CI step
+
+`make example-smoke` runs the example's smoke suite with a default
+`WORKSPACE_ROOT` of `/tmp/a2kit-example-smoke`. The GitHub Actions
+workflow invokes it alongside `pytest`. The example is also covered
+by `make lint` (ruff, ty, a2kit lint static) and `make typecheck`.
+
 ## v0.39.1 — 2026-05-18
 
 Documentation and governance work. No code changes, no behaviour

@@ -28,5 +28,7 @@ jobs:
         run: uv run ty check src/
       - name: pytest
         run: uv run pytest
+      - name: example-smoke (remote-MCP-access pattern)
+        run: make example-smoke
       - name: a2kit lint
         run: uv run a2kit lint src/ tests/ examples/

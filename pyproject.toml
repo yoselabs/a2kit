@@ -1,6 +1,6 @@
 [project]
 name = "a2kit"
-version = "0.39.1"
+version = "0.39.2"
 description = "Fat tool decorator on top of FastMCP — protocol-agnostic core, opt-in plugin packages."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]
@@ -44,6 +44,13 @@ testing = [
 otel = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
+]
+# `examples/mcp_google_auth/` Google-mode dependencies. Bearer-only mode
+# (used by `make example-smoke`) needs none of these. See
+# docs/patterns/remote-mcp-access.md.
+examples-mcp-google-auth = [
+    "py-key-value-aio[disk]>=0.4",
+    "cryptography>=42",
 ]
 
 [build-system]
@@ -139,6 +146,10 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
     # Examples intentionally pass demo strings to functions that accept
     # password-like params; not real secrets.
     "S105", "S106",
+]
+"examples/**/tests/**" = [
+    # Example smoke tests inherit the same test-style allowances as tests/**.
+    "S101", "B017", "PT011", "ARG001", "PLC0415", "I001",
 ]
 "src/a2kit/app.py" = ["SLF001"]
 # DI container's parent/child design crosses instance boundaries within the

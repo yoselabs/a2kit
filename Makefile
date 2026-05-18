@@ -1,4 +1,4 @@
-.PHONY: test lint format check examples bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check markdown-lint
+.PHONY: test lint format check examples example-smoke bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check markdown-lint
 
 bootstrap:
 	uv sync --all-extras --dev
@@ -7,6 +7,9 @@ bootstrap:
 
 test:
 	uv run pytest
+
+example-smoke:
+	WORKSPACE_ROOT=$${WORKSPACE_ROOT:-/tmp/a2kit-example-smoke} uv run pytest examples/mcp_google_auth/tests/ --no-cov -q
 
 lint:
 	uv run ruff check .
