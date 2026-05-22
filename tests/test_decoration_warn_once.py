@@ -28,7 +28,7 @@ class _DataRow:
 
 from a2kit import _list_helpers as list_helpers_module
 from a2kit.packages.mcp import listview as listview_module
-from a2kit.packages.mcp import server as server_module
+from a2kit.packages.mcp import _wrappers as server_module
 from a2kit.packages.otel import middleware as otel_middleware_module
 
 
@@ -89,7 +89,7 @@ def test_l1_dispatch_hook_return_annotation_failure_warns_once(
 
     monkeypatch.setattr(_typing, "get_type_hints", _raising_get_type_hints)
 
-    with caplog.at_level(logging.WARNING, logger="a2kit.packages.mcp.server"):
+    with caplog.at_level(logging.WARNING, logger="a2kit.packages.mcp._wrappers"):
         wrapped = server_module._wrap_with_dispatch_hook(fn, hook, app)
         server_module._wrap_with_dispatch_hook(fn, hook, app)
 

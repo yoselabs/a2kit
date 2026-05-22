@@ -83,7 +83,7 @@ uv pip install a2kit
 | `a2kit.packages.mcp` | FastMCP adapter. `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`. The ONE place fastmcp imports. |
 | `a2kit.packages.cli` | Click adapter. `build_full_cli(app)` returns the progressive-disclosure CLI. |
 | `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. Carries the `Container` (request-scoped DI) consumed via `App.provide(...)`. |
-| `a2kit.packages.formatter` | Type-driven output routing — TSV / JSON / hybrid `page-tsv`. `format_response(raw, format_hint=...)`. Auto picks based on the tool's return-type annotation. |
+| `a2kit.packages.formatter` | Consumer-aware rendering — `render(value, consumer)` for the `llm` / `code` / `machine` profiles; TSV / JSON / hybrid `page-tsv` wire forms picked by `build_encoding_plan` from the return type. `format_response` is the `format_hint`-shaped adapter. |
 | `a2kit.packages.select` | `compile`, `evaluate`, `validate_atoms` over real CEL syntax. |
 | `a2kit.packages.mcp.reports` | `reports(ReportT)` stacked decorator. Computes the pydantic JSON schema; both keys travel on `meta.extra`. |
 | `a2kit.packages.testing` | Thin pytest fixtures + `compute_schema` helper. |

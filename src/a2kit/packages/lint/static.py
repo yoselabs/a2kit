@@ -37,6 +37,7 @@ A2K017 = "A2K017"  # Lazy[T] suggestion for conditional-use deps
 
 A2K_CONN_LIST_PLACEHOLDER = "A2K-CONN-LIST-PLACEHOLDER"
 A2K_IMPORT_DISCIPLINE = "A2K-IMPORT-DISCIPLINE"
+A2K_PKG_INIT_IMPORT = "A2K-PKG-INIT-IMPORT"  # submodule importing its own package __init__
 A2K_LDD_REPORT_TYPE = "A2K-LDD-REPORT-TYPE"
 A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"
 A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
@@ -56,6 +57,7 @@ ALL_RULES = (
     A2K017,
     A2K_CONN_LIST_PLACEHOLDER,
     A2K_IMPORT_DISCIPLINE,
+    A2K_PKG_INIT_IMPORT,
     A2K_LDD_REPORT_TYPE,
     A2K_LOCAL_RETURN_MODEL,
     A2K_EXTRA_NAMESPACE,
@@ -138,7 +140,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         rule_lazy_t_suggestion,
         rule_parameterized_lambda_factory,
     )
-    from a2kit.packages.lint.rules.importing import rule_import_discipline
+    from a2kit.packages.lint.rules.importing import rule_import_discipline, rule_pkg_init_import
     from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
     from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
     from a2kit.packages.lint.rules.mirror import rule_test_mirror
@@ -157,6 +159,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K017, rule_lazy_t_suggestion),
         (A2K_CONN_LIST_PLACEHOLDER, rule_conn_list_placeholder),
         (A2K_IMPORT_DISCIPLINE, rule_import_discipline),
+        (A2K_PKG_INIT_IMPORT, rule_pkg_init_import),
         (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),
         (A2K_LOCAL_RETURN_MODEL, rule_local_return_model),
         (A2K_EXTRA_NAMESPACE, rule_extra_namespace),
@@ -236,6 +239,7 @@ __all__ = [
     "A2K_IMPORT_DISCIPLINE",
     "A2K_LDD_REPORT_TYPE",
     "A2K_LOCAL_RETURN_MODEL",
+    "A2K_PKG_INIT_IMPORT",
     "A2K_SURFACE_EXPLICIT",
     "A2K_TEST_MIRROR",
     "ALL_RULES",

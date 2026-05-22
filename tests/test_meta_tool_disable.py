@@ -54,7 +54,7 @@ def test_build_mcp_server_with_health_tool_does_not_raise() -> None:
 def test_meta_health_registered_in_server_registry() -> None:
     """The disable transform hides `_meta.health` from `list_tools`,
     but the raw registry (via `_get_tool`) still holds it."""
-    server = build_mcp_server(_app_with_health())
+    server = build_mcp_server(_app_with_health(), code_mode=False)
 
     async def go() -> None:
         raw = await server._get_tool("_meta.health")  # noqa: SLF001
@@ -65,7 +65,7 @@ def test_meta_health_registered_in_server_registry() -> None:
 
 
 def test_default_list_tools_omits_meta() -> None:
-    server = build_mcp_server(_app_with_health())
+    server = build_mcp_server(_app_with_health(), code_mode=False)
 
     async def go() -> None:
         listed = await server.list_tools()
@@ -81,7 +81,7 @@ def test_meta_health_not_callable_via_mcp_wire() -> None:
     The CLI surface (`<app> _meta health`) bypasses the MCP wire."""
     from fastmcp.exceptions import NotFoundError
 
-    server = build_mcp_server(_app_with_health())
+    server = build_mcp_server(_app_with_health(), code_mode=False)
 
     async def go() -> None:
         with pytest.raises(NotFoundError):

@@ -13,9 +13,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from .formats import FormatName
 
 
 class ListViewMode(StrEnum):
@@ -53,7 +56,7 @@ class Response:
     """
 
     data: str
-    format: str  # "json" | "tsv"
+    format: FormatName
 
 
 T = TypeVar("T")

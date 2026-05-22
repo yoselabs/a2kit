@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, Annotated, Any, cast, get_type_hints
 
 import typer
 
+from a2kit.packages.cli._serve import register_code, register_serve
+
 if TYPE_CHECKING:
     import click
     from pydantic import BaseModel
@@ -429,26 +431,6 @@ def _register_schema(typer_app: Any, app: App) -> None:
     typer_app.command(name="schema")(schema_cmd)
 
 
-def _register_serve(typer_app: Any, app: App) -> None:
-    """Register the ``serve`` subcommand. ``fastmcp`` is imported lazily inside the callback."""
-
-    def serve_cmd(
-        transport: Annotated[str, typer.Option(help="Transport: 'stdio' or 'http'.")] = "stdio",
-        host: Annotated[str, typer.Option(help="HTTP bind host.")] = "127.0.0.1",
-        port: Annotated[int, typer.Option(help="HTTP bind port.")] = 8000,
-    ) -> None:
-        """Run as an MCP server (stdio or HTTP)."""
-        from a2kit.packages.mcp.server import build_mcp_server
-
-        server = build_mcp_server(app)
-        if transport == "stdio":
-            server.run(transport="stdio")
-        else:
-            server.run(transport="http", host=host, port=port)
-
-    typer_app.command(name="serve")(serve_cmd)
-
-
 def _register_health(typer_app: Any, app: App) -> None:
     """Register the ``health`` shorthand for ``_meta.health``.
 
@@ -488,6 +470,7 @@ def build_full_cli(app: App) -> click.Command:
       - any user-registered ``app.add_cli(...)`` commands (Click commands)
       - ``schema`` (eager, closes over app)
       - ``serve`` (LAZY — fastmcp imported only inside the callback body)
+      - ``code`` (LAZY — sandbox runtime imported only inside the callback)
       - ``health`` (only when ``app._health.enabled``)
 
     Top-level flags ``--no-reports`` / ``--no-events`` disable LDD channels
@@ -527,7 +510,8 @@ def build_full_cli(app: App) -> click.Command:
         _register_router(main, router, app)
 
     _register_schema(main, app)
-    _register_serve(main, app)
+    register_serve(main, app)
+    register_code(main, app)
     if getattr(app, "_health", None) is not None and app._health.enabled:  # noqa: SLF001
         _register_health(main, app)
 

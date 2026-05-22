@@ -45,6 +45,12 @@ otel = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
 ]
+# Sandboxed code-execution surface. `pydantic-monty` backs FastMCP's
+# `experimental.transforms.CodeMode`; imported only by
+# `a2kit.packages.codemode`, never on the `import a2kit` path.
+code-mode = [
+    "pydantic-monty>=0.0.17",
+]
 # `examples/mcp_google_auth/` Google-mode dependencies. Bearer-only mode
 # (used by `make example-smoke`) needs none of these. See
 # docs/patterns/remote-mcp-access.md.
@@ -131,7 +137,8 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
     # builtin shadowing for clarity, and bind to local addresses for HTTP probes.
     "B017", "S603", "S104", "A002", "A004", "E501",
 ]
-"scripts/**" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201"]
+"scripts/**" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201", "ANN202", "RUF059"]
+"evals/**" = ["T201", "S101", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201", "ANN202", "S603", "S607"]
 "bench/**" = ["T201", "BLE001", "S603", "ANN001", "ANN201", "PLR0915"]
 "examples/**" = [
     # Examples declare ``ctx: a2kit.ToolContext`` to opt into Context
@@ -160,6 +167,7 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 # The underscore is convention-private but the attribute is the framework's
 # intentional handle for the dispatch helper. See dispatch-lifecycle-wiring.
 "src/a2kit/packages/mcp/server.py" = ["SLF001"]
+"src/a2kit/packages/mcp/_wrappers.py" = ["SLF001"]
 "src/a2kit/packages/cli/runtime.py" = ["SLF001"]
 "src/a2kit/packages/di/_cleanup_stack.py" = ["BLE001"]
 "src/a2kit/packages/di/_hints.py" = ["BLE001"]
@@ -228,6 +236,9 @@ dev = [
     "diff-cover>=9",
     "hypothesis>=6",
     "opentelemetry-sdk>=1.20",
+    # Monty sandbox runtime — backs the code-execution surface and its
+    # tests (the `a2kit[code-mode]` extra). See a2kit.packages.codemode.
+    "pydantic-monty>=0.0.17",
     "mutmut>=3.5",
     "cosmic-ray>=8.4.6",
     # ADR index generator (scripts/adr_index.py) — parses YAML frontmatter

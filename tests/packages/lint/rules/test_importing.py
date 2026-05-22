@@ -10,6 +10,7 @@ from pathlib import Path
 
 from a2kit.packages.lint.static import (
     A2K_IMPORT_DISCIPLINE,
+    A2K_PKG_INIT_IMPORT,
     run_static_rules,
 )
 
@@ -90,3 +91,53 @@ def test_import_discipline_noqa(tmp_path: Path) -> None:
     p = _write(tmp_path / "src" / "a2kit" / "user_app.py", body)
     findings = run_static_rules([p])
     assert A2K_IMPORT_DISCIPLINE not in _codes(findings)
+
+
+# ----------------------- importing.py: A2K-PKG-INIT-IMPORT ----------------------- #
+
+
+def test_pkg_init_absolute_self_import_fires(tmp_path: Path) -> None:
+    """A submodule doing `from a2kit.<...>.<pkg> import X` is flagged."""
+    body = "from a2kit.packages.formatter import render\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "sub.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPORT in _codes(findings)
+
+
+def test_pkg_init_relative_self_import_fires(tmp_path: Path) -> None:
+    """`from . import X` pulls the package `__init__` — flagged."""
+    body = "from . import render\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "sub.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPORT in _codes(findings)
+
+
+def test_pkg_init_sibling_import_is_silent(tmp_path: Path) -> None:
+    """Importing a sibling submodule (`from .formats import X`) is allowed."""
+    body = "from .formats import FormatName\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "sub.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPORT not in _codes(findings)
+
+
+def test_pkg_init_cross_package_import_is_silent(tmp_path: Path) -> None:
+    """Importing from another package is allowed."""
+    body = "from a2kit.packages.di import container\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "sub.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPORT not in _codes(findings)
+
+
+def test_pkg_init_self_import_in_init_is_silent(tmp_path: Path) -> None:
+    """A package `__init__.py` re-exporting its own submodules is allowed."""
+    body = "from .render import render\nfrom a2kit.packages.formatter import render as r2\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPORT not in _codes(findings)
+
+
+def test_pkg_init_import_noqa(tmp_path: Path) -> None:
+    body = "from . import render  # noqa: A2K-PKG-INIT-IMPORT\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "sub.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPORT not in _codes(findings)

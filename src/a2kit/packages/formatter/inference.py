@@ -12,6 +12,7 @@ the lowest layer.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
@@ -128,6 +129,40 @@ def infer_format_hint(return_type: Any) -> FormatHintInferred:  # noqa: PLR0911
 
     # Everything else (single BaseModel, dict, scalars, Union, Optional) → JSON
     return "json"
+
+
+@dataclass(frozen=True)
+class EncodingPlan:
+    """Static plan for encoding a tool's return type for the ``llm`` consumer.
+
+    ``kind`` is ``tsv`` (flat list), ``page-tsv`` (``Page[scalar-row]``),
+    ``envelope`` (a ``BaseModel`` with flat-array fields named by
+    ``tsv_fields``), or ``json``. A pure function of the annotation — it
+    never inspects a runtime value.
+    """
+
+    kind: Literal["tsv", "page-tsv", "json", "envelope"]
+    tsv_fields: tuple[str, ...] = field(default=())
+
+
+def build_encoding_plan(return_type: Any) -> EncodingPlan:
+    """Walk ``return_type`` and produce a static :class:`EncodingPlan` by
+    composing :func:`infer_format_hint` over the type and (one level down)
+    its ``BaseModel`` fields.
+    """
+    hint = infer_format_hint(return_type)
+    if hint == "tsv":
+        return EncodingPlan("tsv")
+    if hint == "page-tsv":
+        return EncodingPlan("page-tsv")
+    # hint == "json": dig one level for flat-array fields on a BaseModel.
+    if _is_basemodel(return_type):
+        tsv_fields = tuple(
+            name for name, model_field in return_type.model_fields.items() if infer_format_hint(model_field.annotation) == "tsv"
+        )
+        if tsv_fields:
+            return EncodingPlan("envelope", tsv_fields=tsv_fields)
+    return EncodingPlan("json")
 
 
 def _page_item_type(cls: type[Page]) -> Any | None:

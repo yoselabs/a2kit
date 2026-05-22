@@ -723,6 +723,71 @@ API used by the CLI `<app> health` subcommand. Any change to the
 resolution path that breaks the resource-entry contract trips these
 tests.
 
+## Q-CodeMode. Code execution collapses the listed tool catalog
+
+When an MCP server is built with code mode on — the default —
+`build_mcp_server` installs the `A2kitCodeMode` transform
+(`a2kit.packages.codemode`). This is a transport-surface contract,
+not a dispatch-semantics change: the per-call dispatch hook,
+connection resolution, and DI are untouched.
+
+- **`list_tools` collapses.** The listed catalog becomes exactly
+  `search` / `get_schema` / `execute`. Real tools are no longer
+  enumerated but remain callable by name via `call_tool`.
+- **The sandbox re-runs the full dispatch path.** `execute`'s
+  `call_tool(name, params)` routes through `ctx.fastmcp.call_tool`,
+  so a sandboxed call to a connection-scoped, DI-wired tool resolves
+  its `connection` and dependencies exactly as a direct MCP call
+  (proven by `docs/SPIKE_CODE_EXEC_DI.md`).
+- **Capability gate.** Tools flagged `destructive` are absent from
+  the sandbox catalog unless the server was built with
+  `code_mode_allow_destructive=True` (operator-side; `serve
+  --code-mode-allow-destructive`). `visibility != "all"` tools were
+  never on the MCP surface and so are never sandbox-reachable.
+- **Typed sandbox values.** A `call_tool` result crosses the monty
+  boundary as a **dataclass**, not a dict — sandbox code uses attribute
+  access (`page.items[0].title`). a2kit generates monty type-stubs from
+  the tool descriptors and the `A2kitSandboxProvider` type-checks the
+  LLM-authored code against them *before* executing it, retrying once
+  via sampling on a type error. See ADR 0014.
+- **Opt out.** `build_mcp_server(app, code_mode=False)` /
+  `serve --code-mode-off` skips the transform; `list_tools` then
+  returns the full real catalog and no `execute` tool exists.
+
+The Monty runtime (`pydantic-monty`) is a lazy optional dependency;
+`import a2kit` never loads it. See ADR 0013, ADR 0014, and
+`docs/VISION.md`.
+
+## Q-FormatRouting. The MCP surface compresses LLM-facing results
+
+Rendering is consumer-aware (ADR 0014): the `render(value, consumer)`
+seam in `a2kit.packages.formatter` serves three consumer profiles —
+`llm` (compress), `code` (structured dataclasses), `machine` (plain
+JSON). The consumer is fixed at `build_mcp_server` time by the
+`code_mode` flag; it is never sniffed from call context.
+
+- **MCP results format-route.** With `code_mode=False` real tools face
+  the LLM: a tabular result is emitted as TSV / page-tsv in the MCP
+  `content` channel, with the equivalent JSON in `structuredContent`.
+  Emitting both is spec-aligned (MCP SEP-1624) — `content` is the
+  token-efficient channel, `structuredContent` is delivered at zero
+  model-token cost. A non-tabular result keeps JSON `content`.
+- **The encoding plan is static.** `build_encoding_plan` walks each
+  tool's return type once at registration; it marks a top-level
+  `list` / `Page` *and* any flat-array field nested inside a
+  `BaseModel` envelope as TSV-encoded. Cached on `ToolDescriptor`.
+- **Code mode renders for `code`.** With `code_mode=True` real tools
+  are sandbox-only — their results stay structured (uncompressed);
+  only the `execute` output faces the LLM and is compressed by
+  value-driven inference.
+- **The CLI is unchanged** — it was already the `llm` consumer.
+- **`--compact` escape hatch.** `build_mcp_server(app, compact=True)` /
+  `serve --compact` drops the `structuredContent` channel entirely,
+  for non-conformant MCP clients that mishandle dual channels. Leave
+  it off for conformant clients.
+- **The REST surface (future)** is bound to the `machine` consumer —
+  plain JSON, never compressed, and never exposes code execution.
+
 ## See also
 
 - `CHANGELOG.md` — release-by-release history of behavioral changes.

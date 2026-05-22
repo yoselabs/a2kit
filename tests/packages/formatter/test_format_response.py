@@ -1,14 +1,8 @@
-"""``format_response`` orchestrator + ``truncate`` (post-TOON).
-
-TOON-specific tests moved out — TOON was removed from the wire-format menu.
-TSV and page-tsv have their own dedicated test files.
-"""
+"""``format_response`` orchestrator + ``truncate``."""
 
 from __future__ import annotations
 
 import json
-
-import pytest
 
 from a2kit.packages.formatter import (
     TRUNCATION_MARKER,
@@ -45,10 +39,6 @@ class TestFormatResponseHints:
         r = format_response(data, format_hint="json")
         assert r.format == "json"
         assert json.loads(r.data) == data
-
-    def test_toon_hint_raises(self):
-        with pytest.raises(ValueError, match="toon"):
-            format_response({"a": 1}, format_hint="toon")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
 
 
 class TestFormatResponseReturnType:

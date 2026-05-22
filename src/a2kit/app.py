@@ -479,7 +479,7 @@ def _validate_router_tools(router: Router) -> None:
 def _build_descriptors(router: Router) -> list[ToolDescriptor]:
     """Materialize one ``ToolDescriptor`` per tool on ``router``."""
     from a2kit.metadata import get_meta
-    from a2kit.packages.formatter.inference import infer_format_hint
+    from a2kit.packages.formatter.inference import build_encoding_plan, infer_format_hint
     from a2kit.signature import resolve_hints
 
     out: list[ToolDescriptor] = []
@@ -487,6 +487,7 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
         hints = resolve_hints(fn)
         return_type = hints.get("return")
         format_hint = infer_format_hint(return_type)
+        encoding_plan = build_encoding_plan(return_type)
         meta = get_meta(fn)
         name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
         out.append(
@@ -496,6 +497,7 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
                 fn=fn,
                 return_type=return_type,
                 format_hint=format_hint,
+                encoding_plan=encoding_plan,
             )
         )
     return out

@@ -117,20 +117,3 @@ class TestExplicitOverride:
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())
         assert parsed == [{"id": "a", "title": "x"}]
-
-    def test_toon_format_no_longer_offered(self):
-        class TR(a2kit.Router):
-            slug = "tr"
-            name = "tr"
-
-            @a2kit.read()
-            async def get(self, *, id: str = "a") -> Task:
-                return Task(id=id, title="x")
-
-            tools = (get,)
-
-        app = a2kit.App("t").add_router(TR())
-        # click.Choice rejects the value at parse time
-        result = _runner().invoke(build_full_cli(app), ["tr", "get", "--format", "toon"])
-        assert result.exit_code != 0
-        assert "toon" in (result.output + (result.stderr or "")).lower()

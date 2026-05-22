@@ -81,6 +81,17 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # describes what's pinned — the Protocol shape — rather than
         # mirroring the source filename).
         "src/a2kit/packages/di/resolver.py",
+        # why: MCP dispatch-wrapper chain extracted from
+        # a2kit/packages/mcp/server.py to keep server.py under the A2K014
+        # SLOC budget; behavior covered end-to-end by every test under
+        # tests/packages/mcp/ plus tests/test_operational_contracts.py
+        # (error envelope) and tests/test_decoration_warn_once.py.
+        "src/a2kit/packages/mcp/_wrappers.py",
+        # why: `serve` / `code` CLI subcommand registration extracted from
+        # a2kit/packages/cli/builder.py to keep builder.py under the A2K014
+        # SLOC budget; behavior covered by tests/packages/mcp/test_cli.py
+        # and tests/packages/codemode/test_cli_code.py.
+        "src/a2kit/packages/cli/_serve.py",
     }
 )
 

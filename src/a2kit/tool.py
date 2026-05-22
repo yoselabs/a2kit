@@ -8,6 +8,7 @@ from a2kit._verbs import list_, read, write
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from a2kit.packages.formatter.inference import EncodingPlan
     from a2kit.routers import Router
 
 Visibility = Literal["hidden", "cli", "all"]
@@ -21,6 +22,12 @@ class ToolDescriptor:
     pre-computed from the tool's resolved return type so the CLI runtime can
     skip per-call format heuristics — see
     ``a2kit.packages.formatter.inference.infer_format_hint``.
+
+    ``encoding_plan`` is the static :class:`EncodingPlan` for the return
+    type — computed once here so the MCP format-routing wrapper consults it
+    per call at zero decision cost (ADR 0014). It is the structured
+    counterpart of ``format_hint``: it additionally marks flat-array fields
+    nested inside a ``BaseModel`` envelope.
     """
 
     name: str
@@ -28,6 +35,7 @@ class ToolDescriptor:
     fn: Callable[..., Any]
     return_type: Any | None
     format_hint: Literal["tsv", "json", "page-tsv"]
+    encoding_plan: EncodingPlan
 
 
 class DispatchHook(Protocol):

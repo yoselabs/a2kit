@@ -26,14 +26,13 @@ class TestResponse:
         assert r.format == "json"
 
     def test_frozen(self):
-        r = Response(data="x", format="toon")
+        r = Response(data="x", format="json")
         with pytest.raises(Exception):  # FrozenInstanceError
             r.data = "y"  # type: ignore[misc]  # ty: ignore[invalid-assignment]  # why: test mutates a frozen/read-only property to set up a forced-error scenario
 
     def test_format_values(self):
-        # The dataclass doesn't enforce the literal at runtime — that's the
-        # type-checker's job — but the contract supports both wire formats.
-        assert Response(data="a:1", format="toon").format == "toon"
+        # Both wire formats are valid `FormatName` values.
+        assert Response(data="a\tb", format="tsv").format == "tsv"
         assert Response(data="{}", format="json").format == "json"
 
 

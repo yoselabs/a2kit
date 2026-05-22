@@ -215,7 +215,7 @@ def _name_referenced_only_in_conditionals(fn: ast.FunctionDef | ast.AsyncFunctio
 def rule_lazy_t_suggestion(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
     noqa = parse_noqa(source)
     # Only look at functions decorated with @a2kit.read/write/list_ (tool methods).
-    from a2kit.packages.lint.rules import is_a2kit_tool_decorator
+    from a2kit.packages.lint.rules.detect import is_a2kit_tool_decorator
 
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

@@ -11,7 +11,7 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
-from a2kit.packages.lint.rules import is_tool_function
+from a2kit.packages.lint.rules.detect import is_tool_function
 from a2kit.packages.lint.static import (
     A2K002,
     A2K003,

@@ -69,7 +69,7 @@ def test_mcp_server_skips_cli_and_hidden_tools() -> None:
 
     from a2kit.packages.mcp.server import build_mcp_server
 
-    server = build_mcp_server(_app())
+    server = build_mcp_server(_app(), code_mode=False)
 
     async def _names() -> set[str]:
         return {t.name for t in await server.list_tools()}
@@ -89,7 +89,7 @@ def test_default_visibility_visible_on_both() -> None:
 
     app = _app()
     cli = build_full_cli(app)
-    server = build_mcp_server(app)
+    server = build_mcp_server(app, code_mode=False)
 
     surf_group = cli.commands["surf"]  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
 

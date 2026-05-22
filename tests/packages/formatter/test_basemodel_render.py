@@ -94,11 +94,3 @@ class TestNonPydanticInputsUnchanged:
     def test_scalar_json(self):
         got = format_response("hello", format_hint="json")
         assert got.data == '"hello"'
-
-
-class TestToonRemoved:
-    def test_format_hint_toon_raises(self):
-        import pytest
-
-        with pytest.raises(ValueError, match="toon"):
-            format_response({"a": 1}, format_hint="toon")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument

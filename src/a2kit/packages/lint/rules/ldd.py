@@ -16,7 +16,7 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
-from a2kit.packages.lint.rules import is_a2kit_tool_decorator
+from a2kit.packages.lint.rules.detect import is_a2kit_tool_decorator
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

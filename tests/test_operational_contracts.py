@@ -184,7 +184,7 @@ def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
 
     from fastmcp.exceptions import ToolError
 
-    from a2kit.packages.mcp.server import _wrap_with_error_envelope
+    from a2kit.packages.mcp._wrappers import _wrap_with_error_envelope
 
     async def boom() -> None:
         raise ValueError("base msg")
@@ -207,7 +207,7 @@ def test_mcp_error_envelope_passes_cancelled_unchanged() -> None:
     """CancelledError must not be wrapped (per OPERATIONAL_CONTRACTS Q1)."""
     import asyncio
 
-    from a2kit.packages.mcp.server import _wrap_with_error_envelope
+    from a2kit.packages.mcp._wrappers import _wrap_with_error_envelope
 
     async def stuck() -> None:
         await asyncio.sleep(60)

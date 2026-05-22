@@ -12,6 +12,7 @@ from a2kit.packages.lint.rules.cross import (
     collect_param_descriptions,
     collect_router_names,
     collect_tool_names,
+    rule_a2k006_cross,
     rule_a2k008_cross,
 )
 from a2kit.packages.lint.static import (
@@ -139,3 +140,12 @@ def test_a2k006_cross_disabled_skips(tmp_path: Path) -> None:
     p = _write(tmp_path / "_disabled_a2k006.py", body)
     findings = run_static_rules([p], disabled=[A2K006])
     assert A2K006 not in _codes(findings)
+
+
+def test_rule_a2k006_cross_is_idempotent_for_unique_descriptions() -> None:
+    per_file: dict[str, dict[str, list[str]]] = {
+        "/a.py": {"foo": ["alpha description here long enough"]},
+        "/b.py": {"foo": ["beta description here long enough"]},
+    }
+    findings = list(rule_a2k006_cross(per_file))
+    assert findings == []

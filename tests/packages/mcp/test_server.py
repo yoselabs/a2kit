@@ -43,13 +43,13 @@ def app() -> a2kit.App:
 def test_build_mcp_server_returns_fastmcp(app: a2kit.App) -> None:
     from fastmcp import FastMCP
 
-    server = build_mcp_server(app)
+    server = build_mcp_server(app, code_mode=False)
     assert isinstance(server, FastMCP)
     assert server.name == "sample-app"
 
 
 def test_tools_registered_with_a2kit_meta(app: a2kit.App) -> None:
-    server = build_mcp_server(app)
+    server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}
@@ -72,7 +72,7 @@ def test_tools_registered_with_a2kit_meta(app: a2kit.App) -> None:
 
 
 def test_list_view_settings_round_trip(app: a2kit.App) -> None:
-    server = build_mcp_server(app)
+    server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}
@@ -117,7 +117,7 @@ def test_enricher_fires_before_registration() -> None:
         tools = (boom,)
 
     app = a2kit.App("e").add_router(R())
-    server = build_mcp_server(app)
+    server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:
         import json as _json
@@ -157,7 +157,7 @@ def test_sync_and_async_tools_both_register() -> None:
         )
 
     app = a2kit.App("a").add_router(R())
-    server = build_mcp_server(app)
+    server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}

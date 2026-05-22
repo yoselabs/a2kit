@@ -141,7 +141,7 @@ A type annotation SHALL be considered "dump-scalar" if and only if it (or, for `
 
 ### Requirement: `format_response` accepts `"tsv"` and `"page-tsv"` as first-class hints
 
-`format_response(raw, *, format_hint)` SHALL accept `format_hint` values `"auto"`, `"toon"`, `"json"`, `"tsv"`, `"page-tsv"`. Explicit hints SHALL bypass type inference and dispatch directly to the corresponding encoder.
+`format_response(raw, *, format_hint)` SHALL accept `format_hint` values `"auto"`, `"json"`, `"tsv"`, and `"page-tsv"`. `"toon"` is not an accepted value. Explicit hints SHALL bypass type inference and dispatch directly to the corresponding encoder.
 
 #### Scenario: Explicit `"tsv"` honored on a list of scalar-only models
 - **GIVEN** `raw = [Task(...), Task(...)]`
@@ -155,7 +155,7 @@ A type annotation SHALL be considered "dump-scalar" if and only if it (or, for `
 
 ### Requirement: Auto-format consults the cached descriptor hint
 
-When `format_hint="auto"` is passed to `format_response` from `_invoke_tool_in_process`, the runtime SHALL pass the descriptor's pre-computed `format_hint` instead of re-running any heuristic. The legacy `toon_or_json` helper SHALL NOT be invoked from `_invoke_tool_in_process`. `toon_or_json` remains exported for backward compatibility but is documented as deprecated.
+When `format_hint="auto"` is passed to `format_response` from `_invoke_tool_in_process`, the runtime SHALL pass the descriptor's pre-computed `format_hint` instead of re-running any heuristic. No `toon_or_json` heuristic is invoked — the helper no longer exists.
 
 #### Scenario: Tool with `-> list[Task]` (scalar-only) → TSV at runtime
 - **GIVEN** an app with a tool annotated `-> list[Task]` (scalar-only) and the user invokes the CLI with `--format auto`

@@ -102,7 +102,10 @@ class TestClient:
             )
         self.app._test_override_owner = self  # noqa: SLF001 -- test seam owner flag
 
-        server = build_mcp_server(self.app)
+        # `code_mode=False`: the in-process test client drives tools
+        # directly; the code-execution transform would collapse the tool
+        # catalog it inspects. Tests of code mode use `fastmcp.Client`.
+        server = build_mcp_server(self.app, code_mode=False)
         # Re-enable ``_meta.*`` tools (production hides them from agent
         # `list_tools` via ``server.disable(tags={"_meta"})``; tests need
         # to invoke ``_meta.health`` directly).

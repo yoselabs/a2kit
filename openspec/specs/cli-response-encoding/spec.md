@@ -5,17 +5,12 @@ TBD - created by archiving change fix-cli-pydantic-render. Update Purpose after 
 ## Requirements
 ### Requirement: `format_response` normalizes pydantic BaseModel inputs before encoding
 
-`format_response` SHALL convert any `pydantic.BaseModel` instance reachable from the input into a JSON-mode dump (`model_dump(mode="json")`) before passing the payload to the JSON or TOON encoder. Normalization SHALL recurse into `list`, `tuple`, and `dict` containers and rewrite each `BaseModel` it finds. Other values SHALL pass through unchanged.
+`format_response` SHALL convert any `pydantic.BaseModel` instance reachable from the input into a JSON-mode dump (`model_dump(mode="json")`) before passing the payload to the JSON, TSV, or page-TSV encoder. Normalization SHALL recurse into `list`, `tuple`, and `dict` containers and rewrite each `BaseModel` it finds. Other values SHALL pass through unchanged.
 
 #### Scenario: Top-level BaseModel via JSON
 - **GIVEN** a tool returns `Task(id="t1", title="x")` (a pydantic model)
 - **WHEN** `format_response(raw, format_hint="json")` is called
 - **THEN** the response data is the compact JSON encoding of `raw.model_dump(mode="json")` (e.g., `{"id":"t1","title":"x"}`), not a quoted repr
-
-#### Scenario: Top-level BaseModel via TOON
-- **GIVEN** a tool returns `Task(id="t1", title="x")`
-- **WHEN** `format_response(raw, format_hint="toon")` is called
-- **THEN** the response data equals `encode_toon(raw.model_dump(mode="json"))` and no `Unsupported type` warning is emitted
 
 #### Scenario: List of BaseModels
 - **GIVEN** a tool returns `[Task(id="a"), Task(id="b")]`
@@ -32,14 +27,14 @@ TBD - created by archiving change fix-cli-pydantic-render. Update Purpose after 
 - **WHEN** `format_response(raw, format_hint="json")` is called
 - **THEN** the response data is the JSON encoding of the fully nested dump (`{"tasks":[{"id":"a", ...}]}`)
 
-#### Scenario: Non-pydantic values are byte-identical
+#### Scenario: Non-pydantic values pass through unchanged
 - **GIVEN** `raw = {"a": 1, "b": [1, 2, 3]}` (no `BaseModel` anywhere)
-- **WHEN** `format_response(raw, format_hint="json")` and `format_response(raw, format_hint="toon")` are called
-- **THEN** the outputs equal those of the pre-change formatter byte-for-byte
+- **WHEN** `format_response(raw, format_hint="json")` is called
+- **THEN** the response data is the compact JSON encoding of `raw`, with no normalization applied
 
 ### Requirement: Auto format selection runs against the normalized payload
 
-When `format_hint="auto"` is passed to `format_response`, the encoder SHALL be selected via the cached `format_hint` on the calling tool's `ToolDescriptor`. `format_response` itself, when called outside of a tool dispatch context (no descriptor available), SHALL fall back to `"json"`. The previous behavior — running `toon_or_json` on the normalized payload to choose between TOON and JSON — is retired. `toon_or_json` and `encode_toon` are removed entirely; passing `format_hint="toon"` SHALL raise `ValueError`.
+When `format_hint="auto"` is passed to `format_response`, the encoder SHALL be selected via the cached `format_hint` on the calling tool's `ToolDescriptor`. `format_response` itself, when called outside of a tool dispatch context (no descriptor available), SHALL fall back to `"json"`. The accepted `format_hint` vocabulary is `"auto"`, `"json"`, `"tsv"`, and `"page-tsv"`. The previous behavior — running a `toon_or_json` heuristic to choose between a TOON and a JSON encoding — is retired; the `toon_or_json` and `encode_toon` helpers no longer exist and `"toon"` is not an accepted `format_hint` value.
 
 #### Scenario: Auto in tool dispatch reads the descriptor
 - **GIVEN** a tool whose descriptor has `format_hint="tsv"`
@@ -55,9 +50,4 @@ When `format_hint="auto"` is passed to `format_response`, the encoder SHALL be s
 - **GIVEN** a direct call `format_response(raw, format_hint="auto")` from user code (no descriptor in scope)
 - **WHEN** the call is evaluated
 - **THEN** the response is JSON-encoded
-
-#### Scenario: TOON is unsupported
-- **GIVEN** legacy code calling `format_response(raw, format_hint="toon")`
-- **WHEN** the call is evaluated
-- **THEN** a `ValueError` is raised explaining that TOON is removed and pointing to `"tsv"` / `"json"` / `"page-tsv"`
 

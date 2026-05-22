@@ -2,6 +2,99 @@
 
 ## Unreleased
 
+### Added — bundled code-execution surface
+
+a2kit MCP servers now expose a sandboxed code-execution surface by
+default — FastMCP's `experimental` `CodeMode`, adopted via the new
+`A2kitCodeMode` transform (`a2kit.packages.codemode`). `list_tools`
+collapses to three meta-tools (`search`, `get_schema`, `execute`);
+agent-authored Python runs in a Monty sandbox where
+`call_tool(name, params)` reaches every permitted tool, carrying
+a2kit's per-call connection scope and DI unchanged. The same surface
+is exposed on the CLI as a global `code` subcommand — registered only
+when the `a2kit[code-mode]` extra is installed, so a lean CLI install
+carries no sandbox dependency.
+
+Capability-gated: tools flagged `destructive` are absent from the
+sandbox catalog unless the operator passes
+`--code-mode-allow-destructive`; the agent cannot self-grant. Never
+exposed on the (future) REST surface. The Monty runtime
+(`pydantic-monty`) is a lazy optional dependency — install with
+`a2kit[code-mode]`; `import a2kit` never pays for it.
+
+See ADR 0013, `docs/VISION.md`, and `docs/SPIKE_CODE_EXEC_DI.md`.
+
+**Breaking.** Code execution is default-on, and installing it
+collapses the listed tool catalog. Consumers that enumerate
+`list_tools` see only `search` / `get_schema` / `execute` until they
+adopt code mode or opt out. Real tools stay callable by name.
+
+Migration table:
+
+| before                                       | after                                                       |
+|----------------------------------------------|-------------------------------------------------------------|
+| `build_mcp_server(app)` lists the full catalog | pass `build_mcp_server(app, code_mode=False)` to keep it listed |
+| `serve` exposes every tool in `list_tools`   | `serve --code-mode-off` disables the code-execution surface  |
+| sandbox must reach `destructive` tools       | `serve --code-mode-allow-destructive` (operator-side grant)  |
+
+### Changed — consumer-aware format routing
+
+Rendering is now a function of `(value, consumer)` — the new `render`
+seam in `a2kit.packages.formatter`, with consumer profiles `llm`
+(compress: TSV / page-tsv), `code` (structured dataclasses for the
+sandbox), and `machine` (plain JSON). The `code_mode` build flag fixes
+the consumer at `build_mcp_server` time — no runtime sniffing.
+
+The MCP surface now format-routes tool results, closing a gap where it
+shipped raw JSON while the CLI compressed: a tabular result is emitted
+as TSV / page-tsv in the MCP `content` channel, with the equivalent
+JSON in `structuredContent` (spec-aligned per MCP SEP-1624). A new
+`build_encoding_plan` additionally compresses flat-array fields nested
+inside a `BaseModel` envelope, not just top-level lists / `Page`.
+
+Code mode gains a real sandbox runtime: `call_tool` marshals results
+into the monty sandbox as dataclasses (attribute access —
+`page.items[0].title`), the `A2kitSandboxProvider` type-checks
+LLM-authored code against stubs generated from the tool descriptors
+before executing it (retrying once via sampling on a type error), and
+the `execute` output is rendered for the LLM by value-driven
+inference. See ADR 0014 and `docs/SPIKE_CODEMODE_MARSHALLING.md`.
+
+**Breaking.** The MCP `content` shape changes: a tabular tool result
+that previously arrived as raw JSON in `content` now arrives as TSV /
+page-tsv. MCP clients that parsed `content` as JSON must read
+`structuredContent` (the equivalent JSON, unchanged) or parse the
+compressed form.
+
+Migration table:
+
+| before                                          | after                                                          |
+|-------------------------------------------------|----------------------------------------------------------------|
+| parse a tabular result's `content` as JSON      | read `structuredContent`, or parse the TSV / page-tsv `content` |
+| a non-conformant client mishandles dual channels | `serve --compact` drops `structuredContent`, leaving `content` only |
+
+### Changed — tidy: format-routing review follow-ups
+
+Internal cleanup following a `/simplify` review of the consumer-aware
+format-routing work:
+
+- The dead `format_hint="toon"` `ValueError` guard in `format_response`
+  is removed — the `FormatHint` type (`auto` / `json` / `tsv` /
+  `page-tsv`) already forbids the value, so no type-checked caller could
+  reach it. TOON is now fully retired from code and specs.
+- `A2kitCodeMode` caches the per-`execute` catalog → stubs → dataclass
+  registry derivation, keyed on the resolved tool-name set, instead of
+  rebuilding it on every `execute` call.
+- `FormatHint` / `FormatName` move to a leaf module
+  (`a2kit.packages.formatter.formats`); both are still re-exported from
+  `a2kit.packages.formatter` unchanged. `Rendered.format` and
+  `Response.format` are now typed `FormatName`, not bare `str`.
+- New lint rule `A2K-PKG-INIT-IMPORT`: a submodule may not import from
+  its own package's `__init__`, preventing the latent import cycle the
+  leaf-module move above resolves.
+
+No API change for type-checked callers; no dependency change.
+
 ## v0.39.3 — 2026-05-19
 
 Patch release addressing a2web round-11 feedback. One additive

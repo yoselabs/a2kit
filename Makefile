@@ -1,4 +1,4 @@
-.PHONY: test lint format check examples example-smoke bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check markdown-lint
+.PHONY: test lint format check examples example-smoke bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check markdown-lint eval eval-smoke
 
 bootstrap:
 	uv sync --all-extras --dev
@@ -78,6 +78,16 @@ adr-index:
 
 adr-check:
 	uv run python scripts/adr_index.py --check
+
+# Code-mode correctness eval — drives real models (haiku + sonnet) via the
+# `claude` CLI through the real `execute` tool. NOT part of `make check`: it
+# costs tokens and needs the `claude` CLI. `eval-smoke` checks the harness
+# (server build + get_schema + execute round-trip) without spending tokens.
+eval:
+	uv run python evals/codemode_correctness.py
+
+eval-smoke:
+	uv run python evals/codemode_correctness.py --smoke
 
 # Markdown lint — runs pymarkdownlnt across docs/, CHANGELOG.md, README.md.
 # Config in .pymarkdown.json. Use `uv run pymarkdown --config .pymarkdown.json
