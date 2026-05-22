@@ -1,4 +1,4 @@
-.PHONY: test lint format check examples example-smoke bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check markdown-lint eval eval-smoke
+.PHONY: test lint format check examples example-smoke bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check component-map markdown-lint eval eval-smoke
 
 bootstrap:
 	uv sync --all-extras --dev
@@ -79,6 +79,12 @@ adr-index:
 
 adr-check:
 	uv run python scripts/adr_index.py --check
+
+# Component map — regenerates docs/COMPONENT_MAP.md from the layer
+# manifest + import graph. Pre-commit enforces --check mode so the
+# on-disk map never drifts.
+component-map:
+	uv run python scripts/component_map.py
 
 # Code-mode correctness eval — drives real models (haiku + sonnet) via the
 # `claude` CLI through the real `execute` tool. NOT part of `make check`: it

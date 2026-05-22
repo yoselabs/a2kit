@@ -25,6 +25,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^docs/adr/(.*\.md|schema\.json)$
+      - id: component-map
+        name: component map up to date
+        entry: uv run python scripts/component_map.py --check
+        language: system
+        pass_filenames: false
+        files: ^(src/a2kit/.*\.py|docs/COMPONENT_MAP\.md)$
       - id: pymarkdown
         name: markdown lint (pymarkdownlnt)
         entry: uv run pymarkdown --config .pymarkdown.json scan
