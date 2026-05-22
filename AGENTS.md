@@ -263,6 +263,18 @@ Consumer-feedback discipline (how filings get triaged, how releases get
 re-validated, when to cite an ADR vs ship a primitive vs decline) lives
 in `docs/CONSUMER_FEEDBACK_DOCTRINE.md`, adopted by ADR 0005.
 
+The library's **internal import graph** is tiered too — the
+internal-graph sibling of the public tiering above. A layer manifest
+(`a2kit.packages.lint.layers.LAYER_MANIFEST`) assigns every package and
+the `core` pseudo-unit an integer layer (L0 kernel → L1 core → L2
+connections/dispatch → L3 transports → L4 testing); a unit may import
+only strictly-lower layers, plus its own. Two lint rules enforce it:
+`A2K-LAYER` (no upward import, no import cycle — `TYPE_CHECKING` imports
+included) and `A2K-PKG-FRONT-DOOR` (a cross-package import targets
+`a2kit.packages.X`, never a deep submodule). Read
+`docs/adr/0015-internal-layer-dag.md` before moving a package between
+layers or adding a cross-package import.
+
 ## Project state hooks
 
 - `OPERATIONAL_CONTRACTS.md` — the framework's behaviour contract.

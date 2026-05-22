@@ -37,7 +37,7 @@ def register_serve(typer_app: Any, app: App) -> None:
         ] = False,
     ) -> None:
         """Run as an MCP server (stdio or HTTP)."""
-        from a2kit.packages.mcp.server import build_mcp_server
+        from a2kit.packages.mcp import build_mcp_server
 
         server = build_mcp_server(
             app,
@@ -67,7 +67,7 @@ async def run_code(app: App, code: str, *, allow_destructive: bool = False) -> o
     """
     from fastmcp import Client
 
-    from a2kit.packages.mcp.server import build_mcp_server
+    from a2kit.packages.mcp import build_mcp_server
 
     server = build_mcp_server(app, code_mode=True, code_mode_allow_destructive=allow_destructive)
     async with Client(server) as client:

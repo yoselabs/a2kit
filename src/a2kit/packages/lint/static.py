@@ -38,6 +38,8 @@ A2K017 = "A2K017"  # Lazy[T] suggestion for conditional-use deps
 A2K_CONN_LIST_PLACEHOLDER = "A2K-CONN-LIST-PLACEHOLDER"
 A2K_IMPORT_DISCIPLINE = "A2K-IMPORT-DISCIPLINE"
 A2K_PKG_INIT_IMPORT = "A2K-PKG-INIT-IMPORT"  # submodule importing its own package __init__
+A2K_LAYER = "A2K-LAYER"  # import-graph layer DAG (manifest in packages/lint/layers.py)
+A2K_PKG_FRONT_DOOR = "A2K-PKG-FRONT-DOOR"  # cross-package imports target the package __init__
 A2K_LDD_REPORT_TYPE = "A2K-LDD-REPORT-TYPE"
 A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"
 A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
@@ -58,6 +60,8 @@ ALL_RULES = (
     A2K_CONN_LIST_PLACEHOLDER,
     A2K_IMPORT_DISCIPLINE,
     A2K_PKG_INIT_IMPORT,
+    A2K_LAYER,
+    A2K_PKG_FRONT_DOOR,
     A2K_LDD_REPORT_TYPE,
     A2K_LOCAL_RETURN_MODEL,
     A2K_EXTRA_NAMESPACE,
@@ -140,7 +144,11 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         rule_lazy_t_suggestion,
         rule_parameterized_lambda_factory,
     )
-    from a2kit.packages.lint.rules.importing import rule_import_discipline, rule_pkg_init_import
+    from a2kit.packages.lint.rules.importing import (
+        rule_import_discipline,
+        rule_pkg_front_door,
+        rule_pkg_init_import,
+    )
     from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
     from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
     from a2kit.packages.lint.rules.mirror import rule_test_mirror
@@ -160,6 +168,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_CONN_LIST_PLACEHOLDER, rule_conn_list_placeholder),
         (A2K_IMPORT_DISCIPLINE, rule_import_discipline),
         (A2K_PKG_INIT_IMPORT, rule_pkg_init_import),
+        (A2K_PKG_FRONT_DOOR, rule_pkg_front_door),
         (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),
         (A2K_LOCAL_RETURN_MODEL, rule_local_return_model),
         (A2K_EXTRA_NAMESPACE, rule_extra_namespace),
@@ -180,7 +189,7 @@ def _read_and_parse(path: Path) -> tuple[str, ast.AST] | None:
     return source, tree
 
 
-def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> list[LintMessage]:
+def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> list[LintMessage]:  # noqa: C901 -- per-file dispatch loop with per-rule + cross-rule branches
     """Run all static rules on ``paths``. Returns concatenated findings."""
     from a2kit.packages.lint.rules.cross import (
         collect_param_descriptions,
@@ -189,6 +198,7 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
         rule_a2k006_cross,
         rule_a2k008_cross,
     )
+    from a2kit.packages.lint.rules.importing import collect_layer_imports, rule_a2k_layer_cross
 
     rules_table = _build_rules_table()
     disabled_set = set(disabled)
@@ -196,6 +206,7 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
     results: list[LintMessage] = []
     per_file_a2k006: dict[str, dict[str, list[str]]] = {}
     per_file_a2k008: dict[str, tuple[set[str], set[str]]] = {}
+    per_file_layer: dict[str, tuple[str | None, list[tuple[str, int, bool]]]] = {}
 
     for path in paths_list:
         if path.suffix != ".py":
@@ -213,11 +224,15 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
             per_file_a2k006[path_str] = collect_param_descriptions(tree)
         if A2K008 not in disabled_set and not is_fixture_path(path_str):
             per_file_a2k008[path_str] = (collect_router_names(tree), collect_tool_names(tree))
+        if A2K_LAYER not in disabled_set:
+            per_file_layer[path_str] = collect_layer_imports(tree, path_str, source)
 
     if A2K006 not in disabled_set:
         results.extend(rule_a2k006_cross(per_file_a2k006))
     if A2K008 not in disabled_set:
         results.extend(rule_a2k008_cross(per_file_a2k008))
+    if A2K_LAYER not in disabled_set:
+        results.extend(rule_a2k_layer_cross(per_file_layer))
 
     return results
 
@@ -237,8 +252,10 @@ __all__ = [
     "A2K_CONN_LIST_PLACEHOLDER",
     "A2K_EXTRA_NAMESPACE",
     "A2K_IMPORT_DISCIPLINE",
+    "A2K_LAYER",
     "A2K_LDD_REPORT_TYPE",
     "A2K_LOCAL_RETURN_MODEL",
+    "A2K_PKG_FRONT_DOOR",
     "A2K_PKG_INIT_IMPORT",
     "A2K_SURFACE_EXPLICIT",
     "A2K_TEST_MIRROR",

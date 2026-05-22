@@ -34,11 +34,19 @@ the internal sibling: tiering the *dependency graph* by layer.
 The worst cycle the review found — `app.py ↔ packages/health` — spans
 the core boundary. A layer model covering only `packages/*` is blind to
 it by construction. So the manifest includes a `core` pseudo-unit (all
-top-level `a2kit.*` modules) at L2: above the kernel packages it
-imports (`di`, `formatter`, `ldd`, `health`), below the packages that
-import it (`connections`, the transports). `A2K-LAYER` resolves every
-import to its unit — core or a named package — and applies the same
-rule uniformly.
+top-level `a2kit.*` modules) at L1: above the kernel packages it
+imports (`di`, `formatter`, `ldd`, `health`, `context`, ...), below the
+packages that import it (`connections`, `dispatch`, the transports).
+`A2K-LAYER` resolves every import to its unit — core or a named
+package — and applies the same rule uniformly.
+
+Two genuinely foundational core modules — `a2kit.exceptions` and
+`a2kit._context_protocol` (leaf type/exception definitions that import
+nothing) — are treated as layer-exempt import *targets*: a kernel
+package's `from a2kit.exceptions import ...` is the bedrock, not an
+upward `core` edge. The public re-export facades (`__init__.py` files,
+`a2kit/testing.py`) are exempt importers — they surface deeper layers
+by design.
 
 ### D2. The rule inspects `TYPE_CHECKING` imports
 
@@ -54,14 +62,14 @@ A flat `dict[str, int]` manifest in `packages/lint/`. Moving a unit
 between layers is a one-line edit. Folder-nesting by layer would be a
 churn-heavy restructure for no extra safety.
 
-### D4. `connections` and `dispatch` share L3
+### D4. `connections` and `dispatch` share L2
 
-`connections` imports core (`a2kit.app`, `a2kit.signature`, both
-`TYPE_CHECKING`) and `di`; it is imported by `cli`. `dispatch` (added
-by `extract-dispatch-pipeline`) imports core, `ldd`, and `context`, and
-is imported by both `cli` and `mcp`. Both are neither kernel nor
+`connections` imports core (`a2kit.app`, `a2kit.signature`) and `di`;
+it is imported by `cli`. `dispatch` (added by
+`extract-dispatch-pipeline`) imports core, `ldd`, and `context`, and is
+imported by both `cli` and `mcp`. Both are neither kernel nor
 transport — they sit above core, below the transports. They do not
-import each other, so sharing L3 is consistent with the same-layer
+import each other, so sharing L2 is consistent with the same-layer
 no-cycle rule.
 
 ### D5. Front-door rule has an allowlist, not zero exceptions

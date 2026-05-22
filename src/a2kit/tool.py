@@ -8,7 +8,7 @@ from a2kit._verbs import list_, read, write
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from a2kit.packages.formatter.inference import EncodingPlan
+    from a2kit.packages.formatter import EncodingPlan
     from a2kit.routers import Router
 
 Visibility = Literal["hidden", "cli", "all"]

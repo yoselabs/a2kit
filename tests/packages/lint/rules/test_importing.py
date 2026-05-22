@@ -10,6 +10,8 @@ from pathlib import Path
 
 from a2kit.packages.lint.static import (
     A2K_IMPORT_DISCIPLINE,
+    A2K_LAYER,
+    A2K_PKG_FRONT_DOOR,
     A2K_PKG_INIT_IMPORT,
     run_static_rules,
 )
@@ -141,3 +143,97 @@ def test_pkg_init_import_noqa(tmp_path: Path) -> None:
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "sub.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPORT not in _codes(findings)
+
+
+# --------------------------- A2K-LAYER --------------------------- #
+
+
+def test_layer_higher_import_fires(tmp_path: Path) -> None:
+    """A kernel package importing core (a higher layer) is flagged."""
+    body = "from a2kit.app import App\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "di" / "probe.py", body)
+    findings = run_static_rules([p])
+    assert A2K_LAYER in _codes(findings)
+
+
+def test_layer_core_importing_kernel_is_clean(tmp_path: Path) -> None:
+    """Core importing a kernel package (a lower layer) is clean."""
+    body = "from a2kit.packages.di import Container\n"
+    p = _write(tmp_path / "src" / "a2kit" / "app.py", body)
+    findings = run_static_rules([p])
+    assert A2K_LAYER not in _codes(findings)
+
+
+def test_layer_same_layer_non_cycle_is_clean(tmp_path: Path) -> None:
+    """A same-layer import that closes no cycle is allowed."""
+    body = "from a2kit.packages.ldd import format_ldd_line\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "context" / "probe.py", body)
+    findings = run_static_rules([p])
+    assert A2K_LAYER not in _codes(findings)
+
+
+def test_layer_same_layer_cycle_fires(tmp_path: Path) -> None:
+    """Two same-layer kernel packages importing each other close a cycle."""
+    a = _write(
+        tmp_path / "src" / "a2kit" / "packages" / "di" / "probe.py",
+        "from a2kit.packages.formatter import render\n",
+    )
+    b = _write(
+        tmp_path / "src" / "a2kit" / "packages" / "formatter" / "probe.py",
+        "from a2kit.packages.di import Container\n",
+    )
+    findings = run_static_rules([a, b])
+    assert A2K_LAYER in _codes(findings)
+
+
+def test_layer_type_only_cycle_fires(tmp_path: Path) -> None:
+    """A cycle is flagged even when one leg is a TYPE_CHECKING import."""
+    a = _write(
+        tmp_path / "src" / "a2kit" / "packages" / "di" / "probe.py",
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from a2kit.packages.formatter import render\n",
+    )
+    b = _write(
+        tmp_path / "src" / "a2kit" / "packages" / "formatter" / "probe.py",
+        "from a2kit.packages.di import Container\n",
+    )
+    findings = run_static_rules([a, b])
+    assert A2K_LAYER in _codes(findings)
+
+
+def test_layer_noqa_suppresses(tmp_path: Path) -> None:
+    body = "from a2kit.app import App  # noqa: A2K-LAYER\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "di" / "probe.py", body)
+    findings = run_static_rules([p])
+    assert A2K_LAYER not in _codes(findings)
+
+
+# --------------------------- A2K-PKG-FRONT-DOOR --------------------------- #
+
+
+def test_front_door_deep_cross_package_import_fires(tmp_path: Path) -> None:
+    body = "from a2kit.packages.di.container import Container\n"
+    p = _write(tmp_path / "src" / "a2kit" / "app.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_FRONT_DOOR in _codes(findings)
+
+
+def test_front_door_front_import_is_clean(tmp_path: Path) -> None:
+    body = "from a2kit.packages.di import Container\n"
+    p = _write(tmp_path / "src" / "a2kit" / "app.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_FRONT_DOOR not in _codes(findings)
+
+
+def test_front_door_same_package_submodule_is_clean(tmp_path: Path) -> None:
+    """A module reaching a sibling inside its own package is internal wiring."""
+    body = "from a2kit.packages.di.container import Container\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "di" / "scope.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_FRONT_DOOR not in _codes(findings)
+
+
+def test_front_door_noqa_suppresses(tmp_path: Path) -> None:
+    body = "from a2kit.packages.di.container import Container  # noqa: A2K-PKG-FRONT-DOOR\n"
+    p = _write(tmp_path / "src" / "a2kit" / "app.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_FRONT_DOOR not in _codes(findings)

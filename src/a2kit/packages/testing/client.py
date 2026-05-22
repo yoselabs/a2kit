@@ -47,7 +47,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from a2kit.packages.formatter import FormatHint, format_response
-from a2kit.packages.mcp.server import build_mcp_server
+from a2kit.packages.mcp import build_mcp_server
 
 if TYPE_CHECKING:
     from a2kit.app import App

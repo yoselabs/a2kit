@@ -62,7 +62,7 @@ def __dir__() -> list[str]:
 
 
 def run(app: App, argv: list[str] | None = None) -> Any:
-    from a2kit.packages.cli.builder import build_full_cli
+    from a2kit.packages.cli import build_full_cli
 
     cli = build_full_cli(app)
     return cli.main(args=argv, standalone_mode=True)

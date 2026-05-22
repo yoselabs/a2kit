@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from a2kit.packages.di.resolver import Resolver
+    from a2kit.packages.di import Resolver
 
 
 _LOGGER = logging.getLogger("a2kit.health")

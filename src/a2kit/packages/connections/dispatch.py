@@ -24,14 +24,14 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any
 
-from a2kit.packages.di.scope import Scope
+from a2kit.packages.di import Scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from a2kit.packages.connections.config import ConnectionConfig
     from a2kit.packages.connections.store import ConnectionStore
-    from a2kit.packages.di.container import Container
+    from a2kit.packages.di import Container
 
 
 _WIRE_CONN_KEY = "connection"

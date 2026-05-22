@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .formats import FormatHint, FormatName
-from .inference import EncodingPlan, build_encoding_plan
+from .inference import EncodingPlan, build_encoding_plan, infer_format_hint
 from .render import Consumer, Rendered, render, render_execute, render_plain
 from .response import ListViewMode, Local, Page, Passthrough, Response
 
@@ -69,6 +69,7 @@ __all__ = [
     "Response",
     "build_encoding_plan",
     "format_response",
+    "infer_format_hint",
     "render",
     "render_execute",
     "render_plain",

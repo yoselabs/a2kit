@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING, Any
 from a2kit._lifecycle_helpers import (
     resolve_singleton_args,
 )
-from a2kit.packages.di.container import Container
-from a2kit.packages.di.scope import Scope
+from a2kit.packages.di import Container, Scope
 from a2kit.routers import Router, RouterRegistry
 from a2kit.tool import ToolDescriptor
 
@@ -16,7 +15,7 @@ if TYPE_CHECKING:
 
     import click
 
-    from a2kit.packages.di.resolver import Resolver
+    from a2kit.packages.di import Resolver
 
 
 _LIFECYCLE_LOG = logging.getLogger("a2kit.lifecycle")
@@ -481,7 +480,7 @@ def _validate_router_tools(router: Router) -> None:
 def _build_descriptors(router: Router) -> list[ToolDescriptor]:
     """Materialize one ``ToolDescriptor`` per tool on ``router``."""
     from a2kit.metadata import get_meta
-    from a2kit.packages.formatter.inference import build_encoding_plan, infer_format_hint
+    from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
     from a2kit.signature import resolve_hints
 
     out: list[ToolDescriptor] = []

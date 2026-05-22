@@ -22,6 +22,7 @@ NO ``from a2kit.*`` imports outside ``a2kit.packages.di``. See
 
 from __future__ import annotations
 
+from a2kit.packages.di._helpers import lazy_inner_type
 from a2kit.packages.di._lazy import Lazy
 from a2kit.packages.di.container import (
     Container,
@@ -38,4 +39,5 @@ __all__ = [
     "Resolver",
     "Scope",
     "UnresolvableType",
+    "lazy_inner_type",
 ]

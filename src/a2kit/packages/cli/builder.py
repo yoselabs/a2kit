@@ -159,8 +159,7 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
     from a2kit.packages.cli._field_to_typer import field_to_typer_annotation
     from a2kit.packages.cli.runtime import invoke_tool_sync
     from a2kit.packages.dispatch import ToolBuildSpec
-    from a2kit.packages.formatter import FormatHint, format_response
-    from a2kit.packages.formatter.inference import infer_format_hint
+    from a2kit.packages.formatter import FormatHint, format_response, infer_format_hint
     from a2kit.signature import wire_input_params
 
     meta = get_meta(fn)

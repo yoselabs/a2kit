@@ -27,13 +27,20 @@ This change turns all three into lint gates.
 
 - A layer manifest assigns every importable unit — `packages/*` **and
   core (`a2kit.*` top-level modules, as one pseudo-unit)** — to an
-  ordered layer:
-  - L0 — `context`
-  - L1 — `di`, `formatter`, `ldd`, `health`, `select`, `lint`
-  - L2 — `core` (the top-level `a2kit.*` modules)
-  - L3 — `connections`, `dispatch`
-  - L4 — `cli`, `mcp`, `codemode`, `otel`
-  - L5 — `testing`
+  ordered layer. (Applied manifest — corrected from the original draft:
+  `context` joins the kernel layer, since `context` lazily imports
+  `ldd`; `context → ldd` is a same-layer non-cycle edge, which the rule
+  permits. That collapses the original six layers to five.)
+  - L0 — kernel: `di`, `formatter`, `ldd`, `health`, `select`, `lint`,
+    `context`
+  - L1 — `core` (the top-level `a2kit.*` modules)
+  - L2 — `connections`, `dispatch`
+  - L3 — `cli`, `mcp`, `codemode`, `otel`
+  - L4 — `testing`
+  - The foundational core modules `a2kit.exceptions` and
+    `a2kit._context_protocol` (leaf type/exception definitions) are
+    layer-exempt import *targets*; the public re-export facades
+    (`__init__.py` files, `a2kit/testing.py`) are exempt importers.
 - New lint rule **`A2K-LAYER`**: a unit may import only units in a
   strictly-lower layer (plus its own); a same-layer import MUST NOT
   close a cycle. The rule governs core↔package edges in both
@@ -44,20 +51,21 @@ This change turns all three into lint gates.
   `a2kit.packages.X.<submodule>` from outside package X is forbidden;
   cross-package imports target `a2kit.packages.X` (the `__init__`). A
   documented allowlist covers deliberate exceptions.
-- `packages/di/__init__.py`, `packages/formatter/__init__.py`, and
-  `packages/mcp/__init__.py` re-export their public types
-  (`Container`, `Scope`, `Resolver`, `infer_format_hint`,
-  `build_encoding_plan`, `build_mcp_server`) so callers reach them via
-  the front door. `build_mcp_server` is deep-imported today by
-  `cli/_serve.py`, `packages/testing`, and `codemode` — all must move
-  onto the front door or the rule cannot flip to error.
-- `app.py`, `signature.py`, `tool.py` rewrite deep imports to
-  front-door imports.
-- Both rules ship **warn-only**, then flip to hard error once
-  violations are zero — the proven `A2K-CORE-CLEAN` rollout pattern.
-- Refresh `module-layout-discipline`'s stale `__init__.py`-count
-  scenario (it asserts N=9 plugin packages; the repo has 12, and
-  `decouple-import-cycles` adds `context` for 13).
+- The package front doors are opened: `di` / `cli` / `mcp` already
+  re-export their public types; `formatter/__init__.py` gains
+  `infer_format_hint` and `di/__init__.py` gains `lazy_inner_type`.
+  All 15 deep imports — in `app.py`, `signature.py`, `tool.py`,
+  `cli/_serve.py`, `cli/builder.py`, `connections/dispatch.py`,
+  `health/__init__.py`, `testing/client.py`, `a2kit/__init__.py` —
+  are rewritten onto the front doors.
+- Both rules ship **directly as hard error**: because this change
+  cleans every violation in the same pass, the warn-first window
+  collapses to zero (the warn-first rollout matters only when the
+  rule ships ahead of the cleanup).
+- Refresh `module-layout-discipline`'s `__init__.py`-count scenario —
+  the formula `2 + N + R` tracks `N` dynamically, so `context` (from
+  `decouple-import-cycles`) and `dispatch` (from
+  `extract-dispatch-pipeline`) are already covered.
 
 ## Capabilities
 

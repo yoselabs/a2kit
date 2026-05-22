@@ -137,7 +137,7 @@ def wire_input_params(
     the scope names come from the container (registered by consumer
     packages like ``a2kit.packages.connections``).
     """
-    from a2kit.packages.di.container import _lazy_inner_type
+    from a2kit.packages.di import lazy_inner_type as _lazy_inner_type
 
     base = user_input_params(fn)
     if container is None:
