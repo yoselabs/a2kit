@@ -96,14 +96,7 @@ class StderrToolContext:
 
     __slots__ = ("_start_ts", "_state", "client_id", "request_id")
 
-    def __init__(
-        self,
-        *,
-        report_type: type | None = None,  # noqa: ARG002 — accepted for API compatibility
-        tool_name: str | None = None,  # noqa: ARG002
-        reports_enabled: bool = True,  # noqa: ARG002
-        events_enabled: bool = True,  # noqa: ARG002
-    ) -> None:
+    def __init__(self) -> None:
         self._start_ts = time.monotonic()
         self._state: dict[str, Any] = {}
         self.request_id: str = uuid.uuid4().hex

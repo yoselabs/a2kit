@@ -294,14 +294,6 @@ def test_tool_call_contamination_with_and_without_tool_name() -> None:
     assert "bar" in str(err2)
 
 
-def test_invalid_filter_expression_carries_hint() -> None:
-    from a2kit.exceptions import InvalidFilterExpression
-
-    err = InvalidFilterExpression("a > 1", "missing variable")
-    assert err.expr == "a > 1"
-    assert err.hint == "missing variable"
-
-
 # --------------------------- routers slugify branches --------------------------- #
 
 

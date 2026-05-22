@@ -28,7 +28,6 @@ def test_tool_build_spec_ldd_fields_default_on() -> None:
     assert spec.reports_enabled is True
     assert spec.events_enabled is True
     assert spec.sinks == ()
-    assert spec.descriptor is None
 
 
 def test_captured_error_snapshots_the_original() -> None:

@@ -80,7 +80,6 @@ uv pip install a2kit
 | `@a2kit.list_` | Specialized list verb (trailing underscore to avoid shadowing the built-in `list`). `@a2kit.list_(*default_fields, page_size=None, selectable_fields=None, open_world=False, title=None, visibility=None, reports=None)`. Requires a `list[T]` (or tuple/set/frozenset of T) return annotation at decoration time. `page_size` must be a positive integer or None. Selectable fields derive from `T` when omitted. |
 | `a2kit.A2KitMeta` | Frozen typed contract stamped onto each tool fn (`fn._a2kit`). Feature decorators write namespaced keys into `meta.extra`. |
 | `a2kit.ToolContext` | Lazy alias for `fastmcp.Context` — tools annotate `ctx: a2kit.ToolContext` and receive the live FastMCP Context on the MCP transport, or a Context-shaped CLI stub on the CLI transport. Bare `import a2kit` doesn't pull fastmcp; the alias resolves on first access. |
-| `a2kit.Cap` | Built-in capability `StrEnum`. `a2kit.capabilities.register(...)` for custom tags. |
 | `a2kit.run(app, argv=None)` | Single-entry CLI dispatch. Builds Click group, invokes. |
 
 ### Plugin packages (`a2kit.packages.*`)
@@ -595,22 +594,15 @@ tool that omitted `ctx`) raises
 
 ## Migration from v0.x
 
-See [CHANGELOG.md](CHANGELOG.md) for the v0.20 break notes. From the
-v0.19 / `v1-thin-core` intermediate shapes:
+a2kit is pre-1.0 with a fast release cadence — [CHANGELOG.md](CHANGELOG.md)
+carries the full break history. The notes still relevant to a recent
+consumer:
 
-- `Depends(<class>)` / `Depends(<callable>)` → typed kwargs on tool methods + `app.provide(T, factory=None)`
-- `app.use(...)` → `app.add_router(...)`, `app.add_cli(...)`, `app.add_mcp_middleware(...)`
-- `app.connect(C)` → (delete; conn config is just a class)
-- `app.use_factory(...)` → `app.provide(T, factory)` (or `app.provide(T)` for class-as-factory)
-- `class TrackerStore(a2kit.Store[TrackerConn]):` → `class TrackerStore:` (plain class)
-- `class R(a2kit.Router, enricher=fn):` (pre-v0.21) / per-tool `@enriches(fn)` (v0.21) → class attribute `enrichers = [fn, ...]` and/or `def enrich(self, exc) -> str | None`
-- `@a2kit.read(enricher=…, list_view=…, report=…)` (v0.20) / stacked `@enriches/@lists/@reports` (v0.21) → enrichers are class-side; list-view absorbed into `@a2kit.list_(*default_fields, page_size=, selectable_fields=)`; report-type is the `reports=ReportT` kwarg on the verb decorator (v0.33)
-- `def __init__(self, get_store: GetStore)` factory closure → declare `store: TrackerStore` directly on tool methods; `app.provide(TrackerStore)` registers the class
-- `name = "tasks"` ceremonial line → derived from class name automatically (`class TasksRouter` → `"tasks"`); explicit `name = "..."` still wins
-- `from a2kit.exceptions import WriteNotAllowed` → `from a2kit.packages.connections.exceptions import WriteNotAllowed`
 - `a2kit.AppBuilder(...).build()` → `a2kit.App(...)` — one type, no `build()`; a finisher seals it (ADR 0017, supersedes ADR 0016)
 - `TestClient.override(T, fake)` → re-build: construct a fresh `a2kit.App` and `provide(T, fake)` last (last-write-wins)
-- `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage; `add_cli(connections_cli(ConfigT))` auto-installs the `ConfigT` provider
+
+Older breaks (the v0.19 → v0.20 thin-core cut, the v0.21–v0.33 surface
+reshapes) are in `CHANGELOG.md`.
 
 See [ANTIPATTERNS.md](ANTIPATTERNS.md) for a2kit-specific patterns to avoid.
 See [OPERATIONAL_CONTRACTS.md](OPERATIONAL_CONTRACTS.md) for documented

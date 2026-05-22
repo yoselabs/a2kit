@@ -1,6 +1,6 @@
 ---
 id: "0013"
-status: proposed
+status: accepted
 date: 2026-05-22
 last_reviewed: 2026-05-22
 supersedes: []
@@ -13,11 +13,10 @@ deciders: [Denis Tomilin]
 
 ## Status
 
-Proposed, 2026-05-22. Implements the code-execution surface of
+Accepted, 2026-05-22. Implements the code-execution surface of
 `docs/VISION.md`. Pairs with the spike `docs/SPIKE_CODE_EXEC_DI.md`
-and the OpenSpec change `code-execution-surface`. Promote to
-`accepted` when the surface ships and a downstream consumer (a2web,
-a2atlassian, a2db, a2sdlc) has re-validated against it per ADR 0005.
+and the OpenSpec change `code-execution-surface`. The surface
+shipped — `a2kit.packages.codemode` is in the tree.
 
 ## Summary
 

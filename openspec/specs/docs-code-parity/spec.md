@@ -16,13 +16,13 @@ The repository SHALL include a test (`tests/test_readme_symbol_drift.py`) that p
 
 - `a2kit.X` and `@a2kit.X` — must `hasattr(a2kit, "X")` on import. Examples: `a2kit.App`, `a2kit.Router`, `@a2kit.read`, `a2kit.ToolContext`, `a2kit.HealthResult`.
 - `a2kit.<submodule>.Y` and `@a2kit.<submodule>.Y` — must resolve via `importlib.import_module("a2kit.<submodule>")` followed by `hasattr(mod, "Y")`. Examples: `a2kit.ldd.event`, `a2kit.testing.client`.
-- `App.method` and `app.method` — must `hasattr(a2kit.App, "method")`. Examples: `App.add_router`, `app.provide`, `app.singleton`, `app.tools`.
-- `Router.attribute` — must `hasattr(a2kit.Router, "attribute")`. Examples: `Router.slug`, `Router.tools`, `Router.enrichers`, `Router.providers`.
+- `App.method` and `app.method` — must `hasattr(a2kit.App, "method")`. Examples: `App.add_router`, `app.provide`, `app.tools`. (The dead name `app.singleton` is NOT a valid claim — the method is `app.provide`.)
+- `Router.attribute` — must `hasattr(a2kit.Router, "attribute")`. Examples: `Router.slug`, `Router.tools`, `Router.enrichers`. (`Router.providers` is NOT a valid claim — no such attribute exists.)
 - `@app.X` — must `hasattr(a2kit.App, "X")`. Examples: `@app.health_check`.
 
-**Tolerated false positives.** The test MAY report false positives on prose mentions of identical strings (e.g., the word "App" in body text matching some unrelated symbol). False positives are acceptable because they would also be valid claims if they did exist. False negatives (symbol claimed in prose without backticks) are tolerated for the initial implementation.
+**Tolerated false positives.** The test MAY report false positives on prose mentions of identical strings. False positives are acceptable. False negatives (symbol claimed in prose without backticks) are tolerated for the initial implementation.
 
-**Failure mode.** A failing assertion SHALL name the unresolved symbol, the line in `README.md` where it appeared, and the resolution that was attempted (e.g., `hasattr(a2kit, "on_startup") is False`).
+**Failure mode.** A failing assertion SHALL name the unresolved symbol, the line in `README.md` where it appeared, and the resolution that was attempted.
 
 #### Scenario: All README symbols resolve
 
@@ -50,19 +50,23 @@ The repository SHALL include a test (`tests/test_readme_symbol_drift.py`) that p
 
 ### Requirement: README accurately reflects the v0.33 public surface
 
-The `README.md` file SHALL NOT reference symbols that do not exist on the live code surface. Specifically, the v0.33 release pass SHALL:
+Human-readable documentation SHALL NOT reference symbols or example call shapes that do not exist on the live code surface. This applies to `README.md`, `ANTIPATTERNS.md`, `OPERATIONAL_CONTRACTS.md`, and ADR bodies under `docs/adr/`. A documented example that names a removed or renamed API teaches a consumer to write code that fails, so doc-vs-code parity is a correctness property of the docs, not a cosmetic one.
 
-- Remove all references to `@app.on_startup` and `@app.on_shutdown` (removed in v0.31; canonical lifecycle path is `App(lifespan=async_cm)`).
-- Remove references to `Router.on_startup` and `Router.on_shutdown` methods (never existed on the public surface).
-- Replace `Surface` Flag-enum claims with the actual `Visibility = Literal["hidden", "cli", "all"]` form.
-- Remove references to `@a2kit.tool` bare verb (removed in v0.33).
-- Remove references to `name=` and `tags=` kwargs on verb decorators (removed in v0.33).
-- Remove references to `app.tool_descriptors()` (collapsed into `app.tools()` in v0.33).
-- Update connection-wiring example to use the single-call `install_connections(app, ConnT)` form (no separate `add_cli(connections_cli(...))` if already covered by `install_connections`).
-- Update `app.singleton` examples to method-call form only (no decorator form).
-- Spell out the `LDD` acronym at first mention.
-- Document the `list_` trailing-underscore convention.
-- Document the default connection-store path.
+The v0.33 release pass SHALL, for `README.md`, have already:
+
+- Removed all references to `@app.on_startup` and `@app.on_shutdown` (removed in v0.31; canonical lifecycle path is `App(lifespan=async_cm)`).
+- Removed references to `Router.on_startup` and `Router.on_shutdown` methods (never existed on the public surface).
+- Replaced `Surface` Flag-enum claims with the actual `Visibility = Literal["hidden", "cli", "all"]` form.
+- Removed references to `@a2kit.tool` bare verb (removed in v0.33).
+- Removed references to `name=` and `tags=` kwargs on verb decorators (removed in v0.33).
+- Removed references to `app.tool_descriptors()` (collapsed into `app.tools()` in v0.33).
+- Updated the connection-wiring example to use the single-call `install_connections(app, ConnT)` form.
+- Updated `app.singleton` examples to method-call form only (no decorator form).
+- Spelled out the `LDD` acronym at first mention.
+- Documented the `list_` trailing-underscore convention.
+- Documented the default connection-store path.
+
+Beyond the README v0.33 pass, the parity standard SHALL hold for the other human-readable docs. Specifically, no human-readable doc SHALL reference, in prose, a markdown table, a fenced example, or an ADR body, an API removed from the live surface — including `a2kit.Cap` / `a2kit.capabilities`, `@a2kit.tool` (removed v0.33), `App(name, health_tool=True)` (removed v0.35), `@app.on_startup` / `@app.on_shutdown` / `app.singleton` / `app._singletons` (not on the live `App`), a TOON encoder or `format_hint="toon"` (TOON was dropped), `ctx.event(...)` / `ctx.report(...)` method-form LDD (LDD primitives are `a2kit.ldd` free functions), or the `report=` verb kwarg (the live kwarg is `reports=`, plural). ADR frontmatter `status` SHALL reflect reality: an ADR whose decision has shipped SHALL carry `status: accepted`, not `status: proposed`.
 
 #### Scenario: No phantom symbols in README
 
@@ -70,6 +74,19 @@ The `README.md` file SHALL NOT reference symbols that do not exist on the live c
 - **WHEN** the symbol-drift test runs
 - **THEN** every claimed `@app.X` / `App.X` / `Router.X` / `a2kit.X` / `a2kit.<submodule>.X` reference resolves
 - **AND** no `@app.on_startup`, `@app.on_shutdown`, `@a2kit.tool`, `app.tool_descriptors`, `Surface.CLI`, `Surface.MCP`, `Surface.ALL` references remain
+
+#### Scenario: Non-README docs name only live APIs
+
+- **GIVEN** `ANTIPATTERNS.md` and `OPERATIONAL_CONTRACTS.md` after the refresh
+- **WHEN** a reader checks each example call shape and symbol reference against the v0.39 live surface
+- **THEN** none references `a2kit.Cap`, `a2kit.capabilities`, `@a2kit.tool`, `App(name, health_tool=True)`, `@app.on_startup`, `@app.on_shutdown`, `app.singleton`, `app._singletons`, a TOON encoder, `ctx.event(...)` / `ctx.report(...)` method-form LDD, or the singular `report=` verb kwarg
+
+#### Scenario: ADR status reflects shipped reality
+
+- **GIVEN** ADR 0013 (`adopt-fastmcp-codemode`) and ADR 0014 (`consumer-aware-rendering`), whose decisions have shipped in code
+- **WHEN** their frontmatter `status` is inspected
+- **THEN** both read `status: accepted`
+- **AND** `docs/adr/INDEX.md` has been regenerated by `make adr-index` to match
 
 ### Requirement: Canonical-type method drift gate SHALL extend the README symbol-drift check
 
@@ -103,26 +120,20 @@ and assert `hasattr(canonical_type, attr_name)`.
 
 ### Requirement: Canonical-API call-shape exerciser SHALL run as a sister test
 
-`tests/test_canonical_apis.py` SHALL exist and SHALL exercise the
-documented call shapes end-to-end with a small fixture app. The
-test SHALL run as part of `make lint` (alongside the README
-drift gate) so silent renames-without-test-updates fail at CI
-time. Coverage SHALL include at minimum:
+`tests/test_canonical_apis.py` SHALL exist and SHALL exercise the documented call shapes end-to-end with a small fixture app. The test SHALL run as part of `make lint` (alongside the README drift gate) so silent renames-without-test-updates fail at CI time. Coverage SHALL include at minimum:
 
 - `TestClient.invoke(...)` and `TestClient.call_wire(...)`
-- `App.singleton(T, factory)` and `App.singleton(T, factory, teardown=...)`
+- `App.provide(T, factory)` and `App.provide(T, factory, per_call=True)` (the registration API — `App.singleton` does not exist)
 - `@a2kit.read()`, `@a2kit.write(...)`, `@a2kit.list_()`
 - `Router` subclass with `slug = "x"` and `tools = (...)`
 
-The test SHALL use bind-against-live-types rather than
-text-matching, so a rename that preserves observable behavior
-under a new name (but breaks the documented call shape) fails.
+The test SHALL bind against live types rather than text-matching, so a rename that preserves observable behavior under a new name (but breaks the documented call shape) fails.
 
 #### Scenario: Each canonical call shape runs successfully
 
 - **GIVEN** the fixture app from `test_canonical_apis.py`
 - **WHEN** the test exercises each documented call shape
-- **THEN** every call succeeds (no AttributeError, no TypeError, no signature mismatch)
+- **THEN** every call succeeds (no `AttributeError`, no `TypeError`, no signature mismatch)
 
 #### Scenario: Removed surface fails the test loudly
 

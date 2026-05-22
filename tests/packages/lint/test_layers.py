@@ -20,7 +20,7 @@ def test_manifest_covers_every_package_plus_core() -> None:
 
 def test_core_sits_between_kernel_and_transports() -> None:
     core = LAYER_MANIFEST["core"]
-    for kernel in ("di", "formatter", "ldd", "health", "select", "lint"):
+    for kernel in ("di", "formatter", "ldd", "health", "lint"):
         assert LAYER_MANIFEST[kernel] < core, f"{kernel} should be below core"
     for transport in ("cli", "mcp", "codemode", "otel"):
         assert LAYER_MANIFEST[transport] > core, f"{transport} should be above core"

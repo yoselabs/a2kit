@@ -134,8 +134,10 @@ advertising the budget in MCP annotations, that becomes a separate concern
 
 **Current behavior.** Each `a2kit.App` instance has fully isolated state:
 
-- Singleton cache (`app._singletons`) — per-App.
-- Lifecycle handlers (`@app.on_startup` / `@app.on_shutdown`) — fire per-App.
+- App-scope DI instances (registered via `app.provide(T, factory)`) —
+  cached per-App on that App's container.
+- Resource lifecycle (`__aenter__` / `__aexit__` on app-scope
+  instances) — entered and unwound per-App.
 - Dispatch hook (`app._dispatch_hook`) — per-App; built lazily on first
   `provide(...)`.
 - LDD state (events/reports kill-switches) — per-App.
@@ -147,17 +149,16 @@ The MCP server build (`build_mcp_server(app)`) is App-scoped; you can run two
 FastMCP servers from one process if you really want to.
 
 **Tool author's responsibility.** Don't reach across App boundaries inside a
-tool body. Pass dependencies through DI (`provide`/`singleton`) so tools see
-the right App's instances.
+tool body. Pass dependencies through DI (`app.provide(T, factory)`) so tools
+see the right App's instances.
 
 **Future plans.** None. Multi-App composition (one process aggregating tools
 from several apps under a meta-MCP) is a possible future direction but not
 in the current scope.
 
 **Regression test.** `tests/test_multi_app_isolation.py` — two `App`
-instances each with their own singleton factory + lifecycle handlers; the
-test asserts `peek` returns distinct instances and lifecycle hooks fire
-per-App with no crossover.
+instances each with their own app-scope DI registration; the test asserts
+each App resolves distinct instances with no crossover.
 
 ## Q4. Dev-mode auto-reload
 
@@ -329,7 +330,7 @@ pattern above is the canonical answer.
 
 The `_meta.*` tool-name prefix is **closed** — reserved for
 framework-internal protocol tools (currently `_meta.health`,
-registered via `App(name, health_tool=True)`). User-registered
+registered via the `@app.health_check` decorator). User-registered
 tools with this prefix are rejected, both at decoration time
 (`@a2kit.read(name="_meta.foo")`) and at server-build time
 (metadata-mutation paths); the error names the reserved namespace.
@@ -367,8 +368,8 @@ it transitively calls) is currently running under an
 the dispatch. The dispatcher synthesizes a non-None ambient `ctx` for
 **every** framework-dispatched tool, regardless of whether the tool's
 body declares `ctx: ToolContext` in its signature. Calling from
-module-level code, `@on_startup`, `@on_shutdown`, or any other
-pre-dispatch context raises `a2kit.exceptions.AmbientContextMissing`
+module-level code or a warm-up script — any pre-dispatch context —
+raises `a2kit.exceptions.AmbientContextMissing`
 (Mode A — "no active dispatch"). Calling from inside a tool that
 omitted its `ctx` declaration **does not raise** — the framework's
 synthesized ambient ctx handles it (relax-ldd-ambient-requirement,
@@ -391,11 +392,11 @@ async def make_pool() -> Pool:
     await a2kit.ldd.info("opening pool")  # legal: dispatch in flight
     return Pool(...)
 
-app.singleton(Pool, make_pool)
+app.provide(Pool, make_pool)
 ```
 
-What's still illegal is the same factory invoked from `@on_startup`
-(pre-dispatch) or from a warm-up script (no dispatch in flight at all). The shorthands surface
+What's still illegal is the same factory invoked from module-level
+code or a warm-up script (no dispatch in flight at all). The shorthands surface
 their own name (`a2kit.ldd.info`, `…warning`, `…error`, `…debug`)
 in the error so the trace points at the actual call site rather than
 the delegated-to `a2kit.ldd.log`. The error names the primitive and

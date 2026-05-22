@@ -287,7 +287,6 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
             app=app,
             router=router,
             meta=meta,
-            descriptor=None,
             reports_enabled=reports_enabled,
             events_enabled=events_enabled,
             sinks=app.ldd.sinks,

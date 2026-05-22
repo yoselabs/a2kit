@@ -20,7 +20,6 @@ LAYER_MANIFEST: dict[str, int] = {
     "di": 0,
     "formatter": 0,
     "ldd": 0,
-    "select": 0,
     "lint": 0,
     "context": 0,
     "health": 0,

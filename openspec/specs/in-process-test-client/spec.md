@@ -5,15 +5,11 @@ TBD - created by archiving change a2web-feedback-round-2. Update Purpose after a
 ## Requirements
 ### Requirement: In-process test client
 
-The system SHALL provide `a2kit.testing.client(app)` — an async
-context manager that runs the **real FastMCP in-memory transport**
-in-process and exposes capture surfaces for assertions. The test
-client SHALL build a `FastMCP` server via `build_mcp_server(app)`
-and connect to it through `fastmcp.Client(transport=server, ...)`,
-exercising the same dispatch path production MCP transport uses.
+The system SHALL provide `a2kit.testing.client(app)` — an async context manager that runs the **real FastMCP in-memory transport** in-process and exposes capture surfaces for assertions. The test client SHALL build a `FastMCP` server via `build_mcp_server(app)` and connect to it through `fastmcp.Client(transport=server, ...)`, exercising the same dispatch path production MCP transport uses.
 
-The test client SHALL NOT subclass `StderrToolContext` or otherwise
-construct a CLI-shaped fake of the runtime Context.
+The test client SHALL NOT subclass `StderrToolContext` or otherwise construct a CLI-shaped fake of the runtime Context.
+
+App lifecycle around the test session SHALL follow the `app-lifecycle` capability: the App's `__aenter__` runs before the first invoke and its `__aexit__` runs after the block exits. The framework does not expose `@app.on_startup` / `@app.on_shutdown` decorators (they do not exist on `App`); lifecycle is the async-context-manager protocol plus lazy first-use resource entry.
 
 #### Scenario: ctx received by tools is a real fastmcp.Context
 
@@ -26,10 +22,11 @@ construct a CLI-shaped fake of the runtime Context.
 - **WHEN** a test calls `await client.invoke("tasks.create", name="x")` on an app with `TasksRouter`
 - **THEN** the dispatcher resolves DI, runs decorator processing, executes the tool body, and returns the value the tool returned, with the dispatch routed through the real FastMCP server
 
-#### Scenario: lifecycle hooks fire around the test session
+#### Scenario: App lifecycle fires around the test session
 
 - **WHEN** a test enters `async with a2kit.testing.client(app) as c:` and exits the block
-- **THEN** registered `@app.on_startup` handlers run before the first invoke and `@app.on_shutdown` handlers run after the block exits, exactly once each
+- **THEN** the App's `__aenter__` ran before the first invoke and its `__aexit__` ran after the block exited, each exactly once
+- **AND** no `@app.on_startup` / `@app.on_shutdown` decorator is required or available
 
 ### Requirement: Event and progress capture
 
@@ -129,72 +126,6 @@ The `a2kit.testing` module SHALL re-export `null_context` (alongside `client` an
 
 - **WHEN** test code runs `from a2kit.testing import null_context`
 - **THEN** the import succeeds
-
-### Requirement: TestClient.override swaps DI-resolved dependencies for the session
-
-The test client SHALL expose `override(type_: type[T], fake: T) -> None` on the `TestClient` instance returned by `a2kit.testing.client(app)`. The method SHALL replace the App container's binding for `type_` with `fake` for the remainder of the `async with` block, restoring the prior binding on `__aexit__` (including exceptional exit).
-
-The signature SHALL be type-parameterised by a `TypeVar` such that mypy / pyright / ty bind `fake` to the same `T` as `type_`. Callers SHALL NOT need `# type: ignore` to swap a fake that satisfies the registered type.
-
-Overrides SHALL cover both DI registration paths:
-- types registered via `app.singleton(T, ...)` (cached singletons),
-- types registered via `app.provide(T, ...)` (per-call providers).
-
-Overrides SHALL also apply when `type_` was not previously registered (the fake is registered fresh for the duration of the session). Overrides SHALL also clear any async-factory marker on `type_` so synchronous resolve paths return the fake without blocking.
-
-Calling `override` more than once for the same `type_` within one session SHALL apply last-write-wins; only one restore happens at exit (to the pre-session state, not to intermediate values).
-
-The implementation SHALL delegate the three-attribute mutation to `Container._override(type_, fake)` (per the di-container-package capability) — it SHALL NOT reach into `_providers`, `_singletons`, or `_async_factories` directly. The TestClient retains responsibility for capturing the pre-session snapshot (via `Container._snapshot()`) on first call within a session and for restoring it on `__aexit__` (via `Container._restore(snapshot)`).
-
-#### Scenario: Override replaces a singleton-registered dependency
-
-- **GIVEN** an App with `app.singleton(LLMExtractor, lambda: RealLLM())` and a tool that takes `extractor: LLMExtractor`
-- **WHEN** test code runs `async with a2kit.testing.client(app) as c:` then `c.override(LLMExtractor, FakeLLM())` then `await c.invoke("foo")`
-- **THEN** the tool body receives the `FakeLLM` instance, and `a2kit.testing.peek(app, LLMExtractor)` inside the block also returns the same `FakeLLM`
-
-#### Scenario: Override replaces a per-call provider-registered dependency
-
-- **GIVEN** an App with `app.provide(Store, build_store)` and a tool that takes `store: Store`
-- **WHEN** test code calls `c.override(Store, FakeStore())` inside the `async with` block and then `await c.invoke("foo")` multiple times
-- **THEN** every invocation receives the same `FakeStore` instance the test passed in (the provider is shadowed by a constant-factory for the duration of the override)
-
-#### Scenario: Override is restored on normal exit
-
-- **GIVEN** `a2kit.testing.peek(app, LLMExtractor)` returns `RealLLM` before any `async with` block
-- **WHEN** a test enters `async with a2kit.testing.client(app) as c:`, calls `c.override(LLMExtractor, FakeLLM())`, and the block exits normally
-- **THEN** after the block, `a2kit.testing.peek(app, LLMExtractor)` returns the original `RealLLM` instance (or re-resolves the original singleton factory if it had not been materialised)
-
-#### Scenario: Override is restored on exceptional exit
-
-- **WHEN** a test enters the `async with` block, calls `c.override(T, fake)`, and the block exits due to an exception raised inside `c.invoke(...)`
-- **THEN** the App's container is restored to its pre-session state, identical to a normal exit
-
-#### Scenario: Override of an unregistered type registers the fake fresh for the session
-
-- **GIVEN** no provider or singleton registered for type `T`
-- **WHEN** test code calls `c.override(T, fake)` and then a tool depending on `T` is invoked
-- **THEN** the tool receives `fake`, and on `__aexit__` the container no longer has any registration for `T` (returns to the pre-session state where `T` was unknown)
-
-#### Scenario: Last-write-wins within a session
-
-- **WHEN** test code calls `c.override(T, fake1)` then `c.override(T, fake2)` within one session
-- **THEN** subsequent resolutions return `fake2`, and on exit the container is restored to its pre-session state (not to `fake1`)
-
-#### Scenario: Type-safety at the call site
-
-- **WHEN** a test author writes `c.override(LLMExtractor, "not an extractor")`
-- **THEN** mypy / pyright / ty reports an argument-type error on the second argument without any `# type: ignore` being involved
-
-#### Scenario: Concurrent override sessions on the same App are rejected
-
-- **GIVEN** TestClient `c1` is inside an `async with` block on `app` and has called `c1.override(T, fake)`
-- **WHEN** a second TestClient `c2` enters `async with a2kit.testing.client(app) as c2:` and calls `c2.override(T, other_fake)`
-- **THEN** `c2.override(...)` raises `RuntimeError` indicating an override session is already active on this App
-
-#### Scenario: TestClient.override delegates to Container._override
-
-- **WHEN** the source of `TestClient.override` is read after this change
-- **THEN** the body delegates the three-attribute mutation to `container._override(type_, fake)` and contains no `# noqa: SLF001` lines reaching into `_providers`, `_singletons`, or `_async_factories` directly
 
 ### Requirement: Wire-encoded payload capture via call_wire
 
@@ -304,27 +235,13 @@ Tool-body exceptions SHALL surface from `TestClient.invoke(...)` as `fastmcp.exc
 
 ### Requirement: Hidden `_meta.*` tools invocable in tests
 
-The test client SHALL re-enable the `_meta` tag on the server it builds so hidden protocol-meta tools (e.g. `_meta.health`) are invocable via `invoke()`. Production MCP transport hides them via `server.disable(tags={"_meta"})`; the test client opts back in so test authors can probe health and other meta surfaces.
+The test client SHALL re-enable the `_meta` tag on the server it builds so hidden protocol-meta tools (e.g. `_meta.health`) are invocable via `invoke()`. Production MCP transport hides them via `server.disable(tags={"_meta"})`; the test client opts back in so test authors can probe health and other meta surfaces. The `_meta.health` tool exists only on Apps that have at least one `@app.health_check` registration — the framework does not accept an `App(health_tool=True)` constructor keyword (it does not exist).
 
 #### Scenario: _meta.health invocable through test client
 
-- **GIVEN** `App("a", health_tool=True)`
+- **GIVEN** an `App("a")` with at least one `@app.health_check`-registered function
 - **WHEN** the test calls `await client.invoke("_meta.health")`
 - **THEN** the call succeeds and the result includes the aggregated health payload
-
-<!--
-  Removed-requirement note: the legacy `_CapturingContext(StderrToolContext)`
-  implementation was already retired from the in-process-test-client spec by
-  the time this change archived. The "Implementation backed by StderrToolContext
-  subclass" header is not present in the canonical spec, so no REMOVED clause
-  is emitted here.
-
-  Migration carried over: public API unchanged for events/reports/progress/logs
-  capture shapes (preserved as dicts/tuples). Tests asserting on raw Python
-  class identity of `invoke()` return values migrate to field-wise or
-  `model_dump()` comparison. Tests catching tool-body Python exceptions migrate
-  to catching `fastmcp.exceptions.ToolError` and parsing the JSON envelope.
--->
 
 ### Requirement: TestClient SHALL surface renamed method names with embedded migration hints
 

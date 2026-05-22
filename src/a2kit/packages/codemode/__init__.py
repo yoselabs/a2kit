@@ -184,23 +184,6 @@ def build_code_mode_transform(
     return A2kitCodeMode(allow_destructive=allow_destructive, return_types=return_types)
 
 
-def __getattr__(name: str) -> Any:
-    # Tombstone: ``run_code`` moved to ``a2kit.packages.cli`` in the
-    # import-acyclicity refactor. It builds an MCP server and is therefore
-    # CLI-side orchestration, not a codemode primitive — keeping it here
-    # formed a ``codemode -> mcp`` import cycle.
-    if name == "run_code":
-        msg = (
-            "a2kit.packages.codemode.run_code moved to a2kit.packages.cli "
-            "in the import-acyclicity refactor (it builds an MCP server, so "
-            "it is CLI orchestration, not a codemode primitive). The CLI "
-            "`code` subcommand calls it directly."
-        )
-        raise ImportError(msg)
-    msg = f"module {__name__!r} has no attribute {name!r}"
-    raise AttributeError(msg)
-
-
 __all__ = [
     "A2kitCodeMode",
     "A2kitSandboxProvider",

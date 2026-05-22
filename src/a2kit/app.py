@@ -494,10 +494,6 @@ class App:
         """Typed descriptors materialized at ``add_router`` time. One per tool."""
         return list(self._descriptors)
 
-    def tool_descriptors(self) -> list[ToolDescriptor]:
-        """Deprecated alias for :meth:`tools`. Removed in a future minor."""
-        return list(self._descriptors)
-
 
 def _validate_router_tools(router: Router) -> None:
     """Verify every ``@a2kit.*``-decorated method on the Router class

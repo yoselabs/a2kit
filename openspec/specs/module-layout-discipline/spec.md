@@ -3,29 +3,19 @@
 ## Purpose
 TBD - created by archiving change simplify-and-thin-core. Update Purpose after archive.
 ## Requirements
-### Requirement: No underscore-prefixed modules with public symbols
-
-A Python file in `src/a2kit/` SHALL NOT use a leading-underscore filename (e.g. `_foo.py`) while exporting symbols that are referenced from outside its parent package. Each file is either inlined into its parent module or promoted to a public, non-underscore name.
-
-#### Scenario: Source tree contains zero underscore-prefixed modules
-- **WHEN** `find src/a2kit -type f -name "_*.py" -not -name "__init__.py"` is run after the change
-- **THEN** the result is empty
-
-#### Scenario: Public symbols live in public files
-- **WHEN** a symbol is imported from `a2kit` or `a2kit.<subpackage>` by external code
-- **THEN** the source file defining that symbol does not start with an underscore
-
 ### Requirement: One concept per file, name equals concept
 
-Every file in `src/a2kit/` SHALL answer "what is this?" by its filename alone, without requiring a docstring or comment to explain the file's existence.
+Every file in `src/a2kit/` SHALL answer "what is this?" by its filename alone, without requiring a docstring or comment to explain the file's existence. Filenames SHALL name a single concept rather than a slice of one.
 
 #### Scenario: File names are self-evident
+
 - **WHEN** a reader scans `ls src/a2kit/` and `ls src/a2kit/<subpackage>/`
-- **THEN** every filename maps to a single, namable concept (e.g. `connections.py`, `decorator.py`, `enrichers.py`) — not a slice of one (e.g. `_decorator_impl.py`, `_decorator_helpers.py`)
+- **THEN** every filename maps to a single, namable concept (e.g. `tool.py`, `routers.py`, `app.py`) — not a slice of one (e.g. `_decorator_impl.py`, `_decorator_helpers.py`)
 
 #### Scenario: No "helper" or "utils" modules
-- **WHEN** the source tree is inspected after the change
-- **THEN** no module is named `helpers.py`, `utils.py`, `common.py`, `_helpers.py`, `_utils.py`, or `_common.py`
+
+- **WHEN** the source tree is inspected
+- **THEN** no module is named `helpers.py`, `utils.py`, `common.py`, `_utils.py`, or `_common.py` (the allowlisted `_lifecycle_helpers.py` and `_list_helpers.py` are named for their concept — verb-lifecycle and list-verb decoration — not as generic "helpers" buckets)
 
 ### Requirement: `__init__.py` files are minimized to package boundaries
 
@@ -103,20 +93,6 @@ Source comments SHALL only document non-obvious **why** (hidden constraints, inv
 #### Scenario: Function bodies are uncommented unless preserving non-obvious why
 - **WHEN** a function body is inspected
 - **THEN** comments inside it document only non-obvious constraints, not the code's behavior
-
-### Requirement: `_APP_CTX` lives in `packages/cli/app_ctx`
-
-`_APP_CTX: ContextVar` SHALL be defined exactly once, in `a2kit.packages.cli.app_ctx`, and SHALL be used by `build_full_cli` and `serve_command` to propagate the active `App` across lazy subcommand dispatches. The previous Phase-3.1 location (`a2kit.packages.mcp.cli._APP_CTX`) is replaced; no compatibility re-export.
-
-#### Scenario: Canonical location
-- **WHEN** the source tree is inspected
-- **THEN** `_APP_CTX` is defined exactly once, in
-  `src/a2kit/packages/cli/app_ctx.py`
-
-#### Scenario: mcp.cli imports from cli.app_ctx
-- **WHEN** `src/a2kit/packages/mcp/cli.py` is read
-- **THEN** it imports `_APP_CTX` from `a2kit.packages.cli.app_ctx`, not
-  the reverse
 
 ### Requirement: Lint rules split into per-family modules
 
@@ -330,4 +306,25 @@ exceptions.
 - **WHEN** an import path is listed in the `A2K-PKG-FRONT-DOOR`
   allowlist
 - **THEN** the rule does not fire for that import
+
+### Requirement: Underscore-prefixed modules are confined to an allowlisted set of private siblings
+
+A Python file in `src/a2kit/` with a leading-underscore filename (e.g. `_foo.py`) SHALL exist only as an allowlisted private sibling of a public module — a deliberate code-split that keeps the public file under the SLOC budget. The allowlist is enforced by `src/a2kit/packages/lint/rules/mirror.py` and currently includes `_lifecycle_helpers.py`, `_list_helpers.py`, `_verbs.py`, `_verb_validators.py`, and `packages/di/_introspection.py`. An underscore-prefixed module that is NOT on this allowlist SHALL be flagged by the mirror lint rule. Symbols re-exported from a private sibling SHALL be re-exported through its public counterpart so external code imports the public name.
+
+This requirement supersedes the earlier blanket prohibition on underscore-prefixed modules: that prohibition contradicted later requirements in this same capability that REQUIRE `_verbs.py` and `_verb_validators.py` to exist. The reconciled rule is "underscore modules are allowed only as allowlisted private siblings," which the code's mirror rule already enforces.
+
+#### Scenario: Allowlisted private sibling is permitted
+
+- **WHEN** `uv run a2kit lint static src/` runs against a tree containing `src/a2kit/_verbs.py`
+- **THEN** no mirror-rule diagnostic is emitted for `_verbs.py` (it is on the ALLOW_LIST)
+
+#### Scenario: Non-allowlisted underscore module is flagged
+
+- **WHEN** `uv run a2kit lint static src/` runs against a tree containing a new `src/a2kit/_scratch.py` not on the ALLOW_LIST
+- **THEN** the mirror lint rule reports `_scratch.py`
+
+#### Scenario: Public symbols are re-exported through public files
+
+- **WHEN** external code imports a verb decorator
+- **THEN** it imports `from a2kit.tool import read` (a public module), even though the decoration body lives in the private sibling `_verbs.py`
 

@@ -18,7 +18,6 @@ classifiers = [
 ]
 dependencies = [
     "anyio>=4",
-    "cel-python>=0.5,<0.6",
     "click>=8",
     "fastmcp>=3.2,<4",
     "pydantic>=2,<3",
@@ -183,8 +182,6 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 "src/a2kit/packages/mcp/context.py" = ["RUF006"]
 # listview rewrites payloads defensively — must catch any handler exception.
 "src/a2kit/packages/mcp/listview.py" = ["PLR0911", "BLE001"]
-# select walks Lark trees — unused-arg lambdas, branchy AST handling.
-"src/a2kit/packages/select/__init__.py" = ["C901", "ARG005", "PLR0911", "PERF401"]
 # syrupy's serialize signature is fixed; we accept and ignore **kwargs.
 "src/a2kit/packages/testing/snapshots.py" = ["ARG002"]
 # rebuild_with_factories iterates conditionally; comprehension would obscure.
@@ -202,8 +199,8 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# --import-mode=importlib: load test modules by file path so test packages whose
-# names shadow stdlib modules (e.g. tests/packages/select/) don't collide via sys.modules.
+# --import-mode=importlib: load test modules by file path, avoiding sys.modules
+# collisions between same-named test packages.
 addopts = "-v --strict-markers --import-mode=importlib --cov --cov-report=term-missing --cov-fail-under=90"
 # pythonpath: importlib mode skips rootdir injection; restore for `examples.*` imports.
 pythonpath = ["."]
@@ -267,8 +264,7 @@ tests_dir = ["tests/"]
 also_copy = ["examples/"]
 # -x: stop on first failure (mutmut only needs "did any test fail").
 # --no-cov: running coverage on every mutation is wasteful.
-# --import-mode=importlib: matches pytest config; required because
-#   tests/packages/select/ shadows the stdlib `select` module name.
+# --import-mode=importlib: matches pytest config.
 pytest_add_cli_args = [
     "-x",
     "--no-cov",

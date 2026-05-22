@@ -13,8 +13,6 @@ import subprocess
 import sys
 from typing import Any
 
-import pytest
-
 import a2kit
 from a2kit import HealthResult
 from a2kit.packages.health import app_version, run_checks
@@ -84,13 +82,6 @@ def test_packages_testing_does_not_import_core_shim() -> None:
 
 
 # --- migration tombstones ------------------------------------------------ #
-
-
-def test_old_run_code_path_raises_migration_hint() -> None:
-    from a2kit.packages import codemode
-
-    with pytest.raises(ImportError, match=r"a2kit\.packages\.cli"):
-        _ = codemode.run_code
 
 
 # The `StderrToolContext` tombstone is mirror-tested in

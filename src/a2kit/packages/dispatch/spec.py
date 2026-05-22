@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from a2kit.app import App
     from a2kit.metadata import A2KitMeta
     from a2kit.routers import Router
-    from a2kit.tool import ToolDescriptor
 
 #: Framework-reserved parameter name synthesized into an MCP tool's
 #: rewritten signature when its body does not declare ``ctx`` — FastMCP
@@ -29,14 +28,11 @@ class ToolBuildSpec:
 
     Transport-neutral: the MCP adapter builds one per tool at
     server-build time; the CLI adapter builds one per invocation.
-    ``descriptor`` may be ``None`` for standalone (no-router)
-    invocations — e.g. a direct ``invoke_tool_sync`` in a test.
     """
 
     app: App
     router: Router | None
     meta: A2KitMeta | None
-    descriptor: ToolDescriptor | None = None
     reports_enabled: bool = True
     events_enabled: bool = True
     sinks: tuple[Any, ...] = ()

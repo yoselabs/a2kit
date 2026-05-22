@@ -158,10 +158,6 @@ def run_runtime_checks(
     return out
 
 
-# v1.0 alias for the public surface.
-run_runtime = run_runtime_checks
-
-
 __all__ = [
     "A2KR001",
     "A2KR002",
@@ -173,6 +169,5 @@ __all__ = [
     "check_similar_tool_names",
     "check_snapshot_presence",
     "check_total_budget",
-    "run_runtime",
     "run_runtime_checks",
 ]

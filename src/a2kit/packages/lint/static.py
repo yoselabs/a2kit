@@ -5,7 +5,7 @@ This module owns:
 - noqa suppression helpers (``parse_noqa`` / ``suppressed``)
 - fixture-path detection (``is_fixture_path``)
 - shared rule constants (``BUILTIN_CAPS``, ``ALL_RULES``)
-- the per-file dispatch table and ``run_static`` entrypoint
+- the per-file dispatch table and ``run_static_rules`` entrypoint
 
 Rule logic lives in ``a2kit.packages.lint.rules.*`` per-family modules.
 """
@@ -237,10 +237,6 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
     return results
 
 
-# Public alias for v1.0 surface.
-run_static = run_static_rules
-
-
 __all__ = [
     "A2K002",
     "A2K003",
@@ -264,7 +260,6 @@ __all__ = [
     "LintMessage",
     "is_fixture_path",
     "parse_noqa",
-    "run_static",
     "run_static_rules",
     "suppressed",
 ]

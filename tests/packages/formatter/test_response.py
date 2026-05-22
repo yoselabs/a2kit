@@ -1,17 +1,11 @@
-"""Construction + invariants for Response / Page / Local / Passthrough types."""
+"""Construction + invariants for Response / Page types."""
 
 from __future__ import annotations
 
 import pytest
 from pydantic import BaseModel
 
-from a2kit.packages.formatter import (
-    ListViewMode,
-    Local,
-    Page,
-    Passthrough,
-    Response,
-)
+from a2kit.packages.formatter import Page, Response
 
 
 class Task(BaseModel):
@@ -79,20 +73,3 @@ class TestPageGeneric:
         # Back-compat: legacy callers passed plain dicts as items.
         p = Page(items=[{"id": 1}], next_cursor=None)
         assert p.items == [{"id": 1}]
-
-
-class TestListViewMode:
-    def test_enum_values(self):
-        assert ListViewMode.AUTO.value == "auto"
-        assert ListViewMode.LOCAL.value == "local"
-        assert ListViewMode.PASSTHROUGH.value == "passthrough"
-
-    def test_aliases(self):
-        assert Local is ListViewMode.LOCAL
-        assert Passthrough is ListViewMode.PASSTHROUGH
-
-    def test_str_enum_behavior(self):
-        # StrEnum members compare equal to their string value — important for
-        # the decorator scanner that accepts either Mode.LOCAL or "local".
-        assert ListViewMode.LOCAL == "local"
-        assert ListViewMode.PASSTHROUGH == "passthrough"

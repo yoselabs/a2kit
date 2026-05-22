@@ -19,7 +19,7 @@ MCP and a Jira/Confluence-wrapping MCP) and a2kit itself. Each entry:
 > - **old #14 (Pydantic class-attribute defaults)** — the v1.0 `Router`
 >   is a plain Python class, not a Pydantic model. Pattern unreachable.
 > - **old #15** (`Capability = str` runtime alias / TC001 noqa) —
->   `Capability` is gone; `a2kit.capabilities.Cap` is a `StrEnum`.
+>   the `Capability` alias is gone; the antipattern is unreachable.
 > - **old #16** (Pydantic generic forward refs / `model_rebuild`) —
 >   `Router` is no longer a Generic Pydantic model.
 > - **old #17** (duplicate of pytest11 retirement above).
@@ -107,8 +107,8 @@ choose between the two stacks; once the wrapper diverges from FastMCP's tool
 shape (different argument coercion, different error envelope), every fix in
 FastMCP misses your wrapper.
 
-What to do: a2kit's `@a2kit.tool/read/write/list_` decorators only stamp
-`A2KitMeta` onto the function. The MCP adapter (`build_mcp_server`) registers
+What to do: a2kit's `@a2kit.read` / `@a2kit.write` / `@a2kit.list_` decorators
+only stamp `A2KitMeta` onto the function. The MCP adapter (`build_mcp_server`) registers
 each function as a `FunctionTool` and round-trips the meta into
 `tool.meta["a2kit"]` for middleware to read. FastMCP keeps the authoritative
 tool list, schema, and dispatch; a2kit owns metadata, not registration.
@@ -179,20 +179,22 @@ Declare `pip install 'a2kit[otel]'` as the activation step. Without
 Citation: `src/a2kit/packages/otel/middleware.py`,
 `src/a2kit/packages/otel/__init__.py::install`.
 
-## 9. Don't ship a TOON encoder; use the vetted dep
+## 9. Don't hand-roll a wire encoder; route through one seam
 
-The mistake: writing 200 LOC of encoder for a wire format that is "tab,
-newline, header row" — re-implementing CSV badly. v0.x carried a 12 LOC
-hand-rolled encoder; even that became drift surface as the spec evolved.
+The mistake: writing a bespoke encoder for a wire format — a tab/newline
+table, a JSON projection — re-implementing serialization badly. v0.x
+carried a hand-rolled encoder per format (a TOON encoder among them);
+each became drift surface as the wire shape evolved.
 
-What to do: depend on the `toon-format` package and route every call
-through `a2kit.packages.formatter.encode_toon`. The byte-identical guarantee
-of `format_response` (when `format_hint="toon"`) is enforced by the test
-suite: `Response.data == toon_format.encode(raw)` exactly. One seam, one
-upstream, no in-tree encoder.
+What to do: route every tool result through the single rendering seam,
+`render(value, consumer)` in `a2kit.packages.formatter`. It picks the
+wire shape from the value's type — JSON for structured payloads, TSV for
+scalar-row tables, `page-tsv` for `Page[T]` — so one place owns encoding
+and one place changes when the wire shape does. Tools return typed
+values; they never format bytes (ADR 0014).
 
-Citation: `src/a2kit/packages/formatter/toon.py::encode_toon`,
-`src/a2kit/packages/formatter/__init__.py::format_response`.
+Citation: `src/a2kit/packages/formatter/render.py`,
+`src/a2kit/packages/formatter/__init__.py`.
 
 ## 10. Don't silently auto-stream from stdio MCPs
 
@@ -252,9 +254,9 @@ from fastmcp.server.auth.providers.google import GoogleAuthProvider
 ```
 
 a2kit's public surface contains only what a2kit owns
-(`App`, `Router`, `tool`/`read`/`write`/`list_`, `Cap`, `ToolContext`,
-`A2KitMeta`, `WriteNotAllowed`, `ToolCallContamination`, …). The lazy
-`__getattr__` in `a2kit/__init__.py` is the authoritative list.
+(`App`, `Router`, `read`/`write`/`list_`, `ToolContext`, `A2KitMeta`,
+`WriteNotAllowed`, `ToolCallContamination`, …). The lazy `__getattr__`
+in `a2kit/__init__.py` is the authoritative list.
 
 Citation: `src/a2kit/__init__.py::_LAZY_ATTRS`.
 
@@ -288,15 +290,15 @@ receives it as an unparsed string. Pattern-matching on log lines is
 fragile, and the agent loses any signal that "this was a finding worth
 reacting to" vs "this was ambient telemetry."
 
-What to do: use `ctx.event(name, **payload)` for typed narrative milestones
-(`await ctx.event("duplicates.found", count=3, batch=4)`) or `ctx.report(payload)`
-for typed result chunks declared via `report=ReportT` on the verb decorator.
-Both stream immediately to the client and arrive as structured data — the
-agent can filter by event name, dispatch on report type, or surface the
-payload to the user without parsing the log line.
+What to do: use `a2kit.ldd.event(name, **payload)` for typed narrative
+milestones (`a2kit.ldd.event("duplicates.found", count=3, batch=4)`) or
+`a2kit.ldd.report(payload)` for typed result chunks declared via the
+`reports=` kwarg on the verb decorator. Both stream immediately to the
+client and arrive as structured data — the agent can filter by event
+name, dispatch on report type, or surface the payload to the user
+without parsing the log line.
 
-Citation: `src/a2kit/packages/mcp/context.py::FastMCPContextAdapter`,
-`src/a2kit/packages/cli/context.py::StderrToolContext`.
+Citation: `src/a2kit/packages/ldd/__init__.py`.
 
 ## 15. Don't rely on `A2KIT_LDD=off` env var inside test code
 

@@ -5,7 +5,7 @@ TBD - created by archiving change a2web-feedback-round-2. Update Purpose after a
 ## Requirements
 ### Requirement: MCP tool annotations on verb decorators
 
-The system SHALL accept MCP `ToolAnnotations` kwargs on `@a2kit.read`, `@a2kit.write`, and `@a2kit.tool`, forwarding them to the FastMCP server registration.
+The system SHALL accept MCP `ToolAnnotations` kwargs on `@a2kit.read`, `@a2kit.write`, and `@a2kit.list_`, forwarding them to the FastMCP server registration. The bare `@a2kit.tool` verb does not exist (removed in v0.33); the annotation-accepting verbs are `read`, `write`, and `list_`.
 
 #### Scenario: read tool opts into idempotent and open-world hints
 
@@ -69,7 +69,7 @@ The system SHALL reject incompatible annotation kwargs at decoration time with a
 
 ### Requirement: Title is independent of tool name
 
-The system SHALL forward `title=` to MCP `ToolAnnotations.title` while keeping the tool's `name` (derived from the method name) as the protocol identifier. The public verb decorators SHALL NOT accept a `name=` kwarg; the tool name SHALL derive from `fn.__name__`.
+The system SHALL forward `title=` to MCP `ToolAnnotations.title` while keeping the tool's `name` (derived from the method name) as the protocol identifier. The public verb decorators (`@a2kit.read`, `@a2kit.write`, `@a2kit.list_`) SHALL NOT accept a `name=` kwarg; the tool name SHALL derive from `fn.__name__`.
 
 #### Scenario: title carried alongside auto-derived name
 

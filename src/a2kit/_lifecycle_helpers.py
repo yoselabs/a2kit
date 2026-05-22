@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def resolve_singleton_args(arg1: Any, arg2: Any) -> tuple[type, Callable[..., Any]]:
-    """Resolve the ``(type, factory)`` pair from ``app.singleton`` call args.
+    """Resolve the ``(type, factory)`` pair from ``app.provide`` call args.
 
     Three shapes (per ``consolidate-lifecycle-on-async-cm-protocol``):
 
@@ -34,15 +34,15 @@ def resolve_singleton_args(arg1: Any, arg2: Any) -> tuple[type, Callable[..., An
             return_type = return_type_of(arg1)
             if return_type is None:
                 raise TypeError(
-                    f"app.singleton({arg1!r}) requires a return annotation. "
+                    f"app.provide({arg1!r}) requires a return annotation. "
                     "Either annotate the factory ('-> T') or pass the type "
-                    "explicitly: app.singleton(T, factory)."
+                    "explicitly: app.provide(T, factory)."
                 )
             return return_type, arg1
-        msg = f"app.singleton({arg1!r}): expected a class or callable factory"
+        msg = f"app.provide({arg1!r}): expected a class or callable factory"
         raise TypeError(msg)
     if not inspect.isclass(arg1):
-        msg = f"app.singleton({arg1!r}, {arg2!r}): first positional must be a type when a factory is supplied"
+        msg = f"app.provide({arg1!r}, {arg2!r}): first positional must be a type when a factory is supplied"
         raise TypeError(msg)
     return arg1, arg2
 

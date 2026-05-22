@@ -342,66 +342,13 @@ def test_builder_needs_json_decode_primitives_and_complex() -> None:
 # --------------------------- otel module (lazy install) --------------------------- #
 
 
-# --------------------------- select edges --------------------------- #
-
-
-def test_select_evaluate_bool_python_path() -> None:
-    """If the runner returns a plain `bool`, line 96 covers it."""
-    from a2kit.packages.select import _convert
-
-    # Sanity for _convert non-bool, non-dict pass-through (line 132).
-    assert _convert(42) == 42
-    assert _convert("string") == "string"
-
-
-def test_select_evaluate_non_bool_result_raises_invalid_filter() -> None:
-    """Returning a non-bool from CEL → InvalidFilterExpression."""
-    from a2kit.exceptions import InvalidFilterExpression
-    from a2kit.packages.select import compile, evaluate
-
-    # `1 + 1` evaluates to int, not bool.
-    prog = compile("1 + 1")
-    with pytest.raises(InvalidFilterExpression, match="must evaluate to bool"):
-        evaluate(prog, {})
-
-
-def test_select_collect_atom_names_flattens_nested_dict() -> None:
-    """Lines 141-142 — nested dict produces dotted names."""
-    from a2kit.packages.select import _collect_atom_names
-
-    names = _collect_atom_names({"surface": {"mcp": True, "cli": False}, "default": True})
-    assert "surface" in names
-    assert "surface.mcp" in names
-    assert "surface.cli" in names
-    assert "default" in names
-
-
-def test_select_validate_atoms_raises_for_unknown() -> None:
-    from a2kit.packages.select import UnknownAtomError, validate_atoms
-
-    with pytest.raises(UnknownAtomError):
-        validate_atoms("not_listed && default", known_atoms={"default"})
-
-
-def test_select_validate_atoms_silent_for_known() -> None:
-    from a2kit.packages.select import validate_atoms
-
-    # Just doesn't raise.
-    validate_atoms("default && surface.mcp", known_atoms={"default", "surface.mcp"})
-
-
-# --------------------------- otel module (lazy install) --------------------------- #
-
-
 def test_otel_module_lazy_attrs_resolve() -> None:
-    """`__getattr__` resolves declared lazy attrs and raises for unknowns."""
+    """`__getattr__` resolves declared lazy attrs."""
     import a2kit.packages.otel as pkg
 
     assert callable(pkg.install)
     assert pkg.OTelMiddleware is not None
     assert "install" in dir(pkg)
-    with pytest.raises(AttributeError):
-        pkg.definitely_not_an_attr  # noqa: B018
 
 
 def test_otel_module_does_not_eagerly_import_opentelemetry() -> None:

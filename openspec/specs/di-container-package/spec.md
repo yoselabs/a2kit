@@ -37,14 +37,14 @@ The container module SHALL NOT contain any reference (in code, docstrings, or at
 
 ### Requirement: Public surface is small and synchronous
 
-**Reshaped: the surface gains async resolution, scope hierarchy, child containers, and the `Resolver` protocol. Sync resolution remains available for the synchronous fast path within the same scope.** The container's public surface SHALL consist of:
+The container's public surface SHALL consist of:
 
-- **`Container` class** with methods: `register(t, factory, *, scope: Scope = Scope.SINGLETON)`, `has(t) -> bool`, `providers() -> dict`, `resolve(t)` (sync), async `get(t)` (the canonical async path that may run `__aenter__` / await factories), `child() -> Container` (returns a fresh scoped child), `apply_kwargs`, `partition_kwargs`, `allowlist`, `has_allowlisted`. Plus async context manager protocol (`__aenter__` / `__aexit__`) on the `Container` itself, where exit triggers the cleanup stack unwind for this scope.
-- **`Scope` enum** with values `SINGLETON`, `SCOPED`, `TRANSIENT`. `Container` scope-routing semantics: `SINGLETON` caches at root, `SCOPED` caches at the immediate child, `TRANSIENT` returns a fresh resolution each call.
-- **`Resolver` Protocol** declaring the narrow surface a2kit framework modules use: `async get[T](t: type[T]) -> T`, `def provide(t, factory=None, *, scope: Scope = Scope.SINGLETON) -> None`, `def child() -> Resolver`, `async def aclose() -> None`.
-- **`UnresolvableType` exception** (carryover).
+- **`Container` class** with the resolution and registration surface used by new code: `provide(t, factory, *, scope: Scope = Scope.SINGLETON)`, `has_provider(t) -> bool`, `providers()` (or `providers_view()`), `resolve(t)` (sync hot path), async `get(t)` (the canonical async path that may run `__aenter__` / await factories), `resolve_params(fn)`, `dispatch(fn, wire_kwargs, *, pre_hook=None)`, `child() -> Container`, async `aclose()`, plus the async context manager protocol (`__aenter__` / `__aexit__`). The legacy method name `register` is not part of this surface — it was retired; see `request-scoped-di` for the legacy-name handling.
+- **`Scope` enum** with values `SINGLETON`, `SCOPED`, `TRANSIENT`.
+- **`Resolver` Protocol** declaring the narrow surface a2kit framework modules use.
+- **`UnresolvableType` exception**.
 
-Sync `Container.resolve(t)` SHALL remain for the hot path within a scope but SHALL raise `ValueError` if asked to resolve an async-factory app-scope type whose factory has not yet been awaited (carryover from the async-singleton lock-coalesce contract).
+Sync `Container.resolve(t)` SHALL remain for the hot path within a scope but SHALL raise `ValueError` if asked to resolve an async-factory app-scope type whose factory has not yet been awaited.
 
 #### Scenario: Async `get` is the canonical resolution path
 
@@ -64,38 +64,10 @@ Sync `Container.resolve(t)` SHALL remain for the hot path within a scope but SHA
 - **THEN** the result is `[Scope.SINGLETON, Scope.SCOPED, Scope.TRANSIENT]` (or equivalent ordering)
 - **AND** `Scope.__module__` is `"a2kit.packages.di"`
 
-#### Scenario: `Resolver` protocol is a typing.Protocol
+#### Scenario: `register` is not a callable resolution method
 
-- **WHEN** `Resolver` is inspected via `typing.get_origin` / `runtime_checkable`
-- **THEN** it is a `typing.Protocol` class
-- **AND** `isinstance(container, Resolver)` is `True` for a default `Container` instance (via `@runtime_checkable`)
-
-### Requirement: Container exposes a sealed test-only snapshot/restore pair
-
-**Reshaped: snapshot/restore covers the expanded internal state (providers, app-scope cache, async factories, **cleanup stack**, scope metadata). Test code SHALL prefer composition-root re-registration over snapshot/restore; the snapshot pair is retained for fine-grained test isolation where re-registration would be too coarse.** The `Container` class SHALL provide two methods, `_snapshot()` and `_restore(snapshot)`. The methods SHALL:
-
-- be synchronous,
-- be feature-agnostic (no references to specific feature names),
-- be prefixed with a single underscore to signal "test-only, not part of the documented public surface",
-- preserve the rest of the documented public surface unchanged.
-
-`_snapshot()` SHALL return an opaque value capturing the current `_providers`, `_app_cache`, `_async_factories`, `_cleanup_stack`, AND `_scope_metadata` state (shallow copies of each). `_restore(snapshot)` SHALL replace those structures with the snapshot's contents, discarding any intervening mutations. The hot-path `resolve` and `get` methods SHALL NOT branch on test-only state; snapshot/restore SHALL achieve override semantics by mutating the existing structures, not by introducing a separate override layer consulted on every resolve.
-
-#### Scenario: Snapshot captures all internal state
-
-- **GIVEN** a Container with multiple providers registered (sync and async, singleton and scoped) and the app-scope cache partially populated
-- **WHEN** test code calls `snap = container._snapshot()`, mutates several pieces of state, and then calls `container._restore(snap)`
-- **THEN** the container's `_providers`, `_app_cache`, `_async_factories`, `_cleanup_stack`, and `_scope_metadata` are returned to the exact state captured by `snap`
-
-#### Scenario: Snapshot/restore is feature-agnostic
-
-- **WHEN** the source of `_snapshot` / `_restore` is read
-- **THEN** the code contains no reference to feature names (`"connection"`, `"tracker"`, etc.) — only the generic structure capture/replace
-
-#### Scenario: Resolve hot path is untouched
-
-- **WHEN** the `Container.resolve` and `Container.get` method bodies are read after this change
-- **THEN** they contain no branch that consults a `_overrides` map or other test-only side state; override semantics are implemented entirely by mutating the captured structures through the snapshot pair
+- **WHEN** `Container.register` is invoked
+- **THEN** it raises `TypeError` (a retired-name stub, per `request-scoped-di`) — it is not the registration path; `provide` is
 
 ### Requirement: `Container.child()` opens a fresh scoped sub-container
 

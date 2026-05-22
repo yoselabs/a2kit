@@ -92,7 +92,6 @@ def _build_one_tool(
         app=app,
         router=router,
         meta=meta,
-        descriptor=desc,
         reports_enabled=reports_enabled,
         events_enabled=events_enabled,
         sinks=sinks,

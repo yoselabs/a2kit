@@ -23,13 +23,6 @@ class InvalidToolReturnTypeError(A2KitError, TypeError):
         super().__init__(message if message is not None else default)
 
 
-class InvalidFilterExpression(A2KitError, ValueError):
-    def __init__(self, expr: str, hint: str) -> None:
-        self.expr = expr
-        self.hint = hint
-        super().__init__(f"Invalid CEL filter expression {expr!r}: {hint}")
-
-
 class ReportTypeNotDeclared(A2KitError, RuntimeError):
     def __init__(self, tool_name: str | None = None) -> None:
         self.tool_name = tool_name

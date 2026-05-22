@@ -85,26 +85,19 @@ The container SHALL resolve a requested type by reading the registered factory's
 
 ### Requirement: Per-call result caching
 
-The container SHALL cache resolved instances within the lifetime of a single tool dispatch and SHALL NOT share instances across dispatches, except for types registered via `App.singleton(...)`, whose cached instance is shared across all dispatches on the App.
+The container SHALL cache resolved instances within the lifetime of a single tool dispatch and SHALL NOT share instances across dispatches, except for types registered with app scope (`app.provide(T, ...)` with `per_call=False`, the default), whose cached instance is shared across all dispatches on the App.
 
 #### Scenario: Same type resolved twice in one call
+
 - **GIVEN** a tool method declares both `store: TrackerStore` and `audit: AuditLog` where `AuditLog`'s factory also depends on `TrackerStore`
 - **WHEN** the tool is dispatched
 - **THEN** the `TrackerStore` instance bound to `store` and the one passed to the `AuditLog` factory are the same object
 
-#### Scenario: Singleton instance shared across calls
+#### Scenario: App-scope instance shared across calls
 
-- **GIVEN** `app.singleton(AppState, factory)` registered
+- **GIVEN** `app.provide(AppState, factory)` registered (default `per_call=False`)
 - **WHEN** the same tool is dispatched twice
 - **THEN** both dispatches receive the same `AppState` object
-
-### Requirement: Connection-rooted resolution boundary
-
-Exactly the auto-installed config provider SHALL be permitted to take a parameter named `connection` of type `str`. No other provider — manual or auto — SHALL receive raw `connection: str`. This invariant SHALL be enforced by lint rule `A2K-DI-CHAIN`.
-
-#### Scenario: Lint rejects non-config provider taking connection:str
-- **WHEN** lint scans an `app.provide(TrackerStore, lambda connection: ...)` registration whose annotated parameter type is `str`
-- **THEN** `A2K-DI-CHAIN` reports a violation pointing at the offending provider
 
 ### Requirement: Wire-schema partition strips injectable kwargs
 
@@ -133,20 +126,6 @@ The container SHALL treat `fastmcp.Context` (re-exported as `a2kit.ToolContext`)
 - **GIVEN** a tool method `async def t(self, *, ctx: fastmcp.Context) -> dict`
 - **WHEN** the tool is dispatched
 - **THEN** `ctx` is bound by the framework without requiring an `App.provide(fastmcp.Context, ...)` call
-
-### Requirement: Lint enforces provider availability
-
-Lint rule `A2K-DI-PROVIDER` SHALL fail when any tool method declares an injectable kwarg type that is not registered in the App's container and is not on the always-provided allowlist (`fastmcp.Context` and `App`).
-
-#### Scenario: Missing provider fails lint
-- **GIVEN** a router declares a tool with `store: TrackerStore` but the test harness builds an `App` without `provide(TrackerStore, ...)`
-- **WHEN** `make lint` runs
-- **THEN** `A2K-DI-PROVIDER` reports `TrackerStore` as missing in the app graph
-
-#### Scenario: ctx parameter does not require a provider
-- **GIVEN** a tool method declaring only `ctx: a2kit.ToolContext` as an injectable
-- **WHEN** `make lint` runs
-- **THEN** `A2K-DI-PROVIDER` does not report `fastmcp.Context` as missing
 
 ### Requirement: Production dispatch routes through `Container.dispatch`
 
@@ -228,11 +207,16 @@ The `Container` class SHALL provide this resolution + registration surface as th
 - async `aclose()`
 - async `__aenter__` / `__aexit__`
 
-The legacy method names (`register`, `register_singleton`, `resolve`, `aresolve`, `has`, `has_async_singleton`, `has_any_async_singletons`) remain as attribute stubs that raise `TypeError` with migration hints (per the "Legacy DI methods raise `TypeError`" requirement). The wire-scope helpers (`register_wire_scope`, `wire_scopes`, `wire_scopes_used_by`) remain — they are wire-side plumbing, not DI resolution. The test-only `_override` / `_snapshot` / `_restore` seam (underscore-prefixed) remains.
+The legacy method names (`register`, `register_singleton`, `resolve`, `aresolve`, `has`, `has_async_singleton`, `has_any_async_singletons`) remain as attribute stubs that raise `TypeError` with migration hints. The test-only `_override` / `_snapshot` / `_restore` seam does NOT exist — it was deleted. Test-time dependency swaps are done by composition-root re-registration (constructing a fresh `App` and calling `provide` with the fake), not by mutating a sealed container.
 
 #### Scenario: new surface is callable
 
 - **GIVEN** a fresh `Container` instance
 - **WHEN** new-surface methods are called against a registered type
 - **THEN** `provide`, `has_provider`, `providers_view`, `get`, `resolve_params`, `dispatch`, `child`, `aclose` complete without raising `TypeError`
+
+#### Scenario: no test-override seam exists
+
+- **WHEN** `packages/di/container.py` is inspected for `_override`, `_snapshot`, `_restore`
+- **THEN** no such member is defined on `Container`
 

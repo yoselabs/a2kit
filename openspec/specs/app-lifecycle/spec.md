@@ -80,7 +80,7 @@ The first `__aenter__` SHALL NOT enter any registered resource. Resources enter 
 
 ### Requirement: Singleton or router `__aexit__` failure SHALL log and continue unwinding
 
-**Reshaped: routing through the cleanup-stack contract.** If a resource's `__aexit__` (or factory `finally` block) raises during App `__aexit__`, the framework SHALL log the exception via `logging.getLogger("a2kit.di.cleanup")` at level WARN with traceback, SHALL continue unwinding remaining entries in LIFO order, and SHALL NOT re-raise unless the original `__aexit__` was called with a non-None exception (in which case the in-flight exception SHALL win and the swallowed cleanup error SHALL still be logged).
+If a resource's `__aexit__` (or factory `finally` block) raises during App `__aexit__`, the framework SHALL log the exception via `logging.getLogger("a2kit.di.cleanup")` at level WARN with traceback, SHALL continue unwinding remaining entries in LIFO order, and SHALL NOT re-raise unless the original `__aexit__` was called with a non-None exception (in which case the in-flight exception SHALL win and the swallowed cleanup error SHALL still be logged). This is the App-lifecycle expression of the LIFO + per-resource isolation contract owned by `di-scope-cleanup-stack`; the cleanup-stack capability is canonical for the unwind semantics.
 
 #### Scenario: Cleanup error logged, sibling unwind continues
 
@@ -89,10 +89,10 @@ The first `__aenter__` SHALL NOT enter any registered resource. Resources enter 
 - **THEN** `C.__aexit__` ran, `B.__aexit__` raised and was logged at WARN, `A.__aexit__` ran
 - **AND** the `async with app:` block exited without raising
 
-#### Scenario: Tool error is preserved when cleanup also raises
+#### Scenario: In-flight error is preserved when cleanup also raises
 
-- **GIVEN** the `async with app:` body raised `ToolError("x")` and resource `B`'s `__aexit__` raises `ShutdownError("y")`
+- **GIVEN** the `async with app:` body raised `ValueError("x")` and resource `B`'s `__aexit__` raises `RuntimeError("y")` during the unwind
 - **WHEN** the `async with` block exits
-- **THEN** the caller sees `ToolError("x")`
-- **AND** `ShutdownError("y")` was logged at WARN
+- **THEN** the caller sees the in-flight `ValueError("x")`
+- **AND** `RuntimeError("y")` was logged at WARN and not re-raised
 

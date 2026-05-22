@@ -109,6 +109,21 @@ async def test_re_registration_last_write_wins() -> None:
     assert repo.impl.label == "fake", "re-registration did not override prior provider"
 
 
+def test_unannotated_factory_error_names_provide() -> None:
+    """An unannotated factory raises a TypeError naming the live `app.provide`,
+    not the removed `app.singleton`."""
+    app = a2kit.App("test")
+
+    def make_state():  # noqa: ANN202 -- the missing return annotation is the point
+        return _State()
+
+    with pytest.raises(TypeError) as excinfo:
+        app.provide(make_state)
+    msg = str(excinfo.value)
+    assert "app.provide" in msg, f"error must name the live method: {msg!r}"
+    assert "app.singleton" not in msg, f"error names the removed method: {msg!r}"
+
+
 @pytest.mark.asyncio
 async def test_sealed_after_aenter() -> None:
     """Container is sealed against ``provide(...)`` after ``async with app:`` enters."""

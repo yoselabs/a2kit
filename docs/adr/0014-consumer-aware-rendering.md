@@ -1,6 +1,6 @@
 ---
 id: "0014"
-status: proposed
+status: accepted
 date: 2026-05-22
 last_reviewed: 2026-05-22
 supersedes: []
@@ -13,13 +13,12 @@ deciders: [Denis Tomilin]
 
 ## Status
 
-Proposed, 2026-05-22. Implements the consumer-aware-format-routing
+Accepted, 2026-05-22. Implements the consumer-aware-format-routing
 OpenSpec change. Pairs with the spike
 `docs/SPIKE_CODEMODE_MARSHALLING.md` (findings F1–F7) and the 42/42
 model eval (`scripts/eval_codemode_correctness.py`). Builds on
-ADR 0013 (the bundled code-execution surface). Promote to `accepted`
-when the surface ships and a downstream consumer (a2web, a2atlassian,
-a2db, a2sdlc) has re-validated against it per ADR 0005.
+ADR 0013 (the bundled code-execution surface). The surface
+shipped — `a2kit.packages.formatter.render` is in the tree.
 
 ## Summary
 

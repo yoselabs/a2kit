@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Removed — dead surface (BREAKING)
+
+Seven minor releases of fast pre-1.0 iteration left dead weight in
+`src/a2kit/`. This change removes it and the things carried solely to
+support it:
+
+- **`a2kit.packages.select`** — the entire CEL-filtering package
+  (~218 SLOC) is deleted. It had zero callers and was never wired to
+  any CLI or MCP flag. The `cel-python` runtime dependency, which
+  existed only for this package, is dropped from `pyproject.toml`.
+- **`App.tool_descriptors()`** — removed. It was a deprecated alias
+  for `App.tools()` with zero callers; `App.tools()` is the single
+  tool-introspection API.
+- **`ListViewMode` / `Local` / `Passthrough`** — the formatter enum
+  and its module-level aliases are removed from
+  `a2kit.packages.formatter`. They were defined and re-exported with
+  no consumer.
+- The `InvalidFilterExpression` exception (CEL-filter-specific) is
+  removed from `a2kit.exceptions`.
+
+Non-breaking internal cleanup also lands: the `lint.run_runtime` /
+`lint.run_static` bare aliases collapse to `run_runtime_checks` /
+`run_static_rules`; the unread `ToolBuildSpec.descriptor` field and
+four discarded `StderrToolContext.__init__` compat parameters are
+removed; the orphaned `codemode.run_code` import tombstone is deleted
+(the `codemode` package never shipped that path). See ADR 0017 area /
+the `remove-dead-surface` change.
+
 ### Changed — one public `App`, finishers seal (BREAKING)
 
 `a2kit.App` is the single public type — the mutable composition surface

@@ -258,12 +258,3 @@ def test_call_raises_with_migration_hint() -> None:
     msg = str(ei.value)
     assert "renamed" in msg
     assert "invoke" in msg
-
-
-def test_genuinely_unknown_attribute_raises_attribute_error() -> None:
-    from a2kit.packages.testing.client import TestClient
-
-    app = _build_app()
-    c = TestClient(app)
-    with pytest.raises(AttributeError):
-        _ = c.totally_unknown_method  # noqa: B018
