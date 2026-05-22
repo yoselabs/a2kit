@@ -17,6 +17,8 @@ The first `__aenter__` SHALL NOT enter any registered resource. Resources enter 
 
 `__aexit__` SHALL unwind the App-scope cleanup stack via the LIFO + per-resource isolation contract (see `di-scope-cleanup-stack`).
 
+**Multiplexed serve.** When a single process serves more than one surface from the same `App` (see `serve-topology`), the `App` lifecycle SHALL be entered exactly once for the process. A single `async with app:` SHALL span the whole process and SHALL be owned by the parent application that mounts the surfaces, not by any individual surface's lifespan. No mounted surface SHALL call `App.__aexit__`; the cleanup stack and the DI container are process-wide shared state, and a per-surface exit would drain them while another surface is still serving.
+
 #### Scenario: Construction is pure
 
 - **GIVEN** `app = a2kit.App("api")` followed by `app.provide(DB)` and `app.add_router(Github())`
@@ -63,6 +65,13 @@ The first `__aenter__` SHALL NOT enter any registered resource. Resources enter 
 - **WHEN** `app.provide(SomeType, factory)` is called inside the lifespan body
 - **THEN** `TypeError` is raised
 - **AND** the message names the sealing rule and the test-override pattern (composition-root re-registration before `async with`)
+
+#### Scenario: Multiplexed serve enters the App lifecycle once
+
+- **GIVEN** a single process serving both the MCP and REST surfaces from one `App`
+- **WHEN** the server starts and then shuts down
+- **THEN** `async with app:` was entered exactly once, owned by the parent application
+- **AND** neither the MCP nor the REST mount invoked `App.__aexit__`
 
 ### Requirement: `App.__init__` SHALL reject the removed `lifespan=` kwarg with a migration hint
 

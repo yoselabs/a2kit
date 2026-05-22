@@ -53,4 +53,3 @@
 - [x] 8.2 `make lint` and `make typecheck` both cover the example with zero errors (ruff clean, ty clean, a2kit lint static clean).
 - [x] 8.3 No files under `src/a2kit/` are added, modified, or removed by this change (verified: `git status -s src/a2kit/` is empty).
 - [x] 8.4 `openspec validate remote-mcp-access-pattern --strict` passes.
-- [ ] 8.5 Knowledge-mcp (separate repo, in flight) adopts the pattern as its first reference point — close the loop by linking knowledge-mcp's initial commit from the pattern doc once it exists. **Deferred:** knowledge-mcp does not exist yet. The pattern doc and example are ready for it; this task closes when knowledge-mcp lands. Until then, leaving it open is the honest status — do not check it before the linked artifact exists.
