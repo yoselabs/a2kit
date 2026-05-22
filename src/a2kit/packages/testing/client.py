@@ -44,7 +44,7 @@ Tests asserting on Python exception classes parse the JSON envelope.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from a2kit.packages.formatter import FormatHint, format_response
 from a2kit.packages.mcp import build_mcp_server
@@ -52,9 +52,6 @@ from a2kit.packages.mcp import build_mcp_server
 if TYPE_CHECKING:
     from a2kit.app import App
     from a2kit.tool import ToolDescriptor
-
-
-_OverrideT = TypeVar("_OverrideT")
 
 
 class TestClient:
@@ -72,11 +69,27 @@ class TestClient:
     #: :meth:`__getattr__`. No alias is provided.
     _MIGRATED_NAMES: ClassVar[dict[str, str]] = {"call": "invoke"}
 
+    #: Methods removed outright (no rename target). Accessing the old
+    #: name raises ``TypeError`` with the full migration recipe.
+    _REMOVED_NAMES: ClassVar[dict[str, str]] = {
+        "override": (
+            "TestClient.override(T, fake) was removed in v0.40. Test overrides "
+            "are now re-build, not post-seal mutation: provide the fake on the "
+            "AppBuilder (provide is last-write-wins) and build a fresh App — "
+            "`app = a2kit.AppBuilder(name).provide(T, fake).build()`. "
+            "See ADR 0016 / CHANGELOG: split-app-builder-runtime."
+        ),
+    }
+
     def __getattr__(self, name: str) -> Any:
-        migrated = type(self)._MIGRATED_NAMES  # noqa: SLF001 -- intentional class-attr access
+        cls = type(self)
+        migrated = cls._MIGRATED_NAMES
         if name in migrated:
             new = migrated[name]
             raise TypeError(f"TestClient.{name}(...) was renamed to TestClient.{new}(...). Update the call site; no alias is provided.")
+        removed = cls._REMOVED_NAMES
+        if name in removed:
+            raise TypeError(removed[name])
         raise AttributeError(f"'TestClient' object has no attribute {name!r}")
 
     def __init__(self, app: App) -> None:
@@ -88,19 +101,9 @@ class TestClient:
         self.reports: list[dict[str, Any]] = []
         self._client: Any = None
         self._client_cm: Any = None
-        self._override_snapshot: Any = None
 
     async def __aenter__(self) -> TestClient:
         from fastmcp import Client  # noqa: A2K-IMPORT-DISCIPLINE
-
-        owner = getattr(self.app, "_test_override_owner", None)
-        if owner is not None:
-            raise RuntimeError(
-                "Another TestClient session is already holding override "
-                "ownership on this App. TestClient sessions are not "
-                "reentrant — wrap them sequentially, not concurrently."
-            )
-        self.app._test_override_owner = self  # noqa: SLF001 -- test seam owner flag
 
         # `code_mode=False`: the in-process test client drives tools
         # directly; the code-execution transform would collapse the tool
@@ -119,18 +122,12 @@ class TestClient:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        try:
-            if self._client_cm is not None:
-                try:
-                    await self._client_cm.__aexit__(exc_type, exc, tb)
-                finally:
-                    self._client_cm = None
-                    self._client = None
-            if self._override_snapshot is not None:
-                self.app.container()._restore(self._override_snapshot)  # noqa: SLF001 -- test seam
-                self._override_snapshot = None
-        finally:
-            self.app._test_override_owner = None  # noqa: SLF001 -- test seam owner flag
+        if self._client_cm is not None:
+            try:
+                await self._client_cm.__aexit__(exc_type, exc, tb)
+            finally:
+                self._client_cm = None
+                self._client = None
 
     # ---------- capture handlers (server -> client notifications) -------- #
 
@@ -203,23 +200,6 @@ class TestClient:
         return s.upper()
 
     # ----------------------------------- public test surface -------------- #
-
-    def override(self, type_: type[_OverrideT], fake: _OverrideT) -> None:
-        """Replace the DI binding for ``type_`` with ``fake`` for this session.
-
-        Pins both the singleton cache and the per-call provider for
-        ``type_`` so every resolution path (singleton fast-path, fresh
-        ``resolve``, ``peek``) returns ``fake``. The original container
-        state is captured on first call and restored on ``__aexit__``,
-        whether normal or exceptional.
-
-        Complement of :func:`a2kit.testing.peek` — peek reads, override
-        writes. Last-write-wins within a session.
-        """
-        container = self.app.container()
-        if self._override_snapshot is None:
-            self._override_snapshot = container._snapshot()  # noqa: SLF001 -- test seam
-        container._override(type_, fake)  # noqa: SLF001 -- test seam
 
     def tools(self) -> list[ToolDescriptor]:
         """Return tool descriptors, sorted by name."""

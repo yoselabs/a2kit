@@ -31,7 +31,7 @@ class _BodyRouter(a2kit.Router):
 
 
 def _app():
-    return a2kit.App("bodyapp").add_router(_BodyRouter())
+    return a2kit.AppBuilder("bodyapp").add_router(_BodyRouter()).build()
 
 
 def test_body_model_decodes_from_json_string() -> None:
@@ -92,7 +92,7 @@ def test_pretty_exceptions_disabled_plain_text_traceback() -> None:
 
         tools = (explode,)
 
-    app = a2kit.App("boomapp").add_router(_BoomRouter())
+    app = a2kit.AppBuilder("boomapp").add_router(_BoomRouter()).build()
     result = CliRunner().invoke(build_full_cli(app), ["boom", "explode"])
     assert result.exit_code != 0
     # Plain message reaches stderr; no Rich box characters.

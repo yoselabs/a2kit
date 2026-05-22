@@ -63,8 +63,9 @@ def _reset_counters() -> None:
 @pytest.mark.asyncio
 async def test_resolve_runs_di_chain_on_first_call() -> None:
     """First `resolve(app, T)` call builds T via the registered factory."""
-    app = a2kit.App("test")
-    app.provide(_Inner)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)
+    app = builder.build()
 
     async with app:
         instance = await resolve(app, _Inner)
@@ -77,8 +78,9 @@ async def test_resolve_runs_di_chain_on_first_call() -> None:
 async def test_resolve_enters_resource_via_aenter() -> None:
     """`__aenter__` runs exactly once on first resolve; `__aexit__`
     fires at lifespan close, not per resolve call."""
-    app = a2kit.App("test")
-    app.provide(_Inner)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)
+    app = builder.build()
 
     async with app:
         await resolve(app, _Inner)
@@ -91,8 +93,9 @@ async def test_resolve_enters_resource_via_aenter() -> None:
 @pytest.mark.asyncio
 async def test_resolve_returns_cached_singleton_on_second_call() -> None:
     """Two calls in the same lifespan return the same instance."""
-    app = a2kit.App("test")
-    app.provide(_Inner)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)
+    app = builder.build()
 
     async with app:
         first = await resolve(app, _Inner)
@@ -107,9 +110,10 @@ async def test_resolve_walks_dependency_chain() -> None:
     """`resolve(app, _Outer)` runs `_Outer`'s factory with the
     resolved `_Inner` injected; subsequent `resolve(_Inner)` returns
     the same `_Inner` instance the outer received."""
-    app = a2kit.App("test")
-    app.provide(_Inner)
-    app.provide(_Outer)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)
+    builder.provide(_Outer)
+    app = builder.build()
 
     async with app:
         outer = await resolve(app, _Outer)

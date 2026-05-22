@@ -60,9 +60,7 @@ def _build_app(*, debug: bool = False) -> a2kit.App:
             calls_bad_int_cast,
         )
 
-    app = a2kit.App("envelope", debug=debug)
-    app.add_router(R())
-    return app
+    return a2kit.AppBuilder("envelope", debug=debug).add_router(R()).build()
 
 
 async def _call_tool(app: a2kit.App, name: str) -> Any:

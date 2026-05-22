@@ -40,6 +40,4 @@ def tasks_router() -> TasksRouter:
 
 @pytest.fixture
 def app(tasks_router: TasksRouter) -> a2kit.App:
-    a = a2kit.App("tracker")
-    a.add_router(tasks_router)
-    return a
+    return a2kit.AppBuilder("tracker").add_router(tasks_router).build()

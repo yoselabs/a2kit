@@ -56,8 +56,9 @@ async def _fake_load(self: Any, *args: Any, **kwargs: Any) -> _Cfg:
 
 def test_di_resolves_store_per_call() -> None:
     """Wire ``--connection alpha`` flows through the dispatch hook → typed _Cfg → _Store."""
-    app = a2kit.App("app").add_router(_Probe()).provide(_Store, per_call=True)
-    install_connections(app, _Cfg)
+    builder = a2kit.AppBuilder("app").add_router(_Probe()).provide(_Store, per_call=True)
+    install_connections(builder, _Cfg)
+    app = builder.build()
     cli = build_full_cli(app)
     with patch("a2kit.packages.connections.store.ConnectionStore.load", _fake_load):
         result = CliRunner().invoke(cli, ["probe", "ping", "--connection", "alpha", "--format", "json"])
@@ -68,8 +69,9 @@ def test_di_resolves_store_per_call() -> None:
 def test_di_strips_injectable_from_schema() -> None:
     """The agent-facing wire schema must not include injectable ``store``;
     it should synthesize a wire ``connection: str``."""
-    app = a2kit.App("app").add_router(_Probe()).provide(_Store, per_call=True)
-    install_connections(app, _Cfg)
+    builder = a2kit.AppBuilder("app").add_router(_Probe()).provide(_Store, per_call=True)
+    install_connections(builder, _Cfg)
+    app = builder.build()
     from a2kit.schema import compute_schema
 
     fn = next(iter(_Probe().bound_tools()))
@@ -90,7 +92,7 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
 
         tools = (noop,)
 
-    app = a2kit.App("app").add_router(_Plain())
+    app = a2kit.AppBuilder("app").add_router(_Plain()).build()
     from a2kit.schema import compute_schema
 
     fn = next(iter(_Plain().bound_tools()))
@@ -101,13 +103,14 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
 
 
 def test_di_replace_provider_overrides_factory() -> None:
-    app = a2kit.App("app").add_router(_Probe()).provide(_Store, per_call=True)
-    install_connections(app, _Cfg)
+    builder = a2kit.AppBuilder("app").add_router(_Probe()).provide(_Store, per_call=True)
+    install_connections(builder, _Cfg)
 
     def override_factory(cfg: _Cfg) -> _Store:
         return _Store(_Cfg(key=(f"override-{cfg.name}",), name=f"override-{cfg.name}"))
 
-    app.provide(_Store, override_factory, per_call=True)
+    builder.provide(_Store, override_factory, per_call=True)
+    app = builder.build()
     cli = build_full_cli(app)
     with patch("a2kit.packages.connections.store.ConnectionStore.load", _fake_load):
         result = CliRunner().invoke(cli, ["probe", "ping", "--connection", "beta", "--format", "json"])

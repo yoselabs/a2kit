@@ -21,31 +21,33 @@ from a2kit.packages.connections.filters import EphemeralAwareStore, FilteredStor
 from a2kit.packages.connections.store import ConnectionStore
 
 if TYPE_CHECKING:
-    from a2kit.app import App
+    from a2kit.app import AppBuilder
 
 
-def install_connections(app: App, *conn_types: type[ConnectionConfig]) -> App:
-    """Install the connections plugin on ``app`` — single entry point.
+def install_connections(builder: AppBuilder, *conn_types: type[ConnectionConfig]) -> AppBuilder:
+    """Install the connections plugin on ``builder`` — single entry point.
 
     Wires three things in one call:
 
     1. The connection-string dispatch hook (resolves ``connection: str``
        wire input into typed ``ConnectionConfig`` instances).
-    2. The ``"connection"`` wire scope on the App's DI container.
+    2. The ``"connection"`` wire scope on the builder's DI container.
     3. The ``connections`` Click subcommand group on the CLI
        (``login`` / ``logout`` / ``list`` / ``show`` / ``delete``).
 
-    Usage::
+    Composition-time wiring — call it on the ``AppBuilder`` before
+    ``build()``. Usage::
 
-        app = a2kit.App("tracker")
-        install_connections(app, TrackerConn)   # complete wiring
+        builder = a2kit.AppBuilder("tracker")
+        install_connections(builder, TrackerConn)   # complete wiring
+        app = builder.build()
 
     No separate ``add_cli`` call needed. The plugin owns its CLI shape
-    end-to-end. Returns ``app`` for fluent chaining.
+    end-to-end. Returns ``builder`` for fluent chaining.
     """
-    install_connection_dispatch(app, conn_types)
-    app.add_cli(_connections_cli(*conn_types))
-    return app
+    install_connection_dispatch(builder, conn_types)
+    builder.add_cli(_connections_cli(*conn_types))
+    return builder
 
 
 __all__ = [

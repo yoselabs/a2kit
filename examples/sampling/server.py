@@ -39,8 +39,9 @@ class TextRouter(a2kit.Router):
     tools = (summarize,)
 
 
-app = a2kit.App("sampling-demo")
-app.add_router(TextRouter())
+builder = a2kit.AppBuilder("sampling-demo")
+builder.add_router(TextRouter())
+app = builder.build()
 
 
 def main() -> None:

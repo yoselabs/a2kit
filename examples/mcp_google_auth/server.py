@@ -35,18 +35,18 @@ from .session import (
 
 def build_cli_app() -> a2kit.App:
     """CLI composition root — no auth, identity from $USER."""
-    app = a2kit.App("mcp-google-auth-example")
-    app.provide(UserSession, build_cli_user_session, per_call=True)
-    app.add_router(NotesRouter())
-    return app
+    builder = a2kit.AppBuilder("mcp-google-auth-example")
+    builder.provide(UserSession, build_cli_user_session, per_call=True)
+    builder.add_router(NotesRouter())
+    return builder.build()
 
 
 def build_mcp_app() -> a2kit.App:
     """MCP composition root — identity from verified Google JWT."""
-    app = a2kit.App("mcp-google-auth-example")
-    app.provide(UserSession, build_user_session, per_call=True)
-    app.add_router(NotesRouter())
-    return app
+    builder = a2kit.AppBuilder("mcp-google-auth-example")
+    builder.provide(UserSession, build_user_session, per_call=True)
+    builder.add_router(NotesRouter())
+    return builder.build()
 
 
 def _build_auth() -> Any:

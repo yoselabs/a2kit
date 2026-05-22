@@ -104,8 +104,7 @@ class FetchRouter(a2kit.Router):
 
 
 def _build_cli() -> click.Command:
-    app = a2kit.App("descriptions")
-    app.add_router(FetchRouter())
+    app = a2kit.AppBuilder("descriptions").add_router(FetchRouter()).build()
     return build_full_cli(app)
 
 

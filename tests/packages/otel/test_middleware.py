@@ -78,7 +78,7 @@ def _build_server() -> Any:
             boom,
         )
 
-    app = a2kit.App("demo-app").add_router(_R())
+    app = a2kit.AppBuilder("demo-app").add_router(_R()).build()
     return build_mcp_server(app)
 
 

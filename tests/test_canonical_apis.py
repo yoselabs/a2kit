@@ -62,9 +62,7 @@ class _Router(a2kit.Router):
 
 
 def _build_app() -> a2kit.App:
-    app = a2kit.App("canonical-apis")
-    app.add_router(_Router())
-    return app
+    return a2kit.AppBuilder("canonical-apis").add_router(_Router()).build()
 
 
 # --- TestClient call shapes --- #
@@ -123,41 +121,41 @@ def test_testclient_renamed_call_raises_typeerror() -> None:
 
 
 def test_app_singleton_class_form() -> None:
-    """README claims ``app.provide(SomeClass)`` registers under the class."""
+    """README claims ``builder.provide(SomeClass)`` registers under the class."""
 
     class _Resource:
         pass
 
-    app = a2kit.App("x")
-    app.provide(_Resource)
-    assert _Resource in app.providers()
+    builder = a2kit.AppBuilder("x")
+    builder.provide(_Resource)
+    assert _Resource in builder.providers()
 
 
 def test_app_singleton_factory_form() -> None:
-    """README claims ``app.provide(factory)`` registers under the return type."""
-    app = a2kit.App("x")
-    app.provide(_make_resource_for_factory_test)
-    assert _ResourceForFactoryTest in app.providers()
+    """README claims ``builder.provide(factory)`` registers under the return type."""
+    builder = a2kit.AppBuilder("x")
+    builder.provide(_make_resource_for_factory_test)
+    assert _ResourceForFactoryTest in builder.providers()
 
 
 def test_app_singleton_explicit_base_form() -> None:
-    """README claims ``app.provide(BaseClass, factory)`` registers under base."""
-    app = a2kit.App("x")
-    app.provide(_BaseForOverride, _make_sub_for_override)
-    assert _BaseForOverride in app.providers()
-    assert _SubForOverride not in app.providers()
+    """README claims ``builder.provide(BaseClass, factory)`` registers under base."""
+    builder = a2kit.AppBuilder("x")
+    builder.provide(_BaseForOverride, _make_sub_for_override)
+    assert _BaseForOverride in builder.providers()
+    assert _SubForOverride not in builder.providers()
 
 
 def test_app_lifespan_kwarg_removed() -> None:
-    """v0.35 removal: ``App(lifespan=cm)`` raises TypeError with hint."""
+    """v0.35 removal: ``AppBuilder(lifespan=cm)`` raises TypeError with hint."""
     with pytest.raises(TypeError):
-        a2kit.App("x", lifespan=None)  # type: ignore[call-arg]
+        a2kit.AppBuilder("x", lifespan=None)  # type: ignore[call-arg]
 
 
 def test_app_health_tool_kwarg_removed() -> None:
-    """v0.35 removal: ``App(health_tool=True)`` raises TypeError with hint."""
+    """v0.35 removal: ``AppBuilder(health_tool=True)`` raises TypeError with hint."""
     with pytest.raises(TypeError):
-        a2kit.App("x", health_tool=True)  # type: ignore[call-arg]
+        a2kit.AppBuilder("x", health_tool=True)  # type: ignore[call-arg]
 
 
 # --- Verb decorator call shapes --- #
@@ -185,7 +183,7 @@ class _VerbDemoRouter(a2kit.Router):
 
 def test_verb_decorators_decorate_methods() -> None:
     """README claims ``@a2kit.read()``, ``@a2kit.write()``, ``@a2kit.list_()`` decorate methods."""
-    app = a2kit.App("x").add_router(_VerbDemoRouter())
+    app = a2kit.AppBuilder("x").add_router(_VerbDemoRouter()).build()
     names = [d.name for d in app.tools()]
     assert names == ["r", "w", "lst"]
 
@@ -202,5 +200,5 @@ def test_router_subclass_with_slug_and_tools() -> None:
 
         tools = (f,)
 
-    app = a2kit.App("x").add_router(_R())
+    app = a2kit.AppBuilder("x").add_router(_R()).build()
     assert any(d.name == "f" for d in app.tools())

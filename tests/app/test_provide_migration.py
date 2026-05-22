@@ -2,7 +2,7 @@
 
 Covers spec ``app-singletons``: ``app.singleton(...)``, ``app.has_singleton(...)``,
 and ``app.singletons()`` are removed in v0.36 and SHALL raise ``TypeError``
-with migration hints naming the replacement.
+(or ``AttributeError``) with migration hints naming the replacement.
 """
 
 from __future__ import annotations
@@ -18,38 +18,36 @@ class _State:
 
 def test_singleton_raises_with_hint() -> None:
     """``app.singleton(T, factory)`` is gone; raises with migration hint."""
-    app = a2kit.App("test")
+    app = a2kit.AppBuilder("test").build()
 
     with pytest.raises(TypeError) as excinfo:
         app.singleton(_State, _State)
 
     msg = str(excinfo.value)
-    assert "app.singleton" in msg, "migration error must name the removed method"
-    assert "app.provide" in msg, "migration error must name the replacement"
-    assert "v0.36" in msg, "migration error must name the removal version"
+    assert "singleton" in msg, "migration error must name the removed method"
+    assert "AppBuilder" in msg, "migration error must name the replacement"
+    assert "v0.40" in msg, "migration error must name the removal version"
 
 
 def test_has_singleton_raises_with_hint() -> None:
     """``app.has_singleton(T)`` is gone; raises with migration hint to ``has_provider``."""
-    app = a2kit.App("test")
+    app = a2kit.AppBuilder("test").build()
 
     with pytest.raises(TypeError) as excinfo:
         app.has_singleton(_State)
 
     msg = str(excinfo.value)
     assert "has_singleton" in msg
-    assert "has_provider" in msg
-    assert "v0.36" in msg
+    assert "AppBuilder" in msg
+    assert "v0.40" in msg
 
 
 def test_singletons_raises_with_hint() -> None:
-    """``app.singletons()`` is gone; raises with migration hint to ``providers()``."""
-    app = a2kit.App("test")
+    """``app.singletons()`` is gone; raises on a built App."""
+    app = a2kit.AppBuilder("test").build()
 
-    with pytest.raises(TypeError) as excinfo:
+    with pytest.raises(AttributeError) as excinfo:
         app.singletons()
 
     msg = str(excinfo.value)
     assert "singletons" in msg
-    assert "providers" in msg
-    assert "v0.36" in msg

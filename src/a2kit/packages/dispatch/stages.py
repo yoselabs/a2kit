@@ -141,7 +141,7 @@ class DispatchHookStage:
         hook = app.dispatch_hook()
         ctx_param_name = spec.meta.context_param_name if spec.meta is not None else None
         container = app.container()
-        is_identity = hook == app._default_dispatch_hook  # noqa: SLF001 -- identity-hook detection
+        is_identity = app.has_default_dispatch_hook()
         if is_identity and not has_injectables(fn, container):
             return fn
 

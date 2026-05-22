@@ -1,7 +1,12 @@
-"""Tests — TestClient.override (round-5 gap 3).
+"""Tests — DI overrides in tests are re-build, not post-seal mutation.
 
-Snapshot/restore-based DI override on the in-process test client.
-Replaces ad-hoc `monkeypatch.setattr` patterns; type-safe via TypeVar.
+The dedicated test-override seam (`TestClient.override` +
+`Container._override` / `_snapshot` / `_restore`) was removed in v0.40
+(ADR 0016). Swapping a real service for a fake is now plain
+composition-root re-registration: `provide` the fake on an
+`AppBuilder` (last-write-wins) and `build()` a fresh `App`. This
+reconciles the code with ADR 0006, whose Y-statement always said there
+is no override after the container is sealed.
 """
 
 from __future__ import annotations
@@ -42,127 +47,57 @@ class _SingletonRouter(a2kit.Router):
     tools = (whoami,)
 
 
-def test_override_replaces_singleton() -> None:
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+def test_reregistered_fake_wins_last_write() -> None:
+    """A fake provided last on the builder beats the real registration."""
+    app = a2kit.AppBuilder("t").provide(_LLM, lambda: _LLM("real")).provide(_LLM, lambda: _FakeLLM()).add_router(_SingletonRouter()).build()
 
     async def go() -> None:
         async with client(app) as c:
-            c.override(_LLM, _FakeLLM())
             result = await c.invoke("whoami")
             assert result == {"model": "fake"}
 
     asyncio.run(go())
 
 
-def test_override_is_restored_on_normal_exit() -> None:
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+def test_rebuild_gives_each_test_a_fresh_app() -> None:
+    """Re-build is the isolation mechanism — two builds, two independent Apps."""
 
-    async def first() -> None:
-        async with client(app) as c:
-            c.override(_LLM, _FakeLLM())
-            r = await c.invoke("whoami")
-            assert r == {"model": "fake"}
-
-    async def second() -> None:
-        async with client(app) as c:
-            r = await c.invoke("whoami")
-            assert r == {"model": "real"}
-
-    asyncio.run(first())
-    asyncio.run(second())
-
-
-def test_override_is_restored_on_exception() -> None:
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
-
-    async def boomy() -> None:
-        async with client(app) as c:
-            c.override(_LLM, _FakeLLM())
-            raise RuntimeError("boom")
+    def build(*, fake: bool) -> a2kit.App:
+        builder = a2kit.AppBuilder("t").add_router(_SingletonRouter())
+        builder.provide(_LLM, (lambda: _FakeLLM()) if fake else (lambda: _LLM("real")))
+        return builder.build()
 
     async def go() -> None:
-        with pytest.raises(RuntimeError, match="boom"):
-            await boomy()
-        async with client(app) as c:
-            r = await c.invoke("whoami")
-            assert r == {"model": "real"}
+        async with client(build(fake=True)) as c:
+            assert (await c.invoke("whoami")) == {"model": "fake"}
+        async with client(build(fake=False)) as c:
+            assert (await c.invoke("whoami")) == {"model": "real"}
 
     asyncio.run(go())
 
 
-def test_override_of_unregistered_type_is_removed_on_exit() -> None:
-    app = a2kit.App("t").add_router(_SingletonRouter())
-    app.provide(_LLM, lambda: _LLM("real"))
-
-    class _Other:
-        pass
-
-    async def go() -> None:
-        async with client(app) as c:
-            c.override(_Other, _Other())
-            assert app.container().has_provider(_Other)
-        assert not app.container().has_provider(_Other)
-
-    asyncio.run(go())
-
-
-def test_last_write_wins_within_session() -> None:
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
-
-    async def go() -> None:
-        async with client(app) as c:
-            c.override(_LLM, _FakeLLM())
-            c.override(_LLM, _FakeLLM("fake-2"))
-            result = await c.invoke("whoami")
-            assert result == {"model": "fake-2"}
-
-    asyncio.run(go())
-
-
-def test_override_on_overlapping_session_raises() -> None:
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
-
-    async def go() -> None:
-        async with client(app):
-
-            async def _open_nested() -> None:
-                async with client(app):
-                    pass
-
-            with pytest.raises(RuntimeError, match="override ownership"):
-                await _open_nested()
-
-    asyncio.run(go())
-
-
-def test_override_works_via_peek() -> None:
-    """`peek` and `override` are read/write complements — peek sees the fake."""
-    from a2kit.testing import peek
-
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real"))
-
-    async def go() -> None:
-        async with client(app) as c:
-            fake = _FakeLLM()
-            c.override(_LLM, fake)
-            assert peek(app, _LLM) is fake
-
-    asyncio.run(go())
-
-
-def test_async_factory_singleton_override_works() -> None:
-    """Overriding a type registered with an async factory: the override
-    must bypass the async path (the fake is the resolved value)."""
+def test_fake_for_an_async_factory_registration() -> None:
+    """Re-registering over an async factory works — the fake is plain."""
 
     async def make_llm() -> _LLM:
         return _LLM("async-real")
 
-    app = a2kit.App("t").provide(_LLM, make_llm).add_router(_SingletonRouter())
+    app = a2kit.AppBuilder("t").provide(_LLM, make_llm).provide(_LLM, lambda: _FakeLLM()).add_router(_SingletonRouter()).build()
 
     async def go() -> None:
         async with client(app) as c:
-            c.override(_LLM, _FakeLLM())
-            result = await c.invoke("whoami")
-            assert result == {"model": "fake"}
+            assert (await c.invoke("whoami")) == {"model": "fake"}
+
+    asyncio.run(go())
+
+
+def test_testclient_override_raises_migration_hint() -> None:
+    """The removed `TestClient.override` raises with the re-build recipe."""
+    app = a2kit.AppBuilder("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter()).build()
+
+    async def go() -> None:
+        async with client(app) as c:
+            with pytest.raises(TypeError, match=r"re-build|AppBuilder"):
+                c.override(_LLM, _FakeLLM())  # the removed seam — TestClient.__getattr__ raises
 
     asyncio.run(go())

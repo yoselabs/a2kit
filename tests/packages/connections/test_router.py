@@ -29,15 +29,17 @@ class _DummyConn(ConnectionConfig):
 def test_install_connections_registers_provider() -> None:
     """install_connections registers a stub provider so container.has() is True
     and the dispatch hook substitutes typed configs into wire kwargs."""
-    app = a2kit.App("t")
-    install_connections(app, _DummyConn)
+    builder = a2kit.AppBuilder("t")
+    install_connections(builder, _DummyConn)
+    app = builder.build()
     assert app.has_provider(_DummyConn)
 
 
 def test_install_connections_registers_connection_wire_scope() -> None:
     """install_connections teaches the container about the ``connection`` scope."""
-    app = a2kit.App("t")
-    install_connections(app, _DummyConn)
+    builder = a2kit.AppBuilder("t")
+    install_connections(builder, _DummyConn)
+    app = builder.build()
     scopes = app.container().wire_scopes()
     assert "connection" in scopes
     assert _DummyConn in scopes["connection"]
@@ -45,8 +47,9 @@ def test_install_connections_registers_connection_wire_scope() -> None:
 
 def test_install_connections_registers_cli_group() -> None:
     """install_connections also adds the `connections` Click subcommand group."""
-    app = a2kit.App("t")
-    install_connections(app, _DummyConn)
+    builder = a2kit.AppBuilder("t")
+    install_connections(builder, _DummyConn)
+    app = builder.build()
     cli_extras = app.cli_extras()
     assert any(getattr(c, "name", None) == "connections" for c in cli_extras)
 
@@ -57,9 +60,10 @@ def test_add_cli_does_not_auto_install_provider() -> None:
     """
     from a2kit.packages.connections.cli import connections_cli
 
-    app = a2kit.App("t")
+    builder = a2kit.AppBuilder("t")
     cli = connections_cli(_DummyConn)
-    app.add_cli(cli)
+    builder.add_cli(cli)
+    app = builder.build()
     assert not app.has_provider(_DummyConn)
 
 
@@ -79,6 +83,5 @@ def test_add_router_ignores_underscore_marker() -> None:
         tools: tuple = ()  # ty: ignore[invalid-attribute-override]  # why: test fixture overrides the Router.tools class-var with a tuple — intentional Liskov widening for the test
         _a2kit_attach = staticmethod(_hidden_hook)
 
-    app = a2kit.App("t")
-    app.add_router(_Sneaky())
+    app = a2kit.AppBuilder("t").add_router(_Sneaky()).build()
     assert sentinel["called"] is False, "App.add_router must not invoke _a2kit_attach or any underscored marker"

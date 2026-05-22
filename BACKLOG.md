@@ -32,6 +32,8 @@ For historical context (pre-v0.20 design audits and exploration notes), see `tod
 
 ## Framework features
 
+- **Transport-neutral extension verb (Thread E).** `AppBuilder` carries two transport-specific composition verbs — `add_cli(group)` and `add_mcp_middleware(m)` — on an otherwise transport-neutral composition root. Generalising them to a single `add_extension(transport, obj)` was considered during `split-app-builder-runtime` and **deferred** (ADR 0016, design D5): with exactly two explicit single-purpose verbs, a generic `add_extension` would reintroduce the polymorphic dispatch the project deliberately removed (`core-composition`'s "three named verbs"). The generalisation pays off only at a third transport. Trigger to pick up: a third transport adapter is added (e.g. the REST surface below). At that point, revisit whether three+ transport verbs justify the generic form.
+
 - **REST surface — sibling of the code-execution change.** `docs/VISION.md` Phase 1: a REST / OpenAPI surface projected from the same tool definitions, unlocking the remote-REST and remote-CLI modes. **Binding constraint:** code execution is never exposed on REST — the `code-execution` capability spec carries `### Requirement: Code execution is never exposed on the REST surface`, which this change must honour (no `execute` route, no code endpoint, no discovery meta-tools). Trigger to pick up: the REST spike lands and de-risks the type-driven OpenAPI projection.
 
 - **AGENTS.md drift policy.** Once AGENTS.md is the canonical agent-instruction file, decide whether CLAUDE.md stays as Claude-specific overlay or symlinks to AGENTS.md. Trigger: a Claude-specific behaviour that AGENTS.md cannot capture cleanly. Until then, current split is the default.

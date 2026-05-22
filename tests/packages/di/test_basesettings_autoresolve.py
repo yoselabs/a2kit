@@ -35,7 +35,7 @@ async def test_basesettings_subclass_auto_resolved(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("A2KIT_TEST_SMTP_HOST", "envhost")
     monkeypatch.setenv("A2KIT_TEST_SMTP_PORT", "2525")
 
-    app = a2kit.App("test")
+    app = a2kit.AppBuilder("test").build()
     # No explicit `app.provide(_SmtpSettings)` — auto-resolution must kick in.
 
     async with app:
@@ -51,7 +51,7 @@ async def test_non_basesettings_zero_arg_class_not_auto_resolved() -> None:
     """A non-``BaseSettings`` zero-arg-constructible class is NOT auto-resolved."""
     from a2kit.packages.di.container import UnresolvableType
 
-    app = a2kit.App("test")
+    app = a2kit.AppBuilder("test").build()
 
     async with app:
         with pytest.raises(UnresolvableType):

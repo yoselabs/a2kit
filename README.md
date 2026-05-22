@@ -22,22 +22,28 @@ from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-app = a2kit.App("tracker")
-app.add_router(ProjectsRouter())
-app.add_router(TasksRouter())
-install_connections(app, TrackerConn)      # dispatch hook + typed wire scope
-app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
-app.provide(TrackerStore)                  # class-as-factory; container reads __init__
+builder = a2kit.AppBuilder("tracker")
+builder.add_router(ProjectsRouter())
+builder.add_router(TasksRouter())
+install_connections(builder, TrackerConn)      # dispatch hook + typed wire scope
+builder.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
+builder.provide(TrackerStore)                  # class-as-factory; container reads __init__
+app = builder.build()                          # seal into the runtime App
 
 
 def main() -> None:
     a2kit.run(app)
 ```
 
-> **Style note.** The fluent chain (`a2kit.App(...).add_router(...).provide(...)`)
-> still works as a shorthand for compact composition in tests and small scripts.
-> Prefer the imperative form in real apps — each line names one subsystem,
-> grep finds every install, no hidden side effects.
+> **Builder / runtime split.** `a2kit.AppBuilder` is the mutable
+> composition surface — `add_router`, `add_cli`, `add_mcp_middleware`,
+> `provide`, `health_check`. `build()` seals it into a mutation-free
+> `a2kit.App`. The fluent chain
+> (`a2kit.AppBuilder(...).add_router(...).provide(...).build()`) works as a
+> shorthand for compact composition in tests and small scripts; prefer the
+> imperative form in real apps — each line names one subsystem, grep finds
+> every install. Constructing `a2kit.App(...)` directly raises — see
+> ADR 0016.
 
 ```toml
 [project.scripts]
@@ -64,7 +70,8 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name, *, health_tool=False, debug=False)` | Composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None)` for typed request-scoped DI, `singleton(...)` for App-cached factories (three call shapes — see below), and `set_ldd(...)` for the LDD kill-switch. Lifecycle: `App` is its own async context manager. `async with app:` enters all registered singletons eagerly (auto-detecting `__aexit__` / `aclose` / `close`) and positions routers to enter lazily on first dispatch. `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. |
+| `a2kit.AppBuilder(name, *, debug=False)` | Mutable composition root. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None, *, per_call=False)` for typed DI and `health_check` for readiness probes. Each verb returns the builder for chaining. `build()` validates the provider graph and returns the sealed `a2kit.App`. `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. |
+| `a2kit.App` | Sealed runtime, produced only by `AppBuilder.build()`. Read-only surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). No composition verbs. `App` is its own async context manager — `async with app:` seals the container and enters resources lazily on first dispatch; routers carrying `__aenter__` enter on first dispatch of their tools. Constructing `a2kit.App(...)` directly raises `TypeError` — compose via `AppBuilder`. |
 | `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `visibility=` kwarg | Verb decorators accept `visibility: Literal["hidden", "cli", "all"]`. Defaults to inherit from the Router's `visibility` class attribute (default `"all"`). Tier semantics: `"hidden"` — CLI-invokable but absent from `--help` and not on programmatic transports; `"cli"` — visible in `--help`, not on MCP / future REST; `"all"` — registered everywhere. Credential-management tools should declare `visibility="cli"` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
@@ -82,7 +89,7 @@ uv pip install a2kit
 |---|---|
 | `a2kit.packages.mcp` | FastMCP adapter. `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`. The ONE place fastmcp imports. |
 | `a2kit.packages.cli` | Click adapter. `build_full_cli(app)` returns the progressive-disclosure CLI. |
-| `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. Carries the `Container` (request-scoped DI) consumed via `App.provide(...)`. |
+| `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `builder.add_cli(...)`. Carries the `Container` (request-scoped DI) consumed via `AppBuilder.provide(...)`. |
 | `a2kit.packages.formatter` | Consumer-aware rendering — `render(value, consumer)` for the `llm` / `code` / `machine` profiles; TSV / JSON / hybrid `page-tsv` wire forms picked by `build_encoding_plan` from the return type. `format_response` is the `format_hint`-shaped adapter. |
 | `a2kit.packages.select` | `compile`, `evaluate`, `validate_atoms` over real CEL syntax. |
 | `a2kit.packages.mcp.reports` | `reports(ReportT)` stacked decorator. Computes the pydantic JSON schema; both keys travel on `meta.extra`. |
@@ -117,19 +124,20 @@ class TasksRouter(a2kit.Router):
         return store.get(task_id)
 
 
-app = a2kit.App("tracker")
-app.add_router(TasksRouter())
-install_connections(app, TrackerConn)      # dispatch hook + typed wire scope
-app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
-app.provide(TrackerStore)                  # class-as-factory (introspects __init__)
+builder = a2kit.AppBuilder("tracker")
+builder.add_router(TasksRouter())
+install_connections(builder, TrackerConn)      # dispatch hook + typed wire scope
+builder.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
+builder.provide(TrackerStore)                  # class-as-factory (introspects __init__)
+app = builder.build()
 ```
 
 What the framework does:
 
-- `install_connections(app, TrackerConn)` registers the **dispatch hook** (which awaits `store.load(connection)` and substitutes the typed `TrackerConn` into the per-call DI cache) and a stub provider for `TrackerConn` (so `container.has_provider()` is True for schema-gen). `connections_cli(TrackerConn)` adds the matching Click subcommands.
+- `install_connections(builder, TrackerConn)` registers the **dispatch hook** (which awaits `store.load(connection)` and substitutes the typed `TrackerConn` into the per-call DI cache) and a stub provider for `TrackerConn` (so `container.has_provider()` is True for schema-gen). `connections_cli(TrackerConn)` adds the matching Click subcommands.
 - `provide(TrackerStore)` registers `TrackerStore` as its own factory; the container reads `TrackerStore.__init__(conn: TrackerConn)` and chains.
 - At dispatch: the connections dispatch hook (async) awaits the connection load; the typed `TrackerConn` is seeded into the container's per-call cache; the rest of the chain resolves synchronously. The wire schema strips `store`; agents see only `connection` + `task_id`.
-- For one-off non-trivial wiring, pass an explicit sync factory: `app.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.
+- For one-off non-trivial wiring, pass an explicit sync factory: `builder.provide(SearchIndex, lambda store: SearchIndex.warm(store))`. Last-write-wins lets tests override providers.
 
 No `Depends(...)`, no class-as-key markers, no plugin protocol. The
 `provide(...)` calls *are* the DI graph; you can grep for them.
@@ -193,8 +201,7 @@ def build_state(settings: AppSettings) -> AppState:    # sync!
     )
 
 
-app = a2kit.App("my-app")
-app.singleton(AppState, build_state)
+app = a2kit.AppBuilder("my-app").provide(AppState, build_state).build()
 ```
 
 What you get:
@@ -206,14 +213,14 @@ What you get:
 
 ### Lifecycle: `async with app:`
 
-`App` is its own async context manager. Entering it walks the
-registered singletons, resolves each, and auto-detects the cleanup
-protocol on the resolved instance (`__aexit__` paired with
-`__aenter__`, `aclose`, or `close` — first match wins). Routers
-opt into lifecycle by implementing `__aenter__` / `__aexit__` and
-enter lazily on first dispatch of any of their tools. Construction
-(`a2kit.App(...)` + `add_router(...)` + `singleton(...)`) is pure —
-useful for tests that introspect wiring without entering the App.
+`App` is its own async context manager. Entering it seals the DI
+container and resolves resources lazily on first use, auto-detecting
+the cleanup protocol on each resolved instance (`__aexit__` paired
+with `__aenter__`). Routers opt into lifecycle by implementing
+`__aenter__` / `__aexit__` and enter lazily on first dispatch of any
+of their tools. Composition on the `AppBuilder` (`add_router`,
+`provide`, ...) and the `build()` that seals it are pure — useful for
+tests that introspect wiring without entering the App.
 
 ```python
 class DB:
@@ -225,8 +232,7 @@ class DB:
         await self.pool.close()
 
 
-app = a2kit.App("my-app")
-app.singleton(DB)
+app = a2kit.AppBuilder("my-app").provide(DB).build()
 
 async def main():
     async with app:
@@ -322,14 +328,17 @@ models, `Field(description=...)` already works inside the model declaration.
 ### Health probe
 
 ```python
-app = a2kit.App("my-app", health_tool=True)
+builder = a2kit.AppBuilder("my-app")
 
-@app.health_check
+@builder.health_check
 async def _sqlite() -> a2kit.HealthResult:
     return a2kit.HealthResult.ok() if state.sqlite else a2kit.HealthResult.fail("not opened")
+
+app = builder.build()
 ```
 
-Registers a built-in `_meta.health` tool (hidden from agent-facing
+The first `health_check` registration installs a built-in `_meta.health`
+tool (hidden from agent-facing
 `list_tools` but invokable by name). CLI exposes `<app> health` whose exit
 code reflects aggregated status. The `_meta.*` namespace is reserved —
 user tools can't claim it.
@@ -405,7 +414,7 @@ option generation.
 
 `a2kit.run(app)` exposes:
 
-- `<app> --help` — top-level: one entry per Router (with progressive-disclosure hint), plus `schema`, `serve`, plus any subcommand attached via `app.add_cli(...)`.
+- `<app> --help` — top-level: one entry per Router (with progressive-disclosure hint), plus `schema`, `serve`, plus any subcommand attached via `builder.add_cli(...)`.
 - `<app> <router> --help` — list tools in that router.
 - `<app> <router> <tool> [--name VALUE ...] [--format=auto|json|tsv|page-tsv] [--schema]` — invoke the tool in-process. Output flows through the formatter; `auto` picks based on the tool's return-type annotation (`list[ScalarOnlyModel]` → TSV, `Page[T]` → hybrid `page-tsv`, else JSON).
 - `<app> connections {login,logout,list,show,delete}` — present iff the app wired `connections_cli(...)` via `add_cli`.
@@ -504,7 +513,7 @@ progress, event emit, report, sample, list_*) is a silent no-op.
 ### Direct construction (lightweight unit tests)
 
 For tests that don't need the full dispatcher, construct routers with fake
-factories and register them with a fresh `App`:
+factories on an `AppBuilder` and `build()` the runtime `App`:
 
 ```python
 import a2kit
@@ -515,18 +524,19 @@ def test_get_task() -> None:
         return FakeStore()
 
     app = (
-        a2kit.App("test")
+        a2kit.AppBuilder("test")
         .add_router(TasksRouter())
         .provide(TrackerConn, lambda connection: TrackerConn(key=(connection,), db_path="/tmp/x"))
         .provide(TrackerStore, fake_store_factory)
+        .build()
     )
     fn = app.tools()[0]
     # ... invoke through the test app
 ```
 
-Provider override is just `app.provide(T, fake)` — last-write-wins. No
-`dependency_overrides` map, no `make_test_app` helper. The `app` pytest
-fixture in `a2kit.packages.testing` returns a fresh `a2kit.App("test")`.
+Provider override is just `builder.provide(T, fake)` — last-write-wins. No
+`dependency_overrides` map, no `make_test_app` helper. The `builder` pytest
+fixture in `a2kit.packages.testing` returns a fresh `a2kit.AppBuilder("test")`.
 
 ### Full-dispatch tests with `a2kit.testing.client`
 
@@ -534,13 +544,19 @@ For tests that should exercise the real dispatcher (DI resolution,
 schema, ctx wiring, formatter), use `a2kit.testing.client(app)`:
 
 ```python
+import a2kit
 from a2kit.testing import client
 
 
 async def test_full_dispatch() -> None:
+    # Override a DI binding by re-building with the fake provided last.
+    app = (
+        a2kit.AppBuilder("test")
+        .add_router(TasksRouter())
+        .provide(TrackerStore, FakeStore)
+        .build()
+    )
     async with client(app) as c:
-        # Override a DI binding for the session; restored on exit.
-        c.override(TrackerStore, FakeStore())
         # invoke → Python value
         value = await c.invoke("tasks.get", id="t1")
         # call_wire → formatter-encoded payload (JSON / TSV / page-tsv)
@@ -553,24 +569,23 @@ the same call through the formatter the production transports use, so
 be pinned without spawning a server. Use `invoke` for value-shape
 assertions, `call_wire` when the assertion needs the wire shape.
 
-`c.override(T, fake)` is the recommended override path for full-dispatch
-tests: it pins both the singleton cache and the per-call provider for
-`T`, and restores the container state on session exit. It delegates to
-the same `app.provide(T, fake)` last-write-wins mechanism for direct-
-construction tests above.
+Test overrides are **re-build, not post-seal mutation** (ADR 0016):
+`provide` the fake on an `AppBuilder` (last-write-wins) and `build()` a
+fresh `App`. There is no `TestClient.override` — it was removed because
+it mutated an already-sealed container, contradicting ADR 0006.
 
-#### Async singleton factories
+#### Async provider factories
 
-`app.singleton(T, factory)` accepts an `async def` factory. First
-resolution awaits inside the dispatcher (or `@on_startup`); subsequent
-resolves return the cached value:
+`builder.provide(T, factory)` accepts an `async def` factory. First
+resolution awaits inside the dispatcher; subsequent resolves return the
+cached value:
 
 ```python
 async def build_pool(settings: AppSettings) -> Pool:
     pool = await Pool.open(settings.dsn)
     return pool
 
-app.singleton(Pool, build_pool)
+builder.provide(Pool, build_pool)
 ```
 
 #### Ambient LDD context
@@ -589,17 +604,18 @@ tool that omitted `ctx`) raises
 See [CHANGELOG.md](CHANGELOG.md) for the v0.20 break notes. From the
 v0.19 / `v1-thin-core` intermediate shapes:
 
-- `Depends(<class>)` / `Depends(<callable>)` → typed kwargs on tool methods + `app.provide(T, factory=None)`
-- `app.use(...)` → `app.add_router(...)`, `app.add_cli(...)`, `app.add_mcp_middleware(...)`
+- `Depends(<class>)` / `Depends(<callable>)` → typed kwargs on tool methods + `builder.provide(T, factory=None)`
+- `app.use(...)` → `builder.add_router(...)`, `builder.add_cli(...)`, `builder.add_mcp_middleware(...)`
 - `app.connect(C)` → (delete; conn config is just a class)
-- `app.use_factory(...)` → `app.provide(T, factory)` (or `app.provide(T)` for class-as-factory)
+- `app.use_factory(...)` → `builder.provide(T, factory)` (or `builder.provide(T)` for class-as-factory)
 - `class TrackerStore(a2kit.Store[TrackerConn]):` → `class TrackerStore:` (plain class)
 - `class R(a2kit.Router, enricher=fn):` (pre-v0.21) / per-tool `@enriches(fn)` (v0.21) → class attribute `enrichers = [fn, ...]` and/or `def enrich(self, exc) -> str | None`
 - `@a2kit.read(enricher=…, list_view=…, report=…)` (v0.20) / stacked `@enriches/@lists/@reports` (v0.21) → enrichers are class-side; list-view absorbed into `@a2kit.list_(*default_fields, page_size=, selectable_fields=)`; report-type is the `reports=ReportT` kwarg on the verb decorator (v0.33)
-- `def __init__(self, get_store: GetStore)` factory closure → declare `store: TrackerStore` directly on tool methods; `app.provide(TrackerStore)` registers the class
+- `def __init__(self, get_store: GetStore)` factory closure → declare `store: TrackerStore` directly on tool methods; `builder.provide(TrackerStore)` registers the class
 - `name = "tasks"` ceremonial line → derived from class name automatically (`class TasksRouter` → `"tasks"`); explicit `name = "..."` still wins
 - `from a2kit.exceptions import WriteNotAllowed` → `from a2kit.packages.connections.exceptions import WriteNotAllowed`
-- `make_test_app(routers, overrides=...)` → construct App + routers directly; for full-dispatch tests prefer `a2kit.testing.client(app)` with `c.override(T, fake)`, or use `app.provide(T, fake)` for direct-construction tests (last-write-wins)
+- `a2kit.App(...)` direct construction → `a2kit.AppBuilder(...)` + composition verbs + `.build()` (ADR 0016)
+- `TestClient.override(T, fake)` → re-build: `builder.provide(T, fake)` (last-write-wins) then `build()` a fresh App
 - `Connections()` plugin → `ConnectionStore(...)` + `connections_cli(...)` direct usage; `add_cli(connections_cli(ConfigT))` auto-installs the `ConfigT` provider
 
 See [ANTIPATTERNS.md](ANTIPATTERNS.md) for a2kit-specific patterns to avoid.

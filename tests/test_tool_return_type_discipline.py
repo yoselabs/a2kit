@@ -323,8 +323,7 @@ class _State:
 
 
 def test_peek_resolves_registered_singleton() -> None:
-    app = a2kit.App("t")
-    app.provide(_State, lambda: _State())
+    app = a2kit.AppBuilder("t").provide(_State, lambda: _State()).build()
     s = peek(app, _State)
     assert isinstance(s, _State)
     s2 = peek(app, _State)
@@ -338,13 +337,14 @@ def test_singleton_accepts_async_factory_at_registration() -> None:
     async def factory() -> _State:
         return _State()
 
-    app = a2kit.App("t")
-    app.provide(_State, factory)
+    builder = a2kit.AppBuilder("t")
+    builder.provide(_State, factory)
+    app = builder.build()
     assert app.has_provider(_State)
 
 
 def test_peek_raises_when_no_provider() -> None:
     """Peek on an App with no provider for the type gives an UnresolvableType."""
-    app = a2kit.App("t")
+    app = a2kit.AppBuilder("t").build()
     with pytest.raises(UnresolvableType):
         peek(app, _State)

@@ -64,7 +64,7 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
 
         tools = (rows,)
 
-    app = a2kit.App("a").add_router(R())
+    app = a2kit.AppBuilder("a").add_router(R()).build()
     server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:

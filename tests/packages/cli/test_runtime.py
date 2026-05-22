@@ -27,7 +27,7 @@ async def async_tool(*, n: int) -> dict:
 def _spec(fn: Any, *, app: a2kit.App | None = None, router: Any = None) -> ToolBuildSpec:
     """Build a `ToolBuildSpec` for a standalone or router-bound tool."""
     return ToolBuildSpec(
-        app=app if app is not None else a2kit.App("runtime-test"),
+        app=app if app is not None else a2kit.AppBuilder("runtime-test").build(),
         router=router,
         meta=get_meta(fn),
     )
@@ -72,8 +72,7 @@ def test_enricher_wraps_exceptions(capsys: pytest.CaptureFixture[str]) -> None:
 
         tools = (boom,)
 
-    app = a2kit.App("enricher-runtime")
-    app.add_router(R())
+    app = a2kit.AppBuilder("enricher-runtime").add_router(R()).build()
     desc = app.tools()[0]
     spec = _spec(desc.fn, app=app, router=app.routers()[0])
 

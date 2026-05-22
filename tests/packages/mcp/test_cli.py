@@ -12,7 +12,7 @@ from a2kit.packages.mcp.cli import build_serve_command
 
 
 def test_serve_help_lists_options() -> None:
-    cmd = build_serve_command(a2kit.App("test"))
+    cmd = build_serve_command(a2kit.AppBuilder("test").build())
     runner = CliRunner()
     result = runner.invoke(cmd, ["--help"])
     assert result.exit_code == 0
@@ -24,7 +24,7 @@ def test_serve_help_lists_options() -> None:
 
 
 def test_serve_dispatches_stdio_transport() -> None:
-    app = a2kit.App("test")
+    app = a2kit.AppBuilder("test").build()
     cmd = build_serve_command(app)
     runner = CliRunner()
     with patch("a2kit.packages.mcp.server.FastMCP") as mock_fastmcp:
@@ -38,7 +38,7 @@ def test_serve_dispatches_stdio_transport() -> None:
 
 
 def test_serve_dispatches_http_transport() -> None:
-    app = a2kit.App("test")
+    app = a2kit.AppBuilder("test").build()
     cmd = build_serve_command(app)
     runner = CliRunner()
     with patch("a2kit.packages.mcp.server.FastMCP") as mock_fastmcp:
@@ -52,6 +52,6 @@ def test_serve_dispatches_http_transport() -> None:
 
 
 def test_build_serve_command_returns_click_command() -> None:
-    cmd = build_serve_command(a2kit.App("test"))
+    cmd = build_serve_command(a2kit.AppBuilder("test").build())
     assert isinstance(cmd, click.Command)
     assert cmd.name == "serve"

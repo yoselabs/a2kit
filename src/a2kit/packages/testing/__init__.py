@@ -2,7 +2,7 @@
 
 Public API:
   - :func:`cassette` — pytest fixture, vcrpy wrapper.
-  - :func:`app` — pytest fixture, fresh :class:`a2kit.App`.
+  - :func:`builder` — pytest fixture, fresh :class:`a2kit.AppBuilder`.
   - :class:`SchemaSnapshotMismatch` — raised on snapshot drift.
   - :func:`compute_schema` — extract a tool's schema dict.
   - :func:`peek` — synchronous container peek (test-only).
@@ -17,7 +17,7 @@ from a2kit.packages.testing.exceptions import SchemaSnapshotMismatch
 from a2kit.packages.testing.fixtures import (
     ambient_for_tests,
     ambient_for_tests_autouse,
-    app,
+    builder,
     cassette,
 )
 from a2kit.packages.testing.null_context import null_context
@@ -78,7 +78,7 @@ def peek(app_: App, type_: type) -> Any:
     # Inside an async test: read the app-scope cache directly. Async tests
     # should `await container.get(T)` if the instance isn't already built;
     # peek's role from inside a loop is to inspect already-resolved state
-    # (the common case being post-`override`).
+    # (the common case being post-dispatch).
     cached = container._singletons.get(type_)  # noqa: SLF001 -- test seam
     if cached is None:
         msg = (
@@ -121,7 +121,7 @@ __all__ = [
     "SchemaSnapshotMismatch",
     "ambient_for_tests",
     "ambient_for_tests_autouse",
-    "app",
+    "builder",
     "cassette",
     "compute_schema",
     "lazy",

@@ -21,15 +21,15 @@ from a2kit.metadata import get_meta, set_meta
 from a2kit.packages.mcp.server import build_mcp_server
 
 
-def _install_h(app: a2kit.App) -> a2kit.App:
-    """Install the synthetic `_meta.health` router on ``app`` and return ``app``.
+def _install_h(builder: a2kit.AppBuilder) -> a2kit.App:
+    """Install the synthetic `_meta.health` router on ``builder`` and return built App.
 
     v0.35: the explicit ``health_tool=True`` constructor flag was
     removed; tests that want the tool present without an explicit
-    ``@app.health_check`` registration touch the internal seam directly.
+    ``@builder.health_check`` registration touch the internal seam directly.
     """
-    app._install_health_tool()  # noqa: SLF001 -- test seam
-    return app
+    builder._install_health_tool()  # noqa: SLF001 -- test seam
+    return builder.build()
 
 
 class _Pinger(a2kit.Router):
@@ -43,7 +43,9 @@ class _Pinger(a2kit.Router):
 
 
 def _app_with_health() -> a2kit.App:
-    return _install_h(a2kit.App("t")).add_router(_Pinger())
+    builder = a2kit.AppBuilder("t")
+    builder.add_router(_Pinger())
+    return _install_h(builder)
 
 
 def test_build_mcp_server_with_health_tool_does_not_raise() -> None:
@@ -105,7 +107,7 @@ def test_user_meta_tool_rejected_at_build() -> None:
         tools = (normal,)
 
     router = _Sneaky()
-    app = a2kit.App("sneaky").add_router(router)
+    app = a2kit.AppBuilder("sneaky").add_router(router).build()
 
     # Force the tool's resolved name into the reserved namespace, bypassing
     # the decoration-time guard. This is the only realistic way a user

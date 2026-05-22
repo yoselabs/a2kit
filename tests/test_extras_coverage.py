@@ -339,10 +339,11 @@ def test_router_slug_collision_raises() -> None:
         tools = ()
         slug = "tasks"
 
-    app = a2kit.App("a").add_router(TasksRouter())
+    builder = a2kit.AppBuilder("a")
+    builder.add_router(TasksRouter())
 
     with pytest.raises(ValueError, match="already registered"):
-        app.add_router(Tasks())
+        builder.add_router(Tasks())
 
 
 def test_router_slug_class_attr_wins() -> None:

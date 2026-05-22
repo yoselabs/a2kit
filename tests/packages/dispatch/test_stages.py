@@ -39,7 +39,7 @@ async def _stub() -> dict:
 
 def test_timeout_stage_self_skips_when_unconfigured() -> None:
     stage = TimeoutStage()
-    spec = _spec(a2kit.App("t"))
+    spec = _spec(a2kit.AppBuilder("t").build())
     assert stage.wrap(_stub, spec) is _stub
 
 
@@ -54,8 +54,9 @@ def test_timeout_stage_fires_when_configured() -> None:
 
         tools = (crawl,)
 
-    app = a2kit.App("timeout-app")
-    app.add_router(_Slow())
+    builder = a2kit.AppBuilder("timeout-app")
+    builder.add_router(_Slow())
+    app = builder.build()
     desc = app.tools()[0]
     spec = _spec(app, router=app.routers()[0], meta=get_meta(desc.fn), descriptor=desc)
     wrapped = TimeoutStage().wrap(desc.fn, spec)
@@ -69,7 +70,7 @@ def test_timeout_stage_fires_when_configured() -> None:
 
 def test_enricher_stage_self_skips_without_router() -> None:
     stage = EnricherStage()
-    assert stage.wrap(_stub, _spec(a2kit.App("t"))) is _stub
+    assert stage.wrap(_stub, _spec(a2kit.AppBuilder("t").build())) is _stub
 
 
 def test_enricher_stage_self_skips_when_router_has_no_enrichers() -> None:
@@ -82,8 +83,9 @@ def test_enricher_stage_self_skips_when_router_has_no_enrichers() -> None:
 
         tools = (ping,)
 
-    app = a2kit.App("plain-app")
-    app.add_router(_Plain())
+    builder = a2kit.AppBuilder("plain-app")
+    builder.add_router(_Plain())
+    app = builder.build()
     desc = app.tools()[0]
     spec = _spec(app, router=app.routers()[0], meta=get_meta(desc.fn), descriptor=desc)
     assert EnricherStage().wrap(desc.fn, spec) is desc.fn
@@ -102,8 +104,9 @@ def test_enricher_stage_translates_exceptions() -> None:
 
         tools = (boom,)
 
-    app = a2kit.App("enricher-app")
-    app.add_router(_Enriched())
+    builder = a2kit.AppBuilder("enricher-app")
+    builder.add_router(_Enriched())
+    app = builder.build()
     desc = app.tools()[0]
     spec = _spec(app, router=app.routers()[0], meta=get_meta(desc.fn), descriptor=desc)
     wrapped = EnricherStage().wrap(desc.fn, spec)
@@ -124,8 +127,9 @@ def test_router_lazy_enter_self_skips_without_aenter() -> None:
 
         tools = (ping,)
 
-    app = a2kit.App("plain2-app")
-    app.add_router(_Plain())
+    builder = a2kit.AppBuilder("plain2-app")
+    builder.add_router(_Plain())
+    app = builder.build()
     desc = app.tools()[0]
     spec = _spec(app, router=app.routers()[0], meta=get_meta(desc.fn), descriptor=desc)
     assert RouterLazyEnterStage().wrap(desc.fn, spec) is desc.fn
@@ -152,9 +156,10 @@ def test_router_lazy_enter_enters_router_on_dispatch() -> None:
 
         tools = (ping,)
 
-    app = a2kit.App("lifecycle-app")
+    builder = a2kit.AppBuilder("lifecycle-app")
     router = _Lifecycle()
-    app.add_router(router)
+    builder.add_router(router)
+    app = builder.build()
     desc = app.tools()[0]
     spec = _spec(app, router=app.routers()[0], meta=get_meta(desc.fn), descriptor=desc)
     wrapped = RouterLazyEnterStage().wrap(desc.fn, spec)
@@ -169,7 +174,7 @@ def test_router_lazy_enter_enters_router_on_dispatch() -> None:
 
 def test_dispatch_hook_self_skips_on_identity_hook_with_no_injectables() -> None:
     stage = DispatchHookStage()
-    assert stage.wrap(_stub, _spec(a2kit.App("t"))) is _stub
+    assert stage.wrap(_stub, _spec(a2kit.AppBuilder("t").build())) is _stub
 
 
 # --- LddStateStage ------------------------------------------------------- #
@@ -177,7 +182,7 @@ def test_dispatch_hook_self_skips_on_identity_hook_with_no_injectables() -> None
 
 def test_ldd_state_stage_never_self_skips_and_runs_the_body() -> None:
     stage = LddStateStage()
-    wrapped = stage.wrap(_stub, _spec(a2kit.App("t")))
+    wrapped = stage.wrap(_stub, _spec(a2kit.AppBuilder("t").build()))
     assert wrapped is not _stub
     assert asyncio.run(wrapped()) == {"ok": True}
 
@@ -189,7 +194,7 @@ def test_error_capture_wraps_a_body_exception() -> None:
     async def _boom() -> dict:
         raise ValueError("kaboom")
 
-    wrapped = ErrorCaptureStage().wrap(_boom, _spec(a2kit.App("t")))
+    wrapped = ErrorCaptureStage().wrap(_boom, _spec(a2kit.AppBuilder("t").build()))
     with pytest.raises(CapturedError) as excinfo:
         asyncio.run(wrapped())
     assert isinstance(excinfo.value.original, ValueError)
@@ -197,7 +202,7 @@ def test_error_capture_wraps_a_body_exception() -> None:
 
 
 def test_error_capture_passes_a_normal_return_through() -> None:
-    wrapped = ErrorCaptureStage().wrap(_stub, _spec(a2kit.App("t")))
+    wrapped = ErrorCaptureStage().wrap(_stub, _spec(a2kit.AppBuilder("t").build()))
     assert asyncio.run(wrapped()) == {"ok": True}
 
 
@@ -205,6 +210,6 @@ def test_error_capture_reraises_pure_cancellation_groups() -> None:
     async def _cancelled() -> dict:
         raise BaseExceptionGroup("cancelled", [asyncio.CancelledError()])
 
-    wrapped = ErrorCaptureStage().wrap(_cancelled, _spec(a2kit.App("t")))
+    wrapped = ErrorCaptureStage().wrap(_cancelled, _spec(a2kit.AppBuilder("t").build()))
     with pytest.raises(BaseExceptionGroup):
         asyncio.run(wrapped())

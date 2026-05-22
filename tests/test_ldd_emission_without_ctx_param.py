@@ -45,7 +45,7 @@ def test_mcp_dispatch_emits_ldd_without_ctx_param() -> None:
     Drive through real fastmcp.Client transport.
     Assert: invocation completes; client.events captures the event.
     """
-    app = a2kit.App("noctx-mcp").add_router(_NoCtxRouter())
+    app = a2kit.AppBuilder("noctx-mcp").add_router(_NoCtxRouter()).build()
 
     async def go() -> dict[str, Any]:
         async with client(app) as c:
@@ -66,7 +66,7 @@ def test_mcp_dispatch_no_raise_for_ldd_without_ctx() -> None:
     framework dispatch)."""
     from fastmcp.exceptions import ToolError
 
-    app = a2kit.App("noctx-mcp-no-raise").add_router(_NoCtxRouter())
+    app = a2kit.AppBuilder("noctx-mcp-no-raise").add_router(_NoCtxRouter()).build()
 
     async def go() -> None:
         async with client(app) as c:
@@ -93,7 +93,7 @@ def test_cli_runtime_emits_ldd_without_ctx_param(capsys: pytest.CaptureFixture[s
 
     # A tool whose signature declares no ctx — mirrors the CLI subcommand
     # path; the LDD stage falls back to a synthesized StderrToolContext.
-    spec = ToolBuildSpec(app=a2kit.App("ldd-cli"), router=None, meta=get_meta(fire_no_ctx))
+    spec = ToolBuildSpec(app=a2kit.AppBuilder("ldd-cli").build(), router=None, meta=get_meta(fire_no_ctx))
     out = invoke_tool_sync(fire_no_ctx, {}, fmt="json", spec=spec)
     assert "cli" in out
 
@@ -119,7 +119,7 @@ def test_tool_with_ctx_still_receives_it() -> None:
 
         tools = (fire_with_ctx,)
 
-    app = a2kit.App("withctx").add_router(_WithCtxRouter())
+    app = a2kit.AppBuilder("withctx").add_router(_WithCtxRouter()).build()
 
     async def go() -> None:
         async with client(app) as c:

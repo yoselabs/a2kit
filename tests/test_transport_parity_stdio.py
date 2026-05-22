@@ -49,9 +49,12 @@ _SERVER_SCRIPT = textwrap.dedent(
 
 
     if __name__ == "__main__":
-        app = a2kit.App("parity-stdio")
-        app.add_router(R())
-        app.provide(_State, lambda: _State())
+        app = (
+            a2kit.AppBuilder("parity-stdio")
+            .add_router(R())
+            .provide(_State, lambda: _State())
+            .build()
+        )
         a2kit.run(app)
     '''
 ).strip()

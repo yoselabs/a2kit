@@ -87,10 +87,7 @@ def _build_parity_app() -> a2kit.App:
             tool_raises_value_error,
         )
 
-    app = a2kit.App("parity")
-    app.add_router(R())
-    app.provide(_State, lambda: _State())
-    return app
+    return a2kit.AppBuilder("parity").add_router(R()).provide(_State, lambda: _State()).build()
 
 
 # ----------------------------------------------------------- transport helpers

@@ -46,9 +46,7 @@ class FormatRouterRouter(a2kit.Router):
 
 @pytest.fixture
 def app() -> a2kit.App:
-    a = a2kit.App("format-routing-test")
-    a.add_router(FormatRouterRouter())
-    return a
+    return a2kit.AppBuilder("format-routing-test").add_router(FormatRouterRouter()).build()
 
 
 def _text(result: Any) -> str:

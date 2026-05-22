@@ -28,8 +28,7 @@ def test_router_with_providers_installs_to_app() -> None:
         name = "rprov"
         providers = (_ServiceA, _ServiceB)
 
-    app = a2kit.App("t")
-    app.add_router(_R())
+    app = a2kit.AppBuilder("t").add_router(_R()).build()
     assert app.has_provider(_ServiceA)
     assert app.has_provider(_ServiceB)
 
@@ -41,8 +40,7 @@ def test_router_providers_with_explicit_factory_tuple() -> None:
         name = "rfac"
         providers = ((_ServiceA, _ServiceA),)
 
-    app = a2kit.App("t")
-    app.add_router(_R())
+    app = a2kit.AppBuilder("t").add_router(_R()).build()
     assert app.has_provider(_ServiceA)
 
 
@@ -72,9 +70,7 @@ def test_router_lifespan_raises_during_startup_unwinds_stack() -> None:
         async def __aexit__(self, *_exc):
             pass
 
-    app = a2kit.App("t")
-    app.add_router(_Good())
-    app.add_router(_Bad())
+    app = a2kit.AppBuilder("t").add_router(_Good()).add_router(_Bad()).build()
 
     async def _go() -> None:
         import contextlib
@@ -112,8 +108,7 @@ def test_router_lifespan_post_yield_raise_logged_and_continues() -> None:
         async def __aexit__(self, *_exc):
             raise RuntimeError("shutdown boom")
 
-    app = a2kit.App("t")
-    app.add_router(_R())
+    app = a2kit.AppBuilder("t").add_router(_R()).build()
 
     async def _go() -> None:
         # Router enters lazily; we don't trigger dispatch, so the router
@@ -150,8 +145,7 @@ def test_router_lifespan_composes_into_app_lifecycle() -> None:
 
         tools = (ping,)
 
-    app = a2kit.App("t")
-    app.add_router(_R())
+    app = a2kit.AppBuilder("t").add_router(_R()).build()
 
     async def _go() -> None:
         async with _tc(app) as c:
@@ -251,9 +245,9 @@ def test_decorated_method_not_in_tuple_raises_at_app_construction() -> None:
 
         tools = (listed,)
 
-    app = a2kit.App("t")
+    builder = a2kit.AppBuilder("t")
     with pytest.raises(A2KitDecoratedMethodNotInTools) as ei:
-        app.add_router(_R())
+        builder.add_router(_R())
     assert "unlisted" in ei.value.missing
     assert "listed" not in ei.value.missing
 
@@ -274,7 +268,7 @@ def test_all_decorated_methods_listed_passes() -> None:
 
         tools = (one, two)
 
-    app = a2kit.App("t").add_router(_R())
+    app = a2kit.AppBuilder("t").add_router(_R()).build()
     tool_names = {d.name for d in app.tools()}
     assert tool_names == {"one", "two"}
 
@@ -301,7 +295,7 @@ def test_inherited_decorated_method_does_not_trigger_validation() -> None:
 
         tools = (sub_tool,)
 
-    app = a2kit.App("t").add_router(_Sub())
+    app = a2kit.AppBuilder("t").add_router(_Sub()).build()
     tool_names = {d.name for d in app.tools()}
     assert "sub_tool" in tool_names
 
@@ -319,6 +313,5 @@ def test_plain_router_unchanged() -> None:
 
         tools = (ping,)
 
-    app = a2kit.App("t")
-    app.add_router(_R())
+    app = a2kit.AppBuilder("t").add_router(_R()).build()
     assert any(r.slug == "rplain" for r in app.routers())

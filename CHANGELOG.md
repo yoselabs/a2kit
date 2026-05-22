@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Changed — AppBuilder / App split (BREAKING)
+
+`a2kit.App` is split into two types. Composition happens on the new
+mutable `a2kit.AppBuilder`; its terminal `build()` returns the sealed,
+mutation-free `a2kit.App`. The two-phase lifecycle (mutable before
+`async with`, sealed after) is now a fact in the type system, not a
+runtime raise. See ADR 0016.
+
+**Breaking.** Every composition site migrates:
+
+| before                                            | after                                                                    |
+|---------------------------------------------------|---------------------------------------------------------------------------|
+| `app = a2kit.App("svc")`                          | `builder = a2kit.AppBuilder("svc")`                                       |
+| `app.add_router(r)` / `add_cli` / `provide` / ... | `builder.add_router(r)` / ... — composition verbs live on `AppBuilder`    |
+| `@app.health_check`                               | `@builder.health_check`                                                   |
+| `install_connections(app, ConnT)`                 | `install_connections(builder, ConnT)` — composition-time wiring           |
+| (use `app` after composition)                     | `app = builder.build()` — seals the container, returns the runtime `App`  |
+
+`a2kit.App(...)` direct construction raises `TypeError` naming
+`AppBuilder`; a composition verb on a built `App` raises the same hint.
+The `app` pytest fixture in `a2kit.packages.testing` is renamed
+`builder` and yields a fresh `AppBuilder`.
+
+The DI test-override seam is **removed**: `TestClient.override(T, fake)`,
+`Container._override` / `_snapshot` / `_restore`, and
+`App._test_override_owner` no longer exist. Test overrides are now
+re-build — `provide` the fake on an `AppBuilder` (last-write-wins) and
+`build()` a fresh `App`. `TestClient.override` raises a migration hint.
+This reconciles the code with ADR 0006, whose Y-statement always said
+there is no override after the container seals. `Container.seal()` is
+the new public seal point (called by `build()`).
+
 ### Changed — shared dispatch pipeline
 
 The per-tool dispatch concerns are now a single transport-neutral

@@ -106,10 +106,7 @@ def _build_app_with_fake_user(user: UserSession):
 
     from examples.mcp_google_auth.routers import NotesRouter
 
-    app = a2kit.App("mcp-google-auth-example")
-    app.provide(UserSession, lambda: user, per_call=True)
-    app.add_router(NotesRouter())
-    return app
+    return a2kit.AppBuilder("mcp-google-auth-example").provide(UserSession, lambda: user, per_call=True).add_router(NotesRouter()).build()
 
 
 def test_per_user_write_isolation(tmp_path: Path) -> None:

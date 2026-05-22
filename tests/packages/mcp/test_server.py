@@ -35,9 +35,7 @@ class _SampleRouter(a2kit.Router):
 
 @pytest.fixture
 def app() -> a2kit.App:
-    a = a2kit.App("sample-app")
-    a.add_router(_SampleRouter())
-    return a
+    return a2kit.AppBuilder("sample-app").add_router(_SampleRouter()).build()
 
 
 def test_build_mcp_server_returns_fastmcp(app: a2kit.App) -> None:
@@ -116,7 +114,7 @@ def test_enricher_fires_before_registration() -> None:
 
         tools = (boom,)
 
-    app = a2kit.App("e").add_router(R())
+    app = a2kit.AppBuilder("e").add_router(R()).build()
     server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:
@@ -156,7 +154,7 @@ def test_sync_and_async_tools_both_register() -> None:
             async_one,
         )
 
-    app = a2kit.App("a").add_router(R())
+    app = a2kit.AppBuilder("a").add_router(R()).build()
     server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:

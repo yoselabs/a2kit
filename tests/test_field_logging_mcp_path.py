@@ -55,9 +55,7 @@ def _build_app() -> a2kit.App:
             emit_instance,
         )
 
-    app = a2kit.App("field-logging-probe")
-    app.add_router(R())
-    return app
+    return a2kit.AppBuilder("field-logging-probe").add_router(R()).build()
 
 
 async def _call(tool_name: str) -> Any:

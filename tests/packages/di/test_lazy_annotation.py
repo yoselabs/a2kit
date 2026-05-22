@@ -60,8 +60,9 @@ def test_lazy_alias_importable() -> None:
 async def test_lazy_param_receives_callable_not_instance() -> None:
     """A ``Lazy[T]`` parameter on a tool yields an awaitable callable, not ``T``."""
 
-    app = a2kit.App("test")
-    app.provide(_BrowserPool)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_BrowserPool)
+    app = builder.build()
 
     captured: dict[str, object] = {}
 
@@ -81,8 +82,9 @@ async def test_lazy_param_receives_callable_not_instance() -> None:
 async def test_lazy_never_invoked_resource_never_entered() -> None:
     """If the tool body never calls the Lazy closure, the resource is not entered."""
 
-    app = a2kit.App("test")
-    app.provide(_BrowserPool)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_BrowserPool)
+    app = builder.build()
 
     async def tool_body(browser: Lazy[_BrowserPool]) -> str:
         return "done"  # never calls `browser()`
@@ -100,8 +102,9 @@ async def test_lazy_never_invoked_resource_never_entered() -> None:
 async def test_lazy_honors_app_scope_cache() -> None:
     """Lazy[T] of app-scope returns the same instance across calls."""
 
-    app = a2kit.App("test")
-    app.provide(_BrowserPool)  # app-scope default
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_BrowserPool)  # app-scope default
+    app = builder.build()
 
     async def tool_body(browser: Lazy[_BrowserPool]) -> _BrowserPool:
         return await browser()
@@ -122,8 +125,9 @@ async def test_lazy_honors_app_scope_cache() -> None:
 async def test_lazy_honors_per_call_cache() -> None:
     """Lazy[T] of per-call: same instance within a call, fresh across calls."""
 
-    app = a2kit.App("test")
-    app.provide(_Transaction, per_call=True)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Transaction, per_call=True)
+    app = builder.build()
 
     async def tool_body(tx: Lazy[_Transaction]) -> tuple[_Transaction, _Transaction]:
         return await tx(), await tx()
@@ -145,9 +149,10 @@ async def test_lazy_honors_per_call_cache() -> None:
 async def test_lazy_resource_cleaned_up_at_scope_exit() -> None:
     """A resource resolved through Lazy is cleaned up at the same scope as direct injection."""
 
-    app = a2kit.App("test")
-    app.provide(_BrowserPool)
-    app.provide(_Transaction, per_call=True)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_BrowserPool)
+    builder.provide(_Transaction, per_call=True)
+    app = builder.build()
 
     async def app_scope_tool(browser: Lazy[_BrowserPool]) -> None:
         await browser()  # triggers entry

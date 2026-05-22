@@ -32,7 +32,6 @@ import contextlib
 import inspect
 import logging
 import weakref
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NoReturn, TypeVar
 
 from a2kit.packages.di._cleanup_stack import CleanupStack
@@ -205,40 +204,22 @@ class Container:
         for spec in self._params_for(factory):
             self._collect_reachable(spec.annotation, seen)
 
-    # -- test seam: snapshot/restore for TestClient.override -------------- #
-
-    def _override(self, type_: type, instance: object) -> None:
-        """Pin ``type_`` to ``instance`` across all resolution paths.
-
-        Test-only seam owning the registration mutation: install a constant
-        factory in ``_providers``, cache the instance on the app-scope
-        ``_singletons`` map, and mark scope so :meth:`get` short-circuits.
-        Idempotent and feature-agnostic.
-        """
-        self._providers[type_] = lambda: instance
-        self._singletons[type_] = instance
-        self._scope_metadata[type_] = Scope.SINGLETON
-
-    def _snapshot(self) -> _ContainerSnapshot:
-        """Capture the registration + cache state for later restore.
-
-        Test-only seam — `TestClient.override` uses this to roll back
-        DI mutations at the end of a test session. Hot path resolution
-        never consults a snapshot.
-        """
-        return _ContainerSnapshot(
-            providers=dict(self._providers),
-            singletons=dict(self._singletons),
-            scope_metadata=dict(self._scope_metadata),
-        )
-
-    def _restore(self, snapshot: _ContainerSnapshot) -> None:
-        """Restore the registration + cache state from a prior snapshot."""
-        self._providers = dict(snapshot.providers)
-        self._singletons = dict(snapshot.singletons)
-        self._scope_metadata = dict(snapshot.scope_metadata)
-
     # -- di-scoped-lifecycle public surface ----------------------------- #
+
+    def seal(self) -> None:
+        """Validate the provider graph and seal against further ``provide``.
+
+        Idempotent. The public seal point is :meth:`AppBuilder.build`,
+        which calls this; the root container's :meth:`__aenter__` also
+        calls it defensively. After ``seal``, :meth:`provide` raises.
+
+        Validation rejects app-scope factories that depend on per-call
+        types (directly or via ``Lazy[per-call-T]``).
+        """
+        if self._sealed:
+            return
+        self._validate_scope_graph()
+        self._sealed = True
 
     def provide(
         self,
@@ -261,10 +242,10 @@ class Container:
         """
         if self._sealed:
             msg = (
-                f"Container is sealed after __aenter__; cannot provide({type_!r}). "
-                "Register all providers at composition time, before "
-                "`async with app:` enters. To override a provider for a test, "
-                "re-register it in the composition root before app entry."
+                f"Container is sealed after AppBuilder.build(); cannot provide({type_!r}). "
+                "Register all providers on the AppBuilder before calling build(). "
+                "To override a provider for a test, re-register it on the builder "
+                "(provide is last-write-wins) before build()."
             )
             raise TypeError(msg)
 
@@ -447,14 +428,13 @@ class Container:
     async def __aenter__(self) -> Container:
         """Enter the container's lifecycle scope.
 
-        Root container: seals registration, validates the provider graph
-        (rejects app-scope factories depending on scoped types).
+        Root container: seals registration via :meth:`seal` (idempotent —
+        ``AppBuilder.build()`` already sealed it).
 
         Child container: no-op; child enters its scope on construction.
         """
         if self._parent is None:
-            self._validate_scope_graph()
-            self._sealed = True
+            self.seal()
         return self
 
     async def __aexit__(
@@ -624,15 +604,6 @@ class Container:
         params = _factory_params(factory)
         self._param_cache[factory] = params
         return params
-
-
-@dataclass(frozen=True, slots=True)
-class _ContainerSnapshot:
-    """Opaque snapshot of container state for the test-override seam."""
-
-    providers: dict[type, Factory] = field(default_factory=dict)
-    singletons: dict[type, Any] = field(default_factory=dict)
-    scope_metadata: dict[type, Scope] = field(default_factory=dict)
 
 
 def _params_for_method(fn: Callable[..., Any]) -> list[_ParamSpec]:

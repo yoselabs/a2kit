@@ -1,10 +1,12 @@
 """Thin pytest fixtures for a2kit tests.
 
-`cassette` is a vcrpy wrapper. `app` returns a fresh `a2kit.App`. There is
-no DI-swap helper — tests construct routers with fake factories directly:
+`cassette` is a vcrpy wrapper. `builder` returns a fresh
+`a2kit.AppBuilder`. There is no DI-swap helper — tests construct routers
+with fake factories directly, then `build()` into a runtime App:
 
-    app = a2kit.App("test")
-    app.add_router(TasksRouter(fake_get_store))
+    builder = a2kit.AppBuilder("test")
+    builder.add_router(TasksRouter(fake_get_store))
+    app = builder.build()
 
 `ambient_for_tests` establishes an LDD ambient so tests that call
 orchestrator / phase functions directly (bypassing
@@ -42,9 +44,9 @@ def _cassette_impl(tmp_path: Path) -> Callable[..., Any]:
     return _make
 
 
-def _app_impl() -> a2kit.App:
-    """A fresh ``a2kit.App`` named ``"test"``."""
-    return a2kit.App("test")
+def _builder_impl() -> a2kit.AppBuilder:
+    """A fresh ``a2kit.AppBuilder`` named ``"test"``."""
+    return a2kit.AppBuilder("test")
 
 
 def _ambient_for_tests_impl() -> Iterator[None]:
@@ -92,14 +94,14 @@ try:
     import pytest
 
     cassette = pytest.fixture(_cassette_impl)
-    app = pytest.fixture(_app_impl)
+    builder = pytest.fixture(_builder_impl)
     ambient_for_tests = pytest.fixture(_ambient_for_tests_impl)
     ambient_for_tests_autouse = pytest.fixture(autouse=True)(_ambient_for_tests_impl)
 except ImportError:
     cassette = _cassette_impl  # type: ignore[assignment]
-    app = _app_impl  # type: ignore[assignment]
+    builder = _builder_impl  # type: ignore[assignment]
     ambient_for_tests = _ambient_for_tests_impl  # type: ignore[assignment]
     ambient_for_tests_autouse = _ambient_for_tests_impl  # type: ignore[assignment]
 
 
-__all__ = ["ambient_for_tests", "ambient_for_tests_autouse", "app", "cassette"]
+__all__ = ["ambient_for_tests", "ambient_for_tests_autouse", "builder", "cassette"]

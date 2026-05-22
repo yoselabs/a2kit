@@ -31,9 +31,7 @@ class _SurfRouter(Router):
 
 
 def _app() -> a2kit.App:
-    app = a2kit.App("surftest")
-    app.add_router(_SurfRouter())
-    return app
+    return a2kit.AppBuilder("surftest").add_router(_SurfRouter()).build()
 
 
 def test_cli_builder_mounts_all_tiers() -> None:

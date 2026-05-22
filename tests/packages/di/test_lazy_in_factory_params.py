@@ -82,13 +82,14 @@ async def test_singleton_factory_with_lazy_app_scope_t_works() -> None:
     """A SINGLETON factory declaring ``Lazy[_Inner]`` (Inner is also
     app-scope) receives a callable; awaiting it from a tool body
     resolves _Inner exactly once and caches it."""
-    app = a2kit.App("test")
-    app.provide(_Inner)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)
 
     def make_outer(inner_lazy: Lazy[_Inner]) -> _Outer:
         return _Outer(inner_lazy=inner_lazy)
 
-    app.provide(_Outer, make_outer)
+    builder.provide(_Outer, make_outer)
+    app = builder.build()
 
     async def tool_body(outer: _Outer) -> _Inner:
         return await outer.inner_lazy()
@@ -106,13 +107,14 @@ async def test_singleton_factory_with_lazy_app_scope_t_works() -> None:
 async def test_singleton_factory_lazy_handle_never_awaited() -> None:
     """If no tool body ever awaits the captured Lazy handle, _Inner's
     factory / __aenter__ never run."""
-    app = a2kit.App("test")
-    app.provide(_Inner)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)
 
     def make_outer(inner_lazy: Lazy[_Inner]) -> _Outer:
         return _Outer(inner_lazy=inner_lazy)
 
-    app.provide(_Outer, make_outer)
+    builder.provide(_Outer, make_outer)
+    app = builder.build()
 
     async def tool_body(outer: _Outer) -> str:
         # Never calls outer.inner_lazy().
@@ -133,13 +135,14 @@ async def test_singleton_factory_lazy_handle_cached_across_dispatches() -> None:
     dispatch). The closure was captured during _Outer's construction
     on root, so subsequent awaits resolve through root.get(_Inner).
     """
-    app = a2kit.App("test")
-    app.provide(_Inner)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)
 
     def make_outer(inner_lazy: Lazy[_Inner]) -> _Outer:
         return _Outer(inner_lazy=inner_lazy)
 
-    app.provide(_Outer, make_outer)
+    builder.provide(_Outer, make_outer)
+    app = builder.build()
 
     async def tool_body(outer: _Outer) -> _Inner:
         return await outer.inner_lazy()
@@ -161,17 +164,16 @@ async def test_singleton_factory_with_lazy_per_call_rejected() -> None:
     """A SINGLETON factory declaring ``Lazy[_PerCallThing]`` is
     rejected at ``async with app:`` time with a TypeError naming the
     offending factory + the per-call inner type + migration paths."""
-    app = a2kit.App("test")
-    app.provide(_PerCallThing, per_call=True)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_PerCallThing, per_call=True)
 
     def make_bad_outer(pc_lazy: Lazy[_PerCallThing]) -> _OuterWithPerCall:
         return _OuterWithPerCall(pc_lazy=pc_lazy)
 
-    app.provide(_OuterWithPerCall, make_bad_outer)
+    builder.provide(_OuterWithPerCall, make_bad_outer)
 
     with pytest.raises(TypeError) as exc_info:
-        async with app:
-            pass
+        builder.build()
 
     msg = str(exc_info.value)
     # Migration message names the inner per-call type and routes consumer to the fix.
@@ -187,13 +189,14 @@ async def test_per_call_factory_with_lazy_t_works() -> None:
     is valid. Each dispatch builds a fresh per-call aggregate; the
     captured closure resolves through the per-call child's parent
     chain to the cached app-scope _Inner."""
-    app = a2kit.App("test")
-    app.provide(_Inner)  # app-scope
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Inner)  # app-scope
 
     def make_per_call(inner_lazy: Lazy[_Inner]) -> _PerCallAggregate:
         return _PerCallAggregate(inner_lazy=inner_lazy)
 
-    app.provide(_PerCallAggregate, make_per_call, per_call=True)
+    builder.provide(_PerCallAggregate, make_per_call, per_call=True)
+    app = builder.build()
 
     async def tool_body(agg: _PerCallAggregate) -> tuple[int, _Inner]:
         inner = await agg.inner_lazy()

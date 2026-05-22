@@ -55,11 +55,11 @@ class StepCompleted(BaseModel):
     elapsed_ms: int
 
 
-app = a2kit.App("typed-events-demo")
+builder = a2kit.AppBuilder("typed-events-demo")
 # Register only the events that also need progress callbacks. StepStarted
 # doesn't need progress — it emits via the free function path below.
-app.ldd.events.register(StepProgressed, progress=lambda e: (e.step, e.total))
-app.ldd.events.register(StepCompleted, progress=lambda e: (e.step, e.total))
+builder.ldd.events.register(StepProgressed, progress=lambda e: (e.step, e.total))
+builder.ldd.events.register(StepCompleted, progress=lambda e: (e.step, e.total))
 
 
 class JobsRouter(a2kit.Router):
@@ -80,7 +80,8 @@ class JobsRouter(a2kit.Router):
     tools = (run,)
 
 
-app.add_router(JobsRouter())
+builder.add_router(JobsRouter())
+app = builder.build()
 
 
 def main() -> None:

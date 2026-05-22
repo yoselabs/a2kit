@@ -15,8 +15,9 @@ import a2kit
 
 from .routers import TasksRouter
 
-app = a2kit.App("streaming-logger")
-app.add_router(TasksRouter())
+builder = a2kit.AppBuilder("streaming-logger")
+builder.add_router(TasksRouter())
+app = builder.build()
 
 
 def main() -> None:

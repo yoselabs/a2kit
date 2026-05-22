@@ -1,9 +1,9 @@
-"""BDD: unified ``app.provide(T, factory, per_call=False)`` surface.
+"""BDD: unified ``builder.provide(T, factory, per_call=False)`` surface.
 
 Covers spec ``app-singletons``/``request-scoped-di``: ``provide`` is the
-single registration API. ``per_call=False`` (default) = app-scope cached;
-``per_call=True`` = fresh per dispatch. Last-write-wins re-registration is
-the override mechanism. The container seals against further ``provide`` calls
+single registration API on AppBuilder. ``per_call=False`` (default) = app-scope
+cached; ``per_call=True`` = fresh per dispatch. Last-write-wins re-registration
+is the override mechanism. The container seals against further ``provide`` calls
 after ``__aenter__``.
 """
 
@@ -36,9 +36,10 @@ def _reset_counters() -> None:
 
 @pytest.mark.asyncio
 async def test_provide_default_is_app_scope() -> None:
-    """``app.provide(T)`` without ``per_call`` caches across dispatches."""
-    app = a2kit.App("test")
-    app.provide(_State)
+    """``builder.provide(T)`` without ``per_call`` caches across dispatches."""
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_State)
+    app = builder.build()
 
     async with app:
         async with app._resolver.child() as call1:
@@ -52,9 +53,10 @@ async def test_provide_default_is_app_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_provide_per_call_true_opts_in() -> None:
-    """``app.provide(T, per_call=True)`` produces a fresh instance each dispatch."""
-    app = a2kit.App("test")
-    app.provide(_State, per_call=True)
+    """``builder.provide(T, per_call=True)`` produces a fresh instance each dispatch."""
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_State, per_call=True)
+    app = builder.build()
 
     async with app:
         async with app._resolver.child() as call1:
@@ -75,8 +77,9 @@ async def test_async_factory_accepted_on_per_call() -> None:
         counter["awaited"] += 1
         return _State()
 
-    app = a2kit.App("test")
-    app.provide(_State, async_factory, per_call=True)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_State, async_factory, per_call=True)
+    app = builder.build()
 
     async with app:
         async with app._resolver.child() as call1:
@@ -89,19 +92,20 @@ async def test_async_factory_accepted_on_per_call() -> None:
 
 @pytest.mark.asyncio
 async def test_re_registration_last_write_wins() -> None:
-    """``app.provide(T, ...)`` called twice — second registration wins, no warning."""
+    """``builder.provide(T, ...)`` called twice — second registration wins, no warning."""
 
     class _Repo:
         def __init__(self, impl: _Real | _Fake) -> None:
             self.impl = impl
 
-    app = a2kit.App("test")
-    app.provide(_Real, lambda: _Real(), per_call=False)
-    app.provide(_Fake, lambda: _Fake(), per_call=False)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_Real, lambda: _Real(), per_call=False)
+    builder.provide(_Fake, lambda: _Fake(), per_call=False)
     # First registration of the repo binds to _Real:
-    app.provide(_Repo, lambda: _Repo(_Real()))
+    builder.provide(_Repo, lambda: _Repo(_Real()))
     # Second registration overrides to _Fake — composition-root override pattern.
-    app.provide(_Repo, lambda: _Repo(_Fake()))
+    builder.provide(_Repo, lambda: _Repo(_Fake()))
+    app = builder.build()
 
     async with app:
         repo = await app._resolver.get(_Repo)
@@ -112,8 +116,9 @@ async def test_re_registration_last_write_wins() -> None:
 @pytest.mark.asyncio
 async def test_sealed_after_aenter() -> None:
     """Container is sealed against ``provide(...)`` after ``async with app:`` enters."""
-    app = a2kit.App("test")
-    app.provide(_State)
+    builder = a2kit.AppBuilder("test")
+    builder.provide(_State)
+    app = builder.build()
 
     async with app:
         with pytest.raises(TypeError) as excinfo:
