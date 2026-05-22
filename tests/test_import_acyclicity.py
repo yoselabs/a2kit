@@ -102,20 +102,18 @@ def test_old_run_code_path_raises_migration_hint() -> None:
 
 
 def test_run_checks_aggregates_through_resolver() -> None:
-    builder = a2kit.AppBuilder("acyclicity-health")
-    builder._install_health_tool()  # noqa: SLF001 -- exercising the lower-level seam
+    app = a2kit.App("acyclicity-health")
+    app._install_health_tool()  # noqa: SLF001 -- exercising the lower-level seam
 
-    @builder.health_check
+    @app.health_check
     def ok_probe() -> HealthResult:
         return HealthResult.ok()
 
-    app = builder.build()
-
     async def go() -> dict[str, Any]:
         async with app:
-            registry = builder._health  # noqa: SLF001 -- test seam
-            resolver = builder._container  # noqa: SLF001 -- test seam
-            return await run_checks(registry, resolver, version=app_version(builder))
+            registry = app._health  # noqa: SLF001 -- test seam
+            resolver = app._container  # noqa: SLF001 -- test seam
+            return await run_checks(registry, resolver, version=app_version(app))
 
     result = asyncio.run(go())
     assert result["status"] == "ok"
@@ -124,14 +122,13 @@ def test_run_checks_aggregates_through_resolver() -> None:
 
 
 def test_run_checks_version_is_caller_supplied() -> None:
-    builder = a2kit.AppBuilder("acyclicity-health-version")
-    builder._install_health_tool()  # noqa: SLF001 -- exercising the lower-level seam
-    app = builder.build()
+    app = a2kit.App("acyclicity-health-version")
+    app._install_health_tool()  # noqa: SLF001 -- exercising the lower-level seam
 
     async def go() -> dict[str, Any]:
         async with app:
-            registry = builder._health  # noqa: SLF001 -- test seam
-            resolver = builder._container  # noqa: SLF001 -- test seam
+            registry = app._health  # noqa: SLF001 -- test seam
+            resolver = app._container  # noqa: SLF001 -- test seam
             return await run_checks(registry, resolver, version="9.9.9")
 
     result = asyncio.run(go())

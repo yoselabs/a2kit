@@ -185,7 +185,7 @@ def test_emit_typed_dumps_datetime_as_iso() -> None:
 
 
 def test_app_mounts_ldd_events_registry() -> None:
-    builder = a2kit.AppBuilder("demo")
-    assert isinstance(builder.ldd.events, EventRegistry)
-    builder.ldd.events.register(ProgressEvent)
-    assert builder.ldd.events.is_registered(ProgressEvent)
+    app = a2kit.App("demo")
+    assert isinstance(app.ldd.events, EventRegistry)
+    app.ldd.events.register(ProgressEvent)
+    assert app.ldd.events.is_registered(ProgressEvent)

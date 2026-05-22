@@ -57,9 +57,8 @@ def _reset_counters() -> None:
 @pytest.mark.asyncio
 async def test_per_call_yields_fresh_instance_per_dispatch() -> None:
     """Two dispatches receive distinct ``Transaction`` instances; factory invoked twice."""
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Transaction, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Transaction, per_call=True)
 
     async with app:
         # Simulate two dispatches by opening two per-call children.
@@ -75,9 +74,8 @@ async def test_per_call_yields_fresh_instance_per_dispatch() -> None:
 @pytest.mark.asyncio
 async def test_per_call_caches_within_single_call() -> None:
     """Two resolves of the same per-call type within one dispatch share an instance."""
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Transaction, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Transaction, per_call=True)
 
     async with app, app._resolver.child() as call:
         a = await call.get(_Transaction)
@@ -90,9 +88,8 @@ async def test_per_call_caches_within_single_call() -> None:
 @pytest.mark.asyncio
 async def test_per_call_cleanup_runs_on_normal_return() -> None:
     """``__aexit__`` runs when the per-call scope closes after normal completion."""
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Transaction, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Transaction, per_call=True)
 
     async with app, app._resolver.child() as call:
         tx = await call.get(_Transaction)
@@ -106,9 +103,8 @@ async def test_per_call_cleanup_runs_on_normal_return() -> None:
 @pytest.mark.asyncio
 async def test_per_call_cleanup_runs_on_exception() -> None:
     """``__aexit__`` runs with exception in scope, then the exception propagates."""
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Transaction, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Transaction, per_call=True)
 
     class _BodyError(RuntimeError):
         pass
@@ -135,10 +131,9 @@ async def test_per_call_depends_on_app_scope() -> None:
         async with tx:
             yield tx
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_ConnectionPool)
-    builder.provide(_Transaction, tx_factory, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_ConnectionPool)
+    app.provide(_Transaction, tx_factory, per_call=True)
 
     async with app:
         async with app._resolver.child() as call1:
@@ -160,12 +155,13 @@ async def test_app_scope_cannot_depend_on_per_call() -> None:
     async def bad_app_factory(tx: _Transaction) -> AsyncIterator[object]:
         yield object()
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Transaction, per_call=True)
-    builder.provide(object, bad_app_factory)  # app-scope default; depends on per-call _Transaction
+    app = a2kit.App("test")
+    app.provide(_Transaction, per_call=True)
+    app.provide(object, bad_app_factory)  # app-scope default; depends on per-call _Transaction
 
     with pytest.raises(TypeError) as excinfo:
-        builder.build()
+        async with app:
+            pass
 
     msg = str(excinfo.value)
     # Spec: message names both types and the violation phrase.

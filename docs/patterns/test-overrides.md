@@ -2,25 +2,26 @@
 
 a2kit's DI container has no dedicated `override(T, fake)` test seam.
 Test overrides happen at the composition root by re-registering the
-type on an `AppBuilder`. The builder's `provide()` is
-**last-write-wins**: a second registration silently replaces the prior
-factory. `build()` then seals the result into a runtime `App`.
+type on the `a2kit.App`. `provide()` is **last-write-wins**: a second
+registration silently replaces the prior factory. A finisher
+(`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`) then seals
+the App.
 
 ```python
 def build_app(*, llm: LLM | None = None) -> a2kit.App:
-    builder = a2kit.AppBuilder("prod")
-    builder.provide(Settings)
-    builder.provide(LLM, lambda: llm or OpenAILLM())
-    builder.provide(Repo)
-    return builder.build()
+    app = a2kit.App("prod")
+    app.provide(Settings)
+    app.provide(LLM, lambda: llm or OpenAILLM())
+    app.provide(Repo)
+    return app
 
 def build_test_app(*, llm_fake: LLM, repo_fake: Repo | None = None) -> a2kit.App:
-    builder = a2kit.AppBuilder("prod")
-    builder.provide(Settings)
-    builder.provide(LLM, lambda: llm_fake)
-    # Re-register to override — last-write-wins, pre-build().
-    builder.provide(Repo, lambda: repo_fake or Repo())
-    return builder.build()
+    app = a2kit.App("prod")
+    app.provide(Settings)
+    app.provide(LLM, lambda: llm_fake)
+    # Re-register to override — last-write-wins, before a finisher seals.
+    app.provide(Repo, lambda: repo_fake or Repo())
+    return app
 ```
 
 ```python
@@ -40,10 +41,9 @@ async def test_extract_uses_fake_llm():
 - Composition-root overrides keep test wiring visible at the call
   site. A reader of `build_test_app` sees the full graph without
   having to chase an `override` table.
-- No special sealing exception. `AppBuilder.build()` seals the
-  container; an override after `build()` is impossible because the
-  sealed `App` has no `provide`. The builder/runtime split (ADR 0016)
-  makes "override after seal" a type error, not a runtime raise.
+- No special sealing exception. A finisher seals the container; an
+  override after sealing raises `TypeError`, because `provide` on a
+  sealed `App` is rejected (ADR 0017).
 
 A dedicated `TestClient.override()` existed once and was removed in
 v0.40: it mutated an already-sealed container, contradicting ADR 0006.
@@ -51,37 +51,37 @@ Calling it now raises a migration hint pointing here.
 
 ## Common patterns
 
-**Stub a single dependency** — provide the fake last on the builder:
+**Stub a single dependency** — provide the fake last on the App:
 
 ```python
-builder.provide(LLM, lambda: StubLLM())
+app.provide(LLM, lambda: StubLLM())
 ```
 
 **Stub a class via factory**:
 
 ```python
-builder.provide(LLM, lambda: StubLLM(canned=fixture_payload))
+app.provide(LLM, lambda: StubLLM(canned=fixture_payload))
 ```
 
 **Stub a per-call resource**:
 
 ```python
-builder.provide(Transaction, lambda pool: InMemoryTransaction(pool), per_call=True)
+app.provide(Transaction, lambda pool: InMemoryTransaction(pool), per_call=True)
 ```
 
 The factory's parameter annotations chain through DI normally — the
 override receives its own dependencies via the same machinery.
 
-## Anti-pattern: mutate AFTER `build()`
+## Anti-pattern: compose AFTER a finisher has sealed the App
 
-Don't reach for the builder once `build()` has run. It is spent, and
-the `App` it produced is sealed:
+Don't reach for the App's composition verbs once a finisher has run.
+The App is sealed:
 
 ```python
-app = builder.build()
-builder.provide(LLM, lambda: StubLLM())  # TypeError — builder is spent
-app.provide(LLM, lambda: StubLLM())      # TypeError — App has no provide
+async with a2kit.testing.client(app):
+    ...
+app.provide(LLM, lambda: StubLLM())  # TypeError — App is sealed
 ```
 
-If you need per-test isolation: build a fresh `App` from a fresh
-`AppBuilder` per test. Composition is cheap; reset is loud.
+If you need per-test isolation: construct a fresh `a2kit.App` per test.
+Composition is cheap; reset is loud.

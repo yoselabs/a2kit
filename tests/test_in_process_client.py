@@ -96,7 +96,7 @@ class _Router(a2kit.Router):
 
 
 def _build_app() -> a2kit.App:
-    return a2kit.AppBuilder("client-test").add_router(_Router()).build()
+    return a2kit.App("client-test").add_router(_Router())
 
 
 # --- Scenario 1: invoke returns tool's value --- #

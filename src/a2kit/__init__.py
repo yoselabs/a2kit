@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from a2kit._context_protocol import ToolContext as ToolContext
-    from a2kit.app import App, AppBuilder
+    from a2kit.app import App
     from a2kit.exceptions import A2KitError
     from a2kit.routers import Router
     from a2kit.tool import list_, read, write
@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 # importable from there directly.
 _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "App": ("a2kit.app", "App"),
-    "AppBuilder": ("a2kit.app", "AppBuilder"),
     "Router": ("a2kit.routers", "Router"),
     "read": ("a2kit.tool", "read"),
     "write": ("a2kit.tool", "write"),
@@ -63,8 +62,16 @@ def __dir__() -> list[str]:
 
 
 def run(app: App, argv: list[str] | None = None) -> Any:
+    """Finisher: seal the App and run its CLI.
+
+    ``run`` is the production finisher. It seals the App internally
+    (validates the DI provider graph, locks the container) before
+    building and invoking the CLI — consumer code never calls a seal
+    step.
+    """
     from a2kit.packages.cli import build_full_cli
 
+    app._seal()  # noqa: SLF001 -- finisher-internal seal, see ADR 0017
     cli = build_full_cli(app)
     return cli.main(args=argv, standalone_mode=True)
 
@@ -72,7 +79,6 @@ def run(app: App, argv: list[str] | None = None) -> Any:
 __all__ = [
     "A2KitError",
     "App",
-    "AppBuilder",
     "HealthResult",
     "Router",
     "ToolContext",

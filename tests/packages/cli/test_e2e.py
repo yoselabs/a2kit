@@ -76,7 +76,7 @@ def test_e2e_complex_param_decoded_as_json():
 
         tools = (echo_dict,)
 
-    a = a2kit.AppBuilder("demo").add_router(R()).build()
+    a = a2kit.App("demo").add_router(R())
     cli = build_full_cli(a)
 
     result = CliRunner().invoke(cli, ["demo", "echo_dict", "--payload", '{"a":1}', "--format", "json"])

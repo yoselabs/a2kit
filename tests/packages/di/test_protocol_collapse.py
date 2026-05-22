@@ -30,9 +30,8 @@ async def test_aexit_protocol_works() -> None:
         async def __aexit__(self, *exc: object) -> None:
             type(self).exited = True
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Resource)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Resource)
 
     async with app:
         await app._resolver.get(_Resource)
@@ -61,9 +60,8 @@ async def test_asynccontextmanager_factory_works() -> None:
         finally:
             teardown_called = True
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Resource, resource_factory)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Resource, resource_factory)
 
     async with app:
         await app._resolver.get(_Resource)
@@ -83,9 +81,8 @@ async def test_aclose_not_detected() -> None:
         async def aclose(self) -> None:
             type(self).aclose_called = True
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Resource)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Resource)
 
     async with app:
         await app._resolver.get(_Resource)
@@ -103,9 +100,8 @@ async def test_close_not_detected() -> None:
         def close(self) -> None:
             type(self).close_called = True
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Resource)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Resource)
 
     async with app:
         await app._resolver.get(_Resource)

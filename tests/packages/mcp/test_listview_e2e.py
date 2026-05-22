@@ -46,7 +46,7 @@ def _build_app() -> a2kit.App:
 
     r = R()
     r._tools.extend([list_things, plain_things, scalar_thing])
-    return a2kit.AppBuilder("e2e").add_router(r).build()
+    return a2kit.App("e2e").add_router(r)
 
 
 # --------------------------- end-to-end --------------------------- #

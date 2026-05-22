@@ -37,51 +37,48 @@ from a2kit.testing import client
 
 
 def test_health_tool_not_registered_by_default() -> None:
-    app = a2kit.AppBuilder("plain").build()
+    app = a2kit.App("plain")
     names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME not in names
 
 
 def test_health_tool_registered_when_enabled() -> None:
-    builder = a2kit.AppBuilder("with-health")
-    builder._install_health_tool()
-    app = builder.build()
+    app = a2kit.App("with-health")
+    app._install_health_tool()
     names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME in names
 
 
 def test_health_check_auto_enables_health_tool() -> None:
-    """v0.33: first `@builder.health_check` auto-installs `_meta.health`."""
-    builder = a2kit.AppBuilder("auto-enable")
+    """v0.33: first `@app.health_check` auto-installs `_meta.health`."""
+    app = a2kit.App("auto-enable")
 
-    @builder.health_check
+    @app.health_check
     async def _check() -> HealthResult:
         return HealthResult.ok()
 
-    app = builder.build()
     names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME in names
 
 
 def test_health_tool_kwarg_removed_raises_with_hint() -> None:
-    """v0.35: ``AppBuilder(health_tool=True)`` raises TypeError with migration hint."""
+    """v0.35: ``App(health_tool=True)`` raises TypeError with migration hint."""
     with pytest.raises(TypeError) as ei:
-        a2kit.AppBuilder("x", health_tool=True)  # type: ignore[call-arg]
+        a2kit.App("x", health_tool=True)  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "health_tool" in msg
     assert "health_check" in msg
 
 
 def test_health_check_idempotent_with_explicit_install() -> None:
-    """Explicit ``_install_health_tool()`` + ``@builder.health_check`` does not double-install."""
-    builder = a2kit.AppBuilder("both")
-    builder._install_health_tool()  # noqa: SLF001 -- test seam
+    """Explicit ``_install_health_tool()`` + ``@app.health_check`` does not double-install."""
+    app = a2kit.App("both")
+    app._install_health_tool()  # noqa: SLF001 -- test seam
 
-    @builder.health_check
+    @app.health_check
     async def _check() -> HealthResult:
         return HealthResult.ok()
 
-    app = builder.build()
     # Exactly one `_meta.health` descriptor — no duplicate router install.
     names = [d.name for d in app.tools()]
     assert names.count(HEALTH_TOOL_NAME) == 1
@@ -111,9 +108,8 @@ def test_health_cmd_does_not_import_testing_package() -> None:
 
 
 def test_health_returns_ok_with_no_checks() -> None:
-    builder = a2kit.AppBuilder("with-health")
-    builder._install_health_tool()
-    app = builder.build()
+    app = a2kit.App("with-health")
+    app._install_health_tool()
 
     async def go() -> Any:
         async with client(app) as c:
@@ -126,14 +122,12 @@ def test_health_returns_ok_with_no_checks() -> None:
 
 
 def test_passing_check_contributes_ok_entry() -> None:
-    builder = a2kit.AppBuilder("with-health")
-    builder._install_health_tool()
+    app = a2kit.App("with-health")
+    app._install_health_tool()
 
-    @builder.health_check
+    @app.health_check
     def _sqlite_ok() -> HealthResult:
         return HealthResult.ok()
-
-    app = builder.build()
 
     async def go() -> Any:
         async with client(app) as c:
@@ -145,14 +139,12 @@ def test_passing_check_contributes_ok_entry() -> None:
 
 
 def test_failing_check_flips_status_to_degraded() -> None:
-    builder = a2kit.AppBuilder("with-health")
-    builder._install_health_tool()
+    app = a2kit.App("with-health")
+    app._install_health_tool()
 
-    @builder.health_check
+    @app.health_check
     async def _broken() -> HealthResult:
         return HealthResult.fail("sqlite missing")
-
-    app = builder.build()
 
     async def go() -> Any:
         async with client(app) as c:
@@ -166,18 +158,16 @@ def test_failing_check_flips_status_to_degraded() -> None:
 
 
 def test_mixed_checks_yield_degraded() -> None:
-    builder = a2kit.AppBuilder("with-health")
-    builder._install_health_tool()
+    app = a2kit.App("with-health")
+    app._install_health_tool()
 
-    @builder.health_check
+    @app.health_check
     def _ok() -> HealthResult:
         return HealthResult.ok()
 
-    @builder.health_check
+    @app.health_check
     def _bad() -> HealthResult:
         return HealthResult.fail("nope")
-
-    app = builder.build()
 
     async def go() -> Any:
         async with client(app) as c:
@@ -202,9 +192,8 @@ def test_meta_namespace_reserved_for_user_tools() -> None:
 
 def test_meta_health_name_allowed_for_builtin() -> None:
     """The internal builtin tool with name `_meta.health` decorates without error."""
-    builder = a2kit.AppBuilder("with-health")
-    builder._install_health_tool()
-    app = builder.build()
+    app = a2kit.App("with-health")
+    app._install_health_tool()
     names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME in names
 

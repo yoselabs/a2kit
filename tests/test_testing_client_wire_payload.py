@@ -30,7 +30,7 @@ class _DictRouter(a2kit.Router):
 
 
 def test_call_wire_json_dict() -> None:
-    app = a2kit.AppBuilder("t").add_router(_DictRouter()).build()
+    app = a2kit.App("t").add_router(_DictRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -60,7 +60,7 @@ class _ListRouter(a2kit.Router):
 
 
 def test_call_wire_tsv_for_list_of_models() -> None:
-    app = a2kit.AppBuilder("t").add_router(_ListRouter()).build()
+    app = a2kit.App("t").add_router(_ListRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -77,7 +77,7 @@ def test_call_wire_tsv_for_list_of_models() -> None:
 
 
 def test_invoke_returns_python_value_while_call_wire_returns_encoded() -> None:
-    app = a2kit.AppBuilder("t").add_router(_DictRouter()).build()
+    app = a2kit.App("t").add_router(_DictRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -108,7 +108,7 @@ class _ScalarRouter(a2kit.Router):
 
 
 def test_call_wire_picks_json_for_single_model() -> None:
-    app = a2kit.AppBuilder("t").add_router(_ScalarRouter()).build()
+    app = a2kit.App("t").add_router(_ScalarRouter())
 
     async def go() -> None:
         async with client(app) as c:

@@ -74,10 +74,10 @@ class TestClient:
     _REMOVED_NAMES: ClassVar[dict[str, str]] = {
         "override": (
             "TestClient.override(T, fake) was removed in v0.40. Test overrides "
-            "are now re-build, not post-seal mutation: provide the fake on the "
-            "AppBuilder (provide is last-write-wins) and build a fresh App — "
-            "`app = a2kit.AppBuilder(name).provide(T, fake).build()`. "
-            "See ADR 0016 / CHANGELOG: split-app-builder-runtime."
+            "are re-build, not post-seal mutation: construct a fresh a2kit.App "
+            "and provide the fake last (provide is last-write-wins) — "
+            "`app = a2kit.App(name).provide(T, fake)`. "
+            "See ADR 0017 / CHANGELOG: internalize-app-runtime."
         ),
     }
 
@@ -105,6 +105,9 @@ class TestClient:
     async def __aenter__(self) -> TestClient:
         from fastmcp import Client  # noqa: A2K-IMPORT-DISCIPLINE
 
+        # Finisher seal: the test client validates + locks the App before
+        # serving it, exactly as `run` / `build_mcp_server` do. Idempotent.
+        self.app._seal()  # noqa: SLF001 -- finisher-internal seal, see ADR 0017
         # `code_mode=False`: the in-process test client drives tools
         # directly; the code-execution transform would collapse the tool
         # catalog it inspects. Tests of code mode use `fastmcp.Client`.

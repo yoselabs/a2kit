@@ -17,14 +17,14 @@ from a2kit.packages.dispatch import (
 
 
 def test_tool_build_spec_is_a_frozen_dataclass() -> None:
-    spec = ToolBuildSpec(app=a2kit.AppBuilder("spec-test").build(), router=None, meta=None)
+    spec = ToolBuildSpec(app=a2kit.App("spec-test"), router=None, meta=None)
     assert dataclasses.is_dataclass(spec)
     with pytest.raises(dataclasses.FrozenInstanceError):
         spec.router = None  # type: ignore[misc]  # ty: ignore[invalid-assignment]
 
 
 def test_tool_build_spec_ldd_fields_default_on() -> None:
-    spec = ToolBuildSpec(app=a2kit.AppBuilder("spec-test").build(), router=None, meta=None)
+    spec = ToolBuildSpec(app=a2kit.App("spec-test"), router=None, meta=None)
     assert spec.reports_enabled is True
     assert spec.events_enabled is True
     assert spec.sinks == ()

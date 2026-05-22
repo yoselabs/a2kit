@@ -39,9 +39,8 @@ class UsersRouter(a2kit.Router):
     tools = (greet,)
 
 
-builder = a2kit.AppBuilder("elicitation-demo")
-builder.add_router(UsersRouter())
-app = builder.build()
+app = a2kit.App("elicitation-demo")
+app.add_router(UsersRouter())
 
 
 def main() -> None:

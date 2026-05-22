@@ -189,6 +189,10 @@ def build_mcp_server(
     (even when neither side contributes) so the back-reference is
     available unconditionally.
     """
+    # Finisher seal: validate the DI provider graph and lock the container
+    # before any server bytes are built. Idempotent — safe when the App was
+    # already handed to another finisher. See ADR 0017.
+    app._seal()
     user_lifespan = fastmcp_kwargs.get("lifespan")
     fastmcp_kwargs["lifespan"] = _build_fastmcp_lifespan(app, user_lifespan)
     # `App(debug=True)` adds a `traceback` field to the wire-error envelope's

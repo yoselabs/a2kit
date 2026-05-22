@@ -27,11 +27,9 @@ def _default_dispatch_hook(
 ) -> Any:
     """Default dispatch hook — identity over ``wire_kwargs``.
 
-    Module-level (not a bound method) so its object identity is stable
-    across the :class:`AppBuilder` / :class:`App` split:
+    Module-level (not a bound method) so its object identity is stable:
     :meth:`App.has_default_dispatch_hook` is an ``is`` check against this
-    single object. A bound method would compare unequal once copied from
-    builder to App.
+    single object. A bound method would not compare equal across copies.
 
     v0.36+ contract: hooks are wire-side resolution only. The default
     hook does nothing — wire kwargs pass through unchanged. DI resolution
@@ -41,26 +39,41 @@ def _default_dispatch_hook(
     return wire_kwargs
 
 
-class AppBuilder:
-    """Mutable composition root. Terminal method: :meth:`build`.
+class App:
+    """The a2kit application — composition object and runtime in one.
 
-    ``AppBuilder`` is the *write* phase of an a2kit application. It
-    carries the composition verbs — :meth:`add_router`, :meth:`add_cli`,
+    ``App`` is constructed directly (``a2kit.App("svc")``), wired with the
+    composition verbs — :meth:`add_router`, :meth:`add_cli`,
     :meth:`add_mcp_middleware`, :meth:`provide`, :meth:`health_check` —
-    and nothing else. Each verb returns the builder for chaining.
+    and handed to a *finisher*: :func:`a2kit.run`,
+    :func:`a2kit.packages.mcp.build_mcp_server`, or
+    :func:`a2kit.testing.client`. Each composition verb returns the App
+    for chaining.
 
-    :meth:`build` is the seal point: it constructs the sealed
-    :class:`App`, validates the DI provider graph, and locks the builder.
-    A builder produces exactly one ``App``; call it again and it raises.
+    The finisher seals the App internally — it validates the DI provider
+    graph and locks the container — before running, serving, or testing.
+    Consumer code never calls a seal step. Sealing is idempotent, so one
+    App may be handed to more than one finisher.
 
-    The builder / runtime split makes the two-phase lifecycle a fact in
-    the type system — the sealed ``App`` has no ``provide`` to call after
-    entry, so "is this still mutable?" is answered by the type, not by a
-    runtime raise. See ADR 0016.
+    A composition verb called after a finisher has sealed the App raises
+    ``TypeError``: composition is the write phase, and it is over once a
+    finisher has read the App.
 
-    Construction is pure: ``AppBuilder(...)`` plus ``add_router`` /
-    ``provide`` calls trigger no async work — useful for unit tests that
-    introspect wiring without entering the App.
+    The sealed-runtime mechanism (the ``_sealed`` flag, the seal point,
+    the validation) is a framework implementation detail, deliberately
+    outside the consumer contract. See ADR 0017 (supersedes ADR 0016).
+
+    Construction is pure: ``App(...)`` plus ``add_router`` / ``provide``
+    calls trigger no async work — useful for unit tests that introspect
+    wiring without entering the App.
+
+    Lifecycle:
+
+    ``App`` is its own async context manager. ``async with app:`` seals
+    and validates the container, then enters lazily: app-scope resources
+    enter on first ``Container.get(T)`` (first dispatch that needs them);
+    routers carrying ``__aenter__`` enter on first dispatch of any of
+    their tools and unwind on App exit in LIFO order.
     """
 
     def __init__(
@@ -79,16 +92,15 @@ class AppBuilder:
         self._cli_extras: list[click.Command] = []
         self._mcp_middlewares: list[Any] = []
         # Eager container init — sync, ~80 LOC, always available. Mutable
-        # until ``build()`` seals it.
+        # until a finisher seals it.
         self._container: Container = Container()
         # Default dispatch hook is identity over wire kwargs. Consumer
-        # packages (e.g. connections) install a hook on the builder that
-        # performs wire-side conversion only; DI runs after the hook
-        # inside ``Container.dispatch`` on the hook's output.
+        # packages (e.g. connections) install a hook that performs
+        # wire-side conversion only; DI runs after the hook inside
+        # ``Container.dispatch`` on the hook's output.
         self._dispatch_hook: Callable[..., Any] = _default_dispatch_hook
         # LDD kill-switch — env A2KIT_LDD=off disables both channels at
-        # startup; the built App's ``set_ldd(...)`` and CLI flags override
-        # per-invocation.
+        # startup; ``set_ldd(...)`` and CLI flags override per-invocation.
         import os
 
         env_off = os.environ.get("A2KIT_LDD", "").lower() == "off"
@@ -104,8 +116,14 @@ class AppBuilder:
         from a2kit.packages.health import HealthRegistry
 
         self._health: HealthRegistry = HealthRegistry(enabled=False)
-        # Flipped by ``build()``. A spent builder rejects further verbs.
-        self._built: bool = False
+        # Flipped by the first finisher via ``_seal()``. A sealed App
+        # rejects further composition verbs.
+        self._sealed: bool = False
+        # Routers that successfully entered via ``__aenter__`` during this
+        # App's lifecycle. LIFO unwound on App ``__aexit__``.
+        self._entered_routers: dict[str, Router] = {}
+        # Per-router asyncio.Lock for first-touch coalescing.
+        self._router_locks: dict[str, Any] = {}
 
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
@@ -116,37 +134,39 @@ class AppBuilder:
         """
         if "lifespan" in kw:
             msg = (
-                f"AppBuilder({name!r}, lifespan=...) was removed in v0.35. "
+                f"App({name!r}, lifespan=...) was removed in v0.35. "
                 "Express imperative bookends as a marker singleton "
                 "(``class _Warmup: __aenter__/__aexit__``; "
-                "``builder.provide(_Warmup)``) or move the work into "
+                "``app.provide(_Warmup)``) or move the work into "
                 "``main()`` before ``async with app:``. See CHANGELOG."
             )
             raise TypeError(msg)
         if "health_tool" in kw:
             msg = (
-                f"AppBuilder({name!r}, health_tool=...) was removed in v0.35. "
-                "Register a probe with builder.health_check to "
+                f"App({name!r}, health_tool=...) was removed in v0.35. "
+                "Register a probe with app.health_check to "
                 "auto-install the _meta.health tool, or omit the flag "
                 "entirely if you don't need health checks."
             )
             raise TypeError(msg)
-        msg = f"AppBuilder({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for v0.35 removals."
+        msg = f"App({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for v0.35 removals."
         raise TypeError(msg)
 
-    def _ensure_unbuilt(self) -> None:
-        """Reject composition verbs after :meth:`build` has been called.
+    def _ensure_not_sealed(self) -> None:
+        """Reject composition verbs after a finisher has sealed the App.
 
-        A builder produces one App. After ``build()`` the underlying
-        container is sealed and the routers/descriptors are owned by the
-        runtime ``App`` — further mutation would silently change a
-        already-built App. Construct a fresh ``AppBuilder`` instead.
+        A finisher (``a2kit.run``, ``build_mcp_server``,
+        ``a2kit.testing.client``) seals the App before it runs — it
+        validates the provider graph and locks the container. Composition
+        after that point would silently change an App that is already
+        serving. Construct a fresh ``a2kit.App`` instead.
         """
-        if self._built:
+        if self._sealed:
             msg = (
-                "AppBuilder is spent — build() was already called. A builder "
-                "produces exactly one App. Construct a new a2kit.AppBuilder "
-                "to compose another."
+                "App is sealed — a finisher (run / build_mcp_server / "
+                "testing.client) already validated and locked it. Compose "
+                "the App fully before handing it to a finisher; construct "
+                "a fresh a2kit.App to compose another."
             )
             raise TypeError(msg)
 
@@ -154,10 +174,9 @@ class AppBuilder:
         """Synthesize a built-in router carrying ``_meta.health``.
 
         Idempotent — if the ``_meta`` router is already installed, this is
-        a no-op. The synthetic router's tool body closes over this
-        builder; the builder's ``_health`` registry and ``_container``
-        are handed by reference to the built :class:`App`, so the closure
-        reads live runtime state after ``build()``.
+        a no-op. The synthetic router's tool body closes over this App;
+        the App's ``_health`` registry and ``_container`` are read live,
+        so the closure observes runtime state after a finisher seals.
         """
         if any(r.slug == "_meta" for r in self._routers.all()):
             return
@@ -165,7 +184,7 @@ class AppBuilder:
         from a2kit.packages.health import HEALTH_TOOL_NAME, app_version, run_checks
         from a2kit.routers import Router as _Router
 
-        builder_ref = self
+        app_ref = self
 
         class _MetaRouter(_Router):
             slug = "_meta"
@@ -173,9 +192,9 @@ class AppBuilder:
             @_read_internal(HEALTH_TOOL_NAME, title="Health probe")
             async def aggregated_health(self) -> dict[str, Any]:
                 """Aggregated health status. Hidden from agent-facing list_tools."""
-                registry = builder_ref._health
-                resolver = builder_ref._container
-                return await run_checks(registry, resolver, version=app_version(builder_ref))
+                registry = app_ref._health
+                resolver = app_ref._container
+                return await run_checks(registry, resolver, version=app_version(app_ref))
 
             tools = (aggregated_health,)
 
@@ -186,12 +205,12 @@ class AppBuilder:
 
         ``fn`` may be sync or async, take any DI-resolvable kwargs (e.g.
         ``state: AppState``), and SHOULD return a :class:`HealthResult`.
-        Returns the function unchanged for ``@builder.health_check`` use.
+        Returns the function unchanged for ``@app.health_check`` use.
 
         The first ``health_check`` call auto-installs the ``_meta.health``
-        synthetic router; ``build()`` carries it into the runtime App.
+        synthetic router.
         """
-        self._ensure_unbuilt()
+        self._ensure_not_sealed()
         if not self._health.enabled:
             self._health.enabled = True
         self._install_health_tool()
@@ -199,8 +218,8 @@ class AppBuilder:
 
     # --- Composition verbs ---------------------------------------------- #
 
-    def add_router(self, router: Router) -> AppBuilder:
-        self._ensure_unbuilt()
+    def add_router(self, router: Router) -> App:
+        self._ensure_not_sealed()
         slug = router.slug
         existing = next((r for r in self._routers.all() if r.slug == slug), None)
         if existing is not None and existing is not router:
@@ -236,13 +255,13 @@ class AppBuilder:
                 self.provide(entry)
         return self
 
-    def add_cli(self, command: click.Command) -> AppBuilder:
-        self._ensure_unbuilt()
+    def add_cli(self, command: click.Command) -> App:
+        self._ensure_not_sealed()
         self._cli_extras.append(command)
         return self
 
-    def add_mcp_middleware(self, middleware: Any) -> AppBuilder:
-        self._ensure_unbuilt()
+    def add_mcp_middleware(self, middleware: Any) -> App:
+        self._ensure_not_sealed()
         self._mcp_middlewares.append(middleware)
         return self
 
@@ -255,17 +274,17 @@ class AppBuilder:
         *,
         per_call: bool = False,
         **_kw: Any,
-    ) -> AppBuilder:
+    ) -> App:
         """Register a typed provider — the unified DI registration API.
 
         Three call shapes:
 
-        - ``builder.provide(SomeClass)`` — the class itself is the
-          factory; registered under the class.
-        - ``builder.provide(factory)`` — type inferred from the factory's
+        - ``app.provide(SomeClass)`` — the class itself is the factory;
+          registered under the class.
+        - ``app.provide(factory)`` — type inferred from the factory's
           return-type annotation. Sync ``def``, ``async def``, and
           annotated lambdas accepted.
-        - ``builder.provide(BaseClass, factory)`` — explicit base-type
+        - ``app.provide(BaseClass, factory)`` — explicit base-type
           override when the factory returns a subtype.
 
         ``per_call=True`` opts a registration into the per-call scope:
@@ -276,24 +295,25 @@ class AppBuilder:
 
         Last-write-wins: a second ``provide`` for the same type silently
         replaces the prior factory. This is the test-override mechanism —
-        provide the fake last, then ``build()`` (see ADR 0006, ADR 0016).
+        construct a fresh ``App``, provide the fake last (see ADR 0006,
+        ADR 0017).
 
         Cleanup auto-detection: only ``__aenter__``/``__aexit__`` is
         honored. ``aclose`` / ``close`` are NOT auto-detected — wrap them
         in a class with ``__aenter__``/``__aexit__`` or use
         ``@asynccontextmanager``.
         """
-        self._ensure_unbuilt()
+        self._ensure_not_sealed()
         if "teardown" in _kw:
             msg = (
-                "builder.provide(..., teardown=...) was removed in v0.36. Move "
+                "app.provide(..., teardown=...) was removed in v0.36. Move "
                 "cleanup onto the resource itself via __aexit__ — the framework "
                 "auto-detects __aenter__/__aexit__ and unwinds via the per-scope "
                 "cleanup stack."
             )
             raise TypeError(msg)
         if _kw:
-            msg = f"AppBuilder.provide() received unexpected keyword arguments: {sorted(_kw)}. Supported kwargs are `per_call`."
+            msg = f"App.provide() received unexpected keyword arguments: {sorted(_kw)}. Supported kwargs are `per_call`."
             raise TypeError(msg)
         type_, factory = resolve_singleton_args(arg1, arg2)
         scope = Scope.SCOPED if per_call else Scope.SINGLETON
@@ -307,133 +327,27 @@ class AppBuilder:
         """Snapshot of registered providers (parent-chain-aware)."""
         return self._container.providers_view()
 
-    # --- terminal: seal into a runtime App ------------------------------ #
+    # --- internal: seal point (finisher-only) --------------------------- #
 
-    def build(self) -> App:
-        """Seal the composition and return the runtime :class:`App`.
+    def _seal(self) -> None:
+        """Validate the provider graph and lock the App — finisher-only.
 
-        Constructs the immutable ``App`` over this builder's state,
-        validates the DI provider graph (rejecting app-scope factories
-        that depend on per-call types), and seals the container against
-        further ``provide()``. The builder is spent afterwards.
+        Called by every finisher (:func:`a2kit.run`,
+        :func:`build_mcp_server`, :func:`a2kit.testing.client`) before it
+        runs / serves / tests. Validates the DI provider graph (rejecting
+        app-scope factories that depend on per-call types) and seals the
+        container against further ``provide``.
 
-        The ``_meta.health`` router, if any ``health_check`` was
-        registered, was already installed on the first registration and
-        is carried into the App by this call.
+        Idempotent — a second call is a no-op, so one App may be passed
+        to more than one finisher. Not part of the consumer contract;
+        consumer code never calls it.
         """
-        self._ensure_unbuilt()
-        app = App._build_from(self)
-        # Validate the provider graph and lock the container. After this
-        # the builder cannot mutate the App it produced.
+        if self._sealed:
+            return
         self._container.seal()
-        self._built = True
-        return app
-
-
-class App:
-    """Sealed runtime — the mutation-free product of :meth:`AppBuilder.build`.
-
-    ``App`` is the *run* phase of an a2kit application. It exposes only
-    the runtime surface: :meth:`tools`, :meth:`routers`,
-    :meth:`container`, the async-context-manager lifecycle, and the LDD
-    kill-switch. It carries no composition verb — composition happened on
-    the :class:`AppBuilder` before ``build()``.
-
-    Construction is private. ``a2kit.App(...)`` raises ``TypeError``;
-    compose with ``a2kit.AppBuilder(name)...build()`` instead. Calling a
-    composition verb (``add_router``, ``provide``, ...) on a built App
-    raises with the same migration hint. See ADR 0016.
-
-    Lifecycle:
-
-    ``App`` is its own async context manager. ``async with app:`` seals
-    and validates the container, then enters lazily: app-scope resources
-    enter on first ``Container.get(T)`` (first dispatch that needs them);
-    routers carrying ``__aenter__`` enter on first dispatch of any of
-    their tools and unwind on App exit in LIFO order.
-    """
-
-    #: Verbs that moved off the runtime App onto :class:`AppBuilder`.
-    #: :meth:`__getattr__` intercepts these to raise a migration hint
-    #: rather than a bare ``AttributeError``.
-    _COMPOSITION_VERBS: frozenset[str] = frozenset(
-        {
-            "add_router",
-            "add_cli",
-            "add_mcp_middleware",
-            "provide",
-            "health_check",
-            "singleton",
-            "has_singleton",
-        }
-    )
-
-    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-        msg = (
-            "a2kit.App(...) cannot be constructed directly since v0.40. "
-            "Compose with a2kit.AppBuilder(name), call the composition verbs "
-            "(add_router / provide / ...), then `app = builder.build()`. "
-            "See CHANGELOG: split-app-builder-runtime."
-        )
-        raise TypeError(msg)
-
-    @classmethod
-    def _build_from(cls, builder: AppBuilder) -> App:
-        """Construct the sealed App over ``builder``'s state.
-
-        The only real constructor — bypasses ``__init__`` (which always
-        raises) via ``object.__new__``. Routers, descriptors, container,
-        and the LDD registry are taken by reference: the builder and the
-        App share them, which is how the ``_meta.health`` closure (bound
-        to the builder) reads live runtime state.
-        """
-        self = object.__new__(cls)
-        self.name = builder.name
-        self.debug = builder.debug
-        self._routers = builder._routers
-        self._descriptors = builder._descriptors
-        self._cli_extras = builder._cli_extras
-        self._mcp_middlewares = builder._mcp_middlewares
-        self._container = builder._container
-        self._dispatch_hook = builder._dispatch_hook
-        self._health = builder._health
-        self.ldd = builder.ldd
-        self._ldd_reports = builder._ldd_reports
-        self._ldd_events = builder._ldd_events
-        # Routers that successfully entered via ``__aenter__`` during this
-        # App's lifecycle. LIFO unwound on App ``__aexit__``.
-        self._entered_routers: dict[str, Router] = {}
-        # Per-router asyncio.Lock for first-touch coalescing.
-        self._router_locks: dict[str, Any] = {}
-        return self
-
-    def __getattr__(self, name: str) -> Any:
-        """Intercept composition verbs with a migration hint.
-
-        ``__getattr__`` fires only on a failed normal lookup, so a real
-        runtime method never reaches here. A composition verb is not
-        defined on ``App`` at all — accessing one lands here and raises
-        a pointed ``TypeError``; anything else raises ``AttributeError``
-        so ``getattr(app, x, default)`` and ``hasattr`` behave normally.
-        """
-        if name in App._COMPOSITION_VERBS:
-            msg = (
-                f"App.{name}(...) is a composition verb — it moved off the "
-                f"sealed runtime App onto a2kit.AppBuilder in v0.40. Compose "
-                f"before sealing: `builder = a2kit.AppBuilder(name); "
-                f"builder.{name}(...); app = builder.build()`."
-            )
-            raise TypeError(msg)
-        raise AttributeError(f"'App' object has no attribute {name!r}")
+        self._sealed = True
 
     # --- DI: read-only queries ------------------------------------------ #
-
-    def has_provider(self, type_: type) -> bool:
-        return self._container.has_provider(type_)
-
-    def providers(self) -> dict[type, Any]:
-        """Snapshot of registered providers (parent-chain-aware)."""
-        return self._container.providers_view()
 
     def container(self) -> Container:
         """Return the App's container. Never None (eager-init)."""
@@ -514,7 +428,7 @@ class App:
         for slug in reversed(list(self._entered_routers)):
             router = self._entered_routers[slug]
             try:
-                await router.__aexit__(exc_type, exc, tb)  # type: ignore[attr-defined]
+                await router.__aexit__(exc_type, exc, tb)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
             except Exception as inner:  # noqa: BLE001 -- error-isolation per spec
                 _LIFECYCLE_LOG.error(
                     "router teardown failed: slug=%s class=%s message=%s",
@@ -533,7 +447,7 @@ class App:
 
         Lazy first-use (v0.36 di-scoped-lifecycle):
 
-        - The container is sealed (idempotent — ``build()`` already
+        - The App is sealed (idempotent — a finisher's ``_seal()`` already
           sealed it) and the provider graph is validated.
         - NO eager resource entry. App-scope resources enter on first
           ``Container.get(T)``, which means first dispatch that needs them.
@@ -543,6 +457,7 @@ class App:
         Exit order: routers unwind first (LIFO of enter order), then
         the container's cleanup stack unwinds (LIFO of resolution order).
         """
+        self._seal()
         await self._container.__aenter__()
         return self
 
@@ -588,7 +503,7 @@ def _validate_router_tools(router: Router) -> None:
     """Verify every ``@a2kit.*``-decorated method on the Router class
     is listed in its ``tools`` tuple.
 
-    Fires at ``AppBuilder.add_router`` time per ``app-time-tools-tuple-validation``.
+    Fires at ``App.add_router`` time per ``app-time-tools-tuple-validation``.
     Only inspects the Router class's own attributes (``cls.__dict__``) so
     inherited decorated methods from a base class are not surfaced as
     drift unless the subclass intends them to be registered.

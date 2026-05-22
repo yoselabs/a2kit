@@ -3,88 +3,20 @@
 ## Purpose
 TBD - created by archiving change split-app-builder-runtime. Update Purpose after archive.
 ## Requirements
-### Requirement: Composition happens on a mutable AppBuilder
-
-`a2kit.AppBuilder` MUST be the mutable composition surface. It exposes
-`add_router`, `add_cli`, `add_mcp_middleware`, `provide`, and
-`health_check`. Each composition verb returns the `AppBuilder` for
-chaining.
-
-#### Scenario: builder verbs chain
-
-- **WHEN** user calls
-  `AppBuilder("svc").add_router(r).provide(Store)`
-- **THEN** each call returns the same `AppBuilder` instance
-
-#### Scenario: build yields a sealed App
-
-- **WHEN** user calls `AppBuilder("svc").build()`
-- **THEN** the result is an `a2kit.App` instance
-
-### Requirement: The built App is a mutation-free runtime
-
-`a2kit.App` MUST expose only the runtime surface — `tools()`,
-`routers()`, `container()`, the async-context-manager protocol, and the
-LDD kill-switch. It MUST NOT expose any composition verb
-(`add_router`, `add_cli`, `add_mcp_middleware`, `provide`,
-`health_check`).
-
-#### Scenario: App has no composition verb
-
-- **WHEN** code calls `app.add_router(r)` on a built `App`
-- **THEN** it raises `TypeError` with a migration hint naming
-  `AppBuilder`
-
-#### Scenario: App is still an async context manager
-
-- **WHEN** a built `App` is used as `async with app:`
-- **THEN** it enters and exits its lifecycle as before the split
-
-### Requirement: build() is the seal point
-
-`AppBuilder.build()` MUST construct the DI container, validate the
-provider graph, auto-install the `_meta.health` router when health
-checks were registered, and return the sealed `App`. After `build()`,
-the `AppBuilder` MUST NOT be usable to mutate the produced `App`.
-
-#### Scenario: provider graph validated at build
-
-- **WHEN** `build()` runs on a builder whose app-scope factory depends
-  on a per-call type
-- **THEN** `build()` raises, reporting the offending provider edge
-
-#### Scenario: health router installed at build
-
-- **WHEN** a builder has at least one `health_check` registered and
-  `build()` is called
-- **THEN** the resulting `App.routers()` includes the `_meta` router
-
-### Requirement: Direct App construction is rejected with a migration hint
-
-Constructing `a2kit.App` directly MUST raise `TypeError` naming
-`AppBuilder` and the `AppBuilder(...).build()` call shape. No alias and
-no deprecation window are provided.
-
-#### Scenario: direct App construction raises
-
-- **WHEN** code runs `a2kit.App("svc")`
-- **THEN** it raises `TypeError` whose message names
-  `AppBuilder("svc").build()`
-
 ### Requirement: Test overrides happen by re-build, not post-seal mutation
 
-Swapping a service for a fake in tests MUST be done by re-registering
-it on an `AppBuilder` (`provide`, last-write-wins) and calling
-`build()`. The framework MUST NOT provide a mechanism to override a
-sealed container after `build()` — `Container._override` / `_snapshot`
-/ `_restore`, `App._test_override_owner`, and `TestClient.override()`
-MUST NOT exist.
+Swapping a service for a fake in tests MUST be done by constructing a
+fresh `a2kit.App`, registering the fake with `provide` (last-write-wins),
+and handing that `App` to a finisher. The framework MUST NOT provide a
+mechanism to override a sealed container — `Container._override` /
+`_snapshot` / `_restore`, an `App` test-override-owner flag, and
+`TestClient.override()` MUST NOT exist.
 
 #### Scenario: re-registered fake wins
 
-- **WHEN** a test calls `builder.provide(LLM, RealLLM)` then
-  `builder.provide(LLM, StubLLM)` and `build()`s
-- **THEN** the resulting `App` resolves `LLM` to `StubLLM`
+- **WHEN** a test calls `app.provide(LLM, RealLLM)` then
+  `app.provide(LLM, StubLLM)` on a fresh `App`
+- **THEN** the sealed `App` resolves `LLM` to `StubLLM`
 
 #### Scenario: no post-seal override surface remains
 
@@ -96,6 +28,65 @@ MUST NOT exist.
 #### Scenario: old TestClient.override raises a migration hint
 
 - **WHEN** test code calls `TestClient.override(...)`
-- **THEN** it raises with a hint to build a fresh `App` from an
-  `AppBuilder` with the fake `provide`d
+- **THEN** it raises with a hint to construct a fresh `App` with the
+  fake `provide`d
+
+### Requirement: Composition happens on a mutable App
+
+`a2kit.App` MUST be the single public composition type. It is
+constructed directly (`a2kit.App("svc")`) and exposes the composition
+verbs `add_router`, `add_cli`, `add_mcp_middleware`, `provide`, and
+`health_check`. Each composition verb returns the `App` for chaining.
+
+#### Scenario: App is constructed directly
+
+- **WHEN** user calls `a2kit.App("svc")`
+- **THEN** an `a2kit.App` instance is returned with no error
+
+#### Scenario: composition verbs chain
+
+- **WHEN** user calls `a2kit.App("svc").add_router(r).provide(Store)`
+- **THEN** each call returns the same `App` instance
+
+### Requirement: The sealed runtime is internal
+
+Sealing MUST NOT produce a consumer-visible type. `a2kit` MUST NOT
+export an `AppBuilder` symbol, and `a2kit.App` MUST NOT expose a public
+`build()` method. The sealed-runtime representation is a framework
+implementation detail.
+
+#### Scenario: AppBuilder is not a public symbol
+
+- **WHEN** user writes `from a2kit import AppBuilder`
+- **THEN** the import raises `ImportError`
+
+#### Scenario: App has no public build()
+
+- **WHEN** user inspects `a2kit.App`
+- **THEN** there is no public `build` method on the surface
+
+### Requirement: Finishers seal the App
+
+The finishers MUST accept an `a2kit.App` and seal it internally before running, serving, or testing. The finishers are `a2kit.run`, `a2kit.packages.mcp.build_mcp_server`, and `a2kit.testing.client`. Sealing validates the provider graph and locks the DI container. Consumer code MUST NOT be required to call any seal step. Sealing MUST be idempotent, so one `App` may be passed to more than one finisher.
+
+#### Scenario: finisher seals before running
+
+- **WHEN** an `App` whose app-scope factory depends on a per-call type
+  is passed to a finisher
+- **THEN** the finisher raises, reporting the offending provider edge
+
+#### Scenario: App is reusable across finishers
+
+- **WHEN** the same `App` is passed to two finishers in turn
+- **THEN** neither call raises a "spent" or "already sealed" error
+
+### Requirement: Composition after sealing is rejected
+
+A composition verb called on a sealed `App` MUST raise `TypeError` with an action-oriented message. This applies to `add_router`, `add_cli`, `add_mcp_middleware`, `provide`, and `health_check` once a finisher has sealed the `App`.
+
+#### Scenario: provide after a finisher sealed the App
+
+- **WHEN** an `App` has been sealed by a finisher and code then calls
+  `app.provide(T, factory)`
+- **THEN** it raises `TypeError` explaining the App is sealed
 

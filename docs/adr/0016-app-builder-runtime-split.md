@@ -1,10 +1,10 @@
 ---
 id: "0016"
-status: accepted
+status: superseded
 date: 2026-05-22
 last_reviewed: 2026-05-22
 supersedes: []
-superseded_by: null
+superseded_by: "0017"
 tags: [architecture, di, testing, surface]
 deciders: [Denis Tomilin]
 ---
@@ -13,7 +13,14 @@ deciders: [Denis Tomilin]
 
 ## Status
 
-Accepted, 2026-05-22.
+Superseded by ADR 0017, 2026-05-22 — the same day this was accepted.
+ADR 0017 keeps every behavioural win recorded here (the container seal,
+the provider-graph validation, the deleted test-override seam) but undoes
+the public *structure*: the two-class split is collapsed back to one
+public `a2kit.App`, the sealed runtime becomes internal, and `build()`
+leaves the public surface. The split was found to protect a
+consumer-boundary crossing that a2kit's finisher entry points already
+close — see ADR 0017 for the full reasoning.
 
 ## Summary
 

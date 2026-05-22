@@ -29,7 +29,7 @@ class TestDescriptorBasics:
 
             tools = (list_tasks,)
 
-        app = a2kit.AppBuilder("t").add_router(TasksRouter()).build()
+        app = a2kit.App("t").add_router(TasksRouter())
         descriptors = app.tools()
         assert len(descriptors) == 1
         d = descriptors[0]
@@ -50,7 +50,7 @@ class TestDescriptorBasics:
 
             tools = (list_x,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         d = app.tools()[0]
         assert d.format_hint == "json"
 
@@ -65,7 +65,7 @@ class TestDescriptorBasics:
 
             tools = (page_x,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         d = app.tools()[0]
         assert d.format_hint == "page-tsv"
 
@@ -80,7 +80,7 @@ class TestDescriptorBasics:
 
             tools = (get,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         d = app.tools()[0]
         assert d.format_hint == "json"
 
@@ -97,7 +97,7 @@ class TestDescriptorAccessors:
 
             tools = (get,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         tools = app.tools()
         assert len(tools) == 1
         # v0.33: app.tools() returns ToolDescriptor; callable lives on .fn
@@ -121,7 +121,7 @@ class TestDescriptorAccessors:
                 b,
             )
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         assert len(app.tools()) == len(app.tools()) == 2
 
     def test_descriptors_returned_as_copy(self):
@@ -136,7 +136,7 @@ class TestDescriptorAccessors:
 
             tools = (a,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         first = app.tools()
         first.clear()
         assert len(app.tools()) == 1

@@ -41,7 +41,7 @@ def test_cancellation_propagates_to_tool_body() -> None:
 
         tools = (slow,)
 
-    app = a2kit.AppBuilder("cancel").add_router(_R()).build()
+    app = a2kit.App("cancel").add_router(_R())
 
     async def go() -> None:
         async with client(app) as c:
@@ -65,8 +65,8 @@ class _AppState:
 
 def test_two_apps_have_isolated_singletons() -> None:
     """Each App keeps its own singleton cache; resolving the same type yields different instances."""
-    app_a = a2kit.AppBuilder("a").provide(_AppState, lambda: _AppState("from-a")).build()
-    app_b = a2kit.AppBuilder("b").provide(_AppState, lambda: _AppState("from-b")).build()
+    app_a = a2kit.App("a").provide(_AppState, lambda: _AppState("from-a"))
+    app_b = a2kit.App("b").provide(_AppState, lambda: _AppState("from-b"))
 
     state_a = peek(app_a, _AppState)
     state_b = peek(app_b, _AppState)
@@ -100,7 +100,7 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
 
         tools = (boom,)
 
-    app = a2kit.AppBuilder("err").add_router(_R()).build()
+    app = a2kit.App("err").add_router(_R())
 
     async def go() -> Any:
         async with client(app) as c:
@@ -115,9 +115,9 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
 
 def test_app_debug_flag_defaults_false() -> None:
     """`App.debug` defaults False; explicit `debug=True` flips."""
-    plain = a2kit.AppBuilder("plain").build()
+    plain = a2kit.App("plain")
     assert plain.debug is False
-    chatty = a2kit.AppBuilder("chatty", debug=True).build()
+    chatty = a2kit.App("chatty", debug=True)
     assert chatty.debug is True
 
 
@@ -136,7 +136,7 @@ def test_cli_error_no_traceback_when_debug_false() -> None:
 
         tools = (boom,)
 
-    app = a2kit.AppBuilder("cli-err").add_router(_R()).build()
+    app = a2kit.App("cli-err").add_router(_R())
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["_r", "boom"])
     assert result.exit_code != 0
@@ -159,7 +159,7 @@ def test_cli_error_includes_traceback_when_debug_true() -> None:
 
         tools = (boom,)
 
-    app = a2kit.AppBuilder("cli-err-dbg", debug=True).add_router(_R()).build()
+    app = a2kit.App("cli-err-dbg", debug=True).add_router(_R())
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["_r", "boom"])
     assert result.exit_code != 0
@@ -189,7 +189,7 @@ def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
     async def boom() -> None:
         raise ValueError("base msg")
 
-    spec = ToolBuildSpec(app=a2kit.AppBuilder("oc-err", debug=True).build(), router=None, meta=None)
+    spec = ToolBuildSpec(app=a2kit.App("oc-err", debug=True), router=None, meta=None)
     wrapped = ErrorCaptureStage().wrap(boom, spec)
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
@@ -213,7 +213,7 @@ def test_mcp_error_envelope_passes_cancelled_unchanged() -> None:
     async def stuck() -> None:
         await asyncio.sleep(60)
 
-    spec = ToolBuildSpec(app=a2kit.AppBuilder("oc-cancel").build(), router=None, meta=None)
+    spec = ToolBuildSpec(app=a2kit.App("oc-cancel"), router=None, meta=None)
     wrapped = ErrorCaptureStage().wrap(stuck, spec)
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
@@ -231,10 +231,10 @@ def test_mcp_server_passes_mask_error_details_from_app_debug() -> None:
     """`App(debug=True)` flips fastmcp's mask_error_details to False."""
     from a2kit.packages.mcp.server import build_mcp_server
 
-    plain = a2kit.AppBuilder("plain").build()
+    plain = a2kit.App("plain")
     server_plain = build_mcp_server(plain)
     assert server_plain._mask_error_details is True
 
-    chatty = a2kit.AppBuilder("chatty", debug=True).build()
+    chatty = a2kit.App("chatty", debug=True)
     server_chatty = build_mcp_server(chatty)
     assert server_chatty._mask_error_details is False

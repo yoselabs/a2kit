@@ -38,7 +38,7 @@ class TestAutoRouting:
 
             tools = (list_x,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x"])
         assert result.exit_code == 0, result.output
         # TSV header + 2 rows
@@ -58,7 +58,7 @@ class TestAutoRouting:
 
             tools = (list_x,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())
@@ -75,7 +75,7 @@ class TestAutoRouting:
 
             tools = (page_x,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "page_x"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())
@@ -93,7 +93,7 @@ class TestAutoRouting:
 
             tools = (get,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "get"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())
@@ -112,7 +112,7 @@ class TestExplicitOverride:
 
             tools = (list_x,)
 
-        app = a2kit.AppBuilder("t").add_router(TR()).build()
+        app = a2kit.App("t").add_router(TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x", "--format", "json"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())

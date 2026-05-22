@@ -59,10 +59,9 @@ async def test_app_scope_resource_not_entered_at_aenter() -> None:
     triggers entry. This is the core lazy-first-use contract from
     ``app-lifecycle``.
     """
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_BrowserPool)
-    builder.provide(_SqliteResource)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_BrowserPool)
+    app.provide(_SqliteResource)
 
     async with app:
         # Lifespan body runs without dispatching any tool that needs them.
@@ -82,9 +81,8 @@ async def test_first_dispatch_warms_resource_once() -> None:
     instance. Second resolution returns the cached instance without
     re-entering. App close runs ``__aexit__`` exactly once.
     """
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_BrowserPool)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_BrowserPool)
 
     async with app:
         first = await app._resolver.get(_BrowserPool)
@@ -121,9 +119,8 @@ async def test_concurrent_first_touches_coalesce() -> None:
         async def __aexit__(self, *exc: object) -> None:
             pass
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_SlowResource)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_SlowResource)
 
     async with app:
         # Spawn ten concurrent resolutions.

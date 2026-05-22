@@ -2,7 +2,7 @@
 
 Public API:
   - :func:`cassette` — pytest fixture, vcrpy wrapper.
-  - :func:`builder` — pytest fixture, fresh :class:`a2kit.AppBuilder`.
+  - :func:`app` — pytest fixture, fresh :class:`a2kit.App`.
   - :class:`SchemaSnapshotMismatch` — raised on snapshot drift.
   - :func:`compute_schema` — extract a tool's schema dict.
   - :func:`peek` — synchronous container peek (test-only).
@@ -17,7 +17,7 @@ from a2kit.packages.testing.exceptions import SchemaSnapshotMismatch
 from a2kit.packages.testing.fixtures import (
     ambient_for_tests,
     ambient_for_tests_autouse,
-    builder,
+    app,
     cassette,
 )
 from a2kit.packages.testing.null_context import null_context
@@ -121,7 +121,7 @@ __all__ = [
     "SchemaSnapshotMismatch",
     "ambient_for_tests",
     "ambient_for_tests_autouse",
-    "builder",
+    "app",
     "cassette",
     "compute_schema",
     "lazy",

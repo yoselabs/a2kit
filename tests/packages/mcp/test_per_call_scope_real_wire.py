@@ -65,7 +65,7 @@ def _build_app() -> a2kit.App:
 
         tools = (use_tx, boom_with_tx)
 
-    return a2kit.AppBuilder("per-call-mcp").add_router(R()).provide(_Transaction, per_call=True).build()
+    return a2kit.App("per-call-mcp").add_router(R()).provide(_Transaction, per_call=True)
 
 
 @pytest.mark.asyncio

@@ -40,9 +40,8 @@ def _reset() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_yields_resolved_kwargs() -> None:
     """``dispatch(fn, wire)`` yields merged resolved + wire kwargs."""
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Tx, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Tx, per_call=True)
 
     async def tool(tx: _Tx, name: str) -> str:
         return f"{name}:{type(tx).__name__}"
@@ -58,9 +57,8 @@ async def test_dispatch_yields_resolved_kwargs() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_lazy_param_skips_unused() -> None:
     """Lazy[T] tool params yield a closure; never invoked = T never built."""
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Tx, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Tx, per_call=True)
 
     async def tool(tx: Lazy[_Tx], flag: bool) -> str:
         if flag:
@@ -82,9 +80,8 @@ async def test_dispatch_propagates_tool_exception_and_cleans_up() -> None:
     class _BodyError(RuntimeError):
         pass
 
-    builder = a2kit.AppBuilder("test")
-    builder.provide(_Tx, per_call=True)
-    app = builder.build()
+    app = a2kit.App("test")
+    app.provide(_Tx, per_call=True)
 
     async def tool(tx: _Tx) -> None:
         raise _BodyError("boom")
@@ -129,9 +126,8 @@ async def test_pre_hook_runs_before_di_resolution() -> None:
         call_log.append("tool")
         return conn.host
 
-    builder = a2kit.AppBuilder("hook-order")
-    builder.provide(_Tx, per_call=True)
-    app = builder.build()
+    app = a2kit.App("hook-order")
+    app.provide(_Tx, per_call=True)
 
     async with app, app._resolver.dispatch(tool, {"conn_str": "h1"}, pre_hook=hook) as kw:
         result = await tool(**kw)
@@ -158,11 +154,10 @@ async def test_pre_hook_output_seeds_chain_resolution() -> None:
     async def tool(store: _Store) -> str:
         return store.conn.host
 
-    builder = a2kit.AppBuilder("chain-seed")
+    app = a2kit.App("chain-seed")
     # _Store depends on _ConnCfg (seeded by hook per-call), so it must be
     # per_call too — app-scope would violate the scope contract.
-    builder.provide(_Store, _make_store, per_call=True)
-    app = builder.build()
+    app.provide(_Store, _make_store, per_call=True)
 
     async with app, app._resolver.dispatch(tool, {"conn_str": "h2"}, pre_hook=hook) as kw:
         result = await tool(**kw)

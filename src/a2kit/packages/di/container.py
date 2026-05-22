@@ -209,9 +209,9 @@ class Container:
     def seal(self) -> None:
         """Validate the provider graph and seal against further ``provide``.
 
-        Idempotent. The public seal point is :meth:`AppBuilder.build`,
-        which calls this; the root container's :meth:`__aenter__` also
-        calls it defensively. After ``seal``, :meth:`provide` raises.
+        Idempotent. Finishers reach this via :meth:`App._seal`; the root
+        container's :meth:`__aenter__` also calls it defensively. After
+        ``seal``, :meth:`provide` raises.
 
         Validation rejects app-scope factories that depend on per-call
         types (directly or via ``Lazy[per-call-T]``).
@@ -242,10 +242,11 @@ class Container:
         """
         if self._sealed:
             msg = (
-                f"Container is sealed after AppBuilder.build(); cannot provide({type_!r}). "
-                "Register all providers on the AppBuilder before calling build(). "
-                "To override a provider for a test, re-register it on the builder "
-                "(provide is last-write-wins) before build()."
+                f"Container is sealed; cannot provide({type_!r}). "
+                "Register all providers on the App before handing it to a "
+                "finisher (run / build_mcp_server / testing.client). "
+                "To override a provider for a test, re-register it on a fresh "
+                "a2kit.App (provide is last-write-wins)."
             )
             raise TypeError(msg)
 
@@ -429,7 +430,7 @@ class Container:
         """Enter the container's lifecycle scope.
 
         Root container: seals registration via :meth:`seal` (idempotent —
-        ``AppBuilder.build()`` already sealed it).
+        the finisher's ``App._seal`` already sealed it).
 
         Child container: no-op; child enters its scope on construction.
         """

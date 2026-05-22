@@ -105,7 +105,7 @@ class _SandboxRouter(a2kit.Router):
 
 @pytest.fixture
 def sandbox_app() -> a2kit.App:
-    return a2kit.AppBuilder("sandbox-runtime-test").add_router(_SandboxRouter()).build()
+    return a2kit.App("sandbox-runtime-test").add_router(_SandboxRouter())
 
 
 def _text(result: Any) -> str:

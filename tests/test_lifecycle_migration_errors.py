@@ -20,7 +20,7 @@ def test_app_lifespan_kwarg_raises_with_hint() -> None:
         yield
 
     with pytest.raises(TypeError) as ei:
-        a2kit.AppBuilder("x", lifespan=cm)  # type: ignore[call-arg]
+        a2kit.App("x", lifespan=cm)  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "lifespan=" in msg
     assert "__aenter__" in msg
@@ -30,9 +30,9 @@ def test_singleton_teardown_kwarg_raises_with_hint() -> None:
     class _R:
         def close(self) -> None: ...
 
-    builder = a2kit.AppBuilder("x")
+    app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:
-        builder.provide(_R, teardown=lambda r: r.close())  # type: ignore[call-arg]
+        app.provide(_R, teardown=lambda r: r.close())  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "teardown=" in msg
     assert "__aexit__" in msg
@@ -51,9 +51,9 @@ def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
 
         tools = (x,)
 
-    builder = a2kit.AppBuilder("x")
+    app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:
-        builder.add_router(_R())
+        app.add_router(_R())
     msg = str(ei.value)
     assert "lifespan" in msg
     assert "__aenter__" in msg
@@ -61,7 +61,7 @@ def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
 
 def test_unknown_app_kwarg_raises_standard_message() -> None:
     with pytest.raises(TypeError) as ei:
-        a2kit.AppBuilder("x", totally_unknown=True)  # type: ignore[call-arg]
+        a2kit.App("x", totally_unknown=True)  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "totally_unknown" in msg
 

@@ -32,7 +32,7 @@ async def test_router_does_not_enter_on_app_aenter() -> None:
 
         tools = (fetch,)
 
-    app = a2kit.AppBuilder("x").add_router(_GH()).build()
+    app = a2kit.App("x").add_router(_GH())
     async with app:
         assert entered == []  # router did NOT enter just because app entered
 
@@ -56,7 +56,7 @@ async def test_first_dispatch_enters_router_once() -> None:
 
         tools = (fetch,)
 
-    app = a2kit.AppBuilder("x").add_router(_GH()).build()
+    app = a2kit.App("x").add_router(_GH())
     async with _testing_client(app) as client:
         await client.invoke("gh.fetch")
         assert entered == ["gh"]
@@ -101,7 +101,7 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
 
         tools = (sl_fetch,)
 
-    app = a2kit.AppBuilder("x").add_router(_GH()).add_router(_SL()).build()
+    app = a2kit.App("x").add_router(_GH()).add_router(_SL())
     async with _testing_client(app) as client:
         await client.invoke("gh.gh_fetch")
 
@@ -125,9 +125,9 @@ async def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
 
         tools = (x,)
 
-    builder = a2kit.AppBuilder("x")
+    app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:
-        builder.add_router(_Legacy())
+        app.add_router(_Legacy())
     msg = str(ei.value)
     assert "lifespan" in msg
     assert "__aenter__" in msg

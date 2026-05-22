@@ -48,7 +48,7 @@ async def _use_tx(tx: _Transaction) -> dict:
 
 def test_per_call_resource_cleaned_up_at_cli_call_exit() -> None:
     """One CLI tool invocation enters Transaction once, exits once on clean return."""
-    app = a2kit.AppBuilder("per-call-cli").provide(_Transaction, per_call=True).build()
+    app = a2kit.App("per-call-cli").provide(_Transaction, per_call=True)
 
     spec = ToolBuildSpec(app=app, router=None, meta=get_meta(_use_tx))
     invoke_tool_sync(_use_tx, {}, fmt="json", spec=spec)

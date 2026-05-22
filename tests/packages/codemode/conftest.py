@@ -38,4 +38,4 @@ class GateRouter(a2kit.Router):
 @pytest.fixture
 def gate_app() -> a2kit.App:
     """Fresh App with the gate router for each test."""
-    return a2kit.AppBuilder("codemode-gate-test").add_router(GateRouter()).build()
+    return a2kit.App("codemode-gate-test").add_router(GateRouter())

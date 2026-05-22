@@ -2,37 +2,40 @@
 
 ## Unreleased
 
-### Changed — AppBuilder / App split (BREAKING)
+### Changed — one public `App`, finishers seal (BREAKING)
 
-`a2kit.App` is split into two types. Composition happens on the new
-mutable `a2kit.AppBuilder`; its terminal `build()` returns the sealed,
-mutation-free `a2kit.App`. The two-phase lifecycle (mutable before
-`async with`, sealed after) is now a fact in the type system, not a
-runtime raise. See ADR 0016.
+`a2kit.App` is the single public type — the mutable composition surface
+and the runtime in one. It is constructed directly, wired with the
+composition verbs (`add_router`, `add_cli`, `add_mcp_middleware`,
+`provide`, `health_check`), and handed to a finisher (`a2kit.run`,
+`build_mcp_server`, `a2kit.testing.client`). The finisher seals the App
+internally — validates the DI provider graph, locks the container —
+before running, serving, or testing. There is no public `build()` and
+no separate runtime type. See ADR 0017 (supersedes ADR 0016).
 
-**Breaking.** Every composition site migrates:
+**Breaking.** The short-lived `a2kit.AppBuilder` split (also unreleased)
+collapses back to one type:
 
-| before                                            | after                                                                    |
-|---------------------------------------------------|---------------------------------------------------------------------------|
-| `app = a2kit.App("svc")`                          | `builder = a2kit.AppBuilder("svc")`                                       |
-| `app.add_router(r)` / `add_cli` / `provide` / ... | `builder.add_router(r)` / ... — composition verbs live on `AppBuilder`    |
-| `@app.health_check`                               | `@builder.health_check`                                                   |
-| `install_connections(app, ConnT)`                 | `install_connections(builder, ConnT)` — composition-time wiring           |
-| (use `app` after composition)                     | `app = builder.build()` — seals the container, returns the runtime `App`  |
+| before                                     | after                             |
+|--------------------------------------------|-----------------------------------|
+| `builder = a2kit.AppBuilder("svc")`        | `app = a2kit.App("svc")`          |
+| `builder.add_router(r)` / `provide` / ...  | `app.add_router(r)` / ...         |
+| `app = builder.build()`                    | (drop the line — a finisher seals)|
+| `install_connections(builder, ConnT)`      | `install_connections(app, ConnT)` |
 
-`a2kit.App(...)` direct construction raises `TypeError` naming
-`AppBuilder`; a composition verb on a built `App` raises the same hint.
-The `app` pytest fixture in `a2kit.packages.testing` is renamed
-`builder` and yields a fresh `AppBuilder`.
+`a2kit.AppBuilder` no longer exists; the public `build()` is removed. A
+composition verb after a finisher has sealed the App raises `TypeError`.
+The pytest fixture in `a2kit.packages.testing` is named `app` and yields
+a fresh `a2kit.App("test")`.
 
 The DI test-override seam is **removed**: `TestClient.override(T, fake)`,
 `Container._override` / `_snapshot` / `_restore`, and
-`App._test_override_owner` no longer exist. Test overrides are now
-re-build — `provide` the fake on an `AppBuilder` (last-write-wins) and
-`build()` a fresh `App`. `TestClient.override` raises a migration hint.
-This reconciles the code with ADR 0006, whose Y-statement always said
-there is no override after the container seals. `Container.seal()` is
-the new public seal point (called by `build()`).
+`App._test_override_owner` no longer exist. Test overrides are re-build —
+construct a fresh `a2kit.App` and `provide` the fake last
+(last-write-wins). `TestClient.override` raises a migration hint. This
+reconciles the code with ADR 0006, whose Y-statement always said there
+is no override after the container seals. `Container.seal()` is the seal
+point; the finishers reach it via the internal `App._seal()`.
 
 ### Changed — shared dispatch pipeline
 

@@ -7,15 +7,14 @@ from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-# Single-call wiring: `install_connections(builder, TrackerConn)` installs
+# Single-call wiring: `install_connections(app, TrackerConn)` installs
 # the dispatch hook, registers the wire scope, AND adds the `connections`
 # Click subcommand group (login/logout/list/show/delete).
-builder = a2kit.AppBuilder("tracker-mcp")
-builder.add_router(ProjectsRouter())
-builder.add_router(TasksRouter())
-install_connections(builder, TrackerConn)
-builder.provide(TrackerStore, per_call=True)
-app = builder.build()
+app = a2kit.App("tracker-mcp")
+app.add_router(ProjectsRouter())
+app.add_router(TasksRouter())
+install_connections(app, TrackerConn)
+app.provide(TrackerStore, per_call=True)
 
 
 def main() -> None:

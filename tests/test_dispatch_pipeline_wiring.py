@@ -55,10 +55,8 @@ def test_cli_adapter_enters_lifecycle_router_on_dispatch() -> None:
 
         tools = (ping,)
 
-    builder = a2kit.AppBuilder("cli-lifecycle")
     router = _Lifecycle()
-    builder.add_router(router)
-    app = builder.build()
+    app = a2kit.App("cli-lifecycle").add_router(router)
     desc = app.tools()[0]
     spec = ToolBuildSpec(app=app, router=app.routers()[0], meta=get_meta(desc.fn))
 

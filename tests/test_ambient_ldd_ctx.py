@@ -85,7 +85,7 @@ def test_dispatch_provides_ambient_ctx_to_primitives() -> None:
     with no ctx arg."""
     from a2kit.testing import client
 
-    app = a2kit.AppBuilder("ambient").add_router(_PingRouter()).build()
+    app = a2kit.App("ambient").add_router(_PingRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -176,7 +176,7 @@ def test_ambient_dispatch_succeeds_without_ctx_param() -> None:
     """
     from a2kit.testing import client
 
-    app = a2kit.AppBuilder("noctx-dispatch").add_router(_NoCtxRouter()).build()
+    app = a2kit.App("noctx-dispatch").add_router(_NoCtxRouter())
 
     async def go() -> None:
         async with client(app) as c:

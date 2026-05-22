@@ -93,7 +93,7 @@ the version (so consumers can grep release notes).
 ### Loud-crash on unsupported kwargs
 
 ```python
-class AppBuilder:
+class App:
     def __init__(self, name: str, *, debug=False, **_kw):
         if _kw:
             raise TypeError(
@@ -259,16 +259,17 @@ response. Read `docs/adr/0004-package-layout-tiered-by-audience.md`
 before proposing any change to the top-level surface, and before
 responding to any consumer filing that asks for promotion.
 
-Composition and runtime are **two distinct types**, not one two-phase
-object. `a2kit.AppBuilder` carries the mutable composition verbs
-(`add_router`, `add_cli`, `add_mcp_middleware`, `provide`,
-`health_check`); its terminal `build()` validates the provider graph and
-returns the sealed, mutation-free `a2kit.App`. Constructing `a2kit.App`
-directly, or calling a composition verb on a built `App`, crashes loud.
-Test overrides are re-build (`provide` the fake on a builder, `build()` a
-fresh App), never post-seal container mutation. Read
-`docs/adr/0016-app-builder-runtime-split.md` before changing the `App`
-surface or the DI test seam.
+Composition and runtime are **one public type**, `a2kit.App`. It carries
+the mutable composition verbs (`add_router`, `add_cli`,
+`add_mcp_middleware`, `provide`, `health_check`) and is handed straight
+to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`).
+The finisher seals the App internally — it validates the provider graph
+and locks the container; consumer code never calls a seal step and there
+is no public `build()`. A composition verb called after a finisher has
+sealed the App crashes loud. Test overrides are re-build (construct a
+fresh `a2kit.App`, `provide` the fake last), never post-seal container
+mutation. Read `docs/adr/0017-one-public-app.md` (supersedes ADR 0016)
+before changing the `App` surface or the DI test seam.
 
 Consumer-feedback discipline (how filings get triaged, how releases get
 re-validated, when to cite an ADR vs ship a primitive vs decline) lives

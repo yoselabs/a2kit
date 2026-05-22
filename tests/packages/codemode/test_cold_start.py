@@ -46,7 +46,7 @@ class R(a2kit.Router):
     tools = (ping,)
 
 
-app = a2kit.AppBuilder("probe").add_router(R()).build()
+app = a2kit.App("probe").add_router(R())
 cli = build_full_cli(app)
 CliRunner().invoke(cli, ["--help"])
 bad = sorted(

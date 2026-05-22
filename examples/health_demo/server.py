@@ -42,25 +42,22 @@ class _SqliteResource:
         _state.sqlite_open = False
 
 
-builder = a2kit.AppBuilder("health-demo")
-builder.provide(_SqliteResource)
+app = a2kit.App("health-demo")
+app.provide(_SqliteResource)
 
 
-@builder.health_check
+@app.health_check
 async def _ping() -> a2kit.HealthResult:
     """Trivial liveness check — always ok."""
     return a2kit.HealthResult.ok()
 
 
-@builder.health_check
+@app.health_check
 async def _sqlite_open(sqlite: _SqliteResource) -> a2kit.HealthResult:
     """Readiness gate — declares the resource so resolution enters it."""
     if not _state.sqlite_open:
         return a2kit.HealthResult.fail("sqlite not opened yet")
     return a2kit.HealthResult.ok()
-
-
-app = builder.build()
 
 
 def main() -> None:

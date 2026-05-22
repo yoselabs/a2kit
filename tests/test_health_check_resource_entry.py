@@ -56,18 +56,16 @@ def test_first_probe_enters_singleton() -> None:
     Assert ``exited == 0`` while the lifespan is still in flight.
     """
     spy = SpyResource()
-    builder = a2kit.AppBuilder("health-singleton-first-probe")
-    builder.provide(SpyResource, lambda: spy)
-    builder._install_health_tool()
+    app = a2kit.App("health-singleton-first-probe")
+    app.provide(SpyResource, lambda: spy)
+    app._install_health_tool()
 
-    @builder.health_check
+    @app.health_check
     def _probe(spy: SpyResource) -> HealthResult:
         # The presence of spy here is the assertion target: at the
         # moment the body runs, spy.entered must already be 1.
         assert spy.entered == 1
         return HealthResult.ok()
-
-    app = builder.build()
 
     async def go() -> Any:
         async with client(app) as c:
@@ -86,15 +84,13 @@ def test_second_probe_reuses_cached_singleton() -> None:
     re-enter the singleton. Cached app-scope instance returns
     directly from ``_singletons``."""
     spy = SpyResource()
-    builder = a2kit.AppBuilder("health-singleton-second-probe")
-    builder.provide(SpyResource, lambda: spy)
-    builder._install_health_tool()
+    app = a2kit.App("health-singleton-second-probe")
+    app.provide(SpyResource, lambda: spy)
+    app._install_health_tool()
 
-    @builder.health_check
+    @app.health_check
     def _probe(spy: SpyResource) -> HealthResult:
         return HealthResult.ok()
-
-    app = builder.build()
 
     async def go() -> None:
         async with client(app) as c:
@@ -112,15 +108,13 @@ def test_singleton_exits_at_lifespan_unwind() -> None:
     unwinds, not before. After ``async with client(app)`` exits,
     ``spy.exited`` should be 1."""
     spy = SpyResource()
-    builder = a2kit.AppBuilder("health-singleton-exit-at-lifespan")
-    builder.provide(SpyResource, lambda: spy)
-    builder._install_health_tool()
+    app = a2kit.App("health-singleton-exit-at-lifespan")
+    app.provide(SpyResource, lambda: spy)
+    app._install_health_tool()
 
-    @builder.health_check
+    @app.health_check
     def _probe(spy: SpyResource) -> HealthResult:
         return HealthResult.ok()
-
-    app = builder.build()
 
     async def go() -> None:
         async with client(app) as c:
@@ -136,23 +130,21 @@ def test_shared_singleton_across_checks_enters_once() -> None:
     singleton kwarg share one instance; ``__aenter__`` fires
     exactly once across both."""
     spy = SpyResource()
-    builder = a2kit.AppBuilder("health-singleton-shared")
-    builder.provide(SpyResource, lambda: spy)
-    builder._install_health_tool()
+    app = a2kit.App("health-singleton-shared")
+    app.provide(SpyResource, lambda: spy)
+    app._install_health_tool()
 
     observed: list[int] = []
 
-    @builder.health_check
+    @app.health_check
     def _probe_a(spy: SpyResource) -> HealthResult:
         observed.append(id(spy))
         return HealthResult.ok()
 
-    @builder.health_check
+    @app.health_check
     def _probe_b(spy: SpyResource) -> HealthResult:
         observed.append(id(spy))
         return HealthResult.ok()
-
-    app = builder.build()
 
     async def go() -> None:
         async with client(app) as c:
@@ -171,19 +163,17 @@ def test_run_checks_directly_enters_singleton() -> None:
     must enter the resource via the resolver, not synthesize a
     None-shaped placeholder."""
     spy = SpyResource()
-    builder = a2kit.AppBuilder("health-run-checks-direct")
-    builder.provide(SpyResource, lambda: spy)
-    builder._install_health_tool()
+    app = a2kit.App("health-run-checks-direct")
+    app.provide(SpyResource, lambda: spy)
+    app._install_health_tool()
 
-    @builder.health_check
+    @app.health_check
     def _probe(spy: SpyResource) -> HealthResult:
         return HealthResult.ok()
 
-    app = builder.build()
-
     async def go() -> dict[str, Any]:
         async with app:
-            result = await run_checks(builder._health, builder._container, version=app_version(builder))
+            result = await run_checks(app._health, app._container, version=app_version(app))
             assert spy.entered == 1
             return result
 

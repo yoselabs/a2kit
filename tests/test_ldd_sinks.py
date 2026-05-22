@@ -45,16 +45,16 @@ def test_add_and_remove_sink_round_trip() -> None:
     async def sink(_e: LddEmission) -> None:
         pass
 
-    builder = a2kit.AppBuilder("t")
-    builder.ldd.add_sink(sink)
-    assert builder.ldd.sinks == (sink,)
-    builder.ldd.remove_sink(sink)
-    assert builder.ldd.sinks == ()
+    app = a2kit.App("t")
+    app.ldd.add_sink(sink)
+    assert app.ldd.sinks == (sink,)
+    app.ldd.remove_sink(sink)
+    assert app.ldd.sinks == ()
 
 
 def test_sinks_property_is_immutable_tuple() -> None:
-    builder = a2kit.AppBuilder("t")
-    assert isinstance(builder.ldd.sinks, tuple)
+    app = a2kit.App("t")
+    assert isinstance(app.ldd.sinks, tuple)
 
 
 # --- Fan-out via event() / report() --- #
@@ -203,10 +203,9 @@ def test_in_process_client_propagates_sinks_to_dispatch() -> None:
     async def sink(e: LddEmission) -> None:
         seen.append(e)
 
-    builder = a2kit.AppBuilder("sinkstest")
-    builder.add_router(_R())
-    builder.ldd.add_sink(sink)
-    app = builder.build()
+    app = a2kit.App("sinkstest")
+    app.add_router(_R())
+    app.ldd.add_sink(sink)
 
     async def go() -> None:
         async with test_client.TestClient(app) as c:

@@ -31,15 +31,15 @@ def _reset_db_counters() -> None:
 
 
 def test_construction_is_pure() -> None:
-    """AppBuilder + add_router + singleton should fire zero __aenter__ calls."""
+    """App + add_router + singleton should fire zero __aenter__ calls."""
 
     class _R(a2kit.Router):
         slug = "r"
         tools = ()
 
-    builder = a2kit.AppBuilder("api")
-    builder.provide(_DB)
-    builder.add_router(_R())
+    app = a2kit.App("api")
+    app.provide(_DB)
+    app.add_router(_R())
 
     assert _DB.enter_count == 0
     assert _DB.exit_count == 0

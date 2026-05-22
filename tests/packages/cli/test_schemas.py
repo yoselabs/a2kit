@@ -82,7 +82,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
     # tools must still be listed.
     Big.tools = tuple(generated)
 
-    app = a2kit.AppBuilder("big").add_router(Big()).build()
+    app = a2kit.App("big").add_router(Big())
     result = CliRunner().invoke(build_full_cli(app), ["schema", "--format=json"])
 
     assert result.exit_code == 0

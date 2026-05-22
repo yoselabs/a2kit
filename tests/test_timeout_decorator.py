@@ -123,7 +123,7 @@ def _build_app_with(tool_fn: Any) -> a2kit.App:
         tools = (tool_fn,)
 
     setattr(_R, tool_fn.__name__, tool_fn)
-    app = a2kit.AppBuilder("t").add_router(_R()).build()
+    app = a2kit.App("t").add_router(_R())
     return app
 
 
