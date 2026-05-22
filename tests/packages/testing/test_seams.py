@@ -1,9 +1,9 @@
-"""BDD scenarios for ``resolve``.
+"""Tests for `a2kit.packages.testing.seams` — the DI test seams.
 
-The async sibling of :func:`a2kit.testing.peek`. Where `peek` reads
-already-cached singletons from `Container._singletons`, `resolve`
-runs the full DI resolution chain (build via factory, enter
-resources, chain-resolve constructor params, record cleanup).
+``lazy`` wraps a value as a ``Lazy[T]`` thunk. ``peek`` is the sync
+container read; ``resolve`` its async sibling that runs the full DI
+resolution chain (build via factory, enter resources, chain-resolve
+constructor params, record cleanup).
 
 Closes a2web round-10 feedback Friction A3 — replaces consumer-
 side hand-rolled `make_default_state` helpers with a single
@@ -16,7 +16,7 @@ import pytest
 
 import a2kit
 from a2kit.runtime import build
-from a2kit.testing import resolve
+from a2kit.testing import lazy, peek, resolve
 
 
 class _Inner:
@@ -120,3 +120,37 @@ async def test_resolve_walks_dependency_chain() -> None:
     assert outer.inner is inner_direct
     assert _Inner.entered == 1
     assert _Outer.instances_created == 1
+
+
+class _Plain:
+    """Plain (non-resource) app-scope type for the sync `peek` seam."""
+
+    def __init__(self) -> None:
+        self.value = 7
+
+
+@pytest.mark.asyncio
+async def test_lazy_wraps_value_as_async_thunk() -> None:
+    """`lazy(value)` returns a zero-arg async thunk yielding the value."""
+    thunk = lazy(42)
+    assert await thunk() == 42
+
+
+@pytest.mark.asyncio
+async def test_lazy_returns_the_same_object_by_identity() -> None:
+    """The thunk yields the original object — no copy, every call."""
+    obj = object()
+    thunk = lazy(obj)
+    assert await thunk() is obj
+    assert await thunk() is obj
+
+
+def test_peek_resolves_a_provider_from_a_sync_body() -> None:
+    """`peek` drives `Container.get` via `asyncio.run` from sync test code."""
+    app = a2kit.App("test")
+    app.provide(_Plain)
+
+    got = peek(app, _Plain)
+
+    assert isinstance(got, _Plain)
+    assert got.value == 7

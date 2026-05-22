@@ -12,6 +12,7 @@ from a2kit.packages.lint.static import (
     A2K_IMPORT_DISCIPLINE,
     A2K_LAYER,
     A2K_PKG_FRONT_DOOR,
+    A2K_PKG_INIT_IMPL,
     A2K_PKG_INIT_IMPORT,
     run_static_rules,
 )
@@ -237,3 +238,69 @@ def test_front_door_noqa_suppresses(tmp_path: Path) -> None:
     p = _write(tmp_path / "src" / "a2kit" / "app.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_FRONT_DOOR not in _codes(findings)
+
+
+# --------------------------- A2K-PKG-INIT-IMPL --------------------------- #
+
+
+def test_init_impl_class_body_fires(tmp_path: Path) -> None:
+    """A class defined in a package `__init__.py` is flagged."""
+    body = "class Widget:\n    def go(self) -> int:\n        return 1\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPL in _codes(findings)
+
+
+def test_init_impl_function_body_fires(tmp_path: Path) -> None:
+    """A logic-bearing function defined in a package `__init__.py` is flagged."""
+    body = "def compute(x: int) -> int:\n    return x * 2\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "health" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPL in _codes(findings)
+
+
+def test_init_impl_async_function_body_fires(tmp_path: Path) -> None:
+    """An `async def` in a package `__init__.py` is flagged too."""
+    body = "async def emit(name: str) -> None:\n    print(name)\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPL in _codes(findings)
+
+
+def test_init_impl_re_export_front_door_is_clean(tmp_path: Path) -> None:
+    """An `__init__.py` of imports + re-exports + `__all__` + constants is clean."""
+    body = 'from .wire import format_ldd_line\n\nTEXT_CAP = 60\n\n__all__ = ["format_ldd_line", "TEXT_CAP"]\n'
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPL not in _codes(findings)
+
+
+def test_init_impl_lazy_getattr_facade_is_clean(tmp_path: Path) -> None:
+    """The lazy `__getattr__` / `__dir__` re-export facade is exempt."""
+    body = (
+        "_LAZY = {'install': ('a2kit.packages.otel.middleware', 'install')}\n\n"
+        "def __getattr__(name: str) -> object:\n"
+        "    import importlib\n"
+        "    mod, attr = _LAZY[name]\n"
+        "    return getattr(importlib.import_module(mod), attr)\n\n"
+        "def __dir__() -> list[str]:\n"
+        "    return sorted(_LAZY)\n"
+    )
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "otel" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPL not in _codes(findings)
+
+
+def test_init_impl_silent_in_submodule(tmp_path: Path) -> None:
+    """A class in a named submodule (not `__init__.py`) is exactly the goal — clean."""
+    body = "class Widget:\n    def go(self) -> int:\n        return 1\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "wire.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPL not in _codes(findings)
+
+
+def test_init_impl_noqa_suppresses(tmp_path: Path) -> None:
+    body = "class Widget:  # noqa: A2K-PKG-INIT-IMPL\n    pass\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_IMPL not in _codes(findings)

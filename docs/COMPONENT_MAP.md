@@ -16,31 +16,31 @@ the lint's own view of the graph.
 
 | Unit | Layer | Files | Fan-in | Fan-out | Depends on |
 |------|-------|-------|--------|---------|------------|
-| `context` | 0 | 1 | 3 | 0 | — |
-| `di` | 0 | 9 | 3 | 0 | — |
-| `formatter` | 0 | 7 | 5 | 0 | — |
-| `health` | 0 | 1 | 2 | 0 | — |
-| `ldd` | 0 | 1 | 1 | 0 | — |
+| `context` | 0 | 2 | 3 | 1 | `ldd` |
+| `di` | 0 | 9 | 4 | 0 | — |
+| `formatter` | 0 | 9 | 6 | 0 | — |
+| `health` | 0 | 2 | 2 | 1 | `di` |
+| `ldd` | 0 | 5 | 2 | 0 | — |
 | `lint` | 0 | 18 | 0 | 0 | — |
 | `kernel` | 1 | 6 | 6 | 0 | — |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
-| `runtime` | 3 | 3 | 4 | 6 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd` |
-| `connections` | 4 | 8 | 0 | 2 | `authoring`, `di` |
+| `runtime` | 3 | 3 | 5 | 6 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd` |
+| `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 4 | 2 | 4 | `authoring`, `context`, `kernel`, `runtime` |
 | `cli` | 5 | 6 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
-| `codemode` | 5 | 4 | 1 | 0 | — |
+| `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `mcp` | 5 | 7 | 2 | 6 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime` |
 | `otel` | 5 | 3 | 0 | 0 | — |
-| `testing` | 6 | 6 | 0 | 6 | `authoring`, `context`, `formatter`, `kernel`, `mcp`, `runtime` |
+| `testing` | 6 | 7 | 0 | 6 | `authoring`, `context`, `formatter`, `kernel`, `mcp`, `runtime` |
 
 ## Layer-ordered DAG
 
 ### Layer 0
 
-- `context` → no cross-unit dependencies
+- `context` → `ldd`
 - `di` → no cross-unit dependencies
 - `formatter` → no cross-unit dependencies
-- `health` → no cross-unit dependencies
+- `health` → `di`
 - `ldd` → no cross-unit dependencies
 - `lint` → no cross-unit dependencies
 
@@ -58,13 +58,13 @@ the lint's own view of the graph.
 
 ### Layer 4
 
-- `connections` → `authoring`, `di`
+- `connections` → `authoring`, `di`, `runtime`
 - `dispatch` → `authoring`, `context`, `kernel`, `runtime`
 
 ### Layer 5
 
 - `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime`
-- `codemode` → no cross-unit dependencies
+- `codemode` → `formatter`
 - `mcp` → `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime`
 - `otel` → no cross-unit dependencies
 

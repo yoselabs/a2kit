@@ -38,6 +38,7 @@ A2K017 = "A2K017"  # Lazy[T] suggestion for conditional-use deps
 A2K_CONN_LIST_PLACEHOLDER = "A2K-CONN-LIST-PLACEHOLDER"
 A2K_IMPORT_DISCIPLINE = "A2K-IMPORT-DISCIPLINE"
 A2K_PKG_INIT_IMPORT = "A2K-PKG-INIT-IMPORT"  # submodule importing its own package __init__
+A2K_PKG_INIT_IMPL = "A2K-PKG-INIT-IMPL"  # implementation defined in a package __init__
 A2K_LAYER = "A2K-LAYER"  # import-graph layer DAG (manifest in packages/lint/layers.py)
 A2K_PKG_FRONT_DOOR = "A2K-PKG-FRONT-DOOR"  # cross-package imports target the package __init__
 A2K_LDD_REPORT_TYPE = "A2K-LDD-REPORT-TYPE"
@@ -60,6 +61,7 @@ ALL_RULES = (
     A2K_CONN_LIST_PLACEHOLDER,
     A2K_IMPORT_DISCIPLINE,
     A2K_PKG_INIT_IMPORT,
+    A2K_PKG_INIT_IMPL,
     A2K_LAYER,
     A2K_PKG_FRONT_DOOR,
     A2K_LDD_REPORT_TYPE,
@@ -147,6 +149,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.importing import (
         rule_import_discipline,
         rule_pkg_front_door,
+        rule_pkg_init_impl,
         rule_pkg_init_import,
     )
     from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
@@ -168,6 +171,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_CONN_LIST_PLACEHOLDER, rule_conn_list_placeholder),
         (A2K_IMPORT_DISCIPLINE, rule_import_discipline),
         (A2K_PKG_INIT_IMPORT, rule_pkg_init_import),
+        (A2K_PKG_INIT_IMPL, rule_pkg_init_impl),
         (A2K_PKG_FRONT_DOOR, rule_pkg_front_door),
         (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),
         (A2K_LOCAL_RETURN_MODEL, rule_local_return_model),
@@ -252,6 +256,7 @@ __all__ = [
     "A2K_LDD_REPORT_TYPE",
     "A2K_LOCAL_RETURN_MODEL",
     "A2K_PKG_FRONT_DOOR",
+    "A2K_PKG_INIT_IMPL",
     "A2K_PKG_INIT_IMPORT",
     "A2K_SURFACE_EXPLICIT",
     "A2K_TEST_MIRROR",

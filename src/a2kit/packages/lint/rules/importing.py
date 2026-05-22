@@ -1,4 +1,4 @@
-"""Import-discipline rules: fastmcp allowlist, package-`__init__` cycles, layer DAG, front doors."""
+"""Import-discipline & package-`__init__` rules: fastmcp allowlist, package-`__init__` cycles, layer DAG, front doors, front-door purity."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from a2kit.packages.lint.static import (
     A2K_IMPORT_DISCIPLINE,
     A2K_LAYER,
     A2K_PKG_FRONT_DOOR,
+    A2K_PKG_INIT_IMPL,
     A2K_PKG_INIT_IMPORT,
     LintMessage,
     _msg,
@@ -190,6 +191,48 @@ def rule_pkg_front_door(tree: ast.AST, filename: str, source: str) -> Iterable[L
         )
 
 
+#: Function names allowed at the top level of a package `__init__.py` — the
+#: lazy re-export facade pair. Everything else is implementation.
+_INIT_FACADE_DUNDERS = frozenset({"__getattr__", "__dir__"})
+
+
+def rule_pkg_init_impl(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
+    """A2K-PKG-INIT-IMPL — a package ``__init__.py`` defines implementation.
+
+    A package front door is re-export plumbing only: imports, re-exports,
+    module-level constants, ``__all__``, and an optional lazy
+    ``__getattr__`` / ``__dir__`` facade. A top-level ``class`` or ``def``
+    / ``async def`` (other than that facade pair) is implementation and
+    belongs in a named submodule. See ``module-layout-discipline``.
+    """
+    norm = filename.replace("\\", "/")
+    if is_fixture_path(filename) or "/a2kit/packages/" not in norm or not norm.endswith("/__init__.py"):
+        return
+    if not isinstance(tree, ast.Module):
+        return
+    noqa = parse_noqa(source)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            kind = "class"
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            if node.name in _INIT_FACADE_DUNDERS:
+                continue
+            kind = "function"
+        else:
+            continue
+        if suppressed(noqa, A2K_PKG_INIT_IMPL, node.lineno):
+            continue
+        yield _msg(
+            A2K_PKG_INIT_IMPL,
+            filename,
+            node,
+            (
+                f"package `__init__.py` defines {kind} `{node.name}` — a front door is "
+                "re-export plumbing only; move the implementation into a named submodule"
+            ),
+        )
+
+
 def _layer_import_targets(node: ast.AST) -> list[str]:
     """Dotted module names an import node references (``[]`` for non-imports)."""
     if isinstance(node, ast.ImportFrom):
@@ -332,5 +375,6 @@ __all__ = [
     "rule_a2k_layer_cross",
     "rule_import_discipline",
     "rule_pkg_front_door",
+    "rule_pkg_init_impl",
     "rule_pkg_init_import",
 ]

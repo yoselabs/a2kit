@@ -143,16 +143,16 @@ class TestExecuteDerivationCache:
 
     @pytest.mark.anyio
     async def test_stub_derivation_is_cached_across_calls(self, sandbox_app: a2kit.App, monkeypatch: pytest.MonkeyPatch) -> None:
-        from a2kit.packages import codemode
+        from a2kit.packages.codemode import transform as codemode_transform
 
         calls = {"n": 0}
-        real = codemode.generate_stubs
+        real = codemode_transform.generate_stubs
 
         def _spy(reachable: Any) -> Any:
             calls["n"] += 1
             return real(reachable)
 
-        monkeypatch.setattr(codemode, "generate_stubs", _spy)
+        monkeypatch.setattr(codemode_transform, "generate_stubs", _spy)
 
         runtime = build(sandbox_app)
         server = build_mcp_server(runtime, code_mode=True)
