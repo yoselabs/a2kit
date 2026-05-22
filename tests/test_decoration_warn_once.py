@@ -46,56 +46,46 @@ def _reset_warn_once_sets() -> None:
 
 
 # ----------------------------------------------------------------------------
-# L1 — _wrap_with_dispatch_hook return-annotation copy
+# L1 — install_mcp_signature return-annotation copy
 # ----------------------------------------------------------------------------
 
 
-class _Injectable:
-    """Marker class used as a typed kwarg to trigger `_has_injectables`."""
-
-
-def test_l1_dispatch_hook_return_annotation_failure_warns_once(
+def test_l1_signature_install_return_annotation_failure_warns_once(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`_wrap_with_dispatch_hook` swallows annotation-copy failures with one WARN.
+    """`install_mcp_signature` swallows annotation-copy failures with one WARN.
 
-    Forces the `get_type_hints` call inside the annotation-copy block to raise
-    by monkeypatching `typing.get_type_hints` — directly exercising the
-    `except Exception` site without depending on which earlier introspection
-    paths inside `wire_input_params` already swallow forward-ref failures.
+    Forces the `get_type_hints` call inside `_install_rewritten_signature`'s
+    annotation-copy block to raise by monkeypatching `typing.get_type_hints`,
+    directly exercising the `except Exception` site.
     """
-    import a2kit
 
-    app = a2kit.App("warn-once")
-    app.provide(_Injectable)
-
-    def fn(*, marker: _Injectable):  # type: ignore[no-untyped-def]  # noqa: ANN202 -- no return annotation on purpose
+    def fn():  # type: ignore[no-untyped-def]  # noqa: ANN202 -- no return annotation on purpose
         return None
-
-    def hook(_fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
-        return kwargs
 
     import typing as _typing
 
     real_get_type_hints = _typing.get_type_hints
-    calls: list[Any] = []
 
     def _raising_get_type_hints(target: Any, *args: Any, **kw: Any) -> Any:
         if target is fn:
-            calls.append(target)
             raise RuntimeError("forced failure for L1 test")
         return real_get_type_hints(target, *args, **kw)
 
     monkeypatch.setattr(_typing, "get_type_hints", _raising_get_type_hints)
 
-    with caplog.at_level(logging.WARNING, logger="a2kit.packages.mcp._wrappers"):
-        wrapped = server_module._wrap_with_dispatch_hook(fn, hook, app)
-        server_module._wrap_with_dispatch_hook(fn, hook, app)
+    def _w1() -> None: ...
 
-    matches = [r for r in caplog.records if "_wrap_with_dispatch_hook" in r.message]
+    def _w2() -> None: ...
+
+    with caplog.at_level(logging.WARNING, logger="a2kit.packages.mcp._wrappers"):
+        server_module._install_rewritten_signature(fn, _w1, [])
+        server_module._install_rewritten_signature(fn, _w2, [])
+
+    matches = [r for r in caplog.records if "install_mcp_signature" in r.message]
     assert len(matches) == 1, f"expected 1 WARN, got {len(matches)}: {[r.message for r in matches]}"
-    assert "return" not in getattr(wrapped, "__annotations__", {})
+    assert "return" not in getattr(_w1, "__annotations__", {})
 
 
 # ----------------------------------------------------------------------------

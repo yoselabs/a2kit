@@ -658,6 +658,36 @@ forward (acyclic) edge — never to paper over a back-edge.
 Citation: `src/a2kit/packages/mcp/_wrappers.py` (module-scope `App` /
 `Router` imports); the `decouple-import-cycles` change.
 
+## 28. duplicating a dispatch concern across transport adapters
+
+The mistake: a2kit has two consumers — the CLI and the MCP server — and
+both run the same per-tool dispatch concerns (timeout, enrichers, router
+lifecycle, the dispatch hook, the LDD ambient). The tempting move is to
+implement each concern wherever it is first needed, so the CLI grows its
+copy in `cli/runtime.py` and the MCP server grows its copy in
+`mcp/_wrappers.py`. The two copies then drift silently: a2kit shipped
+with the CLI and MCP timeout implemented two different ways, and the
+CLI was simply missing router-lazy-enter — lifecycle routers never
+entered under the CLI, with no error to point at it.
+
+FastMCP ships a middleware system, which makes the duplication look
+unnecessary — but it is server-only and cannot serve the CLI consumer,
+which must not even import `fastmcp` (cold-start budget). So "just use
+FastMCP middleware" is not the fix.
+
+What to do instead: put each transport-neutral dispatch concern in
+exactly one place — the `a2kit.packages.dispatch` pipeline — and have
+both adapters fold the same `DISPATCH_PIPELINE`. Keep that package
+fastmcp-free so the CLI can fold it. Only genuinely transport-specific
+work stays per-adapter: the MCP `__signature__` rewrite, and rendering a
+captured error to a wire shape (`ToolError` JSON vs. an exit code). When
+a concern feels transport-specific, check whether it is really the
+*concern* that differs or only its *rendering* — usually it is the
+latter, and the capture belongs in the shared pipeline.
+
+Citation: `src/a2kit/packages/dispatch/pipeline.py::DISPATCH_PIPELINE`;
+the `extract-dispatch-pipeline` change.
+
 ## v0.36 — DI scoped-lifecycle anti-patterns
 
 ### `_ensure()` lazy-init on a `provide()`-registered class

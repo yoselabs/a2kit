@@ -172,11 +172,11 @@ def test_cli_error_includes_traceback_when_debug_true() -> None:
 
 
 def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
-    """The MCP-side error envelope re-raises ``ToolError(json.dumps(...))``.
+    """A captured tool-body error renders as ``ToolError(json.dumps(...))``.
 
-    Replaces the legacy ``_wrap_with_debug_traceback`` (which embedded
-    the traceback in ``str(exc)``). The envelope owns the wire bytes
-    independently of FastMCP's ``mask_error_details`` per
+    ``ErrorCaptureStage`` (transport-neutral) captures the exception;
+    the MCP ``McpErrorRenderStage`` renders it. The envelope owns the
+    wire bytes independently of FastMCP's ``mask_error_details`` per
     `mcp-structured-wire-error-envelope`.
     """
     import asyncio
@@ -184,18 +184,19 @@ def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
 
     from fastmcp.exceptions import ToolError
 
-    from a2kit.packages.mcp._wrappers import _wrap_with_error_envelope
+    import a2kit
+    from a2kit.packages.dispatch import ErrorCaptureStage, ToolBuildSpec
+    from a2kit.packages.mcp._wrappers import McpErrorRenderStage
 
     async def boom() -> None:
         raise ValueError("base msg")
 
-    wrapped = _wrap_with_error_envelope(boom, debug=True)
-
-    async def go() -> None:
-        await wrapped()
+    spec = ToolBuildSpec(app=a2kit.App("oc-err", debug=True), router=None, meta=None)
+    wrapped = ErrorCaptureStage().wrap(boom, spec)
+    wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
     with pytest.raises(ToolError) as ei:
-        asyncio.run(go())
+        asyncio.run(wrapped())
     payload = json.loads(str(ei.value))
     assert payload["class"] == "ValueError"
     assert payload["message"] == "base msg"
@@ -207,12 +208,16 @@ def test_mcp_error_envelope_passes_cancelled_unchanged() -> None:
     """CancelledError must not be wrapped (per OPERATIONAL_CONTRACTS Q1)."""
     import asyncio
 
-    from a2kit.packages.mcp._wrappers import _wrap_with_error_envelope
+    import a2kit
+    from a2kit.packages.dispatch import ErrorCaptureStage, ToolBuildSpec
+    from a2kit.packages.mcp._wrappers import McpErrorRenderStage
 
     async def stuck() -> None:
         await asyncio.sleep(60)
 
-    wrapped = _wrap_with_error_envelope(stuck, debug=False)
+    spec = ToolBuildSpec(app=a2kit.App("oc-cancel"), router=None, meta=None)
+    wrapped = ErrorCaptureStage().wrap(stuck, spec)
+    wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
     async def go() -> None:
         task = asyncio.create_task(wrapped())

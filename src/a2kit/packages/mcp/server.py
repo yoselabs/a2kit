@@ -22,14 +22,8 @@ from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
 
 from a2kit.metadata import A2KitMeta, get_meta
-from a2kit.packages.mcp._wrappers import (
-    _wrap_with_dispatch_hook,
-    _wrap_with_error_envelope,
-    _wrap_with_ldd_state,
-    _wrap_with_router_enrichers,
-    _wrap_with_router_lazy_enter,
-    _wrap_with_timeout,
-)
+from a2kit.packages.dispatch import ToolBuildSpec, fold_pipeline
+from a2kit.packages.mcp._wrappers import McpErrorRenderStage, install_mcp_signature
 from a2kit.packages.mcp.format_routing import FormatRoutingMiddleware
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
@@ -64,6 +58,73 @@ def _router_for_tool(app: Any, fn: Any) -> Any | None:
             if tool_fn is fn or getattr(tool_fn, "__func__", None) is getattr(fn, "__func__", None):
                 return r
     return None
+
+
+def _build_one_tool(
+    app: Any,
+    desc: Any,
+    *,
+    reports_enabled: bool,
+    events_enabled: bool,
+    sinks: tuple[Any, ...],
+) -> FunctionTool | None:
+    """Build the FastMCP tool for one descriptor.
+
+    Folds the transport-neutral ``DISPATCH_PIPELINE`` shared with the CLI
+    adapter, appends the MCP-only error-render stage, then installs the
+    FastMCP signature on the outermost callable. Returns ``None`` for a
+    tool whose visibility is not ``"all"`` (CLI-only tiers do not reach
+    the MCP surface).
+    """
+    from a2kit._verb_validators import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
+
+    fn = desc.fn
+    meta = get_meta(fn)
+    if meta is None:
+        return None
+    # `"hidden"` and `"cli"` are CLI-only tiers; only `"all"` registers
+    # on programmatic surfaces (MCP / future REST / future GraphQL).
+    if (meta.extras.visibility or "all") != "all":
+        return None
+
+    router = _router_for_tool(app, fn)
+    spec = ToolBuildSpec(
+        app=app,
+        router=router,
+        meta=meta,
+        descriptor=desc,
+        reports_enabled=reports_enabled,
+        events_enabled=events_enabled,
+        sinks=sinks,
+    )
+    # Fold the shared pipeline (timeout -> enrichers -> router-lazy-enter
+    # -> dispatch-hook+DI -> ldd-state -> error-capture), then append the
+    # MCP error-render stage. install_mcp_signature rewrites the
+    # outermost callable's signature for FastMCP schema generation.
+    wrapped = fold_pipeline(fn, spec)
+    wrapped = McpErrorRenderStage().wrap(wrapped, spec)
+    install_mcp_signature(fn, wrapped, app, meta)
+
+    # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — tagged so
+    # the post-loop `server.disable(tags={"_meta"})` filter excludes them
+    # from default `list_tools` while keeping them callable by name.
+    is_meta = meta.tool_name.startswith(_RESERVED_TOOL_NAME_PREFIX)
+    if is_meta and meta.tool_name not in _BUILTIN_RESERVED_TOOL_NAMES:
+        msg = (
+            f"tool {meta.tool_name!r} uses reserved namespace "
+            f"{_RESERVED_TOOL_NAME_PREFIX!r}; this prefix is reserved for "
+            "built-in protocol-meta tools (e.g. `_meta.health`). See "
+            "OPERATIONAL_CONTRACTS.md → 'The _meta.* tool namespace'."
+        )
+        raise ValueError(msg)
+    tool_tags = {*meta.tags, "_meta"} if is_meta else set(meta.tags)
+    return FunctionTool.from_function(
+        wrapped,
+        name=meta.tool_name,
+        tags=tool_tags,
+        annotations=meta.annotations,
+        meta={"a2kit": _meta_to_dict(meta)},
+    )
 
 
 def _build_fastmcp_lifespan(app: Any, user_lifespan: Any | None) -> Any:
@@ -144,11 +205,6 @@ def build_mcp_server(
     events_enabled = app.ldd_events
     app_sinks: tuple[Any, ...] = app.ldd.sinks
 
-    container = app.container()
-    dispatch_hook = app.dispatch_hook()
-
-    from a2kit._verb_validators import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
-
     # Per-tool encoding plans for the format-routing middleware and return
     # types for code-mode stub generation / dataclass marshalling, keyed by
     # the registered tool name. Only tools that actually reach the MCP
@@ -157,77 +213,18 @@ def build_mcp_server(
     return_types: dict[str, Any] = {}
 
     for desc in app.tools():
-        fn = desc.fn
-        meta = get_meta(fn)
-        if meta is None:
-            continue
-
-        # `"hidden"` and `"cli"` are CLI-only tiers; only `"all"` registers
-        # on programmatic surfaces (MCP / future REST / future GraphQL).
-        visibility = meta.extras.visibility or "all"
-        if visibility != "all":
-            continue
-
-        router = _router_for_tool(app, fn)
-        # Timeout wraps innermost (closest to fn) so DI cost and LDD
-        # scope setup don't count against the budget. Cancel scope
-        # lives inside the LDD scope and inside dispatch-hook DI.
-        inner = fn
-        if meta.extras.timeout_seconds is not None:
-            inner = _wrap_with_timeout(inner, seconds=meta.extras.timeout_seconds)
-        wrapped = _wrap_with_router_enrichers(inner, router)
-        wrapped = _wrap_with_router_lazy_enter(wrapped, app, router)
-        if container is not None and dispatch_hook is not None:
-            wrapped = _wrap_with_dispatch_hook(
-                wrapped,
-                dispatch_hook,
-                app,
-                ctx_param_name=meta.context_param_name,
-            )
-        # Always enter the LDD scope. Post relax-ldd-ambient-requirement,
-        # the dispatch-hook wrapper synthesizes ctx into the rewritten
-        # signature for tools whose body doesn't declare ``ctx``; the
-        # ldd_state wrapper extracts it from the synthesized name so
-        # ambient ``ctx`` is always non-None inside any dispatch.
-        # Cross-transport parity with the CLI runtime (cli/runtime.py).
-        wrapped = _wrap_with_ldd_state(
-            wrapped,
-            ctx_param_name=meta.context_param_name,
-            report_type=meta.extras.report_type,
-            tool_name=meta.tool_name,
+        tool = _build_one_tool(
+            app,
+            desc,
             reports_enabled=reports_enabled,
             events_enabled=events_enabled,
             sinks=app_sinks,
         )
-        # Outermost: a2kit-owned wire-error envelope. Installed
-        # unconditionally so the {class, message} contract holds in
-        # production (debug=False) too; debug=True adds the traceback
-        # field to the JSON payload.
-        wrapped = _wrap_with_error_envelope(wrapped, debug=app_debug)
-
-        # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — tagged so
-        # the post-loop `server.disable(tags={"_meta"})` filter excludes them
-        # from default `list_tools` while keeping them callable by name.
-        is_meta = meta.tool_name.startswith(_RESERVED_TOOL_NAME_PREFIX)
-        if is_meta and meta.tool_name not in _BUILTIN_RESERVED_TOOL_NAMES:
-            msg = (
-                f"tool {meta.tool_name!r} uses reserved namespace "
-                f"{_RESERVED_TOOL_NAME_PREFIX!r}; this prefix is reserved for "
-                "built-in protocol-meta tools (e.g. `_meta.health`). See "
-                "OPERATIONAL_CONTRACTS.md → 'The _meta.* tool namespace'."
-            )
-            raise ValueError(msg)
-        tool_tags = {*meta.tags, "_meta"} if is_meta else set(meta.tags)
-        tool = FunctionTool.from_function(
-            wrapped,
-            name=meta.tool_name,
-            tags=tool_tags,
-            annotations=meta.annotations,
-            meta={"a2kit": _meta_to_dict(meta)},
-        )
+        if tool is None:
+            continue
         server.add_tool(tool)
-        encoding_plans[meta.tool_name] = desc.encoding_plan
-        return_types[meta.tool_name] = desc.return_type
+        encoding_plans[tool.name] = desc.encoding_plan
+        return_types[tool.name] = desc.return_type
 
     # Hide `_meta.*` tools from default `list_tools` output via FastMCP 3's
     # visibility-transform API. Selector is the `"_meta"` tag stamped above,

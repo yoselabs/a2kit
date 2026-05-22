@@ -5,8 +5,10 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.metadata import get_meta
 from a2kit.packages.cli.runtime import invoke_tool_sync
 from a2kit.packages.di import Lazy
+from a2kit.packages.dispatch import ToolBuildSpec
 
 
 class _Browser:
@@ -37,7 +39,8 @@ def test_lazy_never_invoked_under_cli() -> None:
     app = a2kit.App("lazy-cli")
     app.provide(_Browser)  # app-scope
 
-    invoke_tool_sync(_skip_browser, {}, fmt="json", app=app)
+    spec = ToolBuildSpec(app=app, router=None, meta=get_meta(_skip_browser))
+    invoke_tool_sync(_skip_browser, {}, fmt="json", spec=spec)
 
     assert _Browser.enter_count == 0, f"Browser.__aenter__ ran {_Browser.enter_count} times despite Lazy not awaited"
     assert _Browser.exit_count == 0

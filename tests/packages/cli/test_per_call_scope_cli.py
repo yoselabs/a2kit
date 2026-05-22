@@ -10,7 +10,9 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.metadata import get_meta
 from a2kit.packages.cli.runtime import invoke_tool_sync
+from a2kit.packages.dispatch import ToolBuildSpec
 
 
 class _Transaction:
@@ -49,7 +51,8 @@ def test_per_call_resource_cleaned_up_at_cli_call_exit() -> None:
     app = a2kit.App("per-call-cli")
     app.provide(_Transaction, per_call=True)
 
-    invoke_tool_sync(_use_tx, {}, fmt="json", app=app)
+    spec = ToolBuildSpec(app=app, router=None, meta=get_meta(_use_tx))
+    invoke_tool_sync(_use_tx, {}, fmt="json", spec=spec)
 
     assert _Transaction.enter_count == 1, f"Transaction entered {_Transaction.enter_count} times — expected 1"
     assert _Transaction.exit_count == 1, f"Transaction exited {_Transaction.exit_count} times — expected 1"

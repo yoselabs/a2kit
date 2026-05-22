@@ -79,38 +79,6 @@ def _docstring_to_help(fn: Callable[..., Any]) -> tuple[str, str]:
     return short, long_help
 
 
-def _wrap_with_enricher(fn: Callable[..., Any], router: Router | None = None) -> Callable[..., Any]:
-    """Wrap ``fn`` with the router's enricher chain (class list + ``enrich`` method)."""
-    if router is None:
-        return fn
-    enrichers = list(getattr(type(router), "enrichers", None) or ())
-    enrich_method = getattr(router, "enrich", None)
-    if not enrichers and not callable(enrich_method):
-        return fn
-
-    import functools
-
-    @functools.wraps(fn)
-    async def _wrapped(*args: Any, **kwargs: Any) -> Any:
-        try:
-            result = fn(*args, **kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-            return result
-        except Exception as exc:
-            if callable(enrich_method):
-                msg = enrich_method(exc)
-                if msg is not None:
-                    raise type(exc)(msg) from exc
-            for enricher in enrichers:
-                msg = enricher(exc)
-                if msg is not None:
-                    raise type(exc)(msg) from exc
-            raise
-
-    return _wrapped
-
-
 def _is_basemodel(ann: Any) -> type[BaseModel] | None:
     """Return the BaseModel subclass if ``ann`` (or its inner Annotated/Optional) is one."""
     import types
@@ -190,6 +158,7 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
     from a2kit.metadata import get_meta
     from a2kit.packages.cli._field_to_typer import field_to_typer_annotation
     from a2kit.packages.cli.runtime import invoke_tool_sync
+    from a2kit.packages.dispatch import ToolBuildSpec
     from a2kit.packages.formatter import FormatHint, format_response
     from a2kit.packages.formatter.inference import infer_format_hint
     from a2kit.signature import wire_input_params
@@ -262,8 +231,6 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
     sig_params.append(inspect.Parameter("schema", kind=inspect.Parameter.KEYWORD_ONLY, default=False, annotation=schema_ann))
     annotations["schema"] = schema_ann
 
-    wrapped_fn = _wrap_with_enricher(fn, router)
-
     def callback(**kwargs: Any) -> None:
         import click as _click
 
@@ -308,9 +275,6 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
         if needs_connection and kwargs.get("connection") is not None:
             call_kwargs["connection"] = kwargs["connection"]
 
-        ctx_param = meta.context_param_name if meta is not None else None
-        report_type = meta.extras.report_type if meta is not None else None
-
         root_ctx = _click.get_current_context().find_root()
         store = root_ctx.obj if isinstance(root_ctx.obj, dict) else {}
         no_reports = bool(store.get("no_reports", False))
@@ -318,22 +282,26 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
         reports_enabled = app.ldd_reports and not no_reports
         events_enabled = app.ldd_events and not no_events
 
+        # Per-invocation spec — `reports_enabled` / `events_enabled` fold in
+        # the `--no-reports` / `--no-events` flags read above.
+        spec = ToolBuildSpec(
+            app=app,
+            router=router,
+            meta=meta,
+            descriptor=None,
+            reports_enabled=reports_enabled,
+            events_enabled=events_enabled,
+            sinks=app.ldd.sinks,
+        )
         try:
-            data = invoke_tool_sync(
-                wrapped_fn,
-                call_kwargs,
-                fmt=fmt,
-                ctx_param_name=ctx_param,
-                report_type=report_type,
-                tool_name=meta.tool_name if meta is not None else None,
-                reports_enabled=reports_enabled,
-                events_enabled=events_enabled,
-                dispatch_hook=app.dispatch_hook(),
-                app=app,
-            )
-        except _click.ClickException:
+            data = invoke_tool_sync(fn, call_kwargs, fmt=fmt, spec=spec)
+        except (_click.ClickException, typer.Exit):
+            # ClickException renders itself; typer.Exit is raised by the
+            # CLI error-render stage after it has already echoed.
             raise
         except Exception as exc:
+            # Non-dispatch failure (formatting, App scope validation): the
+            # dispatch pipeline renders tool-body errors itself.
             typer.echo(f"error: {exc}", err=True)
             if getattr(app, "debug", False):
                 import traceback

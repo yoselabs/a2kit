@@ -82,16 +82,19 @@ def test_mcp_dispatch_no_raise_for_ldd_without_ctx() -> None:
 def test_cli_runtime_emits_ldd_without_ctx_param(capsys: pytest.CaptureFixture[str]) -> None:
     """Same scenario via the CLI runtime path. Stderr should contain an
     LDD-formatted event line."""
+    from a2kit.metadata import get_meta
     from a2kit.packages.cli.runtime import invoke_tool_sync
+    from a2kit.packages.dispatch import ToolBuildSpec
 
     @a2kit.read()
     async def fire_no_ctx() -> dict[str, str]:
         await ldd_event("fired-cli", marker="cli-value")
         return {"ok": "cli"}
 
-    # invoke_tool_sync with ctx_param_name=None mirrors the CLI subcommand
-    # path for a tool whose original signature did not declare ctx.
-    out = invoke_tool_sync(fire_no_ctx, {}, fmt="json", ctx_param_name=None)
+    # A tool whose signature declares no ctx — mirrors the CLI subcommand
+    # path; the LDD stage falls back to a synthesized StderrToolContext.
+    spec = ToolBuildSpec(app=a2kit.App("ldd-cli"), router=None, meta=get_meta(fire_no_ctx))
+    out = invoke_tool_sync(fire_no_ctx, {}, fmt="json", spec=spec)
     assert "cli" in out
 
     captured = capsys.readouterr()

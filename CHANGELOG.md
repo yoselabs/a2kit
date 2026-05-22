@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Changed — shared dispatch pipeline
+
+The per-tool dispatch concerns are now a single transport-neutral
+pipeline. `a2kit.packages.dispatch` holds `DISPATCH_PIPELINE` — six
+`DispatchStage` objects (timeout, enrichers, router-lazy-enter,
+dispatch-hook + DI, LDD ambient, error-capture) — and both the CLI and
+MCP adapters fold the same tuple. The package imports no `fastmcp`, so
+the CLI cold path is unaffected.
+
+Previously each transport carried its own copy of these five concerns;
+the two had already drifted (two timeout mechanisms) and the CLI was
+missing router-lazy-enter entirely. **Bug fix:** a router carrying
+`__aenter__` now enters on first CLI dispatch, matching MCP.
+
+Error handling is split into a neutral capture stage (exception ->
+`CapturedError`) and a per-transport render stage — `ToolError` JSON for
+MCP, an `error:` stderr line plus non-zero exit for the CLI. Internal
+refactor; tool-author-facing behaviour is unchanged apart from the
+router-lifecycle fix.
+
 ### Changed — import-graph acyclicity
 
 The `src/a2kit/` import graph is now a directed acyclic graph. Three

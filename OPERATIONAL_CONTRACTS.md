@@ -788,6 +788,37 @@ JSON). The consumer is fixed at `build_mcp_server` time by the
 - **The REST surface (future)** is bound to the `machine` consumer —
   plain JSON, never compressed, and never exposes code execution.
 
+## Q-Dispatch. One dispatch pipeline, folded by both transports
+
+Per-tool dispatch is a single ordered pipeline — `DISPATCH_PIPELINE` in
+`a2kit.packages.dispatch` — that the CLI and MCP adapters both fold. It
+exists because the two consumers have asymmetric constraints (the CLI is
+cold-start-critical and must not import `fastmcp`; the MCP server carries
+`fastmcp` by definition) yet run the same dispatch concerns. FastMCP's
+own middleware is server-only, so it structurally cannot serve the CLI —
+the shared concerns need a transport-neutral home.
+
+- **The pipeline is fastmcp-free.** `a2kit.packages.dispatch` imports no
+  `fastmcp` and is absent from the `A2K-IMPORT-DISCIPLINE` allowlist.
+  This is the load-bearing constraint — the CLI consumer folds it.
+- **Six neutral stages, innermost-first:** `timeout`, `enricher`,
+  `router-lazy-enter`, `dispatch-hook` (hook + per-call DI scope),
+  `ldd-state` (LDD ambient + ctx), `error-capture`. The order lives in
+  exactly one module-level constant with its rationale documented.
+- **Conditional stages self-skip.** A stage whose concern does not apply
+  to a tool returns the body unchanged. The pipeline is never filtered
+  or reordered per tool — `DISPATCH_PIPELINE` is a static tuple.
+- **Error capture is neutral; rendering is per-transport.** The
+  `error-capture` stage turns a tool-body exception into a neutral
+  `CapturedError`. Each adapter appends its own render stage: MCP
+  renders a `ToolError` JSON envelope, the CLI renders an `error:`
+  stderr line plus a non-zero exit. One captured value, two wire shapes
+  — the same seam shape as ADR 0014's `(value, consumer)` rendering.
+- **The MCP signature rewrite stays MCP-side.** Rewriting a tool's
+  `__signature__` so FastMCP introspects the agent-facing wire params
+  (and injects `ctx`) is genuinely fastmcp-specific; it is applied by
+  the MCP adapter after the fold, never inside a neutral stage.
+
 ## See also
 
 - `CHANGELOG.md` — release-by-release history of behavioral changes.
