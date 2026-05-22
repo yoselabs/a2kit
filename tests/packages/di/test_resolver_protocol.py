@@ -25,7 +25,7 @@ def test_resolver_minimal_surface() -> None:
     # Walk all public attributes declared on the Protocol.
     surface = {name for name in dir(Resolver) if not name.startswith("_")}
 
-    expected = {"get", "provide", "resolve_params", "dispatch", "child", "aclose"}
+    expected = {"get", "provide", "resolve_params", "call_scope", "child", "aclose"}
     extra = surface - expected
     missing = expected - surface
 

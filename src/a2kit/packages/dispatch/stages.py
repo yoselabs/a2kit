@@ -123,7 +123,7 @@ class RouterLazyEnterStage:
 class DispatchHookStage:
     """Run the App's dispatch hook + per-call DI scope around the body.
 
-    Routes through ``app._resolver.dispatch(fn, kwargs, pre_hook=hook)``:
+    Routes through ``app._resolver.call_scope(fn, kwargs, pre_hook=hook)``:
     a per-call child container opens, the hook does wire-side conversion
     (e.g. connection-string -> typed config), DI resolves typed kwargs
     (``Lazy[T]`` aware), then per-call cleanups unwind on exit.
@@ -151,7 +151,7 @@ class DispatchHookStage:
             # kwargs the pre_hook + DI see, then merge it back for the body.
             ctx_value = kwargs.pop(ctx_param_name, None) if ctx_param_name else None
             kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
-            async with app._resolver.dispatch(fn, kwargs, pre_hook=hook) as merged:  # noqa: SLF001 -- framework resolver seam
+            async with app._resolver.call_scope(fn, kwargs, pre_hook=hook) as merged:  # noqa: SLF001 -- framework resolver seam
                 if ctx_param_name is not None and ctx_value is not None:
                     merged[ctx_param_name] = ctx_value
                 return await _call(fn, **merged)

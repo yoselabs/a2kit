@@ -10,12 +10,12 @@ conversion only:
 3. Surfaces the instance under the tool's parameter name (when the tool
    declares the config directly), or under a stable
    ``_a2k_seed_<TypeName>`` key (when the tool reaches the config
-   through a chain) — either way the framework's ``Container.dispatch``
+   through a chain) — either way the framework's ``Container.call_scope``
    wire-seeder picks it up by value type and registers it as a SCOPED
    provider on the per-call child container.
 
 DI (provider chain resolution, ``Lazy[T]``, per-call lifecycle) is the
-framework's job, run by ``Container.dispatch`` AFTER this hook on its
+framework's job, run by ``Container.call_scope`` AFTER this hook on its
 output. The container itself contains no reference to ``"connection"``.
 """
 
@@ -66,13 +66,13 @@ def make_connection_hook(
     turn the wire ``connection`` string into typed ``ConnectionConfig``
     instances and surfaces them as wire kwargs by tool-param name.
     It does NOT call ``container.apply_kwargs`` — DI is the framework's
-    responsibility, run by ``Container.dispatch`` after this hook on
+    responsibility, run by ``Container.call_scope`` after this hook on
     the hook's output. Wire-resolved typed configs become SCOPED
     providers on the per-call child container so chain resolution
     finds them.
 
     ``stores`` maps each registered ConnectionConfig subclass to its
-    store (built by :func:`install_connection_dispatch`).
+    store (built by :func:`install_connection_hook`).
     """
 
     async def hook(fn: Callable[..., Any], wire_kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -86,7 +86,7 @@ def make_connection_hook(
                 else:
                     instance = await store.load(*parts)
                 # Always surface the resolved typed config in wire kwargs.
-                # Container.dispatch's wire-seeder picks it up by value type
+                # Container.call_scope's wire-seeder picks it up by value type
                 # and registers a SCOPED provider on the per-call child so
                 # chain resolution from app-scope factories (e.g. Store →
                 # ConnectionConfig) finds the wire-resolved instance.
@@ -96,7 +96,7 @@ def make_connection_hook(
                 else:
                     # Tool doesn't take the config directly. Use a stable
                     # underscore-prefixed key so it survives into the
-                    # dispatch wire-seeder but the merged-kwargs filter
+                    # call_scope wire-seeder but the merged-kwargs filter
                     # (to fn's declared params) strips it from the call.
                     out[f"_a2k_seed_{config_type.__name__}"] = instance
         return out
@@ -104,7 +104,7 @@ def make_connection_hook(
     return hook
 
 
-def install_connection_dispatch(
+def install_connection_hook(
     app: Any,
     conn_types: tuple[type[ConnectionConfig], ...],
 ) -> None:
@@ -132,7 +132,7 @@ def install_connection_dispatch(
     for ct in conn_types:
         if not container.has_provider(ct):
             # Register as a per-call (SCOPED) stub provider so chain
-            # resolution routes through the dispatch's child container,
+            # resolution routes through the call_scope child container,
             # where the hook-wired wire-seeder has registered the actual
             # typed instance. v0.36: connection configs are per-call by
             # nature — each dispatch can target a different connection.
@@ -160,4 +160,4 @@ def _stub_factory(ct: type) -> Callable[..., Any]:
     return _stub
 
 
-__all__ = ["install_connection_dispatch", "make_connection_hook"]
+__all__ = ["install_connection_hook", "make_connection_hook"]

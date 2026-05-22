@@ -1,8 +1,5 @@
-# connections-dispatch-hook Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change di-sync-and-unleak. Update Purpose after archive.
-## Requirements
 ### Requirement: Connection-string resolution runs at the dispatch hook seam
 
 The dispatch hook installed by `install_connections(app, *conn_types)` SHALL perform wire-side conversion only: it converts the `connection: str` wire kwarg into typed `ConnectionConfig` instances and surfaces them as wire kwargs for the tool. The hook MUST NOT call `container.apply_kwargs` or perform DI chain resolution — DI is the framework's responsibility, layered on top of the hook's output by `Container.call_scope`.
@@ -28,13 +25,3 @@ The implementation of the hook-installation step lives in `a2kit.packages.connec
 - **AND** `child.resolve_params(fn)` runs for DI kwargs (Lazy[T] aware)
 - **AND** wire and DI kwargs merge; the tool body runs inside the child's lifetime
 - **AND** the child container's cleanup stack unwinds on exit
-
-### Requirement: The string `"connection"` lives only in the connections package
-
-The literal `"connection"` SHALL appear only in `src/a2kit/packages/connections/` (and in tests that exercise connections behavior). It SHALL NOT appear in `src/a2kit/app.py`, `src/a2kit/packages/di/`, or any other module.
-
-#### Scenario: Source grep audit
-
-- **WHEN** the literal string `"connection"` is searched across `src/a2kit/`
-- **THEN** matches occur only under `src/a2kit/packages/connections/`
-

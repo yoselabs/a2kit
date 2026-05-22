@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from a2kit.packages.connections.cli import connections_cli as _connections_cli
-from a2kit.packages.connections.dispatch import install_connection_dispatch
+from a2kit.packages.connections.hook import install_connection_hook
 
 if TYPE_CHECKING:
     from a2kit.app import App
@@ -32,6 +32,6 @@ def install_connections(app: App, *conn_types: type[ConnectionConfig]) -> App:
     No separate ``add_cli`` call needed. The plugin owns its CLI shape
     end-to-end. Returns ``app`` for fluent chaining.
     """
-    install_connection_dispatch(app, conn_types)
+    install_connection_hook(app, conn_types)
     app.add_cli(_connections_cli(*conn_types))
     return app

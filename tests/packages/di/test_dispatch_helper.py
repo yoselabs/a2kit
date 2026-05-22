@@ -1,4 +1,4 @@
-"""BDD: ``Container.dispatch`` per-call dispatch helper.
+"""BDD: ``Container.call_scope`` per-call dispatch helper.
 
 Covers spec ``di-per-call-scope`` §4.4-§4.5: the framework's per-tool
 dispatch path opens a child resolver, resolves kwargs (Lazy[T] + eager),
@@ -40,14 +40,14 @@ def _reset() -> None:
 
 @pytest.mark.asyncio
 async def test_dispatch_yields_resolved_kwargs() -> None:
-    """``dispatch(fn, wire)`` yields merged resolved + wire kwargs."""
+    """``call_scope(fn, wire)`` yields merged resolved + wire kwargs."""
     app = a2kit.App("test")
     app.provide(_Tx, per_call=True)
 
     async def tool(tx: _Tx, name: str) -> str:
         return f"{name}:{type(tx).__name__}"
 
-    async with build(app) as app, app._resolver.dispatch(tool, {"name": "alice"}) as kw:
+    async with build(app) as app, app._resolver.call_scope(tool, {"name": "alice"}) as kw:
         result = await tool(**kw)
 
     assert result == "alice:_Tx"
@@ -66,7 +66,7 @@ async def test_dispatch_lazy_param_skips_unused() -> None:
             await tx()
         return "ok"
 
-    async with build(app) as app, app._resolver.dispatch(tool, {"flag": False}) as kw:
+    async with build(app) as app, app._resolver.call_scope(tool, {"flag": False}) as kw:
         result = await tool(**kw)
 
     assert result == "ok"
@@ -89,7 +89,7 @@ async def test_dispatch_propagates_tool_exception_and_cleans_up() -> None:
 
     with pytest.raises(_BodyError, match="boom"):
         async with build(app) as app:
-            async with app._resolver.dispatch(tool, {}) as kw:
+            async with app._resolver.call_scope(tool, {}) as kw:
                 await tool(**kw)
 
     assert _Tx.cleanup_count == 1
@@ -130,7 +130,7 @@ async def test_pre_hook_runs_before_di_resolution() -> None:
     app = a2kit.App("hook-order")
     app.provide(_Tx, per_call=True)
 
-    async with build(app) as app, app._resolver.dispatch(tool, {"conn_str": "h1"}, pre_hook=hook) as kw:
+    async with build(app) as app, app._resolver.call_scope(tool, {"conn_str": "h1"}, pre_hook=hook) as kw:
         result = await tool(**kw)
 
     assert call_log == ["hook", "tool"]
@@ -160,7 +160,7 @@ async def test_pre_hook_output_seeds_chain_resolution() -> None:
     # per_call too — app-scope would violate the scope contract.
     app.provide(_Store, _make_store, per_call=True)
 
-    async with build(app) as app, app._resolver.dispatch(tool, {"conn_str": "h2"}, pre_hook=hook) as kw:
+    async with build(app) as app, app._resolver.call_scope(tool, {"conn_str": "h2"}, pre_hook=hook) as kw:
         result = await tool(**kw)
 
     assert result == "h2"

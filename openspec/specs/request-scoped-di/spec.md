@@ -127,9 +127,9 @@ The container SHALL treat `fastmcp.Context` (re-exported as `a2kit.ToolContext`)
 - **WHEN** the tool is dispatched
 - **THEN** `ctx` is bound by the framework without requiring an `App.provide(fastmcp.Context, ...)` call
 
-### Requirement: Production dispatch routes through `Container.dispatch`
+### Requirement: Production dispatch routes through `Container.call_scope`
 
-Both production dispatch sites (`mcp/server.py::_wrap_with_dispatch_hook` and `cli/runtime.py::_invoke_tool_in_process`) SHALL invoke tools through `app._resolver.dispatch(fn, wire_kwargs, pre_hook=<hook>)`. The async-CM opens a per-call child container, optionally calls the wire-side `pre_hook`, runs `resolve_params(fn)` for DI (Lazy[T] aware), merges, yields kwargs for the wrapper to call `fn(**kw)`, and unwinds the child's cleanup stack on exit.
+Both production dispatch sites (`mcp/server.py::_wrap_with_dispatch_hook` and `cli/runtime.py::_invoke_tool_in_process`) SHALL invoke tools through `app._resolver.call_scope(fn, wire_kwargs, pre_hook=<hook>)`. The async-CM opens a per-call child container, optionally calls the wire-side `pre_hook`, runs `resolve_params(fn)` for DI (Lazy[T] aware), merges, yields kwargs for the wrapper to call `fn(**kw)`, and unwinds the child's cleanup stack on exit.
 
 #### Scenario: per_call resource cleaned up at MCP call exit
 
@@ -161,13 +161,13 @@ Both production dispatch sites (`mcp/server.py::_wrap_with_dispatch_hook` and `c
 
 ### Requirement: Hookless dispatch composes without `identity_dispatch_hook`
 
-Apps that install no dispatch hook (no connections, no custom hook) SHALL still route through `Container.dispatch(fn, wire_kwargs)` with no `pre_hook` argument. The framework MUST NOT require a sentinel identity function for the no-hook path.
+Apps that install no dispatch hook (no connections, no custom hook) SHALL still route through `Container.call_scope(fn, wire_kwargs)` with no `pre_hook` argument. The framework MUST NOT require a sentinel identity function for the no-hook path.
 
 #### Scenario: No-hook tool path
 
 - **GIVEN** an App with no `install_connections` and no `app._dispatch_hook` override
 - **WHEN** a tool is dispatched
-- **THEN** the wrapper opens `app._resolver.dispatch(fn, wire)` without `pre_hook`
+- **THEN** the wrapper opens `app._resolver.call_scope(fn, wire)` without `pre_hook`
 - **AND** the tool body sees DI-resolved kwargs merged with wire kwargs
 
 ### Requirement: Legacy DI methods raise `TypeError` with migration hints
@@ -202,7 +202,7 @@ The `Container` class SHALL provide this resolution + registration surface as th
 - `providers_view()`
 - async `get(type_)`
 - async `resolve_params(fn)`
-- async `dispatch(fn, wire_kwargs, *, pre_hook=None)` (async context manager)
+- async `call_scope(fn, wire_kwargs, *, pre_hook=None)` (async context manager)
 - `child()`
 - async `aclose()`
 - async `__aenter__` / `__aexit__`
@@ -213,7 +213,7 @@ The legacy method names (`register`, `register_singleton`, `resolve`, `aresolve`
 
 - **GIVEN** a fresh `Container` instance
 - **WHEN** new-surface methods are called against a registered type
-- **THEN** `provide`, `has_provider`, `providers_view`, `get`, `resolve_params`, `dispatch`, `child`, `aclose` complete without raising `TypeError`
+- **THEN** `provide`, `has_provider`, `providers_view`, `get`, `resolve_params`, `call_scope`, `child`, `aclose` complete without raising `TypeError`
 
 #### Scenario: no test-override seam exists
 

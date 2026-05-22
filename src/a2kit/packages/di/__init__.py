@@ -3,7 +3,7 @@
 Primary surface (v0.36+):
 
 - ``Container.provide(t, factory, *, scope=...)`` — registration
-- ``Container.dispatch(fn, wire_kwargs, *, pre_hook=None)`` — per-call dispatch async-CM
+- ``Container.call_scope(fn, wire_kwargs, *, pre_hook=None)`` — per-call DI-scope async-CM
 - ``Container.resolve_params(fn)`` — DI resolution with ``Lazy[T]`` awareness
 - ``Container.get(t)``, ``child()``, ``aclose()``, ``__aenter__``/``__aexit__``
 - :class:`Scope`, :class:`Resolver` Protocol, :class:`Lazy` alias

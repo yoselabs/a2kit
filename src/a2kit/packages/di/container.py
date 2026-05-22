@@ -4,8 +4,8 @@ Resolution surface (post-v0.38 retire-legacy-di-surface):
 
 - ``Container.provide(t, factory, *, scope)`` / ``has_provider`` /
   ``providers_view`` — registration.
-- ``Container.dispatch(fn, wire_kwargs, *, pre_hook=None)`` — async-CM
-  for per-call dispatch (opens a child, runs the optional pre_hook,
+- ``Container.call_scope(fn, wire_kwargs, *, pre_hook=None)`` — async-CM
+  for the per-call DI scope (opens a child, runs the optional pre_hook,
   runs ``resolve_params`` for DI, yields merged kwargs, unwinds
   per-call cleanup on exit).
 - ``Container.resolve_params(fn)`` — resolves a function's parameters
@@ -353,14 +353,14 @@ class Container:
         await self._cleanup_stack.aclose(exc_type, exc, tb)
 
     @contextlib.asynccontextmanager
-    async def dispatch(
+    async def call_scope(
         self,
         fn: Callable[..., Any],
         wire_kwargs: dict[str, Any] | None = None,
         *,
         pre_hook: Callable[..., Any] | None = None,
     ) -> Any:
-        """Per-call dispatch helper for the framework.
+        """Open the per-call DI scope for one tool dispatch.
 
         Opens a child resolver, optionally calls ``pre_hook`` for
         wire-side resolution (e.g. connection-string → typed config),
@@ -383,7 +383,7 @@ class Container:
                 kw["connection"] = await store.load(kw["connection"])
                 return kw
 
-            async with app._resolver.dispatch(tool_fn, {"connection": "x"}, pre_hook=my_hook) as kw:
+            async with app._resolver.call_scope(tool_fn, {"connection": "x"}, pre_hook=my_hook) as kw:
                 result = await tool_fn(**kw)
         """
         wire: dict[str, Any] = dict(wire_kwargs) if wire_kwargs else {}

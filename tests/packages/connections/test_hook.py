@@ -1,4 +1,4 @@
-"""Mirror stub for ``a2kit.packages.connections.dispatch``.
+"""Mirror stub for ``a2kit.packages.connections.hook``.
 
 Real tests for the connection dispatch hook live in
 ``tests/packages/connections/test_di_dispatch.py`` (end-to-end CLI invocation

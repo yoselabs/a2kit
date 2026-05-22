@@ -81,7 +81,7 @@ def test_new_surface_present() -> None:
         "providers_view",
         "get",
         "resolve_params",
-        "dispatch",
+        "call_scope",
         "child",
         "aclose",
     ):

@@ -53,14 +53,14 @@ class Resolver(Protocol):
         """Resolve ``fn``'s parameter kwargs, honoring ``Lazy[T]``."""
         ...
 
-    def dispatch(
+    def call_scope(
         self,
         fn: Callable[..., Any],
         wire_kwargs: dict[str, Any] | None = None,
         *,
         pre_hook: Callable[..., Any] | None = None,
     ) -> AbstractAsyncContextManager[dict[str, Any]]:
-        """Per-call dispatch helper (async context manager).
+        """Open the per-call DI scope (async context manager).
 
         Returns an async-CM whose ``__aenter__`` yields the merged kwarg
         dict and whose ``__aexit__`` unwinds the per-call cleanup stack.

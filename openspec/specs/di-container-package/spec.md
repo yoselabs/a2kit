@@ -41,7 +41,8 @@ The container module SHALL NOT contain any reference (in code, docstrings, or at
 
 The container's public surface SHALL consist of:
 
-- **`Container` class** with the resolution and registration surface used by new code: `provide(t, factory, *, scope: Scope = Scope.SINGLETON)`, `has_provider(t) -> bool`, `providers()` (or `providers_view()`), `resolve(t)` (sync hot path), async `get(t)` (the canonical async path that may run `__aenter__` / await factories), `resolve_params(fn)`, `dispatch(fn, wire_kwargs, *, pre_hook=None)`, `child() -> Container`, async `aclose()`, plus the async context manager protocol (`__aenter__` / `__aexit__`). The legacy method name `register` is not part of this surface — it was retired; see `request-scoped-di` for the legacy-name handling.
+- **`Container` class** with the resolution and registration surface used by new code: `provide(t, factory, *, scope: Scope = Scope.SINGLETON)`, `has_provider(t) -> bool`, `providers()` (or `providers_view()`), `resolve(t)` (sync hot path), async `get(t)` (the canonical async path that may run `__aenter__` / await factories), `resolve_params(fn)`, `call_scope(fn, wire_kwargs, *, pre_hook=None)`, `child() -> Container`, async `aclose()`, plus the async context manager protocol (`__aenter__` / `__aexit__`). The method `call_scope` is the per-call DI scope: an async context manager that opens a per-call child container, runs the optional `pre_hook`, resolves DI kwargs, yields the merged kwargs, and unwinds the child on exit. The legacy method name `register` is not part of this surface — it was retired; see `request-scoped-di` for the legacy-name handling. The legacy method name `dispatch` is not part of this surface — it was renamed to `call_scope`; no alias is provided.
+
 - **`Scope` enum** with values `SINGLETON`, `SCOPED`, `TRANSIENT`.
 - **`Resolver` Protocol** declaring the narrow surface a2kit framework modules use.
 - **`UnresolvableType` exception**.
@@ -70,6 +71,11 @@ Sync `Container.resolve(t)` SHALL remain for the hot path within a scope but SHA
 
 - **WHEN** `Container.register` is invoked
 - **THEN** it raises `TypeError` (a retired-name stub, per `request-scoped-di`) — it is not the registration path; `provide` is
+
+#### Scenario: `dispatch` is not a callable method
+
+- **WHEN** `Container.dispatch` is accessed
+- **THEN** it does not resolve to the per-call scope helper — the method was renamed to `call_scope` and no alias is kept
 
 ### Requirement: `Container.child()` opens a fresh scoped sub-container
 
