@@ -40,22 +40,24 @@ def _build_state() -> _State:
 
 
 class Demo(a2kit.Router):
-    name = "demo"
+    slug = "demo"
 
-    @a2kit.read("ping")
+    @a2kit.read()
     async def ping(self) -> dict:
         """No-DI tool — return a constant dict."""
         return {"ok": True}
 
-    @a2kit.read("hello")
+    @a2kit.read()
     async def hello(self, *, state: _State) -> dict:
         """DI-resolved tool — touches the singleton."""
         return {"label": state.label}
 
+    tools = (ping, hello)
+
 
 app = a2kit.App("bench")
 app.add_router(Demo())
-app.singleton(_State, _build_state)
+app.provide(_State, _build_state)
 
 
 def main() -> None:

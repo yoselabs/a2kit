@@ -445,14 +445,16 @@ def _register_health(typer_app: Any, app: App) -> None:
 
     import typer
 
-    from a2kit.packages.health import run_checks
+    from a2kit.packages.health import app_version, run_checks
 
     def health_cmd() -> None:
         """Run aggregated health probe; exits non-zero on degraded."""
 
         async def _run() -> dict[str, Any]:
             async with app:
-                return await run_checks(app)
+                registry = app._health  # noqa: SLF001 -- App-scoped health registry
+                resolver = app._resolver  # noqa: SLF001 -- framework resolver seam
+                return await run_checks(registry, resolver, version=app_version(app))
 
         result = asyncio.run(_run())
         typer.echo(_json.dumps(result, indent=2))

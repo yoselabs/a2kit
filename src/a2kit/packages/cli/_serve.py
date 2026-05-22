@@ -53,11 +53,32 @@ def register_serve(typer_app: Any, app: App) -> None:
     typer_app.command(name="serve")(serve_cmd)
 
 
+async def run_code(app: App, code: str, *, allow_destructive: bool = False) -> object:
+    """Run ``code`` in the code-execution sandbox against ``app``'s tools.
+
+    Builds an MCP server for ``app``, wraps it in a ``fastmcp.Client``, and
+    invokes the bundled ``execute`` tool. This is CLI-side orchestration —
+    the sole caller is the ``code`` subcommand below. The MCP ``execute``
+    tool is built independently by ``A2kitCodeMode._make_execute_tool``;
+    the two do not share code.
+
+    The ``fastmcp`` / ``build_mcp_server`` imports are function-local so
+    ``code`` stays off the CLI cold-start path.
+    """
+    from fastmcp import Client
+
+    from a2kit.packages.mcp.server import build_mcp_server
+
+    server = build_mcp_server(app, code_mode=True, code_mode_allow_destructive=allow_destructive)
+    async with Client(server) as client:
+        result = await client.call_tool("execute", {"code": code})
+    return result.data if result.data is not None else result.content
+
+
 def register_code(typer_app: Any, app: App) -> None:
     """Register the global ``code`` subcommand — run Python in the sandbox.
 
-    Shares the sandbox and capability gate with the MCP ``execute`` tool
-    via ``a2kit.packages.codemode.run_code``. Registered only when the
+    Delegates to :func:`run_code`. Registered only when the
     ``a2kit[code-mode]`` extra is installed (``find_spec`` checks without
     importing) — a lean install carries no sandbox dependency.
     """
@@ -86,8 +107,6 @@ def register_code(typer_app: Any, app: App) -> None:
         capability gate permits. The answer is the value of the last line —
         a bare expression; never use a top-level `return`.
         """
-        from a2kit.packages.codemode import run_code
-
         if file is not None:
             code = Path(file).read_text()
         elif source is not None:
@@ -110,4 +129,4 @@ def register_code(typer_app: Any, app: App) -> None:
     typer_app.command(name="code")(code_cmd)
 
 
-__all__ = ["register_code", "register_serve"]
+__all__ = ["register_code", "register_serve", "run_code"]

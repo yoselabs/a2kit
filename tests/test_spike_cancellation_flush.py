@@ -17,7 +17,7 @@ from contextlib import redirect_stderr
 import anyio
 import pytest
 
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 from a2kit.packages.ldd import event as ldd_event, ldd_state_for_call
 
 

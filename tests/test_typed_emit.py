@@ -42,7 +42,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from a2kit.ldd import event, ldd_state_for_call
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 
 
 def _run(coro: Any) -> str:

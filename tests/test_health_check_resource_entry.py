@@ -29,7 +29,7 @@ from typing import Any
 
 import a2kit
 from a2kit import HealthResult
-from a2kit.packages.health import HEALTH_TOOL_NAME, run_checks
+from a2kit.packages.health import HEALTH_TOOL_NAME, app_version, run_checks
 from a2kit.testing import client
 
 
@@ -173,7 +173,7 @@ def test_run_checks_directly_enters_singleton() -> None:
 
     async def go() -> dict[str, Any]:
         async with app:
-            result = await run_checks(app)
+            result = await run_checks(app._health, app._resolver, version=app_version(app))
             assert spy.entered == 1
             return result
 

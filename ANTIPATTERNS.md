@@ -632,6 +632,32 @@ Citation: `src/a2kit/metadata.py::A2KitMetaExtras`;
 `src/a2kit/packages/lint/rules/purity.py::rule_extra_namespace`
 (enforces the attribute-name set).
 
+## 27. function-local imports to dodge a package cycle
+
+The mistake: two packages need each other, so instead of fixing the
+dependency direction you move one import inside a function body. The
+module-scope graph looks acyclic and the type checker stays quiet, but
+the cycle is still there — it just runs at first call instead of at
+import. It compounds: `mcp/_wrappers.py` carried 21 `: Any`
+annotations because importing the real `App` / `Router` types would
+have closed an `mcp ↔ cli` cycle, so the wrappers lost all type
+safety. A `TYPE_CHECKING`-guarded import hides a cycle the same way —
+`ty` survives it, but the design cycle is real and still constrains
+every future refactor.
+
+What to do instead: treat a function-local or `TYPE_CHECKING` import of
+a sibling package as a smell to investigate, not a fix. Break the cycle
+structurally — relocate the misfiled symbol to the package that owns it
+(`run_code` was CLI orchestration misfiled in `codemode`), extract a
+shared dependency into a lower leaf package (`StderrToolContext` →
+`packages/context`), or invert a parameter to the narrowest type that
+works (`run_checks` needed a `Resolver`, not the whole `App`). A
+deferred import is legitimate only for a genuine cold-start guard on a
+forward (acyclic) edge — never to paper over a back-edge.
+
+Citation: `src/a2kit/packages/mcp/_wrappers.py` (module-scope `App` /
+`Router` imports); the `decouple-import-cycles` change.
+
 ## v0.36 — DI scoped-lifecycle anti-patterns
 
 ### `_ensure()` lazy-init on a `provide()`-registered class

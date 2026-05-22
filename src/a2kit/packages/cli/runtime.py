@@ -6,7 +6,7 @@ import asyncio
 import inspect
 from typing import TYPE_CHECKING, Any, cast
 
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 from a2kit.packages.formatter import FormatHint, format_response
 
 if TYPE_CHECKING:

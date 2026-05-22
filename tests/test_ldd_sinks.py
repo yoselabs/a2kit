@@ -9,7 +9,7 @@ import anyio
 import a2kit
 from a2kit.ldd import event as ldd_event, ldd_state_for_call, report as ldd_report
 from a2kit.packages.ldd import LddEmission
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 
 
 # --- LddEmission shape --- #

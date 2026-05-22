@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 
 
 class _NullToolContext(StderrToolContext):

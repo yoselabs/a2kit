@@ -32,7 +32,7 @@ def test_a2kit_toolcontext_is_not_fastmcp_context_identity() -> None:
 
 
 def test_stderr_tool_context_satisfies_protocol() -> None:
-    from a2kit.packages.cli.context import StderrToolContext
+    from a2kit.packages.context import StderrToolContext
 
     ctx = StderrToolContext()
     assert isinstance(ctx, a2kit.ToolContext)

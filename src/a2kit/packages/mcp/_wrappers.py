@@ -7,6 +7,14 @@ import inspect
 import logging
 from typing import Any
 
+# Module-scope (not TYPE_CHECKING) imports — by demonstrating these resolve
+# at runtime, they prove the `cli <-> mcp` cycle is gone: `a2kit.app` /
+# `a2kit.routers` import nothing from `packages/mcp`. See the
+# `decouple-import-cycles` change, design D4.
+from a2kit.app import App  # noqa: TC001
+from a2kit.packages.context import StderrToolContext
+from a2kit.routers import Router  # noqa: TC001
+
 _log = logging.getLogger(__name__)
 _WARN_ONCE: set[str] = set()
 
@@ -64,8 +72,6 @@ def _wrap_with_ldd_state(
         # to a StderrToolContext so ambient binding is still non-None and
         # LDD primitives don't trip Mode B unrelated to the actual issue.
         if ctx_obj is None:
-            from a2kit.packages.cli.context import StderrToolContext
-
             ctx_obj = StderrToolContext()
         with ldd_state_for_call(
             ctx=ctx_obj,
@@ -83,7 +89,7 @@ def _wrap_with_ldd_state(
     return _wrapped
 
 
-def _wrap_with_router_lazy_enter(fn: Any, app: Any, router: Any | None) -> Any:
+def _wrap_with_router_lazy_enter(fn: Any, app: App, router: Router | None) -> Any:
     """Ensure the bound router has entered via ``__aenter__`` before dispatch.
 
     No-op when the router has no ``__aenter__`` method (most routers).
@@ -104,7 +110,7 @@ def _wrap_with_router_lazy_enter(fn: Any, app: Any, router: Any | None) -> Any:
     return _wrapped
 
 
-def _wrap_with_router_enrichers(fn: Any, router: Any | None) -> Any:
+def _wrap_with_router_enrichers(fn: Any, router: Router | None) -> Any:
     if router is None:
         return fn
     enrichers = list(getattr(type(router), "enrichers", None) or ())
@@ -244,7 +250,7 @@ def _ctx_annotation_passthrough(fn: Any, ctx_param_name: str) -> Any:
 def _wrap_with_dispatch_hook(
     fn: Any,
     hook: Any,
-    app: Any,
+    app: App,
     *,
     ctx_param_name: str | None = None,
 ) -> Any:

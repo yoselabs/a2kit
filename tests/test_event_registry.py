@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 import a2kit
 from a2kit.ldd import EventRegistry, event, format_ldd_line, ldd_state_for_call
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 from a2kit.packages.ldd import TEXT_CAP
 
 

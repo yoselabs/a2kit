@@ -154,7 +154,7 @@ class App:
         if any(r.slug == "_meta" for r in self._routers.all()):
             return
         from a2kit._verbs import _read_internal
-        from a2kit.packages.health import HEALTH_TOOL_NAME, run_checks
+        from a2kit.packages.health import HEALTH_TOOL_NAME, app_version, run_checks
         from a2kit.routers import Router as _Router
 
         app_ref = self
@@ -165,7 +165,9 @@ class App:
             @_read_internal(HEALTH_TOOL_NAME, title="Health probe")
             async def aggregated_health(self) -> dict[str, Any]:
                 """Aggregated health status. Hidden from agent-facing list_tools."""
-                return await run_checks(app_ref)
+                registry = app_ref._health
+                resolver = app_ref._resolver
+                return await run_checks(registry, resolver, version=app_version(app_ref))
 
             tools = (aggregated_health,)
 

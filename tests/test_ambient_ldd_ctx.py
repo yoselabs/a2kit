@@ -22,7 +22,7 @@ from a2kit.ldd import info as ldd_info
 from a2kit.ldd import ldd_state_for_call, report
 from a2kit.ldd import log as ldd_log
 from a2kit.ldd import warning as ldd_warning
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 from a2kit.packages.ldd import EventRegistry
 
 

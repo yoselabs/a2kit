@@ -5,7 +5,7 @@ Concrete implementations live in transport-specific modules:
 
 - ``fastmcp.Context`` (third party) satisfies it structurally under the MCP
   transport.
-- :class:`a2kit.packages.cli.context.StderrToolContext` satisfies it
+- :class:`a2kit.packages.context.StderrToolContext` satisfies it
   structurally under the CLI transport.
 
 The Protocol surface is **narrow** — only the cross-transport methods that

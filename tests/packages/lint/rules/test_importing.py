@@ -65,10 +65,10 @@ def test_import_discipline_silent_inside_otel_dir(tmp_path: Path) -> None:
     assert A2K_IMPORT_DISCIPLINE not in _codes(findings)
 
 
-def test_import_discipline_silent_inside_cli_context(tmp_path: Path) -> None:
-    """``packages/cli/context.py`` is allowlisted for the lazy elicit() import."""
+def test_import_discipline_silent_inside_context_pkg(tmp_path: Path) -> None:
+    """``packages/context/`` is allowlisted for the lazy elicit() import."""
     body = "from fastmcp.server.elicitation import AcceptedElicitation\n"
-    p = _write(tmp_path / "src" / "a2kit" / "packages" / "cli" / "context.py", body)
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "context" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_IMPORT_DISCIPLINE not in _codes(findings)
 

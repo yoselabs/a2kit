@@ -104,7 +104,7 @@ def test_health_cmd_does_not_import_testing_package() -> None:
 
     src = inspect.getsource(builder._register_health)
     assert "a2kit.packages.testing" not in src
-    assert "from a2kit.packages.health import run_checks" in src
+    assert "from a2kit.packages.health import app_version, run_checks" in src
 
 
 def test_health_returns_ok_with_no_checks() -> None:

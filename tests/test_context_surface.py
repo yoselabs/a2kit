@@ -21,7 +21,7 @@ from typing import Any
 
 from fastmcp import Context
 
-from a2kit.packages.cli.context import StderrToolContext
+from a2kit.packages.context import StderrToolContext
 
 # Documented MCP-only surface — methods/attrs that have no CLI semantics by design.
 # Stub may either raise MCPOnlyError on call or simply not implement

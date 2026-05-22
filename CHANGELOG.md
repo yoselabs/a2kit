@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Changed — import-graph acyclicity
+
+The `src/a2kit/` import graph is now a directed acyclic graph. Three
+package cycles — `cli ↔ mcp`, `mcp ↔ codemode`, and the
+`TYPE_CHECKING`-only `app ↔ health` — were broken structurally
+(relocation and parameter inversion), not by deferring imports into
+function bodies. `mcp/_wrappers.py` is now typed against the real
+`App` / `Router` types instead of `Any`.
+
+**Breaking.** Three internal import paths moved; each old path raises
+with a migration hint:
+
+| before                                                      | after                                                                                       |
+|-------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| `from a2kit.packages.cli.context import StderrToolContext`   | `from a2kit.packages.context import StderrToolContext` (transport-neutral, not CLI-specific) |
+| `from a2kit.packages.codemode import run_code`               | `run_code` is CLI-owned (`a2kit.packages.cli`); the CLI `code` subcommand calls it directly  |
+| `run_checks(app)`                                           | `run_checks(registry, resolver, *, version=...)` — takes a `Resolver`, never an `App`        |
+
+`StderrToolContext` and `MCPOnlyError` are behaviourally unchanged —
+only their home package moved.
+
 ### Added — bundled code-execution surface
 
 a2kit MCP servers now expose a sandboxed code-execution surface by

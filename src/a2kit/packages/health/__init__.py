@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from a2kit.app import App
+    from a2kit.packages.di.resolver import Resolver
 
 
 _LOGGER = logging.getLogger("a2kit.health")
@@ -71,17 +71,27 @@ class HealthRegistry:
         return fn
 
 
-async def run_checks(app: App) -> dict[str, Any]:
+async def run_checks(
+    registry: HealthRegistry,
+    resolver: Resolver,
+    *,
+    version: str = "unknown",
+) -> dict[str, Any]:
     """Aggregate every registered check; return the health-tool response shape.
 
-    Resolves DI kwargs the same way tool dispatch does so checks can take
-    ``state: AppState`` (or any other registered provider).
+    Resolves each check's DI kwargs via ``resolver`` the same way tool
+    dispatch does, so checks can take ``state: AppState`` (or any other
+    registered provider).
+
+    Takes a :class:`Resolver`, not an ``App``: a health check needs only
+    DI resolution, never the composition root. Narrowing the parameter
+    keeps ``packages/health`` free of any dependency on ``a2kit.app``.
+    ``version`` is supplied by the caller (see :func:`app_version`).
     """
-    registry: HealthRegistry = app._health  # noqa: SLF001 -- intentional, registry is App-scoped
     overall: Literal["ok", "degraded"] = "ok"
     entries: list[dict[str, Any]] = []
     for check in registry.checks:
-        result = await _run_one_check(app, check)
+        result = await _run_one_check(resolver, check)
         if not isinstance(result, HealthResult):
             result = HealthResult.fail(f"check {check.name!r} returned {type(result).__name__}, expected HealthResult")
         entry: dict[str, Any] = {"name": check.name, "status": result.status}
@@ -92,20 +102,20 @@ async def run_checks(app: App) -> dict[str, Any]:
             overall = "degraded"
     return {
         "status": overall,
-        "version": _app_version(app),
+        "version": version,
         "checks": entries,
     }
 
 
-async def _run_one_check(app: App, check: _RegisteredCheck) -> Any:
-    """Resolve check kwargs via the container directly, then call the check.
+async def _run_one_check(resolver: Resolver, check: _RegisteredCheck) -> Any:
+    """Resolve check kwargs via the resolver, then call the check.
 
     Health checks are not tool dispatches; they don't have wire kwargs.
     Routes through the v0.36 resolver so app-scope ``__aenter__`` runs
     on first resolution (lazy first-use). Health checks declaring a
     resource as a parameter trigger entry of that resource.
     """
-    call_kwargs = await app._container.resolve_params(check.fn)  # noqa: SLF001
+    call_kwargs = await resolver.resolve_params(check.fn)
     if inspect.iscoroutinefunction(check.fn):
         return await check.fn(**call_kwargs)
     result = check.fn(**call_kwargs)
@@ -114,15 +124,16 @@ async def _run_one_check(app: App, check: _RegisteredCheck) -> Any:
     return result
 
 
-def _app_version(app: App) -> str:
-    """Return the App's version string, or ``"unknown"``.
+def app_version(obj: Any) -> str:
+    """Return ``obj.version`` as a string, or ``"unknown"``.
 
     ``a2kit.App`` does not declare a ``version`` attribute today;
     consumers may attach one ad-hoc. When absent the probe payload
     reports ``"unknown"`` — an explicit sentinel, not a silently
-    swallowed AttributeError.
+    swallowed AttributeError. Callers pass the result to
+    :func:`run_checks` as its ``version`` argument.
     """
-    version = getattr(app, "version", None)
+    version = getattr(obj, "version", None)
     if version is None:
         return "unknown"
     if not isinstance(version, str):
@@ -137,5 +148,6 @@ __all__ = [
     "META_NAMESPACE_PREFIX",
     "HealthRegistry",
     "HealthResult",
+    "app_version",
     "run_checks",
 ]

@@ -184,23 +184,25 @@ def build_code_mode_transform(
     return A2kitCodeMode(allow_destructive=allow_destructive, return_types=return_types)
 
 
-async def run_code(app: object, code: str, *, allow_destructive: bool = False) -> object:
-    """Run `code` in the sandbox against `app`'s tools — the shared engine
-    behind both the MCP `execute` tool and the CLI `code` subcommand.
-    """
-    from fastmcp import Client
-
-    from a2kit.packages.mcp.server import build_mcp_server
-
-    server = build_mcp_server(app, code_mode=True, code_mode_allow_destructive=allow_destructive)
-    async with Client(server) as client:
-        result = await client.call_tool("execute", {"code": code})
-    return result.data if result.data is not None else result.content
+def __getattr__(name: str) -> Any:
+    # Tombstone: ``run_code`` moved to ``a2kit.packages.cli`` in the
+    # import-acyclicity refactor. It builds an MCP server and is therefore
+    # CLI-side orchestration, not a codemode primitive — keeping it here
+    # formed a ``codemode -> mcp`` import cycle.
+    if name == "run_code":
+        msg = (
+            "a2kit.packages.codemode.run_code moved to a2kit.packages.cli "
+            "in the import-acyclicity refactor (it builds an MCP server, so "
+            "it is CLI orchestration, not a codemode primitive). The CLI "
+            "`code` subcommand calls it directly."
+        )
+        raise ImportError(msg)
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 __all__ = [
     "A2kitCodeMode",
     "A2kitSandboxProvider",
     "build_code_mode_transform",
-    "run_code",
 ]

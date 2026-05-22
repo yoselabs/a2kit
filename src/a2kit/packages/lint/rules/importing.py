@@ -23,17 +23,23 @@ _FASTMCP_ALLOWLIST = (
     "a2kit/packages/mcp/",
     "src/a2kit/packages/cli/builder.py",
     "a2kit/packages/cli/builder.py",
-    # CLI stub mirrors fastmcp.Context's elicitation result types; the import
-    # is lazy (inside ctx.elicit()), so importing a2kit alone never pulls fastmcp.
-    "src/a2kit/packages/cli/context.py",
-    "a2kit/packages/cli/context.py",
+    # `run_code` (behind the CLI `code` subcommand) wraps the MCP server in a
+    # `fastmcp.Client`; the import is function-local so the cold path is
+    # unaffected.
+    "src/a2kit/packages/cli/_serve.py",
+    "a2kit/packages/cli/_serve.py",
+    # The stderr ToolContext mirrors fastmcp.Context's elicitation result
+    # types; the import is lazy (inside ctx.elicit()), so importing a2kit
+    # alone never pulls fastmcp.
+    "src/a2kit/packages/context/",
+    "a2kit/packages/context/",
     # otel adapter subclasses fastmcp.server.middleware.Middleware; lazy-loaded
     # via packages.otel.install() so cold-start budget is unaffected.
     "src/a2kit/packages/otel/",
     "a2kit/packages/otel/",
     # codemode subclasses fastmcp's experimental CodeMode transform; the
-    # package is imported only by build_mcp_server / serve / the CLI `code`
-    # subcommand, so `import a2kit` never pulls fastmcp through it.
+    # package is imported only by build_mcp_server / serve, so `import a2kit`
+    # never pulls fastmcp through it.
     "src/a2kit/packages/codemode/",
     "a2kit/packages/codemode/",
 )
