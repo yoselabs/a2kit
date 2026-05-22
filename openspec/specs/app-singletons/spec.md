@@ -5,7 +5,7 @@ TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpos
 ## Requirements
 ### Requirement: Introspection surface
 
-The `App` class SHALL expose `providers() -> dict[type, Any]` returning a snapshot dict mapping registered types to their cached instances (for app-scope) or to a documented sentinel for not-yet-resolved or per-call entries. The method names `has_singleton(...)` and `singletons()` do not exist on `App`; accessing either SHALL raise the standard Python `AttributeError` for a missing attribute. The framework does not host a renamed-method interceptor for these names.
+The `App` class SHALL expose `providers() -> dict[type, Any]` returning a snapshot dict mapping registered types to their cached instances (for app-scope) or to a documented sentinel for not-yet-resolved or per-call entries. `providers()` is the sole DI-introspection method on the App surface.
 
 #### Scenario: providers returns a snapshot dict
 
@@ -13,10 +13,11 @@ The `App` class SHALL expose `providers() -> dict[type, Any]` returning a snapsh
 - **WHEN** test code calls `app.providers()`
 - **THEN** the call returns a dict whose `AppState` entry is the documented not-yet-resolved sentinel
 
-#### Scenario: has_singleton and singletons are missing attributes
+#### Scenario: providers reflects resolved instances
 
-- **WHEN** `app.has_singleton` or `app.singletons` is accessed on an `App` instance
-- **THEN** Python raises `AttributeError` because `App` has no such attribute
+- **GIVEN** `app.provide(AppState, factory)` that has been resolved by a dispatch
+- **WHEN** test code calls `app.providers()`
+- **THEN** the `AppState` entry holds the cached app-scope instance
 
 ### Requirement: App-scope is the default scope of `provide`
 
@@ -84,9 +85,7 @@ The container SHALL NOT import `pydantic_settings` directly. Subclass detection 
 
 The `a2kit.App` class SHALL expose `provide(...)` as the unified registration API for typed factories. App-scope caching is the default behavior (`per_call=False`, kwarg omitted). The method SHALL accept three call shapes: (a) `provide(SomeClass)` where the class itself is the factory and the registered type is the class; (b) `provide(factory)` where the factory's return-type annotation provides the registered type (sync `def`, `async def`, or annotated-return generators are accepted; unannotated lambdas with non-zero parameters remain forbidden); (c) `provide(BaseClass, factory)` for explicit override where the factory returns a subtype but the registration should be under the base. The call SHALL return `self` for chaining.
 
-When the one-arg form receives a callable with no return type annotation, the framework SHALL raise `TypeError` at registration naming the call site and proposing both fixes (annotate the factory or pass the type explicitly). The `TypeError` message SHALL name `app.provide` as the surface, not `app.singleton`.
-
-The method name `singleton(...)` does not exist on `App`. Accessing `app.singleton` SHALL raise the standard Python `AttributeError` for a missing attribute — the framework does not host a renamed-method interceptor that produces a hinted `TypeError` (the `App.__getattr__` interceptor that previously did so was removed).
+When the one-arg form receives a callable with no return type annotation, the framework SHALL raise `TypeError` at registration naming the call site and proposing both fixes (annotate the factory or pass the type explicitly). The `TypeError` message SHALL name `app.provide` as the surface.
 
 #### Scenario: Class-as-factory form (zero-arg ctor)
 
@@ -112,11 +111,6 @@ The method name `singleton(...)` does not exist on `App`. Accessing `app.singlet
 
 - **WHEN** `app.provide(lambda: AppState(...))` is called (no annotation on the lambda return)
 - **THEN** `TypeError` is raised at registration whose message names both `"return annotation"` and `"app.provide(T, factory)"` as the explicit-override fix
-
-#### Scenario: app.singleton is a missing attribute
-
-- **WHEN** `app.singleton` is accessed on an `App` instance
-- **THEN** Python raises `AttributeError` because `App` has no `singleton` attribute
 
 ### Requirement: App-scope registrations resolve via the request-scoped container
 

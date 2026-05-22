@@ -5,24 +5,25 @@ TBD - created by archiving change de-magic-3. Update Purpose after archive.
 ## Requirements
 ### Requirement: Routers declare enrichers via class attribute and/or `enrich` method
 
-Routers SHALL declare exception enrichers using a class attribute `enrichers: list[Callable[[Exception], str | None]]` and/or an instance method `def enrich(self, exc: Exception) -> str | None`. There is no stacked `@enriches(...)` decorator and no `a2kit.packages.enrichers` module — neither exists in the source tree.
+Routers SHALL declare exception enrichers using a class attribute `enrichers: tuple[Callable[[Exception], str | None], ...]` and/or an instance method `def enrich(self, exc: Exception) -> str | None`. There is no stacked `@enriches(...)` decorator.
 
 #### Scenario: Class-list enrichers
 
-- **GIVEN** `class TasksRouter(a2kit.Router): slug = "tasks"; enrichers = [generic_404, tracker_404]`
+- **GIVEN** `class TasksRouter(a2kit.Router): slug = "tasks"; enrichers = (generic_404, tracker_404)`
 - **WHEN** a tool on this router raises an exception
 - **THEN** the framework calls `generic_404(exc)` first; if it returns `None`, calls `tracker_404(exc)`; the first non-None result is used as the user-facing message
 
 #### Scenario: Instance method takes precedence
 
-- **GIVEN** a router defines both `enrichers = [fallback]` and `def enrich(self, exc): ...`
+- **GIVEN** a router defines both `enrichers = (fallback,)` and `def enrich(self, exc): ...`
 - **WHEN** a tool raises an exception
-- **THEN** `self.enrich(exc)` is invoked first; if it returns `None`, the class list is walked
+- **THEN** `self.enrich(exc)` is invoked first; if it returns `None`, the class tuple is walked
 
-#### Scenario: No a2kit.packages.enrichers module
+#### Scenario: Empty enrichers tuple is the default
 
-- **WHEN** code runs `import a2kit.packages.enrichers`
-- **THEN** the import raises `ModuleNotFoundError` — there is no enrichers package
+- **GIVEN** a router that declares neither `enrichers` nor `enrich`
+- **WHEN** a tool on this router raises an exception
+- **THEN** no enrichment runs and the raw exception message reaches the transport
 
 ### Requirement: Tool methods declare typed dependencies as kwargs
 
@@ -40,21 +41,9 @@ Tool methods SHALL receive request-scoped dependencies as typed keyword argument
 
 ### Requirement: Router tool methods may rely on the docstring for parameter descriptions
 
-The framework SHALL accept per-parameter descriptions sourced from a
-Google-style `Args:` block in the docstring of any router tool
-method (any method decorated with `@a2kit.read`, `@a2kit.write`,
-`@a2kit.tool`, or `@a2kit.list_`), and SHALL apply them to the MCP
-input schema and CLI option help per the `tool-description-contract`
-capability when no explicit `Param`/`Field` description is present
-on the parameter. Router authors MAY therefore omit
-`Annotated[T, a2kit.Param(description=...)]` wrappers whose only
-content is a description that already appears in the docstring.
+The framework SHALL accept per-parameter descriptions sourced from a Google-style `Args:` block in the docstring of any router tool method (any method decorated with `@a2kit.read`, `@a2kit.write`, or `@a2kit.list_`), and SHALL apply them to the MCP input schema and CLI option help per the `tool-description-contract` capability when no explicit pydantic `Field` description is present on the parameter. Router authors MAY therefore omit `Annotated[T, Field(description=...)]` wrappers whose only content is a description that already appears in the docstring.
 
-Router authors SHOULD prefer the docstring when a parameter's only
-schema metadata is its description, and SHOULD keep
-`a2kit.Param(...)` when the parameter also carries non-description
-metadata (`examples=`, `ge=`, `le=`, `title=`, etc.) or when the
-description must differ from the docstring entry.
+Router authors SHOULD prefer the docstring when a parameter's only schema metadata is its description, and SHOULD keep an explicit `Field(...)` when the parameter also carries non-description metadata (`examples=`, `ge=`, `le=`, `title=`, etc.) or when the description must differ from the docstring entry.
 
 #### Scenario: Router tool with docstring-only descriptions
 
@@ -79,13 +68,13 @@ description must differ from the docstring entry.
 - **AND** the corresponding click subcommand's option help shows the
   same strings
 
-#### Scenario: Router tool mixing docstring and explicit Param
+#### Scenario: Router tool mixing docstring and explicit Field
 
 - **GIVEN** a router tool whose `url` parameter uses
-  `Annotated[str, a2kit.Param(examples=["https://x"])]` and whose
+  `Annotated[str, Field(examples=["https://x"])]` and whose
   docstring `Args:` has `url: Absolute http(s) URL.`
 - **THEN** the resulting MCP schema for `url` carries both the
-  description (from the docstring) and the examples (from `Param`)
+  description (from the docstring) and the examples (from the `Field`)
 
 #### Scenario: Self and ctx are not described from the docstring
 
@@ -180,22 +169,6 @@ Concurrent dispatches to tools of the same router that find the router not-yet-e
 - **THEN** the dispatch fails with the original exception
 - **WHEN** the same tool is dispatched again in the same App lifecycle
 - **THEN** `__aenter__` is invoked again (retry); not cached as "already entered"
-
-### Requirement: `Router.lifespan` classmethod surface SHALL be removed
-
-The pre-v0.35 `Router.lifespan` classmethod surface SHALL NOT exist. `App.add_router(instance)` SHALL inspect `type(instance).__dict__` for a `lifespan` attribute and SHALL raise `TypeError` if found, naming the subclass, naming the removed surface (`v0.35`), and pointing at the `__aenter__`/`__aexit__` migration. No alias, no DeprecationWarning, no transitional period.
-
-#### Scenario: Subclass defining `lifespan` raises with migration hint
-
-- **GIVEN** `class Legacy(a2kit.Router): slug = "l"; tools = (); async def lifespan(self): ...`
-- **WHEN** `app.add_router(Legacy())` is called
-- **THEN** `TypeError` is raised whose message contains both `"Legacy"` and `"__aenter__"`
-
-#### Scenario: Subclass with `__aenter__` is accepted
-
-- **GIVEN** the same `Legacy` rewritten with `__aenter__`/`__aexit__` instead of `lifespan`
-- **WHEN** `app.add_router(Legacy())` is called
-- **THEN** no `TypeError` is raised and the router is registered
 
 ### Requirement: Router slug is an explicit class attribute
 

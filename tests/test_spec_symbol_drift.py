@@ -17,9 +17,10 @@ Bare words, string literals, paths, shell, type-annotation fragments,
 and third-party dotted names are not checkable and are skipped by
 construction (the three narrow patterns below never match them).
 
-See ADR 0018 and the ``spec-drift-gate`` capability. The allowlist is
-the one tuning knob: ``# reconcile:`` entries are grandfathered drift a
-follow-up spec-reconciliation pass removes as it fixes each spec.
+See ADR 0018 and the ``spec-drift-gate`` capability. The allowlist
+holds only tombstone-migration targets and illustrative placeholders —
+no grandfathered drift. A symbol that does not resolve is a spec to
+fix, not an allowlist entry to add.
 """
 
 from __future__ import annotations
@@ -41,9 +42,12 @@ SPECS_DIR = Path(__file__).resolve().parent.parent / "openspec" / "specs"
 _LINT_RULE_CODES: frozenset[str] = frozenset(ALL_RULES)
 
 # Structurally a2kit-shaped symbols that legitimately do not resolve.
-# Every entry names why. `# reconcile:` entries are grandfathered drift
-# that a follow-up spec-reconciliation pass removes after fixing the
-# owning spec(s) named in the tag.
+# Two groups only: tombstone-migration targets (a spec may cite a
+# removed name in a REMOVED requirement's migration line) and
+# illustrative placeholders (pattern-description metavariables). The
+# grandfathered-drift group is empty — reconcile-spec-drift-residual
+# cleared every `# reconcile:` entry. A new entry here is a red flag:
+# fix the spec, do not allowlist live drift.
 _ALLOWLIST: frozenset[str] = frozenset(
     {
         # --- tombstone migration targets: a spec cites a removed name to
@@ -56,50 +60,6 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "Router.attribute",  # illustrative metavariable in docs-code-parity
         "a2kit.ldd.foo",  # illustrative metavariable in docs-code-parity
         "app.method",  # illustrative metavariable in docs-code-parity
-        # --- grandfathered drift: residual after the reconcile-stale-specs
-        #     pass. The change cut structural rot (39 requirements removed)
-        #     but spec bodies still cite removed names — partly to document
-        #     migrations (the ADR 0018 anti-pattern), partly in specs never
-        #     in that change's scope. A follow-up reconcile pass clears each
-        #     and drops the matching entry. ---
-        "A2K-CORE-CLEAN",  # reconcile: core-composition
-        "A2K-CORE-PURITY",  # reconcile: core-composition
-        "App.__getattr__",  # reconcile: app-singletons
-        "App.on_startup",  # reconcile: mcp-context-passthrough
-        "App.singleton",  # reconcile: docs-code-parity
-        "App.tool_descriptors",  # reconcile: tool-descriptors
-        "Container._override",  # reconcile: app-builder-runtime
-        "Container.resolve_sync",  # reconcile: test-container-peek
-        "Router.lifespan",  # reconcile: router-conventions
-        "Router.on_shutdown",  # reconcile: docs-code-parity
-        "Router.on_startup",  # reconcile: docs-code-parity
-        "a2kit.Cap",  # reconcile: docs-code-parity
-        "a2kit.Lazy",  # reconcile: di-conditional-injection
-        "a2kit.Param",  # reconcile: router-conventions
-        "a2kit.capabilities",  # reconcile: docs-code-parity
-        "a2kit.di.cleanup",  # reconcile: app-lifecycle,di-scope-cleanup-stack
-        "a2kit.ldd.current_ctx",  # reconcile: mcp-context-passthrough
-        "a2kit.lint",  # reconcile: module-layout-discipline
-        "a2kit.list_view",  # reconcile: verb-decorators
-        "a2kit.packages.connections.container",  # reconcile: di-container-package
-        "a2kit.packages.enrichers",  # reconcile: core-composition,router-conventions
-        "a2kit.packages.lint.ALL_RULES",  # reconcile: module-layout-discipline
-        "a2kit.router",  # reconcile: otel-adapter
-        "a2kit.tags",  # reconcile: otel-adapter
-        "a2kit.tool.calls",  # reconcile: otel-adapter
-        "a2kit.tool_name",  # reconcile: otel-adapter
-        "a2kit.verb",  # reconcile: otel-adapter
-        "app._singletons",  # reconcile: docs-code-parity
-        "app.async_resource",  # reconcile: lazy-init-resources
-        "app.has_singleton",  # reconcile: app-singletons
-        "app.lazy",  # reconcile: lazy-init-resources
-        "app.on_shutdown",  # reconcile: docs-code-parity,in-process-test-client
-        "app.on_startup",  # reconcile: docs-code-parity,in-process-test-client
-        "app.serve_all",  # reconcile: app-lifecycle
-        "app.singleton",  # reconcile: app-singletons,docs-code-parity,test-container-peek
-        "app.singletons",  # reconcile: app-singletons
-        "app.tool_descriptors",  # reconcile: docs-code-parity,tool-descriptors
-        "app.use",  # reconcile: core-composition
     }
 )
 
@@ -108,8 +68,10 @@ _FENCED_RE = re.compile(r"```[a-zA-Z]*\n(.*?)```", re.DOTALL)
 _INLINE_RE = re.compile(r"`([^`\n]+)`")
 
 # Checkable-token patterns. Narrow by design — anything that does not match
-# one of these is not checkable and is skipped (D3).
-_DOTTED_A2KIT = re.compile(r"@?a2kit(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
+# one of these is not checkable and is skipped (D3). The leading lookbehind
+# rejects `a2kit` mid-path (e.g. the TOML section `[tool.a2kit.lint]`) —
+# only a package-root `a2kit.` is a checkable import path.
+_DOTTED_A2KIT = re.compile(r"(?<![\w.])@?a2kit(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
 _CANONICAL = re.compile(r"(?:^|[^A-Za-z0-9_])@?(App|app|Router|Container)\.([A-Za-z_][A-Za-z0-9_]*)")
 _LINT_CODE = re.compile(r"A2K-[A-Z0-9-]+")
 

@@ -5,7 +5,7 @@ TBD - created by archiving change type-driven-format-routing. Update Purpose aft
 ## Requirements
 ### Requirement: `App.tools()` returns typed `ToolDescriptor` objects
 
-`App` SHALL expose a single tool-introspection accessor `tools() -> list[ToolDescriptor]`. Each descriptor SHALL carry, at minimum, `name: str`, `router: Router`, `fn: Callable`, `return_type: type | None`, and `format_hint: Literal["tsv", "json", "page-tsv"]`. Descriptors SHALL be materialized inside `App.add_router(...)` (or equivalent registration path), not lazily on first access. The legacy `App.tool_descriptors()` method SHALL be removed. Consumers that previously called `app.tools()` to obtain bound callables SHALL now derive them via `[d.fn for d in app.tools()]`.
+`App` SHALL expose a single tool-introspection accessor `tools() -> list[ToolDescriptor]`. Each descriptor SHALL carry, at minimum, `name: str`, `router: Router`, `fn: Callable`, `return_type: type | None`, and `format_hint: Literal["tsv", "json", "page-tsv"]`. Descriptors SHALL be materialized inside `App.add_router(...)` (or equivalent registration path), not lazily on first access. Consumers that need bound callables SHALL derive them via `[d.fn for d in app.tools()]`.
 
 #### Scenario: Descriptor for a typed tool
 
@@ -23,13 +23,7 @@ TBD - created by archiving change type-driven-format-routing. Update Purpose aft
 
 - **GIVEN** any app with at least one router
 - **WHEN** consumer code computes `callables = [d.fn for d in app.tools()]`
-- **THEN** the result is a list of the bound tool callables (same shape the old `app.tools()` returned)
-
-#### Scenario: Legacy `tool_descriptors()` removed
-
-- **WHEN** consumer code calls `app.tool_descriptors()`
-- **THEN** `AttributeError` is raised
-- **AND** the error message points the consumer at `app.tools()` as the replacement
+- **THEN** the result is a list of the bound tool callables
 
 ### Requirement: Forward references resolve at descriptor materialization
 

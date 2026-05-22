@@ -215,7 +215,7 @@ CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
 
 ### Requirement: LDD wire-format invariants are owned by `a2kit.ldd`
 
-Every event delivered via `a2kit.ldd.event(ctx, name, **kw)` SHALL carry an `elapsed_ms` integer in its structured payload, computed as `int((monotonic() - app_start_monotonic) * 1000)` where `app_start_monotonic` is captured at first emit (or at App `__aenter__` when the lifecycle ran — there is no `App.on_startup` hook). The CLI rendering SHALL prefix every line with `+s.mmm` relative time using zero-padded three-decimal milliseconds. The human-readable text portion of any LDD line SHALL be capped at 60 characters with `…` elision when truncated. The CLI stub `send_log_message` rendering and the MCP `notifications/message` payload (carrying the same `level`, `logger`, `data`) SHALL agree on the structured `data` field's contents key-for-key — transports may differ on framing only, never on the structured payload.
+Every event delivered via `a2kit.ldd.event(ctx, name, **kw)` SHALL carry an `elapsed_ms` integer in its structured payload, computed as `int((monotonic() - app_start_monotonic) * 1000)` where `app_start_monotonic` is captured at first emit (or at App `__aenter__` when the lifecycle ran). The CLI rendering SHALL prefix every line with `+s.mmm` relative time using zero-padded three-decimal milliseconds. The human-readable text portion of any LDD line SHALL be capped at 60 characters with `…` elision when truncated. The CLI stub `send_log_message` rendering and the MCP `notifications/message` payload (carrying the same `level`, `logger`, `data`) SHALL agree on the structured `data` field's contents key-for-key — transports may differ on framing only, never on the structured payload.
 
 #### Scenario: elapsed_ms increases monotonically
 
@@ -480,9 +480,7 @@ change the rejection semantics — only the error envelope shape.
 
 ### Requirement: Ambient ctx is non-None inside any framework dispatch
 
-The MCP wrapper and CLI runtime SHALL bind a non-None `ctx` into the
-ambient `_LDD_STATE` for every framework-dispatched tool, regardless
-of whether the tool's body declares `ctx: a2kit.ToolContext`.
+The MCP wrapper and CLI runtime SHALL bind a non-None `ctx` into the ambient `_LDD_STATE` for every framework-dispatched tool, regardless of whether the tool's body declares `ctx: a2kit.ToolContext`.
 
 Implementation:
 
@@ -500,8 +498,7 @@ synthesized `_a2kit_ctx` Parameter (MCP) is a framework-internal
 mechanism for ambient binding and SHALL NOT leak into tool body
 kwargs.
 
-This requirement establishes the invariant: **inside any framework
-dispatch, `a2kit.ldd.current_ctx()` returns a non-None value**.
+This requirement establishes the invariant: **inside any framework dispatch, the ambient context resolved from the `_LDD_STATE` ContextVar is non-None**, so every LDD primitive has a live transport context to dispatch against.
 
 #### Scenario: MCP transport — tool without ctx param emits LDD
 

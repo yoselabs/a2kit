@@ -5,16 +5,8 @@ TBD - created by archiving change di-scoped-lifecycle. Update Purpose after arch
 ## Requirements
 ### Requirement: `Lazy[T]` is a type alias for deferred resolution
 
-The framework SHALL expose `a2kit.Lazy` as a generic type alias
-equivalent to `Callable[[], Awaitable[T]]`. Both **tool** and
-**factory** parameters annotated `Lazy[T]` (or the unaliased
-`Callable[[], Awaitable[T]]` form) SHALL be recognized by the
-framework's parameter-resolution paths as deferred-resolution
-requests for type `T`. The framework SHALL inject a closure that,
-when awaited, resolves `T` in the resolving container's scope and
-returns the resolved instance. The closure SHALL be a regular
-awaitable callable; consumers MAY call it zero, one, or many
-times.
+The framework SHALL expose `a2kit.packages.di.Lazy` as a generic type alias equivalent to `Callable[[], Awaitable[T]]`.
+Both **tool** and **factory** parameters annotated `Lazy[T]` (or the unaliased `Callable[[], Awaitable[T]]` form) SHALL be recognized by the framework's parameter-resolution paths as deferred-resolution requests for type `T`. The framework SHALL inject a closure that, when awaited, resolves `T` in the resolving container's scope and returns the resolved instance. The closure SHALL be a regular awaitable callable; consumers MAY call it zero, one, or many times.
 
 This requirement applies uniformly across:
 
@@ -25,7 +17,7 @@ This requirement applies uniformly across:
 
 #### Scenario: Lazy[T] alias is importable
 
-- **WHEN** a consumer writes `from a2kit import Lazy`
+- **WHEN** a consumer writes `from a2kit.packages.di import Lazy`
 - **THEN** the import succeeds
 - **AND** `Lazy[BrowserPool]` is equivalent to `Callable[[], Awaitable[BrowserPool]]` for type-checker purposes
 

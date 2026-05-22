@@ -9,7 +9,7 @@ The system SHALL provide `a2kit.testing.client(app)` — an async context manage
 
 The test client SHALL NOT subclass `StderrToolContext` or otherwise construct a CLI-shaped fake of the runtime Context.
 
-App lifecycle around the test session SHALL follow the `app-lifecycle` capability: the App's `__aenter__` runs before the first invoke and its `__aexit__` runs after the block exits. The framework does not expose `@app.on_startup` / `@app.on_shutdown` decorators (they do not exist on `App`); lifecycle is the async-context-manager protocol plus lazy first-use resource entry.
+App lifecycle around the test session SHALL follow the `app-lifecycle` capability: the App's `__aenter__` runs before the first invoke and its `__aexit__` runs after the block exits. Startup and shutdown bookends are expressed as DI-managed resources registered with `app.provide(T, factory)`; their `__aenter__` / `__aexit__` are entered and unwound by the framework around the App lifecycle. Lifecycle is the async-context-manager protocol plus lazy first-use resource entry.
 
 #### Scenario: ctx received by tools is a real fastmcp.Context
 
@@ -26,7 +26,7 @@ App lifecycle around the test session SHALL follow the `app-lifecycle` capabilit
 
 - **WHEN** a test enters `async with a2kit.testing.client(app) as c:` and exits the block
 - **THEN** the App's `__aenter__` ran before the first invoke and its `__aexit__` ran after the block exited, each exactly once
-- **AND** no `@app.on_startup` / `@app.on_shutdown` decorator is required or available
+- **AND** DI-managed resources registered via `app.provide(T, factory)` had their `__aenter__` / `__aexit__` entered and unwound around the session
 
 ### Requirement: Event and progress capture
 

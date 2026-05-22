@@ -5,9 +5,10 @@ TBD - created by archiving change di-sync-and-unleak. Update Purpose after archi
 ## Requirements
 ### Requirement: DI container lives at `a2kit.packages.di`
 
-The DI container module SHALL live at `src/a2kit/packages/di/`. The package SHALL be **self-contained**: no `a2kit.*` imports inside the `a2kit/packages/di/` tree. A static lint check SHALL enforce this discipline. The package SHALL be structured to enable future extraction to a standalone PyPI distribution (separate `pyproject.toml` skeleton present, but the actual publish is out of scope for this change).
+The DI container module SHALL live at `src/a2kit/packages/di/`.
+The package SHALL be **self-contained**: no `a2kit.*` imports inside the `a2kit/packages/di/` tree. A static lint check SHALL enforce this discipline. The package SHALL be structured to enable future extraction to a standalone PyPI distribution (separate `pyproject.toml` skeleton present, but the actual publish is out of scope for this change).
 
-All a2kit modules that need container types, the `Resolver` protocol, or the `Scope` enum SHALL import from `a2kit.packages.di`. The file at `src/a2kit/packages/connections/container.py` SHALL NOT exist (carryover from prior change).
+All a2kit modules that need container types, the `Resolver` protocol, or the `Scope` enum SHALL import from `a2kit.packages.di`.
 
 #### Scenario: Container module is importable standalone
 
@@ -21,10 +22,11 @@ All a2kit modules that need container types, the `Resolver` protocol, or the `Sc
 - **THEN** the result is empty
 - **AND** the lint check `a2kit lint static` enforces this with a dedicated rule code
 
-#### Scenario: Old import path is gone (carryover)
+#### Scenario: Container resolution types resolve from the package root
 
-- **WHEN** a script tries `from a2kit.packages.connections.container import Container`
-- **THEN** the import fails with `ModuleNotFoundError` or equivalent
+- **WHEN** a consumer imports the container surface from `a2kit.packages.di`
+- **THEN** `Container`, `Scope`, `Resolver`, and `UnresolvableType` all resolve from that single package root
+- **AND** no other module path exposes those container types
 
 ### Requirement: Container references no feature names
 

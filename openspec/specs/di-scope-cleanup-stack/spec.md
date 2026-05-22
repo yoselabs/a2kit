@@ -20,7 +20,8 @@ Each container scope (App-scope root container and per-call child containers) SH
 
 ### Requirement: Cleanup stack unwinds in LIFO order with per-resource exception isolation
 
-When a scope closes, the framework SHALL iterate the cleanup stack in reverse insertion order (LIFO) and invoke each entry's cleanup callable. Each invocation SHALL be wrapped in `try/except` such that a raised exception during one resource's cleanup SHALL be logged via `logging.getLogger("a2kit.di.cleanup")` at level WARN with traceback, and unwinding SHALL continue with the remaining entries. The framework SHALL NOT re-raise individual cleanup exceptions during unwind.
+When a scope closes, the framework SHALL iterate the cleanup stack in reverse insertion order (LIFO) and invoke each entry's cleanup callable.
+Each invocation SHALL be wrapped in `try`/`except` such that a raised exception during one resource's cleanup SHALL be logged through the framework's dedicated DI-cleanup logger (a `logging` channel scoped to the cleanup stack, defined in `a2kit.packages.di`) at WARN level with traceback, and unwinding SHALL continue with the remaining entries. The framework SHALL NOT re-raise individual cleanup exceptions during unwind.
 
 #### Scenario: Bad cleanup logged and skipped
 

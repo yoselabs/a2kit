@@ -30,7 +30,7 @@ When `selectable_fields` is omitted, the framework SHALL derive it from the tool
 #### Scenario: Derivation from list[Model]
 - **GIVEN** a tool method `async def list_tasks(...) -> list[Task]` decorated `@a2kit.list_("id", "title")`
 - **WHEN** the framework collects metadata
-- **THEN** `meta.extra["a2kit.list_view"].selectable_fields` equals the field names of `Task` in declaration order
+- **THEN** `meta.list_view.selectable_fields` equals the field names of `Task` in declaration order
 
 #### Scenario: Explicit override
 - **WHEN** the decorator is `@a2kit.list_("id", selectable_fields=("id", "title"))`

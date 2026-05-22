@@ -5,17 +5,9 @@ TBD - created by archiving change de-magic. Update Purpose after archive.
 ## Requirements
 ### Requirement: App composition uses three named verbs
 
-The `a2kit.App` class SHALL expose exactly three composition verbs:
-`add_router(router)`, `add_cli(group_or_command)`, and
-`add_mcp_middleware(middleware)`. Each verb SHALL accept exactly one
-kind of thing and return the `App` for chaining. The `App` MUST NOT
-expose any polymorphic-dispatch verb (no `use(thing)`), MUST NOT expose
-a class-claim shim (no `connect(C)`), and MUST NOT expose a
-factory-registration verb beyond `provide(...)`.
+The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(router)`, `add_cli(group_or_command)`, and `add_mcp_middleware(middleware)`. Each verb SHALL accept exactly one kind of thing and return the `App` for chaining. The `App` MUST NOT expose any polymorphic-dispatch verb, MUST NOT expose a class-claim shim (no `connect(C)`), and MUST NOT expose a factory-registration verb beyond `provide(...)`.
 
-Once a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`)
-has sealed an `App`, calling any of these verbs on it SHALL raise
-`TypeError`.
+Once a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`) has sealed an `App`, calling any of these verbs on it SHALL raise `TypeError`.
 
 #### Scenario: Adding a Router
 
@@ -35,11 +27,10 @@ has sealed an `App`, calling any of these verbs on it SHALL raise
 - **THEN** the middleware is appended after kit-default middleware in
   `build_mcp_server(app)`
 
-#### Scenario: Polymorphic use is removed
+#### Scenario: Only three named verbs exist
 
-- **WHEN** user code calls `app.use(anything)`
-- **THEN** Python raises `AttributeError` because the method does not
-  exist on `App`
+- **WHEN** user inspects the `App` composition surface
+- **THEN** exactly `add_router`, `add_cli`, and `add_mcp_middleware` are present, with no polymorphic-dispatch verb alongside them
 
 #### Scenario: Composition after sealing is rejected
 
@@ -130,23 +121,9 @@ The framework SHALL accept an enricher exclusively through `@a2kit.read(enricher
 - **WHEN** user writes `class TasksRouter(a2kit.Router, enricher=fn):`
 - **THEN** Python raises `TypeError` because `Router.__init_subclass__` no longer accepts the kwarg
 
-### Requirement: A2K-CORE-PURITY lint rule is removed
-
-The `A2K-CORE-PURITY` lint rule SHALL NOT exist. `src/a2kit/packages/lint/rules/core_purity.py` MUST NOT be present. The rule constant MUST NOT appear in `src/a2kit/packages/lint/static.py::ALL_RULES`. Tests for the rule MUST NOT be present in the test tree. This is consistent with the `core-purity` capability, whose `A2K-CORE-CLEAN`-dependent requirement is removed in the same reconciliation: no core-purity-token lint rule of any name (`A2K-CORE-PURITY`, `A2K-CORE-CLEAN`) is part of the live rule set. Core import discipline is policed structurally by `A2K-LAYER` (see `import-acyclicity` and `module-layout-discipline`).
-
-#### Scenario: Lint rule constant is gone
-
-- **WHEN** user runs `uv run a2kit lint static src/`
-- **THEN** the output never references `A2K-CORE-PURITY` or `A2K-CORE-CLEAN`
-
-#### Scenario: Core may import from packages
-
-- **WHEN** a core file imports a package symbol at module level where doing so is structurally appropriate
-- **THEN** no core-purity-token lint rule fires; layering is policed by `A2K-LAYER`, not by a token blocklist
-
 ### Requirement: Tracker example demonstrates constructor injection
 
-The `examples/tracker/` example SHALL use constructor injection throughout. The combined LOC of `examples/tracker/server.py + examples/tracker/routers.py + examples/tracker/store.py` SHALL be ≤ 50 lines (excluding blank lines, imports, and comments). The example MUST NOT use `Depends(<class>)`, MUST NOT use `Store[ConnT]`, MUST NOT use `app.use(...)`, and MUST NOT reference any `Plugin` class.
+The `examples/tracker/` example SHALL use constructor injection throughout. The combined LOC of `examples/tracker/server.py + examples/tracker/routers.py + examples/tracker/store.py` SHALL be ≤ 50 lines (excluding blank lines, imports, and comments). The example MUST NOT use `Depends(<class>)`, MUST NOT use `Store[ConnT]`, and MUST NOT reference any `Plugin` class. The example SHALL compose exclusively through the three named verbs.
 
 #### Scenario: Tracker server composes with three named verbs
 
@@ -160,7 +137,7 @@ The `examples/tracker/` example SHALL use constructor injection throughout. The 
 
 ### Requirement: Cold-start invariant preserved
 
-`import a2kit` SHALL complete in under 100 milliseconds. Importing `a2kit` MUST NOT pull `a2kit.packages.connections`, `a2kit.packages.enrichers`, `a2kit.packages.mcp`, or any other package into `sys.modules` at import time.
+`import a2kit` SHALL complete in under 100 milliseconds. Importing `a2kit` MUST NOT pull `a2kit.packages.connections`, `a2kit.packages.mcp`, or any other package into `sys.modules` at import time.
 
 #### Scenario: Cold-start time
 
@@ -170,7 +147,7 @@ The `examples/tracker/` example SHALL use constructor injection throughout. The 
 #### Scenario: Packages not loaded on import
 
 - **WHEN** the cold-start subprocess test inspects `sys.modules` after `import a2kit`
-- **THEN** none of `a2kit.packages.connections`, `a2kit.packages.enrichers`, `a2kit.packages.mcp`, `a2kit.packages.cli` appear
+- **THEN** none of `a2kit.packages.connections`, `a2kit.packages.mcp`, `a2kit.packages.cli` appear
 
 ### Requirement: No test-app helper
 
@@ -201,4 +178,18 @@ The `App` class SHALL eager-initialize a `Container` instance during `App.__init
 
 - **WHEN** `app.container()` is called twice on the same `App` instance
 - **THEN** both calls return the same object
+
+### Requirement: Core purity is a review discipline, not a lint rule
+
+Core purity SHALL be maintained as a design discipline enforced through review, with no dedicated lint-rule code in the rule registry. Core import discipline SHALL be policed structurally by the `A2K-LAYER` rule (see `import-acyclicity` and `module-layout-discipline`), which constrains module layering rather than tokens.
+
+#### Scenario: Core may import from packages where layering allows
+
+- **WHEN** a core file imports a package symbol at module level where doing so is structurally appropriate
+- **THEN** no token-blocklist lint rule fires; layering is policed by `A2K-LAYER`
+
+#### Scenario: No core-purity rule in the registry
+
+- **WHEN** user runs `uv run a2kit lint static src/` and inspects the rule set
+- **THEN** no dedicated core-purity rule code is present; `A2K-LAYER` is the structural enforcement
 
