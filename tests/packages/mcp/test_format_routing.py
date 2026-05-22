@@ -14,6 +14,7 @@ import pytest
 from pydantic import BaseModel
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.packages.formatter import Page
 from a2kit.packages.mcp import build_mcp_server
 
@@ -59,8 +60,9 @@ class TestMcpFormatRouting:
     @pytest.mark.anyio
     async def test_tabular_tool_emits_compressed_content(self, app: a2kit.App) -> None:
         # GIVEN an MCP server built with code_mode=False
-        server = build_mcp_server(app, code_mode=False)
-        async with app:
+        runtime = build(app)
+        server = build_mcp_server(runtime, code_mode=False)
+        async with runtime:
             # WHEN the tabular tool is called over MCP
             result = await server.call_tool("rows", {})
         # THEN content carries TSV, not raw JSON
@@ -77,16 +79,18 @@ class TestMcpFormatRouting:
 
     @pytest.mark.anyio
     async def test_non_tabular_tool_emits_json(self, app: a2kit.App) -> None:
-        server = build_mcp_server(app, code_mode=False)
-        async with app:
+        runtime = build(app)
+        server = build_mcp_server(runtime, code_mode=False)
+        async with runtime:
             result = await server.call_tool("one", {})
         # a single record is JSON, not TSV
         assert json.loads(_text(result)) == {"id": 7, "title": "solo"}
 
     @pytest.mark.anyio
     async def test_page_tool_emits_page_tsv(self, app: a2kit.App) -> None:
-        server = build_mcp_server(app, code_mode=False)
-        async with app:
+        runtime = build(app)
+        server = build_mcp_server(runtime, code_mode=False)
+        async with runtime:
             result = await server.call_tool("paged", {})
         envelope = json.loads(_text(result))
         assert envelope["_items_format"] == "tsv"
@@ -99,8 +103,9 @@ class TestCompactToggle:
 
     @pytest.mark.anyio
     async def test_compact_drops_structured_content(self, app: a2kit.App) -> None:
-        server = build_mcp_server(app, code_mode=False, compact=True)
-        async with app:
+        runtime = build(app)
+        server = build_mcp_server(runtime, code_mode=False, compact=True)
+        async with runtime:
             result = await server.call_tool("rows", {})
         # content still carries the compressed TSV
         assert _text(result).splitlines()[0] == "id\ttitle"
@@ -109,8 +114,9 @@ class TestCompactToggle:
 
     @pytest.mark.anyio
     async def test_compact_drops_structured_content_for_json_tool(self, app: a2kit.App) -> None:
-        server = build_mcp_server(app, code_mode=False, compact=True)
-        async with app:
+        runtime = build(app)
+        server = build_mcp_server(runtime, code_mode=False, compact=True)
+        async with runtime:
             result = await server.call_tool("one", {})
         assert json.loads(_text(result)) == {"id": 7, "title": "solo"}
         assert result.structured_content is None
@@ -122,8 +128,9 @@ class TestCodeModeRegime:
     @pytest.mark.anyio
     async def test_code_mode_off_renders_real_tool_for_llm(self, app: a2kit.App) -> None:
         # WHEN build_mcp_server(app, code_mode=False) is used
-        server = build_mcp_server(app, code_mode=False)
-        async with app:
+        runtime = build(app)
+        server = build_mcp_server(runtime, code_mode=False)
+        async with runtime:
             result = await server.call_tool("rows", {})
         # THEN a real tool called directly is llm-rendered (compressed)
         assert _text(result).splitlines()[0] == "id\ttitle"
@@ -131,8 +138,9 @@ class TestCodeModeRegime:
     @pytest.mark.anyio
     async def test_code_mode_on_renders_real_tool_for_code(self, app: a2kit.App) -> None:
         # WHEN build_mcp_server(app, code_mode=True) is used
-        server = build_mcp_server(app, code_mode=True)
-        async with app:
+        runtime = build(app)
+        server = build_mcp_server(runtime, code_mode=True)
+        async with runtime:
             # a real tool stays callable by name; its result reaching the
             # sandbox is code-rendered — structured, never compressed
             result = await server.call_tool("rows", {})

@@ -13,6 +13,7 @@ import logging
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 
 
 class _Resource:
@@ -101,7 +102,7 @@ async def test_lifo_order() -> None:
     app.provide(_B)
     app.provide(_C)
 
-    async with app:
+    async with build(app) as app:
         # Resolve in order A → B → C.
         await app._resolver.get(_A)
         await app._resolver.get(_B)
@@ -133,7 +134,7 @@ async def test_per_resource_exception_isolation(caplog: pytest.LogCaptureFixture
     app.provide(_B)
     app.provide(_C)
 
-    async with app:
+    async with build(app) as app:
         await app._resolver.get(_A)
         await app._resolver.get(_B)
         await app._resolver.get(_C)
@@ -162,7 +163,7 @@ async def test_body_exception_preserved() -> None:
     app.provide(_Bad)
 
     with pytest.raises(_BodyError, match="body failed"):
-        async with app:
+        async with build(app) as app:
             await app._resolver.get(_Bad)
             raise _BodyError("body failed")
 
@@ -174,7 +175,7 @@ async def test_partial_entry_unwinds_already_entered() -> None:
     app.provide(_PE_A)
     app.provide(_PE_B_depends_on_A)
 
-    async with app:
+    async with build(app) as app:
         with pytest.raises(RuntimeError, match="B failed to enter"):
             await app._resolver.get(_PE_B_depends_on_A)
         # A is on the stack; B is not.
@@ -209,7 +210,7 @@ async def test_background_task_exception_during_close() -> None:
 
     bg_task = asyncio.create_task(_background_raiser())
     try:
-        async with app:
+        async with build(app) as app:
             await app._resolver.get(_R)
             await asyncio.sleep(0)
     except RuntimeError:
@@ -233,7 +234,7 @@ async def test_partial_entry_on_startup_failure() -> None:
     app.provide(_PE_B_plain)
     app.provide(_PE_C_depends_on_A_B)
 
-    async with app:
+    async with build(app) as app:
         with pytest.raises(RuntimeError, match="C failed to enter"):
             await app._resolver.get(_PE_C_depends_on_A_B)
 
@@ -257,7 +258,7 @@ async def test_cleanup_within_taskgroup_context() -> None:
     async def _noop() -> None:
         await asyncio.sleep(0)
 
-    async with asyncio.TaskGroup() as tg, app:
+    async with asyncio.TaskGroup() as tg, build(app) as app:
         await app._resolver.get(_R)
         tg.create_task(_noop())
 

@@ -38,7 +38,7 @@ The `App.provide(...)` method SHALL accept a keyword-only `per_call: bool = Fals
 
 ### Requirement: App-scope resolution is lazy by default
 
-App-scope registrations SHALL NOT be entered at `App.__aenter__`. The first dispatch that resolves a given app-scope type SHALL trigger its factory invocation and `__aenter__` call. An app-scope type that no dispatch ever resolves SHALL NOT have its factory invoked, regardless of registration order or graph reachability.
+App-scope registrations SHALL NOT be entered at `AppRuntime.__aenter__`. The first dispatch that resolves a given app-scope type SHALL trigger its factory invocation and `__aenter__` call. An app-scope type that no dispatch ever resolves SHALL NOT have its factory invoked, regardless of registration order or graph reachability.
 
 #### Scenario: Unused app-scope resource never entered
 

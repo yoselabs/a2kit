@@ -27,7 +27,7 @@ from a2kit._verb_validators import (
     _check_return,
     _resolve_return_annotation,
 )
-from a2kit.metadata import A2KitMeta, A2KitMetaExtras, set_meta
+from a2kit.metadata import A2KitMeta, A2KitMetaExtras, ListViewSettings, set_meta
 from a2kit.signature import find_context_param
 
 if TYPE_CHECKING:
@@ -370,8 +370,6 @@ def list_(
     Like ``@read``, ``idempotent=`` and ``destructive=`` are rejected at
     decoration time. ``page_size`` must be a positive integer or ``None``.
     """
-    from a2kit.metadata import ListViewSettings
-
     if page_size is not None and page_size <= 0:
         raise ValueError(f"@a2kit.list_: `page_size` must be a positive integer or None; got {page_size!r}")
 

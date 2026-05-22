@@ -259,17 +259,20 @@ response. Read `docs/adr/0004-package-layout-tiered-by-audience.md`
 before proposing any change to the top-level surface, and before
 responding to any consumer filing that asks for promotion.
 
-Composition and runtime are **one public type**, `a2kit.App`. It carries
-the mutable composition verbs (`add_router`, `add_cli`,
+`a2kit.App` is the **one public type** — a compose-phase builder. It
+carries the mutable composition verbs (`add_router`, `add_cli`,
 `add_mcp_middleware`, `provide`, `health_check`) and is handed straight
 to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`).
-The finisher seals the App internally — it validates the provider graph
-and locks the container; consumer code never calls a seal step and there
-is no public `build()`. A composition verb called after a finisher has
-sealed the App crashes loud. Test overrides are re-build (construct a
-fresh `a2kit.App`, `provide` the fake last), never post-seal container
-mutation. Read `docs/adr/0017-one-public-app.md` (supersedes ADR 0016)
-before changing the `App` surface or the DI test seam.
+The finisher builds the App into a sealed internal runtime — it
+snapshots the composition into a fresh container, validates the provider
+graph, and owns the async-CM lifecycle; consumer code never calls a
+build step and there is no public `build()`. A composition verb called
+after a finisher has built a runtime is harmless — it affects only the
+next build, never a running runtime. Test overrides are re-build
+(construct a fresh `a2kit.App`, `provide` the fake last), never
+post-build container mutation. Read `docs/adr/0019-app-runtime-split.md`
+(supersedes ADR 0017) before changing the `App` surface or the DI test
+seam.
 
 Consumer-feedback discipline (how filings get triaged, how releases get
 re-validated, when to cite an ADR vs ship a primitive vs decline) lives

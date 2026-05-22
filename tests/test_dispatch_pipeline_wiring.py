@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.metadata import get_meta
 from a2kit.packages.cli.runtime import invoke_tool_sync
 from a2kit.packages.dispatch import ToolBuildSpec
@@ -58,7 +59,7 @@ def test_cli_adapter_enters_lifecycle_router_on_dispatch() -> None:
     router = _Lifecycle()
     app = a2kit.App("cli-lifecycle").add_router(router)
     desc = app.tools()[0]
-    spec = ToolBuildSpec(app=app, router=app.routers()[0], meta=get_meta(desc.fn))
+    spec = ToolBuildSpec(app=build(app), router=app.routers()[0], meta=get_meta(desc.fn))
 
     invoke_tool_sync(desc.fn, {}, fmt="json", spec=spec)
     assert router.entered is True

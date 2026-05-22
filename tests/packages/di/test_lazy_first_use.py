@@ -13,6 +13,7 @@ import asyncio
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 
 
 class _BrowserPool:
@@ -63,7 +64,7 @@ async def test_app_scope_resource_not_entered_at_aenter() -> None:
     app.provide(_BrowserPool)
     app.provide(_SqliteResource)
 
-    async with app:
+    async with build(app) as app:
         # Lifespan body runs without dispatching any tool that needs them.
         pass
 
@@ -84,7 +85,7 @@ async def test_first_dispatch_warms_resource_once() -> None:
     app = a2kit.App("test")
     app.provide(_BrowserPool)
 
-    async with app:
+    async with build(app) as app:
         first = await app._resolver.get(_BrowserPool)
         second = await app._resolver.get(_BrowserPool)
 
@@ -122,7 +123,7 @@ async def test_concurrent_first_touches_coalesce() -> None:
     app = a2kit.App("test")
     app.provide(_SlowResource)
 
-    async with app:
+    async with build(app) as app:
         # Spawn ten concurrent resolutions.
         tasks = [asyncio.create_task(app._resolver.get(_SlowResource)) for _ in range(10)]
         # Wait until __aenter__ is in flight, then release.

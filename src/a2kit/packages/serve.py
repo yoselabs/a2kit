@@ -33,14 +33,22 @@ if TYPE_CHECKING:
 def build_parent_app(app: App, *, mcp: bool, rest: bool) -> Starlette:
     """Build the multiplex parent app mounting the enabled surfaces.
 
-    ``mcp`` mounts ``build_mcp_server(app).http_app()`` under ``/mcp``;
-    ``rest`` mounts ``build_rest_app(app)`` under ``/api``. At least one
-    surface must be enabled. The parent's lifespan enters ``async with
-    app:`` exactly once and forwards every mounted surface's lifespan.
+    ``mcp`` mounts ``build_mcp_server(runtime).http_app()`` under
+    ``/mcp``; ``rest`` mounts ``build_rest_app(runtime)`` under ``/api``.
+    At least one surface must be enabled. The App is built into a single
+    ``AppRuntime`` once; the parent's lifespan enters that runtime
+    exactly once and forwards every mounted surface's lifespan.
     """
     if not (mcp or rest):
         msg = "build_parent_app requires at least one surface enabled (mcp or rest)"
         raise ValueError(msg)
+
+    from a2kit.runtime import build
+
+    # One runtime for the whole process — both surfaces share it and the
+    # parent owns its single lifecycle. ``build`` is idempotent on an
+    # ``AppRuntime``, so the downstream ``build_mcp_server`` reuses it.
+    runtime = build(app)
 
     # (mount-path, sub-app) pairs — the single source for both the route
     # table and the lifespans the parent must forward.
@@ -50,21 +58,21 @@ def build_parent_app(app: App, *, mcp: bool, rest: bool) -> Starlette:
         from a2kit.packages.mcp import build_mcp_server
 
         # own_app_lifecycle=False: the mount carries only transport-scoped
-        # setup; this parent owns the single `async with app:`.
-        mcp_server = build_mcp_server(app, own_app_lifecycle=False)
+        # setup; this parent owns the single `async with runtime:`.
+        mcp_server = build_mcp_server(runtime, own_app_lifecycle=False)
         mounts.append(("/mcp", mcp_server.http_app(path="/")))
 
     if rest:
         from a2kit.packages.rest import build_rest_app
 
-        mounts.append(("/api", build_rest_app(app)))
+        mounts.append(("/api", build_rest_app(runtime)))
 
     @asynccontextmanager
     async def _parent_lifespan(parent: Starlette) -> AsyncIterator[None]:
         async with AsyncExitStack() as stack:
-            # App enters first, exits last — surfaces stop serving before
-            # the shared DI container drains.
-            await stack.enter_async_context(app)
+            # The runtime enters first, exits last — surfaces stop serving
+            # before the shared DI container drains.
+            await stack.enter_async_context(runtime)
             for _path, sub_app in mounts:
                 await stack.enter_async_context(sub_app.router.lifespan_context(parent))
             yield

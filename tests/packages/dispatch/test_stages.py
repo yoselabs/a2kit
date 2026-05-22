@@ -13,6 +13,7 @@ import anyio
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.metadata import get_meta
 from a2kit.packages.dispatch import (
     CapturedError,
@@ -27,7 +28,7 @@ from a2kit.packages.dispatch import (
 
 
 def _spec(app: a2kit.App, router: Any = None, meta: Any = None) -> ToolBuildSpec:
-    return ToolBuildSpec(app=app, router=router, meta=meta)
+    return ToolBuildSpec(app=build(app), router=router, meta=meta)
 
 
 async def _stub() -> dict:
@@ -161,7 +162,7 @@ def test_router_lazy_enter_enters_router_on_dispatch() -> None:
     assert wrapped is not desc.fn
     asyncio.run(wrapped())
     assert router.entered is True
-    assert "lifecycle" in app._entered_routers
+    assert "lifecycle" in spec.app._entered_routers  # noqa: SLF001 -- runtime lifecycle seam
 
 
 # --- DispatchHookStage --------------------------------------------------- #

@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.testing import client, peek
 
 
@@ -189,7 +190,7 @@ def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
     async def boom() -> None:
         raise ValueError("base msg")
 
-    spec = ToolBuildSpec(app=a2kit.App("oc-err", debug=True), router=None, meta=None)
+    spec = ToolBuildSpec(app=build(a2kit.App("oc-err", debug=True)), router=None, meta=None)
     wrapped = ErrorCaptureStage().wrap(boom, spec)
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
@@ -213,7 +214,7 @@ def test_mcp_error_envelope_passes_cancelled_unchanged() -> None:
     async def stuck() -> None:
         await asyncio.sleep(60)
 
-    spec = ToolBuildSpec(app=a2kit.App("oc-cancel"), router=None, meta=None)
+    spec = ToolBuildSpec(app=build(a2kit.App("oc-cancel")), router=None, meta=None)
     wrapped = ErrorCaptureStage().wrap(stuck, spec)
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 

@@ -35,6 +35,7 @@ import a2kit
 from a2kit.packages.di.container import Container
 from a2kit.packages.lint.static import ALL_RULES
 from a2kit.routers import Router
+from a2kit.runtime import build
 
 SPECS_DIR = Path(__file__).resolve().parent.parent / "openspec" / "specs"
 
@@ -72,13 +73,16 @@ _INLINE_RE = re.compile(r"`([^`\n]+)`")
 # rejects `a2kit` mid-path (e.g. the TOML section `[tool.a2kit.lint]`) —
 # only a package-root `a2kit.` is a checkable import path.
 _DOTTED_A2KIT = re.compile(r"(?<![\w.])@?a2kit(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
-_CANONICAL = re.compile(r"(?:^|[^A-Za-z0-9_])@?(App|app|Router|Container)\.([A-Za-z_][A-Za-z0-9_]*)")
+# ``AppRuntime`` precedes ``App`` in the alternation so the longer token
+# wins — ordered alternation would otherwise match the ``App`` prefix.
+_CANONICAL = re.compile(r"(?:^|[^A-Za-z0-9_])@?(AppRuntime|App|app|Router|Container)\.([A-Za-z_][A-Za-z0-9_]*)")
 _LINT_CODE = re.compile(r"A2K-[A-Z0-9-]+")
 
 # Live instance probes — resolving attribute accesses against an instance
 # catches attributes set in ``__init__`` (e.g. ``app.ldd``) that a
 # class-level ``hasattr`` would miss.
 _APP_PROBE = a2kit.App("_spec_drift_probe")
+_APPRUNTIME_PROBE = build(a2kit.App("_spec_drift_probe_rt"))
 _CONTAINER_PROBE = Container()
 
 
@@ -90,6 +94,7 @@ class _RouterProbe(Router):
 _CANONICAL_PROBES: dict[str, object] = {
     "App": _APP_PROBE,
     "app": _APP_PROBE,
+    "AppRuntime": _APPRUNTIME_PROBE,
     "Router": _RouterProbe(),
     "Container": _CONTAINER_PROBE,
 }

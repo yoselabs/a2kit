@@ -15,6 +15,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.testing import resolve
 
 
@@ -66,7 +67,7 @@ async def test_resolve_runs_di_chain_on_first_call() -> None:
     app = a2kit.App("test")
     app.provide(_Inner)
 
-    async with app:
+    async with build(app) as app:
         instance = await resolve(app, _Inner)
 
     assert isinstance(instance, _Inner)
@@ -80,7 +81,7 @@ async def test_resolve_enters_resource_via_aenter() -> None:
     app = a2kit.App("test")
     app.provide(_Inner)
 
-    async with app:
+    async with build(app) as app:
         await resolve(app, _Inner)
         assert _Inner.entered == 1
         assert _Inner.exited == 0  # still in flight
@@ -94,7 +95,7 @@ async def test_resolve_returns_cached_singleton_on_second_call() -> None:
     app = a2kit.App("test")
     app.provide(_Inner)
 
-    async with app:
+    async with build(app) as app:
         first = await resolve(app, _Inner)
         second = await resolve(app, _Inner)
 
@@ -111,7 +112,7 @@ async def test_resolve_walks_dependency_chain() -> None:
     app.provide(_Inner)
     app.provide(_Outer)
 
-    async with app:
+    async with build(app) as app:
         outer = await resolve(app, _Outer)
         inner_direct = await resolve(app, _Inner)
 

@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 
 
 class _Transaction:
@@ -60,7 +61,7 @@ async def test_per_call_yields_fresh_instance_per_dispatch() -> None:
     app = a2kit.App("test")
     app.provide(_Transaction, per_call=True)
 
-    async with app:
+    async with build(app) as app:
         # Simulate two dispatches by opening two per-call children.
         async with app._resolver.child() as call1:
             tx1 = await call1.get(_Transaction)
@@ -77,7 +78,7 @@ async def test_per_call_caches_within_single_call() -> None:
     app = a2kit.App("test")
     app.provide(_Transaction, per_call=True)
 
-    async with app, app._resolver.child() as call:
+    async with build(app) as app, app._resolver.child() as call:
         a = await call.get(_Transaction)
         b = await call.get(_Transaction)
 
@@ -91,7 +92,7 @@ async def test_per_call_cleanup_runs_on_normal_return() -> None:
     app = a2kit.App("test")
     app.provide(_Transaction, per_call=True)
 
-    async with app, app._resolver.child() as call:
+    async with build(app) as app, app._resolver.child() as call:
         tx = await call.get(_Transaction)
         assert _Transaction.cleanup_count == 0, "cleanup ran too early"
 
@@ -109,7 +110,7 @@ async def test_per_call_cleanup_runs_on_exception() -> None:
     class _BodyError(RuntimeError):
         pass
 
-    async with app:
+    async with build(app) as app:
         with pytest.raises(_BodyError):
             async with app._resolver.child() as call:
                 await call.get(_Transaction)
@@ -135,7 +136,7 @@ async def test_per_call_depends_on_app_scope() -> None:
     app.provide(_ConnectionPool)
     app.provide(_Transaction, tx_factory, per_call=True)
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call1:
             tx1 = await call1.get(_Transaction)
         async with app._resolver.child() as call2:
@@ -149,7 +150,7 @@ async def test_per_call_depends_on_app_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_app_scope_cannot_depend_on_per_call() -> None:
-    """Graph validation rejects app-scope→per-call dependency at ``async with app:``."""
+    """Graph validation rejects app-scope→per-call dependency at ``async with build(app) as app:``."""
 
     @asynccontextmanager
     async def bad_app_factory(tx: _Transaction) -> AsyncIterator[object]:
@@ -160,7 +161,7 @@ async def test_app_scope_cannot_depend_on_per_call() -> None:
     app.provide(object, bad_app_factory)  # app-scope default; depends on per-call _Transaction
 
     with pytest.raises(TypeError) as excinfo:
-        async with app:
+        async with build(app) as app:
             pass
 
     msg = str(excinfo.value)

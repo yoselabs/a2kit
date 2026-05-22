@@ -62,17 +62,18 @@ def __dir__() -> list[str]:
 
 
 def run(app: App, argv: list[str] | None = None) -> Any:
-    """Finisher: seal the App and run its CLI.
+    """Finisher: build the App's runtime and run its CLI.
 
-    ``run`` is the production finisher. It seals the App internally
-    (validates the DI provider graph, locks the container) before
-    building and invoking the CLI — consumer code never calls a seal
-    step.
+    ``run`` is the production finisher. It builds an ``AppRuntime`` from
+    the App internally (snapshotting the composition, validating the DI
+    provider graph) before building and invoking the CLI — consumer code
+    never calls a build step. See ADR 0019.
     """
     from a2kit.packages.cli import build_full_cli
+    from a2kit.runtime import build
 
-    app._seal()  # noqa: SLF001 -- finisher-internal seal, see ADR 0017
-    cli = build_full_cli(app)
+    runtime = build(app)
+    cli = build_full_cli(runtime)
     return cli.main(args=argv, standalone_mode=True)
 
 

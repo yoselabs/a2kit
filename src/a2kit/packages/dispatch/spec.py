@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from a2kit.app import App
     from a2kit.metadata import A2KitMeta
     from a2kit.routers import Router
+    from a2kit.runtime import AppRuntime
 
 #: Framework-reserved parameter name synthesized into an MCP tool's
 #: rewritten signature when its body does not declare ``ctx`` — FastMCP
@@ -30,7 +30,7 @@ class ToolBuildSpec:
     server-build time; the CLI adapter builds one per invocation.
     """
 
-    app: App
+    app: AppRuntime
     router: Router | None
     meta: A2KitMeta | None
     reports_enabled: bool = True

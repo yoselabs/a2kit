@@ -100,7 +100,7 @@ The dispatcher SHALL open one child per tool invocation (per-call scope) via `ap
 
 ### Requirement: Container is async-context-manageable as a whole
 
-The `Container` class SHALL implement `__aenter__` and `__aexit__`. Entering the container SHALL be a no-op (lazy resolution defers all work to first `get`). Exiting the container SHALL unwind its own cleanup stack via the LIFO + per-resource isolation contract. The `App.__aexit__` SHALL exit the root container by leveraging this protocol.
+The `Container` class SHALL implement `__aenter__` and `__aexit__`. Entering the container SHALL be a no-op (lazy resolution defers all work to first `get`). Exiting the container SHALL unwind its own cleanup stack via the LIFO + per-resource isolation contract. The `AppRuntime.__aexit__` SHALL exit the root container by leveraging this protocol.
 
 #### Scenario: Root container exit unwinds cleanup stack
 

@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 
 
 @pytest.mark.asyncio
@@ -33,7 +34,7 @@ async def test_aexit_protocol_works() -> None:
     app = a2kit.App("test")
     app.provide(_Resource)
 
-    async with app:
+    async with build(app) as app:
         await app._resolver.get(_Resource)
         assert _Resource.entered is True
         assert _Resource.exited is False
@@ -63,7 +64,7 @@ async def test_asynccontextmanager_factory_works() -> None:
     app = a2kit.App("test")
     app.provide(_Resource, resource_factory)
 
-    async with app:
+    async with build(app) as app:
         await app._resolver.get(_Resource)
         assert setup_called is True
         assert teardown_called is False
@@ -84,7 +85,7 @@ async def test_aclose_not_detected() -> None:
     app = a2kit.App("test")
     app.provide(_Resource)
 
-    async with app:
+    async with build(app) as app:
         await app._resolver.get(_Resource)
 
     assert _Resource.aclose_called is False, "framework auto-detected aclose() — should be banned per protocol collapse"
@@ -103,7 +104,7 @@ async def test_close_not_detected() -> None:
     app = a2kit.App("test")
     app.provide(_Resource)
 
-    async with app:
+    async with build(app) as app:
         await app._resolver.get(_Resource)
 
     assert _Resource.close_called is False, "framework auto-detected close() — should be banned per protocol collapse"

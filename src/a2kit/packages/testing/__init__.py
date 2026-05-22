@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from a2kit.app import App
+    from a2kit.runtime import AppRuntime
 
 _T = TypeVar("_T")
 
@@ -90,7 +91,7 @@ def peek(app_: App, type_: type) -> Any:
     return cached
 
 
-async def resolve(app_: App, type_: type) -> Any:
+async def resolve(app_: App | AppRuntime, type_: type) -> Any:
     """Async DI resolution test seam — the async sibling of :func:`peek`.
 
     Runs the full DI resolution chain on ``app``'s container: builds

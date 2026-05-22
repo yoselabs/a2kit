@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.testing import client as _testing_client
 
 
@@ -33,7 +34,7 @@ async def test_router_does_not_enter_on_app_aenter() -> None:
         tools = (fetch,)
 
     app = a2kit.App("x").add_router(_GH())
-    async with app:
+    async with build(app) as app:
         assert entered == []  # router did NOT enter just because app entered
 
 

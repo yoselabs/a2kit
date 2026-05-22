@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.packages.di import Lazy
 
 
@@ -93,7 +94,7 @@ async def test_singleton_factory_with_lazy_app_scope_t_works() -> None:
     async def tool_body(outer: _Outer) -> _Inner:
         return await outer.inner_lazy()
 
-    async with app, app._resolver.child() as call:
+    async with build(app) as app, app._resolver.child() as call:
         kwargs = await call.resolve_params(tool_body)
         instance = await tool_body(**kwargs)
 
@@ -118,7 +119,7 @@ async def test_singleton_factory_lazy_handle_never_awaited() -> None:
         # Never calls outer.inner_lazy().
         return "done"
 
-    async with app, app._resolver.child() as call:
+    async with build(app) as app, app._resolver.child() as call:
         kwargs = await call.resolve_params(tool_body)
         await tool_body(**kwargs)
 
@@ -144,7 +145,7 @@ async def test_singleton_factory_lazy_handle_cached_across_dispatches() -> None:
     async def tool_body(outer: _Outer) -> _Inner:
         return await outer.inner_lazy()
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call_a:
             kwargs_a = await call_a.resolve_params(tool_body)
             first = await tool_body(**kwargs_a)
@@ -159,7 +160,7 @@ async def test_singleton_factory_lazy_handle_cached_across_dispatches() -> None:
 @pytest.mark.asyncio
 async def test_singleton_factory_with_lazy_per_call_rejected() -> None:
     """A SINGLETON factory declaring ``Lazy[_PerCallThing]`` is
-    rejected at ``async with app:`` time with a TypeError naming the
+    rejected at ``async with build(app) as app:`` time with a TypeError naming the
     offending factory + the per-call inner type + migration paths."""
     app = a2kit.App("test")
     app.provide(_PerCallThing, per_call=True)
@@ -170,7 +171,7 @@ async def test_singleton_factory_with_lazy_per_call_rejected() -> None:
     app.provide(_OuterWithPerCall, make_bad_outer)
 
     with pytest.raises(TypeError) as exc_info:
-        async with app:
+        async with build(app) as app:
             pass
 
     msg = str(exc_info.value)
@@ -199,7 +200,7 @@ async def test_per_call_factory_with_lazy_t_works() -> None:
         inner = await agg.inner_lazy()
         return id(agg), inner
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call_a:
             kwargs_a = await call_a.resolve_params(tool_body)
             id_a, inner_a = await tool_body(**kwargs_a)

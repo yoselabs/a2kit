@@ -105,9 +105,9 @@ class TestClient:
     async def __aenter__(self) -> TestClient:
         from fastmcp import Client  # noqa: A2K-IMPORT-DISCIPLINE
 
-        # Finisher seal: the test client validates + locks the App before
-        # serving it, exactly as `run` / `build_mcp_server` do. Idempotent.
-        self.app._seal()  # noqa: SLF001 -- finisher-internal seal, see ADR 0017
+        # `build_mcp_server` is the finisher: it builds the App into a
+        # sealed runtime internally (validates + freezes the container),
+        # exactly as `run` does. The test client never builds explicitly.
         # `code_mode=False`: the in-process test client drives tools
         # directly; the code-execution transform would collapse the tool
         # catalog it inspects. Tests of code mode use `fastmcp.Client`.

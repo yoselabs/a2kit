@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.routers import Router
 
 
@@ -114,7 +115,7 @@ def test_router_lifespan_post_yield_raise_logged_and_continues() -> None:
         # Router enters lazily; we don't trigger dispatch, so the router
         # never enters and __aexit__ doesn't run. This test now covers
         # the no-op path (lazy routers are inert when never touched).
-        async with app:
+        async with build(app):
             pass
 
     anyio.run(_go)

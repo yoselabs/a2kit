@@ -9,6 +9,7 @@ import pytest
 import typer
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.metadata import get_meta
 from a2kit.packages.cli.runtime import _invoke_tool_in_process, invoke_tool_sync
 from a2kit.packages.dispatch import ToolBuildSpec
@@ -27,7 +28,7 @@ async def async_tool(*, n: int) -> dict:
 def _spec(fn: Any, *, app: a2kit.App | None = None, router: Any = None) -> ToolBuildSpec:
     """Build a `ToolBuildSpec` for a standalone or router-bound tool."""
     return ToolBuildSpec(
-        app=app if app is not None else a2kit.App("runtime-test"),
+        app=build(app if app is not None else a2kit.App("runtime-test")),
         router=router,
         meta=get_meta(fn),
     )

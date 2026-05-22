@@ -281,6 +281,26 @@ class Container:
         merged.update(self._providers)
         return merged
 
+    def snapshot(self) -> Container:
+        """Return a fresh unsealed Container carrying this container's registrations.
+
+        Copies the full registration state — providers, per-type scope
+        metadata, and wire scopes — into a new root container. No built
+        instances, cleanup state, or the sealed flag are carried.
+
+        ``providers_view`` alone is an incomplete snapshot: it returns
+        only ``{type: factory}`` and drops scope metadata and wire
+        scopes. The finisher's ``build(app)`` step uses ``snapshot`` to
+        construct an ``AppRuntime``'s runtime container independently of
+        the App's mutable compose-phase container, so post-build
+        composition cannot reach a running runtime.
+        """
+        fresh = Container()
+        fresh._providers = dict(self._providers)
+        fresh._scope_metadata = dict(self._scope_metadata)
+        fresh._wire_scopes = {name: set(types) for name, types in self._wire_scopes.items()}
+        return fresh
+
     async def get(self, type_: type) -> Any:
         """Lifecycle-aware resolve honoring scope, ``__aenter__``, cleanup.
 

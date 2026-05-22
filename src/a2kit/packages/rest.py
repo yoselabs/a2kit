@@ -24,10 +24,11 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
     from a2kit.app import App
+    from a2kit.runtime import AppRuntime
 
 
-def build_rest_app(app: App) -> Starlette:
-    """Build the minimal REST sub-application from an ``a2kit.App``.
+def build_rest_app(app: App | AppRuntime) -> Starlette:
+    """Build the minimal REST sub-application from an ``App`` or ``AppRuntime``.
 
     Serves ``/health`` (liveness) and ``/openapi.json`` (an OpenAPI 3.1
     document whose ``info`` is derived from ``app.name``). The author

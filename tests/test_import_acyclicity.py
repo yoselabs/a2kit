@@ -14,6 +14,7 @@ import sys
 from typing import Any
 
 import a2kit
+from a2kit.runtime import build
 from a2kit import HealthResult
 from a2kit.packages.health import app_version, run_checks
 
@@ -101,10 +102,10 @@ def test_run_checks_aggregates_through_resolver() -> None:
         return HealthResult.ok()
 
     async def go() -> dict[str, Any]:
-        async with app:
-            registry = app._health  # noqa: SLF001 -- test seam
-            resolver = app._container  # noqa: SLF001 -- test seam
-            return await run_checks(registry, resolver, version=app_version(app))
+        async with build(app) as runtime:
+            registry = runtime._health  # noqa: SLF001 -- test seam
+            resolver = runtime._container  # noqa: SLF001 -- test seam
+            return await run_checks(registry, resolver, version=app_version(runtime))
 
     result = asyncio.run(go())
     assert result["status"] == "ok"
@@ -117,9 +118,9 @@ def test_run_checks_version_is_caller_supplied() -> None:
     app._install_health_tool()  # noqa: SLF001 -- exercising the lower-level seam
 
     async def go() -> dict[str, Any]:
-        async with app:
-            registry = app._health  # noqa: SLF001 -- test seam
-            resolver = app._container  # noqa: SLF001 -- test seam
+        async with build(app) as runtime:
+            registry = runtime._health  # noqa: SLF001 -- test seam
+            resolver = runtime._container  # noqa: SLF001 -- test seam
             return await run_checks(registry, resolver, version="9.9.9")
 
     result = asyncio.run(go())

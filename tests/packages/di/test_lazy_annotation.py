@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.packages.di import Lazy
 
 
@@ -68,7 +69,7 @@ async def test_lazy_param_receives_callable_not_instance() -> None:
     async def tool_body(browser: Lazy[_BrowserPool]) -> None:
         captured["browser"] = browser
 
-    async with app, app._resolver.child() as call:
+    async with build(app) as app, app._resolver.child() as call:
         kwargs = await call.resolve_params(tool_body)
         await tool_body(**kwargs)
 
@@ -87,7 +88,7 @@ async def test_lazy_never_invoked_resource_never_entered() -> None:
     async def tool_body(browser: Lazy[_BrowserPool]) -> str:
         return "done"  # never calls `browser()`
 
-    async with app, app._resolver.child() as call:
+    async with build(app) as app, app._resolver.child() as call:
         kwargs = await call.resolve_params(tool_body)
         result = await tool_body(**kwargs)
 
@@ -106,7 +107,7 @@ async def test_lazy_honors_app_scope_cache() -> None:
     async def tool_body(browser: Lazy[_BrowserPool]) -> _BrowserPool:
         return await browser()
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call:
             kwargs = await call.resolve_params(tool_body)
             bp1 = await tool_body(**kwargs)
@@ -128,7 +129,7 @@ async def test_lazy_honors_per_call_cache() -> None:
     async def tool_body(tx: Lazy[_Transaction]) -> tuple[_Transaction, _Transaction]:
         return await tx(), await tx()
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call1:
             kwargs = await call1.resolve_params(tool_body)
             a, b = await tool_body(**kwargs)
@@ -155,7 +156,7 @@ async def test_lazy_resource_cleaned_up_at_scope_exit() -> None:
     async def per_call_tool(tx: Lazy[_Transaction]) -> None:
         await tx()  # triggers entry
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call:
             kwargs = await call.resolve_params(app_scope_tool)
             await app_scope_tool(**kwargs)

@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
     from a2kit.app import App
     from a2kit.routers import Router
+    from a2kit.runtime import AppRuntime
 
 
 class _CliFormat(StrEnum):
@@ -142,7 +143,7 @@ def _needs_json_decode(ann: Any) -> bool:
     return inner not in (bool, int, float, str)
 
 
-def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None) -> Callable[..., None]:
+def _build_tool_callback(fn: Callable[..., Any], app: AppRuntime, router: Router | None) -> Callable[..., None]:
     """Synthesize a Typer-compatible callback for tool ``fn``.
 
     The returned callable carries a ``__signature__`` and ``__annotations__``
@@ -317,7 +318,7 @@ def _build_tool_callback(fn: Callable[..., Any], app: App, router: Router | None
     return callback
 
 
-def _register_router(typer_app: Any, router: Router, app: App) -> None:
+def _register_router(typer_app: Any, router: Router, app: AppRuntime) -> None:
     """Add a sub-Typer for ``router`` to ``typer_app``."""
     import typer
 
@@ -344,7 +345,7 @@ def _register_router(typer_app: Any, router: Router, app: App) -> None:
     typer_app.add_typer(sub)
 
 
-def _register_schema(typer_app: Any, app: App) -> None:
+def _register_schema(typer_app: Any, app: AppRuntime) -> None:
     """Register the ``schema [tool]`` subcommand."""
     import json as _json
 
@@ -397,7 +398,7 @@ def _register_schema(typer_app: Any, app: App) -> None:
     typer_app.command(name="schema")(schema_cmd)
 
 
-def _register_health(typer_app: Any, app: App) -> None:
+def _register_health(typer_app: Any, app: AppRuntime) -> None:
     """Register the ``health`` shorthand for ``_meta.health``.
 
     Runs the aggregated probe by calling
@@ -430,16 +431,20 @@ def _register_health(typer_app: Any, app: App) -> None:
     typer_app.command(name="health")(health_cmd)
 
 
-def build_full_cli(app: App) -> click.Command:
+def build_full_cli(app: App | AppRuntime) -> click.Command:
     """Build the top-level CLI for ``app`` as a ``click.Command`` (Typer-backed).
+
+    Accepts a compose-phase ``App`` or an already-built ``AppRuntime``;
+    an ``App`` is built into a runtime here (``build`` is idempotent on a
+    runtime). ``a2kit.run`` is the production finisher that calls this.
 
     Top-level commands:
       - one subgroup per Router (slug-named)
       - any user-registered ``app.add_cli(...)`` commands (Click commands)
-      - ``schema`` (eager, closes over app)
+      - ``schema`` (eager, closes over the runtime)
       - ``serve`` (LAZY — fastmcp imported only inside the callback body)
       - ``code`` (LAZY — sandbox runtime imported only inside the callback)
-      - ``health`` (only when ``app._health.enabled``)
+      - ``health`` (only when the runtime carries an enabled health registry)
 
     Top-level flags ``--no-reports`` / ``--no-events`` disable LDD channels
     for the invocation; they override ``App.set_ldd(...)`` and the
@@ -447,6 +452,9 @@ def build_full_cli(app: App) -> click.Command:
     """
     import typer
 
+    from a2kit.runtime import build
+
+    app = build(app)
     routers = list(app.routers())
     router_help_lines = [f"  {r.slug}  (run `{app.name} {r.slug} --help` for tools)" for r in routers]
     help_text = (app.name or "a2kit") + " — agent toolkit CLI."

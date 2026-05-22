@@ -1,9 +1,10 @@
-"""``a2kit.App`` — the single composition + runtime type.
+"""``a2kit.App`` — the compose-phase builder.
 
-Covers the ``app-builder-runtime`` capability: composition happens on a
-mutable ``a2kit.App``; a finisher seals it internally; composition after
-sealing crashes loud. There is one public type and no public ``build()``.
-See ADR 0017 (supersedes ADR 0016).
+Covers the ``core-composition`` capability: composition happens on a
+pure, reusable ``a2kit.App``; a finisher's internal ``build(app)`` step
+snapshots it into an ``AppRuntime``; composition after a build affects
+only subsequent builds. ``App`` is the one public type; ``build`` is
+finisher-internal. See ADR 0019 (supersedes ADR 0017).
 """
 
 from __future__ import annotations
@@ -98,39 +99,69 @@ def test_app_has_no_public_build() -> None:
     assert not hasattr(a2kit.App("svc"), "build")
 
 
-# -------------------------------- sealing ---------------------------------- #
+# ---------------------------- finisher build ------------------------------- #
 
 
-def test_seal_validates_provider_graph() -> None:
-    """Sealing rejects an app-scope factory that depends on a per-call type."""
+def test_build_validates_provider_graph() -> None:
+    """build() rejects an app-scope factory that depends on a per-call type."""
+    from a2kit.runtime import build
+
     app = a2kit.App("svc")
     app.provide(_PerCall, per_call=True)
     app.provide(_AppScopeNeedsPerCall)
     with pytest.raises(TypeError, match="scope violation"):
-        app._seal()
+        build(app)
 
 
-def test_seal_is_idempotent_app_reusable() -> None:
-    """A second seal is a no-op — one App survives more than one finisher."""
+def test_app_is_reusable_across_builds() -> None:
+    """One App may be built more than once — it is a pure, reusable builder."""
+    from a2kit.runtime import build
+
     app = a2kit.App("svc")
-    app._seal()
-    app._seal()  # no "spent" / "already sealed" error
+    first = build(app)
+    second = build(app)
+    assert first is not second  # each build is an independent runtime
 
 
-@pytest.mark.parametrize(
-    "verb",
-    ["add_router", "add_cli", "add_mcp_middleware", "provide", "health_check"],
-)
-def test_composition_after_sealing_raises(verb: str) -> None:
-    """A composition verb on a sealed App raises a TypeError sealed-hint."""
+def test_composition_verbs_callable_after_build() -> None:
+    """Every composition verb stays callable after a finisher builds a runtime.
+
+    There is no sealed mode: a verb called after ``build()`` simply
+    affects the next build.
+    """
+    from a2kit.runtime import build
+
     app = a2kit.App("svc")
-    app._seal()
-    with pytest.raises(TypeError, match="sealed"):
-        getattr(app, verb)(_Probe())
+    build(app)
+
+    @click.group()
+    def extra() -> None:
+        pass
+
+    # None of these raise — the App is a pure builder with no sealed mode.
+    app.add_router(_Probe())
+    app.add_cli(extra)
+    app.add_mcp_middleware(object())
+    app.provide(int, lambda: 1)
+
+    @app.health_check
+    async def _probe() -> a2kit.HealthResult:
+        return a2kit.HealthResult.ok()
 
 
-def test_finisher_seals_then_composition_raises() -> None:
-    """After a real finisher (testing.client) seals, provide raises."""
+def test_composition_after_build_affects_only_future_builds() -> None:
+    """A verb called after build() reaches later builds, not the built runtime."""
+    from a2kit.runtime import build
+
+    app = a2kit.App("svc")
+    runtime = build(app)
+    app.add_router(_Probe())
+    assert all(r.slug != "_probe" for r in runtime.routers())
+    assert any(r.slug == "_probe" for r in build(app).routers())
+
+
+def test_composition_after_a_finisher_is_allowed() -> None:
+    """After a real finisher (testing.client) runs, the App stays mutable."""
     from a2kit.testing import client
 
     app = a2kit.App("svc").add_router(_Probe())
@@ -140,8 +171,9 @@ def test_finisher_seals_then_composition_raises() -> None:
             pass
 
     asyncio.run(go())
-    with pytest.raises(TypeError, match="sealed"):
-        app.provide(int, lambda: 1)
+    # No TypeError — composition affects only subsequent builds.
+    app.provide(int, lambda: 1)
+    assert app.has_provider(int)
 
 
 # ---------------------------- runtime surface ------------------------------ #
@@ -155,15 +187,11 @@ def test_app_unknown_attr_is_attributeerror() -> None:
     assert getattr(app, "version", "DEFAULT") == "DEFAULT"
 
 
-def test_app_is_an_async_context_manager() -> None:
-    """The App enters/exits its own lifecycle."""
+def test_app_is_not_an_async_context_manager() -> None:
+    """The App is a pure builder — the lifecycle belongs to the AppRuntime."""
     app = a2kit.App("p").add_router(_Probe())
-
-    async def go() -> None:
-        async with app as entered:
-            assert entered is app
-
-    asyncio.run(go())
+    assert not hasattr(app, "__aenter__")
+    assert not hasattr(app, "__aexit__")
 
 
 # ----------------------- test overrides are re-build ----------------------- #
@@ -183,7 +211,7 @@ def test_reregistered_provider_wins_last_write() -> None:
     assert resolved.tag == "fake"
 
 
-def test_no_post_seal_override_surface_on_container() -> None:
+def test_no_override_surface_on_container() -> None:
     """The snapshot/restore test-override seam was deleted (ADR 0006)."""
     container = a2kit.App("svc").container()
     for removed in ("_override", "_snapshot", "_restore"):

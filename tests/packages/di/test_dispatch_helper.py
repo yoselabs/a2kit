@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.packages.di import Lazy
 
 
@@ -46,7 +47,7 @@ async def test_dispatch_yields_resolved_kwargs() -> None:
     async def tool(tx: _Tx, name: str) -> str:
         return f"{name}:{type(tx).__name__}"
 
-    async with app, app._resolver.dispatch(tool, {"name": "alice"}) as kw:
+    async with build(app) as app, app._resolver.dispatch(tool, {"name": "alice"}) as kw:
         result = await tool(**kw)
 
     assert result == "alice:_Tx"
@@ -65,7 +66,7 @@ async def test_dispatch_lazy_param_skips_unused() -> None:
             await tx()
         return "ok"
 
-    async with app, app._resolver.dispatch(tool, {"flag": False}) as kw:
+    async with build(app) as app, app._resolver.dispatch(tool, {"flag": False}) as kw:
         result = await tool(**kw)
 
     assert result == "ok"
@@ -87,7 +88,7 @@ async def test_dispatch_propagates_tool_exception_and_cleans_up() -> None:
         raise _BodyError("boom")
 
     with pytest.raises(_BodyError, match="boom"):
-        async with app:
+        async with build(app) as app:
             async with app._resolver.dispatch(tool, {}) as kw:
                 await tool(**kw)
 
@@ -129,7 +130,7 @@ async def test_pre_hook_runs_before_di_resolution() -> None:
     app = a2kit.App("hook-order")
     app.provide(_Tx, per_call=True)
 
-    async with app, app._resolver.dispatch(tool, {"conn_str": "h1"}, pre_hook=hook) as kw:
+    async with build(app) as app, app._resolver.dispatch(tool, {"conn_str": "h1"}, pre_hook=hook) as kw:
         result = await tool(**kw)
 
     assert call_log == ["hook", "tool"]
@@ -159,7 +160,7 @@ async def test_pre_hook_output_seeds_chain_resolution() -> None:
     # per_call too — app-scope would violate the scope contract.
     app.provide(_Store, _make_store, per_call=True)
 
-    async with app, app._resolver.dispatch(tool, {"conn_str": "h2"}, pre_hook=hook) as kw:
+    async with build(app) as app, app._resolver.dispatch(tool, {"conn_str": "h2"}, pre_hook=hook) as kw:
         result = await tool(**kw)
 
     assert result == "h2"

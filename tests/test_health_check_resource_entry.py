@@ -28,6 +28,7 @@ import asyncio
 from typing import Any
 
 import a2kit
+from a2kit.runtime import build
 from a2kit import HealthResult
 from a2kit.packages.health import HEALTH_TOOL_NAME, app_version, run_checks
 from a2kit.testing import client
@@ -172,8 +173,8 @@ def test_run_checks_directly_enters_singleton() -> None:
         return HealthResult.ok()
 
     async def go() -> dict[str, Any]:
-        async with app:
-            result = await run_checks(app._health, app._container, version=app_version(app))
+        async with build(app) as runtime:
+            result = await run_checks(runtime._health, runtime._container, version=app_version(runtime))
             assert spy.entered == 1
             return result
 

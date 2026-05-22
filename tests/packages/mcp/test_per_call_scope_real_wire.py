@@ -72,7 +72,7 @@ def _build_app() -> a2kit.App:
 async def test_per_call_resource_cleaned_up_at_mcp_call_exit() -> None:
     """One MCP tool call enters Transaction once, exits once on clean return."""
     app = _build_app()
-    async with app, Client(transport=build_mcp_server(app)) as c:
+    async with Client(transport=build_mcp_server(app)) as c:
         await c.call_tool("use_tx", {})
 
     assert _Transaction.enter_count == 1, f"Transaction entered {_Transaction.enter_count} times — expected 1"
@@ -84,7 +84,7 @@ async def test_per_call_resource_cleaned_up_at_mcp_call_exit() -> None:
 async def test_per_call_resource_sees_body_exception_on_aexit() -> None:
     """Tool body raise propagates the exception to __aexit__'s exc_type arg."""
     app = _build_app()
-    async with app, Client(transport=build_mcp_server(app)) as c:
+    async with Client(transport=build_mcp_server(app)) as c:
         with pytest.raises(ToolError) as excinfo:
             await c.call_tool("boom_with_tx", {})
         # Body exception surfaces on the wire envelope.

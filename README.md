@@ -34,17 +34,19 @@ def main() -> None:
     a2kit.run(app)
 ```
 
-> **One App, sealed by the finisher.** `a2kit.App` is the single public
+> **One App, built by the finisher.** `a2kit.App` is the single public
 > type — the mutable composition surface (`add_router`, `add_cli`,
-> `add_mcp_middleware`, `provide`, `health_check`) and the runtime in
-> one. Hand it to a finisher (`a2kit.run`, `build_mcp_server`,
-> `a2kit.testing.client`) and the finisher seals it internally:
-> validates the provider graph, locks the container. The fluent chain
+> `add_mcp_middleware`, `provide`, `health_check`). Hand it to a finisher
+> (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`) and the
+> finisher builds it into a sealed internal runtime: snapshots the
+> composition into a fresh container, validates the provider graph, owns
+> the lifecycle. The fluent chain
 > (`a2kit.App(...).add_router(...).provide(...)`) works as a shorthand
 > for compact composition in tests and small scripts; prefer the
 > imperative form in real apps — each line names one subsystem, grep
-> finds every install. There is no public `build()`; a composition verb
-> after a finisher has sealed the App raises — see ADR 0017.
+> finds every install. There is no public `build()`; `App` is a pure,
+> reusable builder — a composition verb after a finisher has built a
+> runtime affects only the next build. See ADR 0019.
 
 ```toml
 [project.scripts]
@@ -71,7 +73,7 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name, *, debug=False)` | The single public type — composition surface and runtime in one. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None, *, per_call=False)` for typed DI and `health_check` for readiness probes. Each verb returns the App for chaining. Runtime surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher seals it internally (validates the provider graph, locks the container). There is no public `build()`. `App` is its own async context manager — `async with app:` enters resources lazily on first dispatch. A composition verb after a finisher has sealed the App raises `TypeError`. |
+| `a2kit.App(name, *, debug=False)` | The single public type — a compose-phase builder. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None, *, per_call=False)` for typed DI and `health_check` for readiness probes. Each verb returns the App for chaining. Introspection surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher builds it into a sealed internal runtime (snapshots the composition into a fresh container, validates the provider graph, owns the async-CM lifecycle). There is no public `build()`. `App` is a pure, reusable builder — composition verbs stay callable, and a verb called after a finisher has built a runtime affects only the next build. |
 | `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `visibility=` kwarg | Verb decorators accept `visibility: Literal["hidden", "cli", "all"]`. Defaults to inherit from the Router's `visibility` class attribute (default `"all"`). Tier semantics: `"hidden"` — CLI-invokable but absent from `--help` and not on programmatic transports; `"cli"` — visible in `--help`, not on MCP / future REST; `"all"` — registered everywhere. Credential-management tools should declare `visibility="cli"` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
@@ -186,7 +188,7 @@ class AppState:
 
     async def aclose(self) -> None:
         # Framework auto-detects ``aclose`` on the resolved singleton
-        # and runs it during App ``__aexit__``.
+        # and runs it when the runtime lifecycle unwinds.
         await self.browser.close()
         await self.sqlite.close()
 
@@ -209,15 +211,17 @@ What you get:
 - DI stays sync. Composition is plain `__init__`.
 - Each resource owns its open + close idempotently.
 
-### Lifecycle: `async with app:`
+### Lifecycle
 
-`App` is its own async context manager. Entering it seals the DI
-container and resolves resources lazily on first use, auto-detecting
-the cleanup protocol on each resolved instance (`__aexit__` paired
-with `__aenter__`). Routers opt into lifecycle by implementing
-`__aenter__` / `__aexit__` and enter lazily on first dispatch of any
-of their tools. Composition (`add_router`, `provide`, ...) is pure —
-useful for tests that introspect wiring without entering the App.
+The finisher owns the runtime lifecycle. Handing an `App` to
+`a2kit.run` / `build_mcp_server` / `a2kit.testing.client` builds a
+sealed runtime and enters it: the DI container resolves resources
+lazily on first use, auto-detecting the cleanup protocol on each
+resolved instance (`__aexit__` paired with `__aenter__`). Routers opt
+into lifecycle by implementing `__aenter__` / `__aexit__` and enter
+lazily on first dispatch of any of their tools. Composition
+(`add_router`, `provide`, ...) is pure — useful for tests that
+introspect wiring without running anything.
 
 ```python
 class DB:
@@ -231,11 +235,12 @@ class DB:
 
 app = a2kit.App("my-app").provide(DB)
 
-async def main():
-    async with app:
-        # tools dispatch here; routers enter on first call,
-        # singletons already entered eagerly.
-        ...
+
+def main() -> None:
+    # The finisher builds the runtime, enters its lifecycle, dispatches
+    # tools, and unwinds on shutdown. DB enters lazily on the first
+    # tool that resolves it.
+    a2kit.run(app)
 ```
 
 For router-scoped resources:
@@ -259,8 +264,9 @@ class Github(a2kit.Router):
 ```
 
 For one-shot startup or shutdown work that has no associated resource
-object, do it in `main()` before/after `async with app:` — not via a
-framework hook.
+object, express it as a marker resource (a class with `__aenter__` /
+`__aexit__`, registered via `app.provide(...)`) or do it in `main()`
+before the finisher call — not via a framework hook.
 
 ### MCP tool annotations
 
@@ -562,10 +568,11 @@ the same call through the formatter the production transports use, so
 be pinned without spawning a server. Use `invoke` for value-shape
 assertions, `call_wire` when the assertion needs the wire shape.
 
-Test overrides are **re-build, not post-seal mutation** (ADR 0017):
+Test overrides are **re-build, not post-build mutation** (ADR 0019):
 construct a fresh `a2kit.App` and `provide` the fake last
 (last-write-wins). There is no `TestClient.override` — it was removed
-because it mutated an already-sealed container, contradicting ADR 0006.
+because it mutated an already-built runtime container, contradicting
+ADR 0006.
 
 #### Async provider factories
 

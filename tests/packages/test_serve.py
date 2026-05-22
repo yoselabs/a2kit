@@ -18,8 +18,8 @@ from typing import Any
 import pytest
 
 import a2kit
-from a2kit.app import App
 from a2kit.packages.serve import build_parent_app
+from a2kit.runtime import AppRuntime
 
 
 # --------------------------------------------------------------- DI test app
@@ -127,24 +127,24 @@ async def test_multiplexed_serve_health_di_tool_and_single_lifecycle() -> None:
     app = _build_di_app()
     parent = build_parent_app(app, mcp=True, rest=True)
 
-    orig_aenter = App.__aenter__
-    orig_aexit = App.__aexit__
+    orig_aenter = AppRuntime.__aenter__
+    orig_aexit = AppRuntime.__aexit__
     enters: list[Any] = []
     exits: list[Any] = []
 
-    async def _counting_aenter(self: App) -> Any:
+    async def _counting_aenter(self: AppRuntime) -> Any:
         enters.append(self)
         return await orig_aenter(self)
 
-    async def _counting_aexit(self: App, *exc: Any) -> Any:
+    async def _counting_aexit(self: AppRuntime, *exc: Any) -> Any:
         exits.append(self)
         return await orig_aexit(self, *exc)
 
     with (
         pytest.MonkeyPatch.context() as mp,
     ):
-        mp.setattr(App, "__aenter__", _counting_aenter)
-        mp.setattr(App, "__aexit__", _counting_aexit)
+        mp.setattr(AppRuntime, "__aenter__", _counting_aenter)
+        mp.setattr(AppRuntime, "__aexit__", _counting_aexit)
         with _running(parent) as port:
             health = httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=10)
             async with Client(f"http://127.0.0.1:{port}/mcp") as client:
@@ -154,7 +154,7 @@ async def test_multiplexed_serve_health_di_tool_and_single_lifecycle() -> None:
     payload = result.data if getattr(result, "data", None) is not None else result.structured_content
     assert payload == {"msg": "hi", "tag": "store-ok"}
 
-    # The parent app owns the single `async with app:` for the process —
+    # The parent app builds one AppRuntime and owns its single lifecycle —
     # neither the MCP nor the REST mount entered or exited it themselves.
-    assert enters.count(app) == 1, f"App entered {enters.count(app)} times — expected 1"
-    assert exits.count(app) == 1, f"App exited {exits.count(app)} times — expected 1"
+    assert len(enters) == 1, f"AppRuntime entered {len(enters)} times — expected 1"
+    assert len(exits) == 1, f"AppRuntime exited {len(exits)} times — expected 1"

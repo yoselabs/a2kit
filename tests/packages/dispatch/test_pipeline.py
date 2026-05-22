@@ -8,6 +8,7 @@ import inspect
 from typing import Any
 
 import a2kit
+from a2kit.runtime import build
 from a2kit.packages.dispatch import DISPATCH_PIPELINE, ToolBuildSpec, fold_pipeline
 
 
@@ -45,7 +46,7 @@ def test_fold_applies_stages_innermost_first() -> None:
         calls.append("body")
         return "done"
 
-    spec = ToolBuildSpec(app=a2kit.App("fold-test"), router=None, meta=None)
+    spec = ToolBuildSpec(app=build(a2kit.App("fold-test")), router=None, meta=None)
     folded = fold_pipeline(_body, spec, (_Recorder("inner"), _Recorder("outer")))
     result = asyncio.run(folded())
 
@@ -66,6 +67,6 @@ def test_fold_drops_self_skipping_stages() -> None:
     async def _body() -> str:
         return "done"
 
-    spec = ToolBuildSpec(app=a2kit.App("fold-skip"), router=None, meta=None)
+    spec = ToolBuildSpec(app=build(a2kit.App("fold-skip")), router=None, meta=None)
     folded = fold_pipeline(_body, spec, (_Skip(), _Skip()))
     assert folded is _body

@@ -1,10 +1,10 @@
 ---
 id: "0017"
-status: accepted
+status: superseded
 date: 2026-05-22
 last_reviewed: 2026-05-22
 supersedes: ["0016"]
-superseded_by: null
+superseded_by: "0019"
 tags: [architecture, di, testing, surface]
 deciders: [Denis Tomilin]
 ---
@@ -13,7 +13,18 @@ deciders: [Denis Tomilin]
 
 ## Status
 
-Accepted, 2026-05-22. Supersedes ADR 0016 the same day it was accepted.
+Superseded by ADR 0019, 2026-05-22.
+
+Accepted 2026-05-22; superseded the same day. ADR 0017's core
+judgement — the sealed runtime never crosses the consumer boundary, so
+it must not be a second *public* type — still holds, and ADR 0019 keeps
+it: `App` stays the one public name. What ADR 0019 changes is the
+sealed runtime's *internal* representation. ADR 0017 made it a private
+`_sealed` flag on `App`; ADR 0015's layer manifest (a force ADR 0017
+never weighed) later showed that a flag-toggled two-phase `App` cannot
+sit in a single layer. ADR 0019 splits the runtime into an internal
+`AppRuntime` type — invisible to consumers, exactly as ADR 0017
+required — to let the layer manifest subdivide `core`. See ADR 0019.
 
 ## Summary
 

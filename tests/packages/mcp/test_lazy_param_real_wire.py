@@ -51,7 +51,7 @@ async def test_lazy_never_invoked_resource_not_entered_under_mcp() -> None:
 
     app = a2kit.App("lazy-mcp").add_router(R()).provide(_Browser)  # app-scope
 
-    async with app, Client(transport=build_mcp_server(app)) as c:
+    async with Client(transport=build_mcp_server(app)) as c:
         await c.call_tool("skip_browser", {})
 
     assert _Browser.enter_count == 0, f"Browser.__aenter__ ran {_Browser.enter_count} times despite Lazy not awaited"

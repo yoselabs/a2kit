@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from a2kit._lifecycle_helpers import (
@@ -18,9 +17,6 @@ if TYPE_CHECKING:
     from a2kit.packages.di import Resolver
 
 
-_LIFECYCLE_LOG = logging.getLogger("a2kit.lifecycle")
-
-
 def _default_dispatch_hook(
     fn: Callable[..., Any],
     wire_kwargs: dict[str, Any],
@@ -28,8 +24,9 @@ def _default_dispatch_hook(
     """Default dispatch hook — identity over ``wire_kwargs``.
 
     Module-level (not a bound method) so its object identity is stable:
-    :meth:`App.has_default_dispatch_hook` is an ``is`` check against this
-    single object. A bound method would not compare equal across copies.
+    :meth:`AppRuntime.has_default_dispatch_hook` is an ``is`` check
+    against this single object. A bound method would not compare equal
+    across copies.
 
     v0.36+ contract: hooks are wire-side resolution only. The default
     hook does nothing — wire kwargs pass through unchanged. DI resolution
@@ -40,7 +37,7 @@ def _default_dispatch_hook(
 
 
 class App:
-    """The a2kit application — composition object and runtime in one.
+    """The a2kit application — the compose-phase builder.
 
     ``App`` is constructed directly (``a2kit.App("svc")``), wired with the
     composition verbs — :meth:`add_router`, :meth:`add_cli`,
@@ -50,30 +47,23 @@ class App:
     :func:`a2kit.testing.client`. Each composition verb returns the App
     for chaining.
 
-    The finisher seals the App internally — it validates the DI provider
-    graph and locks the container — before running, serving, or testing.
-    Consumer code never calls a seal step. Sealing is idempotent, so one
-    App may be handed to more than one finisher.
+    ``App`` is a pure, reusable builder. It carries no sealed mode and no
+    lifecycle: a finisher's internal ``build(app)`` step (see
+    :mod:`a2kit.runtime`) snapshots the App's composition into an
+    ``AppRuntime`` — the sealed runtime that owns the DI container and
+    the async-CM lifecycle. Composition verbs stay callable at any time;
+    a verb called after a finisher has built a runtime affects only
+    subsequent builds and never mutates an already-running ``AppRuntime``.
 
-    A composition verb called after a finisher has sealed the App raises
-    ``TypeError``: composition is the write phase, and it is over once a
-    finisher has read the App.
-
-    The sealed-runtime mechanism (the ``_sealed`` flag, the seal point,
-    the validation) is a framework implementation detail, deliberately
-    outside the consumer contract. See ADR 0017 (supersedes ADR 0016).
+    The compose container accumulates ``provide`` registrations and stays
+    mutable for the App's whole lifetime — it is never sealed. Each
+    ``build()`` snapshots it into a fresh runtime container, so one App
+    may be handed to more than one finisher. See ADR 0019 (supersedes
+    ADR 0017).
 
     Construction is pure: ``App(...)`` plus ``add_router`` / ``provide``
     calls trigger no async work — useful for unit tests that introspect
-    wiring without entering the App.
-
-    Lifecycle:
-
-    ``App`` is its own async context manager. ``async with app:`` seals
-    and validates the container, then enters lazily: app-scope resources
-    enter on first ``Container.get(T)`` (first dispatch that needs them);
-    routers carrying ``__aenter__`` enter on first dispatch of any of
-    their tools and unwind on App exit in LIFO order.
+    wiring without entering a runtime.
     """
 
     def __init__(
@@ -91,8 +81,8 @@ class App:
         self._descriptors: list[ToolDescriptor] = []
         self._cli_extras: list[click.Command] = []
         self._mcp_middlewares: list[Any] = []
-        # Eager container init — sync, ~80 LOC, always available. Mutable
-        # until a finisher seals it.
+        # Eager container init — sync, ~80 LOC, always available. Stays
+        # mutable for the App's whole lifetime; ``build()`` snapshots it.
         self._container: Container = Container()
         # Default dispatch hook is identity over wire kwargs. Consumer
         # packages (e.g. connections) install a hook that performs
@@ -116,14 +106,6 @@ class App:
         from a2kit.packages.health import HealthRegistry
 
         self._health: HealthRegistry = HealthRegistry(enabled=False)
-        # Flipped by the first finisher via ``_seal()``. A sealed App
-        # rejects further composition verbs.
-        self._sealed: bool = False
-        # Routers that successfully entered via ``__aenter__`` during this
-        # App's lifecycle. LIFO unwound on App ``__aexit__``.
-        self._entered_routers: dict[str, Router] = {}
-        # Per-router asyncio.Lock for first-touch coalescing.
-        self._router_locks: dict[str, Any] = {}
 
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
@@ -138,7 +120,7 @@ class App:
                 "Express imperative bookends as a marker singleton "
                 "(``class _Warmup: __aenter__/__aexit__``; "
                 "``app.provide(_Warmup)``) or move the work into "
-                "``main()`` before ``async with app:``. See CHANGELOG."
+                "``main()`` before handing the App to a finisher. See CHANGELOG."
             )
             raise TypeError(msg)
         if "health_tool" in kw:
@@ -152,53 +134,18 @@ class App:
         msg = f"App({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for v0.35 removals."
         raise TypeError(msg)
 
-    def _ensure_not_sealed(self) -> None:
-        """Reject composition verbs after a finisher has sealed the App.
-
-        A finisher (``a2kit.run``, ``build_mcp_server``,
-        ``a2kit.testing.client``) seals the App before it runs — it
-        validates the provider graph and locks the container. Composition
-        after that point would silently change an App that is already
-        serving. Construct a fresh ``a2kit.App`` instead.
-        """
-        if self._sealed:
-            msg = (
-                "App is sealed — a finisher (run / build_mcp_server / "
-                "testing.client) already validated and locked it. Compose "
-                "the App fully before handing it to a finisher; construct "
-                "a fresh a2kit.App to compose another."
-            )
-            raise TypeError(msg)
-
     def _install_health_tool(self) -> None:
         """Synthesize a built-in router carrying ``_meta.health``.
 
         Idempotent — if the ``_meta`` router is already installed, this is
-        a no-op. The synthetic router's tool body closes over this App;
-        the App's ``_health`` registry and ``_container`` are read live,
-        so the closure observes runtime state after a finisher seals.
+        a no-op. The compose-phase ``_meta`` router's tool body closes
+        over this App. A finisher's ``build()`` step re-binds the ``_meta``
+        router to the resulting ``AppRuntime`` so the health probe
+        resolves checks through the runtime's container.
         """
         if any(r.slug == "_meta" for r in self._routers.all()):
             return
-        from a2kit._verbs import _read_internal
-        from a2kit.packages.health import HEALTH_TOOL_NAME, app_version, run_checks
-        from a2kit.routers import Router as _Router
-
-        app_ref = self
-
-        class _MetaRouter(_Router):
-            slug = "_meta"
-
-            @_read_internal(HEALTH_TOOL_NAME, title="Health probe")
-            async def aggregated_health(self) -> dict[str, Any]:
-                """Aggregated health status. Hidden from agent-facing list_tools."""
-                registry = app_ref._health
-                resolver = app_ref._container
-                return await run_checks(registry, resolver, version=app_version(app_ref))
-
-            tools = (aggregated_health,)
-
-        self.add_router(_MetaRouter())
+        self.add_router(_make_meta_router(self))
 
     def health_check(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register ``fn`` as a readiness probe for ``_meta.health``.
@@ -210,7 +157,6 @@ class App:
         The first ``health_check`` call auto-installs the ``_meta.health``
         synthetic router.
         """
-        self._ensure_not_sealed()
         if not self._health.enabled:
             self._health.enabled = True
         self._install_health_tool()
@@ -219,7 +165,6 @@ class App:
     # --- Composition verbs ---------------------------------------------- #
 
     def add_router(self, router: Router) -> App:
-        self._ensure_not_sealed()
         slug = router.slug
         existing = next((r for r in self._routers.all() if r.slug == slug), None)
         if existing is not None and existing is not router:
@@ -256,12 +201,10 @@ class App:
         return self
 
     def add_cli(self, command: click.Command) -> App:
-        self._ensure_not_sealed()
         self._cli_extras.append(command)
         return self
 
     def add_mcp_middleware(self, middleware: Any) -> App:
-        self._ensure_not_sealed()
         self._mcp_middlewares.append(middleware)
         return self
 
@@ -290,20 +233,19 @@ class App:
         ``per_call=True`` opts a registration into the per-call scope:
         a fresh instance is built per dispatch, cached within that one
         call only, and cleaned up at call exit. Default ``per_call=False``
-        is app-scope (one instance per App, lazily entered on first use,
-        cleaned up on app exit).
+        is app-scope (one instance per runtime, lazily entered on first
+        use, cleaned up on runtime exit).
 
         Last-write-wins: a second ``provide`` for the same type silently
         replaces the prior factory. This is the test-override mechanism —
         construct a fresh ``App``, provide the fake last (see ADR 0006,
-        ADR 0017).
+        ADR 0019).
 
         Cleanup auto-detection: only ``__aenter__``/``__aexit__`` is
         honored. ``aclose`` / ``close`` are NOT auto-detected — wrap them
         in a class with ``__aenter__``/``__aexit__`` or use
         ``@asynccontextmanager``.
         """
-        self._ensure_not_sealed()
         if "teardown" in _kw:
             msg = (
                 "app.provide(..., teardown=...) was removed in v0.36. Move "
@@ -327,45 +269,23 @@ class App:
         """Snapshot of registered providers (parent-chain-aware)."""
         return self._container.providers_view()
 
-    # --- internal: seal point (finisher-only) --------------------------- #
-
-    def _seal(self) -> None:
-        """Validate the provider graph and lock the App — finisher-only.
-
-        Called by every finisher (:func:`a2kit.run`,
-        :func:`build_mcp_server`, :func:`a2kit.testing.client`) before it
-        runs / serves / tests. Validates the DI provider graph (rejecting
-        app-scope factories that depend on per-call types) and seals the
-        container against further ``provide``.
-
-        Idempotent — a second call is a no-op, so one App may be passed
-        to more than one finisher. Not part of the consumer contract;
-        consumer code never calls it.
-        """
-        if self._sealed:
-            return
-        self._container.seal()
-        self._sealed = True
-
     # --- DI: read-only queries ------------------------------------------ #
 
     def container(self) -> Container:
-        """Return the App's container. Never None (eager-init)."""
+        """Return the App's compose-phase container. Never None (eager-init).
+
+        This container stays mutable for the App's lifetime. A finisher's
+        ``build()`` step snapshots it into a separate runtime container;
+        it never seals or mutates this one.
+        """
         return self._container
 
     @property
     def _resolver(self) -> Resolver:
-        """The App's resolver, typed as the :class:`Resolver` protocol.
+        """The App's compose-phase container, typed as :class:`Resolver`.
 
-        Framework / test code uses this to open child resolvers per
-        dispatch via ``app._resolver.child()``. Production tool code
-        receives resolved dependencies via parameter annotations; it
-        SHOULD NOT call ``_resolver.get`` directly — that's a service
-        locator antipattern.
-
-        Typed as ``Resolver`` (not ``Container``) so consumer code is
-        decoupled from the concrete implementation — only ``get``,
-        ``provide``, ``child``, ``aclose`` are stable surface.
+        Compose-phase introspection only. Per-dispatch resolution runs on
+        the ``AppRuntime``'s container, not this one.
         """
         return self._container
 
@@ -383,90 +303,8 @@ class App:
         return self._dispatch_hook
 
     def has_default_dispatch_hook(self) -> bool:
-        """True when no consumer package installed a custom dispatch hook.
-
-        Identity check against the module-level :func:`_default_dispatch_hook`.
-        The dispatch pipeline's hook stage self-skips when this is true and
-        the tool declares no injectables — opening a per-call child
-        container would be pure overhead.
-        """
+        """True when no consumer package installed a custom dispatch hook."""
         return self._dispatch_hook is _default_dispatch_hook
-
-    # --- Lazy router entry (v0.35 consolidate-lifecycle) ----------------- #
-
-    async def _ensure_router_entered(self, router: Router) -> None:
-        """Enter ``router`` via ``__aenter__`` exactly once during this App's lifecycle.
-
-        Called from the per-transport dispatch wrappers before invoking
-        the tool method. No-op for routers without ``__aenter__``.
-        Concurrent first-touch coalesces on a per-router
-        ``asyncio.Lock``. Failed ``__aenter__`` does NOT cache the router
-        in ``_entered_routers``; the next dispatch retries.
-        """
-        if not hasattr(router, "__aenter__"):
-            return
-        slug = router.slug
-        if slug in self._entered_routers:
-            return
-        import asyncio
-
-        lock = self._router_locks.get(slug)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._router_locks[slug] = lock
-        async with lock:
-            if slug in self._entered_routers:
-                return
-            await router.__aenter__()  # type: ignore[func-returns-value]  # ty: ignore[call-non-callable]
-            self._entered_routers[slug] = router
-
-    async def _unwind_entered_routers(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        """LIFO unwind of routers that entered via ``__aenter__`` during the
-        App's lifecycle. Each ``__aexit__`` failure is logged at ERROR;
-        unwinding continues so sibling routers still exit.
-        """
-        for slug in reversed(list(self._entered_routers)):
-            router = self._entered_routers[slug]
-            try:
-                await router.__aexit__(exc_type, exc, tb)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
-            except Exception as inner:  # noqa: BLE001 -- error-isolation per spec
-                _LIFECYCLE_LOG.error(
-                    "router teardown failed: slug=%s class=%s message=%s",
-                    slug,
-                    type(inner).__name__,
-                    inner,
-                )
-                _LIFECYCLE_LOG.debug("router teardown traceback for %s", slug, exc_info=True)
-        self._entered_routers.clear()
-        self._router_locks.clear()
-
-    # --- async context manager protocol (v0.35 consolidate-lifecycle) ----- #
-
-    async def __aenter__(self) -> App:
-        """Enter the App's lifecycle.
-
-        Lazy first-use (v0.36 di-scoped-lifecycle):
-
-        - The App is sealed (idempotent — a finisher's ``_seal()`` already
-          sealed it) and the provider graph is validated.
-        - NO eager resource entry. App-scope resources enter on first
-          ``Container.get(T)``, which means first dispatch that needs them.
-        - Routers carrying ``__aenter__`` enter lazily on first dispatch
-          of any of their tools.
-
-        Exit order: routers unwind first (LIFO of enter order), then
-        the container's cleanup stack unwinds (LIFO of resolution order).
-        """
-        self._seal()
-        await self._container.__aenter__()
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool | None:
-        try:
-            await self._unwind_entered_routers(exc_type, exc, tb)
-        finally:
-            await self._container.__aexit__(exc_type, exc, tb)
-        return None
 
     # --- LDD kill-switch ------------------------------------------------ #
 
@@ -493,6 +331,31 @@ class App:
     def tools(self) -> list[ToolDescriptor]:
         """Typed descriptors materialized at ``add_router`` time. One per tool."""
         return list(self._descriptors)
+
+
+def _make_meta_router(owner: Any) -> Router:
+    """Build the synthetic ``_meta`` router carrying ``_meta.health``.
+
+    The tool body closes over ``owner`` — an :class:`App` at compose
+    time, an ``AppRuntime`` at finisher-build time — and reads
+    ``owner._health`` / ``owner._resolver`` live, so the probe observes
+    the right registry and DI container for whichever phase installed it.
+    """
+    from a2kit._verbs import _read_internal
+    from a2kit.packages.health import HEALTH_TOOL_NAME, app_version, run_checks
+    from a2kit.routers import Router as _Router
+
+    class _MetaRouter(_Router):
+        slug = "_meta"
+
+        @_read_internal(HEALTH_TOOL_NAME, title="Health probe")
+        async def aggregated_health(self) -> dict[str, Any]:
+            """Aggregated health status. Hidden from agent-facing list_tools."""
+            return await run_checks(owner._health, owner._resolver, version=app_version(owner))
+
+        tools = (aggregated_health,)
+
+    return _MetaRouter()
 
 
 def _validate_router_tools(router: Router) -> None:

@@ -208,33 +208,36 @@ def build_mcp_server(
     (:mod:`a2kit.packages.serve`) then owns the single ``async with app:``
     for the whole process. The back-reference is installed in both modes.
     """
-    # Finisher seal: validate the DI provider graph and lock the container
-    # before any server bytes are built. Idempotent — safe when the App was
-    # already handed to another finisher. See ADR 0017.
-    app._seal()
+    # Finisher build: snapshot the App into a sealed runtime — validates
+    # the DI provider graph and freezes a fresh container — before any
+    # server bytes are built. Idempotent on an AppRuntime, so the
+    # multiplex parent may build once and hand the runtime here. See ADR 0019.
+    from a2kit.runtime import build
+
+    runtime = build(app)
     user_lifespan = fastmcp_kwargs.get("lifespan")
     # `own_app_lifecycle` (default True) installs the standalone lifespan
-    # that enters `async with app:` itself — the stdio `serve` path. The
+    # that enters `async with runtime:` itself — the stdio `serve` path. The
     # multiplex parent passes `own_app_lifecycle=False` and owns the one
-    # `async with app:` for the whole process; the mount lifespan then
+    # `async with runtime:` for the whole process; the mount lifespan then
     # carries only transport-scoped setup. See ADR multiplex-serve-topology.
     if own_app_lifecycle:
-        fastmcp_kwargs["lifespan"] = _build_standalone_lifespan(app, user_lifespan)
+        fastmcp_kwargs["lifespan"] = _build_standalone_lifespan(runtime, user_lifespan)
     else:
-        fastmcp_kwargs["lifespan"] = _build_mcp_mount_lifespan(app, user_lifespan)
+        fastmcp_kwargs["lifespan"] = _build_mcp_mount_lifespan(runtime, user_lifespan)
     # `App(debug=True)` adds a `traceback` field to the wire-error envelope's
     # JSON payload. The envelope itself (see `_wrap_with_error_envelope`)
     # is installed unconditionally and owns the wire bytes via
     # `raise ToolError(json.dumps(...))`, bypassing FastMCP's
     # `mask_error_details` semantics entirely.
-    app_debug = bool(getattr(app, "debug", False))
+    app_debug = bool(getattr(runtime, "debug", False))
     if "mask_error_details" not in fastmcp_kwargs:
         fastmcp_kwargs["mask_error_details"] = not app_debug
-    server = FastMCP(name=app.name, **fastmcp_kwargs)
+    server = FastMCP(name=runtime.name, **fastmcp_kwargs)
 
-    reports_enabled = app.ldd_reports
-    events_enabled = app.ldd_events
-    app_sinks: tuple[Any, ...] = app.ldd.sinks
+    reports_enabled = runtime.ldd_reports
+    events_enabled = runtime.ldd_events
+    app_sinks: tuple[Any, ...] = runtime.ldd.sinks
 
     # Per-tool encoding plans for the format-routing middleware and return
     # types for code-mode stub generation / dataclass marshalling, keyed by
@@ -243,9 +246,9 @@ def build_mcp_server(
     encoding_plans: dict[str, Any] = {}
     return_types: dict[str, Any] = {}
 
-    for desc in app.tools():
+    for desc in runtime.tools():
         tool = _build_one_tool(
-            app,
+            runtime,
             desc,
             reports_enabled=reports_enabled,
             events_enabled=events_enabled,
@@ -277,7 +280,7 @@ def build_mcp_server(
     )
     server.add_middleware(ListViewMiddleware())
     server.add_middleware(GuardsMiddleware())
-    for mw in app.mcp_middlewares():
+    for mw in runtime.mcp_middlewares():
         server.add_middleware(mw)
 
     # Code-execution surface. Installed last so the transform sees the

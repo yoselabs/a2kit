@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.runtime import build
 
 
 class _State:
@@ -40,7 +41,7 @@ async def test_provide_default_is_app_scope() -> None:
     app = a2kit.App("test")
     app.provide(_State)
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call1:
             a = await call1.get(_State)
         async with app._resolver.child() as call2:
@@ -56,7 +57,7 @@ async def test_provide_per_call_true_opts_in() -> None:
     app = a2kit.App("test")
     app.provide(_State, per_call=True)
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call1:
             a = await call1.get(_State)
         async with app._resolver.child() as call2:
@@ -78,7 +79,7 @@ async def test_async_factory_accepted_on_per_call() -> None:
     app = a2kit.App("test")
     app.provide(_State, async_factory, per_call=True)
 
-    async with app:
+    async with build(app) as app:
         async with app._resolver.child() as call1:
             await call1.get(_State)
         async with app._resolver.child() as call2:
@@ -103,7 +104,7 @@ async def test_re_registration_last_write_wins() -> None:
     # Second registration overrides to _Fake — composition-root override pattern.
     app.provide(_Repo, lambda: _Repo(_Fake()))
 
-    async with app:
+    async with build(app) as app:
         repo = await app._resolver.get(_Repo)
 
     assert repo.impl.label == "fake", "re-registration did not override prior provider"
@@ -124,15 +125,21 @@ def test_unannotated_factory_error_names_provide() -> None:
     assert "app.singleton" not in msg, f"error names the removed method: {msg!r}"
 
 
-@pytest.mark.asyncio
-async def test_sealed_after_aenter() -> None:
-    """Container is sealed against ``provide(...)`` after ``async with app:`` enters."""
+def test_runtime_container_is_sealed() -> None:
+    """A finisher's ``build()`` seals the runtime container against ``provide(...)``.
+
+    The App's own compose-phase container stays mutable; only the
+    snapshotted runtime container is sealed.
+    """
     app = a2kit.App("test")
     app.provide(_State)
 
-    async with app:
-        with pytest.raises(TypeError) as excinfo:
-            app.provide(_Real)
-        msg = str(excinfo.value)
-        # Spec: message names the sealing rule and the override pattern.
-        assert "sealed" in msg.lower() or "after" in msg.lower(), f"sealed-container error message missing context: {msg!r}"
+    runtime = build(app)
+    with pytest.raises(TypeError) as excinfo:
+        runtime._container.provide(_Real)  # noqa: SLF001 -- exercising the seal
+    msg = str(excinfo.value)
+    assert "sealed" in msg.lower(), f"sealed-container error message missing context: {msg!r}"
+
+    # The App stays a reusable builder — its compose container is not sealed.
+    app.provide(_Real)
+    assert app.has_provider(_Real)

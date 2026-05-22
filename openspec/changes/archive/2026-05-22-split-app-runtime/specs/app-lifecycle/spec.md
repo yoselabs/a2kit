@@ -1,8 +1,5 @@
-# app-lifecycle Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpose after archive.
-## Requirements
 ### Requirement: App SHALL implement the async context manager protocol
 
 The sealed-runtime **`AppRuntime`** class SHALL implement `__aenter__` and `__aexit__`. `AppRuntime` is internal: it is produced by a finisher's internal `build(app)` step and is never exported on the `a2kit.*` surface. The compose-phase `a2kit.App` SHALL NOT implement the async context manager protocol. A finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`) SHALL be the canonical consumer entry point; consumers SHALL NOT construct or enter an `AppRuntime` directly.
@@ -68,20 +65,6 @@ The first `__aenter__` invocation on the `AppRuntime` SHALL NOT enter any regist
 - **THEN** the `AppRuntime` was entered exactly once, owned by the parent application
 - **AND** neither the MCP nor the REST mount invoked `AppRuntime.__aexit__`
 
-### Requirement: `App.__init__` SHALL reject the removed `lifespan=` kwarg with a migration hint
-
-`App.__init__` SHALL accept `**_kw: Any` after its documented positional + keyword parameters. If `_kw` contains `lifespan` the constructor SHALL raise `TypeError` whose message names `App(lifespan=...)`, the version of removal (`v0.35`), and points at the two replacement paths: (a) a marker resource with `__aenter__`/`__aexit__`, (b) imperative work in `main()` before `async with app:`. Other unknown kwargs SHALL raise `TypeError` with the standard "unexpected kwarg" shape.
-
-#### Scenario: `lifespan=` raises with hint
-
-- **WHEN** `a2kit.App("x", lifespan=some_cm)` is constructed
-- **THEN** `TypeError` is raised whose message contains both the string `"lifespan="` and the string `"__aenter__"`
-
-#### Scenario: Documented kwargs still work
-
-- **WHEN** `a2kit.App("x", debug=True)` is constructed
-- **THEN** no `TypeError` is raised and the App is usable
-
 ### Requirement: Singleton or router `__aexit__` failure SHALL log and continue unwinding
 
 If a resource's `__aexit__` (or factory `finally` block) raises during `AppRuntime.__aexit__`, the framework SHALL log the exception at level WARN with traceback, SHALL continue unwinding remaining entries in LIFO order, and SHALL NOT re-raise unless the original `__aexit__` was called with a non-None exception (in which case the in-flight exception SHALL win and the swallowed cleanup error SHALL still be logged). This is the App-lifecycle expression of the LIFO + per-resource isolation contract owned by `di-scope-cleanup-stack`; the cleanup-stack capability is canonical for the unwind semantics, and the cleanup machinery lives under the `a2kit.packages.di` module.
@@ -99,4 +82,3 @@ If a resource's `__aexit__` (or factory `finally` block) raises during `AppRunti
 - **WHEN** the `async with` block exits
 - **THEN** the caller sees the in-flight `ValueError("x")`
 - **AND** `RuntimeError("y")` was logged at WARN and not re-raised
-

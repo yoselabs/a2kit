@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Annotated, Any
 import typer
 
 if TYPE_CHECKING:
-    from a2kit.app import App
+    from a2kit.runtime import AppRuntime
 
 
-def register_serve(typer_app: Any, app: App) -> None:
+def register_serve(typer_app: Any, app: AppRuntime) -> None:
     """Register the ``serve`` subcommand. ``fastmcp`` is imported lazily inside the callback."""
 
     def serve_cmd(
@@ -53,7 +53,7 @@ def register_serve(typer_app: Any, app: App) -> None:
     typer_app.command(name="serve")(serve_cmd)
 
 
-async def run_code(app: App, code: str, *, allow_destructive: bool = False) -> object:
+async def run_code(app: AppRuntime, code: str, *, allow_destructive: bool = False) -> object:
     """Run ``code`` in the code-execution sandbox against ``app``'s tools.
 
     Builds an MCP server for ``app``, wraps it in a ``fastmcp.Client``, and
@@ -75,7 +75,7 @@ async def run_code(app: App, code: str, *, allow_destructive: bool = False) -> o
     return result.data if result.data is not None else result.content
 
 
-def register_code(typer_app: Any, app: App) -> None:
+def register_code(typer_app: Any, app: AppRuntime) -> None:
     """Register the global ``code`` subcommand — run Python in the sandbox.
 
     Delegates to :func:`run_code`. Registered only when the
