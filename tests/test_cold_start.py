@@ -63,6 +63,25 @@ def test_otel_package_does_not_eagerly_load_opentelemetry() -> None:
     assert out.strip() == "False", "otel package must defer opentelemetry import"
 
 
+def test_import_a2kit_does_not_load_serve_path() -> None:
+    """``import a2kit`` must NOT pull the multiplex-serve path.
+
+    uvicorn (the ASGI server) and ``a2kit.packages.rest`` (the REST
+    sub-app) load only on ``serve --transport=http``. A library consumer
+    who never serves over HTTP must not pay their import cost.
+    """
+    out = _runtime_check(
+        "import sys; import a2kit;"
+        "print('uvicorn' in sys.modules);"
+        "print('a2kit.packages.rest' in sys.modules);"
+        "print('a2kit.packages.serve' in sys.modules)"
+    )
+    uvicorn_str, rest_str, serve_str = out.strip().splitlines()
+    assert uvicorn_str == "False", "uvicorn must not load on `import a2kit`"
+    assert rest_str == "False", "a2kit.packages.rest must not load on `import a2kit`"
+    assert serve_str == "False", "a2kit.packages.serve must not load on `import a2kit`"
+
+
 # --- User-app cold start (with fastmcp loaded) -------------------------- #
 #
 # Bare ``import a2kit`` must stay <100ms (asserted above). For real user apps

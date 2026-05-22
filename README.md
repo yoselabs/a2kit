@@ -414,9 +414,9 @@ option generation.
 - `<app> <router> <tool> [--name VALUE ...] [--format=auto|json|tsv|page-tsv] [--schema]` — invoke the tool in-process. Output flows through the formatter; `auto` picks based on the tool's return-type annotation (`list[ScalarOnlyModel]` → TSV, `Page[T]` → hybrid `page-tsv`, else JSON).
 - `<app> connections {login,logout,list,show,delete}` — present iff the app wired `connections_cli(...)` via `add_cli`.
 - `<app> schema [TOOL] [--format=auto|json|tsv] [--jsonl]` — schema discovery.
-- `<app> serve [--transport=stdio|http] [--host] [--port]` — MCP server (the ONLY mode that loads fastmcp).
+- `<app> serve [--transport=stdio|http] [--host] [--port] [--mcp-only|--rest-only]` — the server (the ONLY mode that loads fastmcp). `--transport=stdio` (default) serves MCP over a stdio pipe. `--transport=http` runs a **multiplexed server**: one process, one port, the MCP surface mounted under `/mcp` and the REST surface (health route + OpenAPI document) under `/api`. `--mcp-only` / `--rest-only` narrow it to a single surface (mutually exclusive; `--rest-only` requires `--transport=http`).
 
-`'fastmcp' not in sys.modules` after any non-`serve` command — verified by `tests/test_cold_start.py`.
+`'fastmcp' not in sys.modules` after any non-`serve` command — verified by `tests/test_cold_start.py`. uvicorn and the REST sub-app load only on `serve --transport=http`.
 
 ## Connections
 

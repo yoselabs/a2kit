@@ -24,6 +24,10 @@ dependencies = [
     "pydantic-settings>=2.14,<3",
     "tomli-w>=1",
     "typer>=0.25,<1",
+    # ASGI server for `serve --transport=http` multiplexing. Imported only
+    # on that path, never at `import a2kit` (cold-start budget). Starlette
+    # (the parent + REST sub-app framework) is already transitive via fastmcp.
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]

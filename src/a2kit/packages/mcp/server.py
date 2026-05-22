@@ -15,6 +15,7 @@ The per-tool dispatch-wrapper chain lives in
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Any
 
@@ -126,26 +127,44 @@ def _build_one_tool(
     )
 
 
-def _build_fastmcp_lifespan(app: Any, user_lifespan: Any | None) -> Any:
-    """Build a FastMCP-shaped ``lifespan(server)`` adapter for the App.
+def _build_mcp_mount_lifespan(app: Any, user_lifespan: Any | None) -> Any:
+    """Build the MCP-mount ``lifespan(server)`` — transport-scoped only.
 
     Sets ``server._a2kit_app = app`` as a back-reference for middleware
-    and enters ``async with app:`` so singletons enter eagerly and
-    routers are positioned to enter lazily on first dispatch. When a
-    FastMCP-shaped ``user_lifespan(server)`` is provided, it nests
-    inside the App lifecycle.
+    and nests any FastMCP-shaped ``user_lifespan(server)``. It does NOT
+    enter ``async with app:``: the App lifecycle is owned by whoever
+    mounts this server — the multiplex parent app
+    (:mod:`a2kit.packages.serve`), or :func:`_build_standalone_lifespan`
+    for the non-multiplexed (stdio) path. Entering the App per-mount
+    would couple shutdowns — the first surface to exit would drain the
+    shared DI container out from under the others.
     """
-    from contextlib import asynccontextmanager
 
     @asynccontextmanager
     async def _lifespan(server: Any) -> Any:
         server._a2kit_app = app
-        async with app:
-            if user_lifespan is None:
-                yield None
-            else:
-                async with user_lifespan(server) as user_state:
-                    yield user_state
+        if user_lifespan is None:
+            yield None
+        else:
+            async with user_lifespan(server) as user_state:
+                yield user_state
+
+    return _lifespan
+
+
+def _build_standalone_lifespan(app: Any, user_lifespan: Any | None) -> Any:
+    """Build the lifespan for a non-multiplexed MCP server that owns the App.
+
+    Wraps :func:`_build_mcp_mount_lifespan` in a single ``async with
+    app:``. Used for the stdio ``serve`` path, where there is no parent
+    application to own the App lifecycle.
+    """
+    mount_lifespan = _build_mcp_mount_lifespan(app, user_lifespan)
+
+    @asynccontextmanager
+    async def _lifespan(server: Any) -> Any:
+        async with app, mount_lifespan(server) as state:
+            yield state
 
     return _lifespan
 
@@ -156,6 +175,7 @@ def build_mcp_server(
     code_mode: bool = True,
     code_mode_allow_destructive: bool = False,
     compact: bool = False,
+    own_app_lifecycle: bool = True,
     **fastmcp_kwargs: Any,
 ) -> FastMCP:
     """Build a FastMCP server from an ``a2kit.App``.
@@ -179,21 +199,29 @@ def build_mcp_server(
     token-efficient ``content`` payload. Conformant clients leave it off —
     emitting both channels is spec-aligned (MCP SEP-1624).
 
-    The App's composed lifespan (its ``lifespan=`` callable plus every
-    ``Router.lifespan``) is wrapped in a FastMCP-shaped adapter that
-    sets ``server._a2kit_app = app`` as a back-reference and enters the
-    a2kit lifespan + any caller-supplied FastMCP ``lifespan=`` in nested
-    ``async with`` order: a2kit-enter → user-lifespan enter → user body
-    → user-lifespan exit → a2kit-exit. The adapter is always installed
-    (even when neither side contributes) so the back-reference is
-    available unconditionally.
+    ``own_app_lifecycle`` (default ``True``) controls who enters the App
+    lifecycle. When ``True`` the installed lifespan enters ``async with
+    app:`` itself — the non-multiplexed (stdio) ``serve`` path, where no
+    parent application exists. When ``False`` the lifespan carries only
+    the ``server._a2kit_app`` back-reference and any caller-supplied
+    FastMCP ``lifespan=``; the multiplex parent app
+    (:mod:`a2kit.packages.serve`) then owns the single ``async with app:``
+    for the whole process. The back-reference is installed in both modes.
     """
     # Finisher seal: validate the DI provider graph and lock the container
     # before any server bytes are built. Idempotent — safe when the App was
     # already handed to another finisher. See ADR 0017.
     app._seal()
     user_lifespan = fastmcp_kwargs.get("lifespan")
-    fastmcp_kwargs["lifespan"] = _build_fastmcp_lifespan(app, user_lifespan)
+    # `own_app_lifecycle` (default True) installs the standalone lifespan
+    # that enters `async with app:` itself — the stdio `serve` path. The
+    # multiplex parent passes `own_app_lifecycle=False` and owns the one
+    # `async with app:` for the whole process; the mount lifespan then
+    # carries only transport-scoped setup. See ADR multiplex-serve-topology.
+    if own_app_lifecycle:
+        fastmcp_kwargs["lifespan"] = _build_standalone_lifespan(app, user_lifespan)
+    else:
+        fastmcp_kwargs["lifespan"] = _build_mcp_mount_lifespan(app, user_lifespan)
     # `App(debug=True)` adds a `traceback` field to the wire-error envelope's
     # JSON payload. The envelope itself (see `_wrap_with_error_envelope`)
     # is installed unconditionally and owns the wire bytes via

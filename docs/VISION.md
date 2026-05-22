@@ -115,9 +115,8 @@ applicable surface. The author does not opt **in** to REST, or to
 code execution, or to the CLI. They are simply there. A toggle
 exists only to turn a surface **off** — for a deliberate reason
 (a locked-down deployment, a cold-start budget, a security
-posture). The default is "all on." The exact toggle shape
-(`serve --without=rest`, an `App(surfaces=...)` argument, config
-file) is an open question for OpenSpec.
+posture). The default is "all on." For the HTTP server the toggle
+is `serve --mcp-only` / `--rest-only` (see `multiplex-serve-topology`).
 
 ### 2. The tool definition is the single source of truth
 
@@ -377,10 +376,11 @@ Sequencing only — OpenSpec changes carry the real task breakdowns.
   packaging `pydantic-monty` as a lazily-imported optional
   dependency, and absorbing `CodeMode`'s `experimental`-namespace
   API churn against the `fastmcp<4` pin.
-- **Toggle shape.** `serve --without=...`, `App(surfaces=...)`, a
-  config file, or some combination. What is the unit of opt-out.
-  Code execution needs its own off switch (`--code-mode-off`) in
-  the same scheme.
+- **Toggle shape.** *Resolved by `multiplex-serve-topology`.* Surface
+  selection is `serve --mcp-only` / `--rest-only` — paired intent
+  flags, mutually exclusive, both default off (= all surfaces on, per
+  principle 1). Code execution keeps its own `--code-mode-off` switch,
+  separate from surface selection.
 - **REST construction.** Hand-rolled vs a framework (FastAPI) vs
   derived from the FastMCP server. How content negotiation maps the
   TSV / JSON / `page-tsv` formatter onto HTTP `Accept`.
@@ -395,7 +395,9 @@ Sequencing only — OpenSpec changes carry the real task breakdowns.
   MCP, never REST) is a concrete case of the same "never REST"
   axis — though decided framework-side by a toggle, not per-tool by
   an author.
-- **Process model.** One process multiplexing all surfaces vs
-  separate processes per surface over a shared core (the
-  mcp-memory-service pattern: shared backend, one process per
-  transport).
+- **Process model.** *Resolved by `multiplex-serve-topology`.*
+  `serve --transport=http` runs one process on one port: an
+  a2kit-owned parent ASGI app mounts each surface as an independent
+  sub-app (`/mcp`, `/api`). The parent owns the single `async with
+  app:` for the process. Process-per-surface was rejected — it would
+  fork the shared DI core.

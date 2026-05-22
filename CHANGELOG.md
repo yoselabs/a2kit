@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added — multiplexed `serve --transport=http`
+
+`serve --transport=http` is now a multiplexed server: one process, one
+port, an a2kit-owned parent ASGI app that mounts each surface as an
+independent sub-app — the MCP streamable-HTTP surface under `/mcp`, a
+minimal REST surface (health route + OpenAPI document) under `/api`.
+
+- New `serve` flags `--mcp-only` / `--rest-only` select a single
+  surface; mutually exclusive, both default off (= all surfaces on).
+  `--rest-only` requires `--transport=http`.
+- The `App` lifecycle is owned by the parent app — a single `async
+  with app:` spans the process; each mount carries only its
+  transport-scoped lifespan.
+- uvicorn becomes a runtime dependency, imported only on the
+  `serve --transport=http` path (never at `import a2kit`).
+
+**BREAKING (wire path).** Under `--transport=http` the MCP endpoint
+moves from the FastMCP default root to `/mcp`. HTTP MCP clients must
+target `http://host:port/mcp`. Local stdio `serve` is unchanged.
+
 ### Removed — dead surface (BREAKING)
 
 Seven minor releases of fast pre-1.0 iteration left dead weight in

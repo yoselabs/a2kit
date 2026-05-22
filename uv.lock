@@ -19,6 +19,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "tomli-w" },
     { name = "typer" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -75,6 +76,7 @@ requires-dist = [
     { name = "syrupy", marker = "extra == 'testing'", specifier = ">=4" },
     { name = "tomli-w", specifier = ">=1" },
     { name = "typer", specifier = ">=0.25,<1" },
+    { name = "uvicorn", specifier = ">=0.30" },
     { name = "vcrpy", marker = "extra == 'testing'", specifier = ">=6" },
 ]
 provides-extras = ["testing", "otel", "code-mode", "examples-mcp-google-auth"]
