@@ -47,3 +47,16 @@ The user pin (2026-05-23): **"DI must be available everywhere, compatible with F
 - Cold-start: no new eager imports — FastAPI is already lazy via `packages/http/__init__.py` PEP 562 `__getattr__`; the bridge is only constructed inside `build_http_app`.
 - `add-auth` proposal becomes downstream consumer: defines `GoogleAuth/APIKeyAuth/JwtAuth` wrappers that produce `Principal` instances; that proposal updated to remove its own `Principal` definition.
 - Test churn: ADR 0020's `test_dependency_override.py` rewritten to assert the bridge works (today it asserts the gap exists).
+
+---
+
+## SUPERSEDED 2026-05-24
+
+This umbrella was reshaped into 4 single-cycle changes before any code was written:
+
+- [[add-principal-type]] — owns the `Principal` dataclass + framework-ownership rule.
+- [[add-substrate-dep-class]] — owns the 4th signature class + `A2K-SUBSTRATE-DEP` lint rule.
+- [[bridge-container-fastapi-depends]] — owns `Container.expose_as_fastapi_depends` + `build_http_app` wiring + ADR 0020 discharge.
+- [[propagate-principal-and-authorize]] — owns the SCOPED Principal write + MCP middleware + `AuthorizeGateStage`.
+
+Same scope, split for single-cycle commits. Apply order: A → B → C (depends on B) → D (depends on A + C). Archive this umbrella alongside the four when the chain completes.

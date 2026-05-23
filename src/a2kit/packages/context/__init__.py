@@ -7,6 +7,7 @@ The implementation lives in :mod:`a2kit.packages.context.stderr`:
 
 from __future__ import annotations
 
+from a2kit.packages.context.principal import Principal
 from a2kit.packages.context.stderr import MCPOnlyError, StderrToolContext
 
-__all__ = ["MCPOnlyError", "StderrToolContext"]
+__all__ = ["MCPOnlyError", "Principal", "StderrToolContext"]

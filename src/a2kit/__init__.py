@@ -23,6 +23,7 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "ToolContext": ("a2kit._context_protocol", "ToolContext"),
     "A2KitError": ("a2kit.exceptions", "A2KitError"),
     "HealthResult": ("a2kit.packages.health", "HealthResult"),
+    "Principal": ("a2kit.packages.context", "Principal"),
 }
 
 _LAZY_MODULES: dict[str, str] = {

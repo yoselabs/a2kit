@@ -16,7 +16,7 @@ the lint's own view of the graph.
 
 | Unit | Layer | Files | Fan-in | Fan-out | Depends on |
 |------|-------|-------|--------|---------|------------|
-| `context` | 0 | 2 | 3 | 1 | `ldd` |
+| `context` | 0 | 3 | 3 | 1 | `ldd` |
 | `di` | 0 | 9 | 5 | 0 | — |
 | `formatter` | 0 | 9 | 6 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
