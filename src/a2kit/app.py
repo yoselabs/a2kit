@@ -421,6 +421,8 @@ def _validate_router_tools(router: Router) -> None:
 
 def _build_descriptors(router: Router) -> list[ToolDescriptor]:
     """Materialize one ``ToolDescriptor`` per tool on ``router``."""
+    from types import MappingProxyType
+
     from a2kit.metadata import get_meta
     from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
     from a2kit.signature import resolve_hints
@@ -446,6 +448,21 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
         expose_raw = tuple(meta.extras.expose) if meta is not None else ("mcp", "api")
         expose: tuple[Literal["mcp", "api"], ...] = cast("tuple[Literal['mcp', 'api'], ...]", expose_raw)
         authorize = meta.extras.authorize if meta is not None else None
+        ctx_param_name = meta.context_param_name if meta is not None else None
+        timeout = meta.extras.timeout_seconds if meta is not None else None
+        annotations_view = MappingProxyType(dict(meta.annotations_as_dict())) if meta is not None else MappingProxyType({})
+        if meta is not None:
+            metadata_view = MappingProxyType(
+                {
+                    "verb": meta.verb,
+                    "tags": frozenset(meta.tags),
+                    "context_param_name": meta.context_param_name,
+                    "tool_name": meta.tool_name,
+                    "extras": MappingProxyType(meta.extras.model_dump()),
+                }
+            )
+        else:
+            metadata_view = MappingProxyType({})
         out.append(
             ToolDescriptor(
                 name=name,
@@ -457,6 +474,10 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
                 verb=verb,
                 expose=expose,
                 authorize=authorize,
+                ctx_param_name=ctx_param_name,
+                timeout=timeout,
+                annotations_view=annotations_view,
+                metadata_view=metadata_view,
             )
         )
     return out

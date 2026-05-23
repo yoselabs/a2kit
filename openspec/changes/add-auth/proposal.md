@@ -15,11 +15,11 @@ a2kit's value here is **wrapping**, not reinventing. FastMCP's auth providers ev
   - A `GoogleAuth(...)` wrapper around FastMCP's Google OAuth provider, so authors don't import from `fastmcp.server.auth.providers.*` directly.
   - An `APIKeyAuth(keys=...)` configuration for the FastAPI middleware. `keys` accepts an iterable or a zero-arg callable (allowing env / file / secrets-manager sourcing).
   - A `JwtAuth(jwks_url, audience, issuer)` configuration for accepting JWTs on `/api`, used when the same identities are shared between substrates.
-- A `Principal` type carried in framework state (subject, scopes, claims). Whichever middleware authenticated the request populates it. The type's exact shape is locked in the apply change.
+- The `Principal` type is **not defined here** — it is owned by `bridge-di-to-substrate-native` and consumed here. This proposal's wrappers populate the substrate-resolved `Principal`; the bridge writes it into `call_scope` as a SCOPED provider so `authorize=` callables and tool bodies resolve `principal: Principal` naturally via DI.
 - `App.auth(spec)` registration method. Multiple calls accumulate.
 - FastMCP integration: when an OAuth wrapper is registered, the wrapped provider is passed to FastMCP at `build_mcp_server` time.
 - FastAPI integration: API-key and (optional) JWT middlewares are mounted on the FastAPI sub-app at `build_http_app` time. Middleware is only present when explicit auth registrations exist; no default auth.
-- `authorize=` enforcement: the dispatch pipeline invokes the per-tool callable with the active principal before the tool body runs. Failed authorization raises a framework error which maps to HTTP 403 / MCP error.
+- `authorize=` enforcement: the dispatch pipeline's `AuthorizeGateStage` (introduced by `bridge-di-to-substrate-native`) resolves the per-tool callable's params through `call_scope` (so the callable takes `principal: Principal` plus any a2kit-resolved deps like `db: Database`) and invokes it before the tool body runs. Failed authorization raises a framework error which maps to HTTP 403 / MCP error.
 - Test helper for unit-testing `authorize=` callables without spinning up middleware. Exact shape locked in the apply change.
 - Cold-start invariant extension: `import a2kit` does not load auth-only dependencies.
 
@@ -28,8 +28,7 @@ a2kit's value here is **wrapping**, not reinventing. FastMCP's auth providers ev
 ### New Capabilities
 
 - `auth-spec`: The author-facing wrapper surface (`GoogleAuth`, `APIKeyAuth`, `JwtAuth`) and the `App.auth(...)` registration method. a2kit owns the wrappers; substrate-specific provider implementations live behind them.
-- `principal-propagation`: A uniform `Principal` made available to dispatch logic regardless of which substrate authenticated the request.
-- `tool-authorization`: Per-tool `authorize=` gate enforced uniformly across all dispatch surfaces. Failed authorization yields a transport-appropriate error.
+- `tool-authorization`: Per-tool `authorize=` gate enforced uniformly across all dispatch surfaces. Failed authorization yields a transport-appropriate error. (The `Principal` type and `principal-propagation` capability are owned by `bridge-di-to-substrate-native`; this proposal does not redefine them.)
 
 ### Modified Capabilities
 
@@ -39,3 +38,5 @@ a2kit's value here is **wrapping**, not reinventing. FastMCP's auth providers ev
 ## Impact
 
 This is a proposal-only change. Detailed code paths, exact module structure, dependency footprint, and test plan are deferred to the apply-cycle change which will write `design.md`, the spec deltas, and `tasks.md`. The intent of this proposal is to lock the audience model (MCP via FastMCP-native OAuth; HTTP via API keys with optional JWT SSO), the wrapper-style author surface, and the relationship to the `authorize=` kwarg reserved by `add-multi-surface`.
+
+**Dependencies**: `bridge-di-to-substrate-native` must land first. It owns the `Principal` type, the SCOPED-write mechanism into `call_scope`, the `substrate-dep` 4th signature class needed for FastAPI `Security(...)` passthrough, and the `AuthorizeGateStage`. This proposal's wrappers (`GoogleAuth`/`APIKeyAuth`/`JwtAuth`) produce principals; the bridge wires them through DI.

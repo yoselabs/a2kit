@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from a2kit._verbs import list_, read, write
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Mapping
 
     from a2kit.packages.formatter import EncodingPlan
     from a2kit.routers import Router
 
 Visibility = Literal["hidden", "cli", "all"]
+
+_EMPTY_VIEW: Mapping[str, Any] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,15 @@ class ToolDescriptor:
     verb: Literal["read", "list", "write"] = "read"
     expose: tuple[Literal["mcp", "api"], ...] = ("mcp", "api")
     authorize: Callable[..., Any] | None = None
+    # Projected from A2KitMeta at materialization (extend-descriptor-fields).
+    # Container-dependent fields default to None and are finalised by
+    # defer-descriptor-materialization once App.build() runs with container.
+    ctx_param_name: str | None = None
+    timeout: float | None = None
+    annotations_view: Mapping[str, Any] = field(default_factory=lambda: _EMPTY_VIEW)
+    metadata_view: Mapping[str, Any] = field(default_factory=lambda: _EMPTY_VIEW)
+    wire_param_names: frozenset[str] | None = None
+    lazy_param_names: frozenset[str] | None = None
 
 
 class DispatchHook(Protocol):
