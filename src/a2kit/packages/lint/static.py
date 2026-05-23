@@ -47,6 +47,7 @@ A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
 A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
 A2K_SURFACE_EXPLICIT = "A2K-SURFACE-EXPLICIT"
 A2K_METADATA_PRIVATE = "A2K-METADATA-PRIVATE"
+A2K_SUBSTRATE_DEP = "A2K-SUBSTRATE-DEP"
 
 ALL_RULES = (
     A2K002,
@@ -71,6 +72,7 @@ ALL_RULES = (
     A2K_TEST_MIRROR,
     A2K_SURFACE_EXPLICIT,
     A2K_METADATA_PRIVATE,
+    A2K_SUBSTRATE_DEP,
 )
 
 BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
@@ -160,6 +162,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.mirror import rule_test_mirror
     from a2kit.packages.lint.rules.purity import rule_extra_namespace
     from a2kit.packages.lint.rules.shape import rule_a2k002, rule_a2k003, rule_a2k011, rule_a2k013
+    from a2kit.packages.lint.rules.substrate_dep import rule_substrate_dep
     from a2kit.packages.lint.rules.surface import rule_surface_explicit
 
     return (
@@ -182,6 +185,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_TEST_MIRROR, rule_test_mirror),
         (A2K_SURFACE_EXPLICIT, rule_surface_explicit),
         (A2K_METADATA_PRIVATE, rule_metadata_private),
+        (A2K_SUBSTRATE_DEP, rule_substrate_dep),
     )
 
 

@@ -67,26 +67,28 @@ class SubstrateSignatureError(TypeError):
     def __init__(
         self,
         *,
-        fn_name: str,
-        param_name: str,
-        annotation: Any,
-        wrong_substrate: Substrate,
-        right_substrate: Substrate,
+        fn_name: str = "",
+        param_name: str = "",
+        annotation: Any = None,
+        wrong_substrate: Substrate | None = None,
+        right_substrate: Substrate | None = None,
+        message: str | None = None,
     ) -> None:
         self.fn_name = fn_name
         self.param_name = param_name
         self.annotation = annotation
         self.wrong_substrate = wrong_substrate
         self.right_substrate = right_substrate
-        ann_name = getattr(annotation, "__name__", repr(annotation))
-        msg = (
-            f"{fn_name}: parameter {param_name!r} is annotated {ann_name}, "
-            f"which is reserved by the {right_substrate!r} substrate, not "
-            f"{wrong_substrate!r}. If MCP semantics are intended, register the "
-            f"tool with @app.mcp.tool; for HTTP, use only FastAPI-native "
-            f"reserved types (Request, Response, BackgroundTasks, WebSocket)."
-        )
-        super().__init__(msg)
+        if message is None:
+            ann_name = getattr(annotation, "__name__", repr(annotation))
+            message = (
+                f"{fn_name}: parameter {param_name!r} is annotated {ann_name}, "
+                f"which is reserved by the {right_substrate!r} substrate, not "
+                f"{wrong_substrate!r}. If MCP semantics are intended, register the "
+                f"tool with @app.mcp.tool; for HTTP, use only FastAPI-native "
+                f"reserved types (Request, Response, BackgroundTasks, WebSocket)."
+            )
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,13 @@ class SplitSignature:
     substrate: Substrate
     reserved: dict[str, inspect.Parameter] = field(default_factory=dict)
     container: dict[str, inspect.Parameter] = field(default_factory=dict)
+    # `substrate_dep` is the 4th bucket (add-substrate-dep-class): params
+    # carrying `Annotated[T, fastapi.params.Depends|Security]`. For the
+    # `fastapi` substrate they pass through to the wrapper's surface
+    # signature with their original Annotated metadata preserved so
+    # FastAPI's dependency graph walks the marker. For `fastmcp` the
+    # presence of any such param is rejected at `install_substrate_signature`.
+    substrate_dep: dict[str, inspect.Parameter] = field(default_factory=dict)
     wire: dict[str, inspect.Parameter] = field(default_factory=dict)
 
 
@@ -228,6 +237,39 @@ def _unwrap_annotation(ann: Any) -> Any:
 _BOUND_FIRST = frozenset({"self", "cls"})
 
 
+def _has_fastapi_dep_marker(raw_ann: Any) -> bool:
+    """True iff ``raw_ann`` is ``Annotated[T, ...]`` whose metadata contains
+    a ``fastapi.params.Depends`` or ``fastapi.params.Security`` instance.
+
+    Lazy: only inspects metadata when the annotation is already an
+    ``Annotated`` form. Importing ``fastapi.params`` happens only inside
+    the metadata loop, never at module load — cold-start preserved when
+    no annotation carries a marker.
+    """
+    if not (typing.get_origin(raw_ann) is typing.Annotated or (hasattr(raw_ann, "__metadata__") and hasattr(raw_ann, "__origin__"))):
+        return False
+    metadata = getattr(raw_ann, "__metadata__", ())
+    if not metadata:
+        return False
+    fastapi_params = sys.modules.get("fastapi.params")
+    if fastapi_params is None:
+        # If fastapi.params is not loaded, no marker can be a live instance
+        # of it. Authors who annotate with Depends/Security necessarily
+        # imported fastapi.params (transitively via `from fastapi import Depends`).
+        import importlib
+
+        try:
+            fastapi_params = importlib.import_module("fastapi.params")
+        except ImportError:
+            return False
+    depends_cls = getattr(fastapi_params, "Depends", None)
+    security_cls = getattr(fastapi_params, "Security", None)
+    markers = tuple(cls for cls in (depends_cls, security_cls) if isinstance(cls, type))
+    if not markers:
+        return False
+    return any(isinstance(item, markers) for item in metadata)
+
+
 def split_signature(
     fn: Callable[..., Any],
     substrate: Substrate,
@@ -272,6 +314,14 @@ def split_signature(
 
     fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
     hints = resolve_hints(fn)
+    # Second pass with `include_extras=True` so `Annotated[T, Depends(...)]`
+    # survives for substrate-dep marker detection. `resolve_hints` strips
+    # the metadata for the rest of the classifier's needs (reserved/container
+    # work on the unwrapped concrete type).
+    try:
+        hints_ext = typing.get_type_hints(fn, include_extras=True)
+    except Exception:  # noqa: BLE001 — same fallback policy as `resolve_hints`
+        hints_ext = {}
     sig = inspect.signature(fn)
     split = SplitSignature(substrate=substrate)
 
@@ -290,6 +340,10 @@ def split_signature(
             )
         if isinstance(unwrapped, type) and unwrapped in this_reserved:
             split.reserved[name] = param
+            continue
+        raw_with_metadata = hints_ext.get(name, raw)
+        if _has_fastapi_dep_marker(raw_with_metadata):
+            split.substrate_dep[name] = param.replace(annotation=raw_with_metadata)
             continue
         if container.has_provider(raw) or (unwrapped is not raw and container.has_provider(unwrapped)):
             split.container[name] = param
@@ -313,8 +367,25 @@ def _build_substrate_signature(split: SplitSignature, return_ann: Any) -> inspec
     name. Annotation and default are preserved.
     """
     params: list[inspect.Parameter] = [p.replace(kind=inspect.Parameter.KEYWORD_ONLY) for p in split.reserved.values()]
+    # `substrate_dep` params keep their original Annotated metadata so the
+    # substrate (FastAPI) walks the Depends/Security marker on its own
+    # dependency graph.
+    params.extend(p.replace(kind=inspect.Parameter.KEYWORD_ONLY) for p in split.substrate_dep.values())
     params.extend(p.replace(kind=inspect.Parameter.KEYWORD_ONLY) for p in split.wire.values())
     return inspect.Signature(parameters=params, return_annotation=return_ann)
+
+
+def _reject_substrate_dep_on_mcp(fn: Callable[..., Any], substrate: Substrate, split: SplitSignature) -> None:
+    if substrate != "fastmcp" or not split.substrate_dep:
+        return
+    fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
+    offending = sorted(split.substrate_dep)
+    msg = (
+        f"{fn_name}: parameter(s) {offending} carry FastAPI `Depends`/`Security` "
+        f"markers, which cannot appear on MCP-exposed tools. Remove the marker "
+        f"or scope this tool with expose=('api',)."
+    )
+    raise SubstrateSignatureError(message=msg)
 
 
 def install_substrate_signature(
@@ -344,10 +415,11 @@ def install_substrate_signature(
     this function is the FastAPI surface's primary entry point.
     """
     split = split_signature(fn, substrate, container)
+    _reject_substrate_dep_on_mcp(fn, substrate, split)
     hints = resolve_hints(fn)
     return_ann = hints.get("return", inspect.Signature.empty)
 
-    reserved_names = frozenset(split.reserved)
+    reserved_names = frozenset(split.reserved) | frozenset(split.substrate_dep)
 
     @functools.wraps(fn)
     async def _wrapper(**substrate_kwargs: Any) -> Any:
@@ -373,6 +445,9 @@ def install_substrate_signature(
     setattr(_wrapper, "__signature__", _build_substrate_signature(split, return_ann))  # noqa: B010
     new_annotations: dict[str, Any] = {}
     for name in split.reserved:
+        if name in hints:
+            new_annotations[name] = hints[name]
+    for name in split.substrate_dep:
         if name in hints:
             new_annotations[name] = hints[name]
     for name in split.wire:
