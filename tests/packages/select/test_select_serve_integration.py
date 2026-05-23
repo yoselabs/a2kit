@@ -9,15 +9,17 @@ without ``--mcp-only`` ever existing.
 
 from __future__ import annotations
 
+from typing import Any
+
 import a2kit
 from a2kit.packages.serve import build_parent_app
 from a2kit.runtime import build
 
 
-def _mount_paths(parent: object) -> set[str]:
+def _mount_paths(parent: Any) -> set[str]:
     from starlette.routing import Mount
 
-    return {r.path for r in parent.routes if isinstance(r, Mount)}  # type: ignore[attr-defined]
+    return {r.path for r in parent.routes if isinstance(r, Mount)}
 
 
 def _make_app() -> a2kit.App:

@@ -125,9 +125,15 @@ def test_empty_include_passes_vacuously() -> None:
 
 
 def test_selector_is_frozen() -> None:
+    """Frozen dataclass: runtime attribute assignment raises FrozenInstanceError.
+
+    ``setattr`` defers the check to runtime where ``frozen=True``
+    semantics actually apply (a direct ``s.category =`` would also be
+    caught statically by ``ty``).
+    """
     s = compile_selector("verb=read")
-    with pytest.raises(Exception):  # noqa: B017, PT011 -- FrozenInstanceError
-        s.category = "name"  # type: ignore[misc]
+    with pytest.raises(Exception):  # noqa: B017, PT011
+        setattr(s, "category", "name")  # noqa: B010
 
 
 # ---------------------------------------------------------------------------

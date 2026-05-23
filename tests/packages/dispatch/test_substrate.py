@@ -273,8 +273,10 @@ def test_lazy_accessors_match_force_when_loaded() -> None:
 
 def test_splitsignature_is_frozen() -> None:
     split = SplitSignature(substrate="fastapi")
-    with pytest.raises(Exception):  # noqa: B017, PT011 -- FrozenInstanceError or AttributeError
-        split.substrate = "fastmcp"  # type: ignore[misc]
+    # ``setattr`` defers to runtime so the frozen=True check fires here
+    # rather than being caught statically by ``ty``.
+    with pytest.raises(Exception):  # noqa: B017, PT011
+        setattr(split, "substrate", "fastmcp")  # noqa: B010
 
 
 # ---------------------------------------------------------------------------

@@ -367,7 +367,10 @@ def install_substrate_signature(
     # The surface ``__signature__`` keeps raw Parameter annotations
     # (may be strings under PEP 563). ``__annotations__`` carries the
     # resolved hints so substrates / pydantic schema-gen see live types.
-    _wrapper.__signature__ = _build_substrate_signature(split, return_ann)  # type: ignore[attr-defined]
+    # __signature__ is the PEP 362 introspection target; setattr (vs.
+    # attribute assignment) keeps both mypy and `ty` happy without an
+    # ignore — neither tool special-cases the magic attribute.
+    setattr(_wrapper, "__signature__", _build_substrate_signature(split, return_ann))  # noqa: B010
     new_annotations: dict[str, Any] = {}
     for name in split.reserved:
         if name in hints:

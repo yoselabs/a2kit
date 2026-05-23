@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from a2kit._lifecycle_helpers import (
     resolve_singleton_args,
@@ -437,8 +437,14 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
         # adapters and selectors can filter without re-reading A2KitMeta.
         # `verb` defaults to "read" — the safest default for unstamped
         # tools (e.g. the _meta.health helper that uses _read_internal).
-        verb = meta.verb if meta is not None else "read"
-        expose = tuple(meta.extras.expose) if meta is not None else ("mcp", "api")
+        # A2KitMeta.verb is `Literal["read", "write", "list", "tool"]`;
+        # ToolDescriptor.verb is narrowed to read/list/write because
+        # `tool` is the @app.mcp.tool family that does NOT produce a
+        # ToolDescriptor (mcp_surface holds them separately).
+        meta_verb = meta.verb if meta is not None else "read"
+        verb: Literal["read", "list", "write"] = meta_verb if meta_verb in ("read", "list", "write") else "read"  # type: ignore[assignment]
+        expose_raw = tuple(meta.extras.expose) if meta is not None else ("mcp", "api")
+        expose: tuple[Literal["mcp", "api"], ...] = cast("tuple[Literal['mcp', 'api'], ...]", expose_raw)
         authorize = meta.extras.authorize if meta is not None else None
         out.append(
             ToolDescriptor(

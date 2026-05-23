@@ -129,8 +129,10 @@ def compile_selector(expr: str) -> Selector:
         if bad:
             msg = f"surface accepts only 'mcp' or 'api'; got {sorted(bad)!r} in selector {expr!r}"
             raise SelectorError(msg)
+    from typing import cast
+
     return Selector(
-        category=category,  # type: ignore[arg-type]
+        category=cast("Category", category),
         include=frozenset(include),
         exclude=frozenset(exclude),
     )
