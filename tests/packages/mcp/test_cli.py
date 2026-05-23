@@ -1,4 +1,10 @@
-"""``serve`` Click command — transport dispatch and surface-selection flags."""
+"""``serve`` Click command — transport dispatch.
+
+Substrate mounts on ``--transport=http`` are determined by App
+registrations (auto-mount per ``add-multi-surface``). The legacy
+``--mcp-only`` / ``--rest-only`` flags are removed; ``--select 'surface=...'``
+is the documented surface-narrowing path (lands with ``add-tool-select``).
+"""
 
 from __future__ import annotations
 
@@ -21,8 +27,14 @@ def test_serve_help_lists_options() -> None:
     assert "http" in result.output
     assert "--host" in result.output
     assert "--port" in result.output
-    assert "--mcp-only" in result.output
-    assert "--rest-only" in result.output
+
+
+def test_serve_help_does_not_advertise_removed_flags() -> None:
+    """``--mcp-only`` / ``--rest-only`` are gone post add-multi-surface."""
+    cmd = build_serve_command(a2kit.App("test"))
+    result = CliRunner().invoke(cmd, ["--help"])
+    assert "--mcp-only" not in result.output
+    assert "--rest-only" not in result.output
 
 
 def test_serve_dispatches_stdio_transport() -> None:
@@ -39,38 +51,24 @@ def test_serve_dispatches_stdio_transport() -> None:
     instance.run.assert_called_once_with(transport="stdio")
 
 
-def test_serve_stdio_accepts_mcp_only_as_noop() -> None:
-    """``--mcp-only`` on stdio is redundant but accepted — stdio is MCP-only."""
+def test_serve_rejects_unknown_flag() -> None:
+    """The removed ``--mcp-only`` flag now raises a Click usage error."""
     cmd = build_serve_command(a2kit.App("test"))
-    runner = CliRunner()
-    with patch("a2kit.packages.mcp.server.FastMCP") as mock_fastmcp:
-        instance = mock_fastmcp.return_value
-        instance.add_tool.return_value = None
-        instance.add_middleware.return_value = None
-        instance.run.return_value = None
-        result = runner.invoke(cmd, ["--mcp-only"])
-    assert result.exit_code == 0, result.output
-    instance.run.assert_called_once_with(transport="stdio")
-
-
-def test_serve_rest_only_with_stdio_is_rejected() -> None:
-    """REST cannot ride a single-protocol stdio pipe."""
-    cmd = build_serve_command(a2kit.App("test"))
-    result = CliRunner().invoke(cmd, ["--rest-only"])
+    result = CliRunner().invoke(cmd, ["--mcp-only"])
     assert result.exit_code != 0
-    assert "stdio" in result.output.lower()
-    assert "rest" in result.output.lower()
+    assert "no such option" in result.output.lower() or "unrecognized" in result.output.lower()
 
 
-def test_serve_mcp_only_and_rest_only_together_is_rejected() -> None:
-    cmd = build_serve_command(a2kit.App("test"))
-    result = CliRunner().invoke(cmd, ["--transport", "http", "--mcp-only", "--rest-only"])
-    assert result.exit_code != 0
-    assert "mutually exclusive" in result.output.lower()
-
-
-def test_serve_http_default_mounts_both_surfaces() -> None:
+def test_serve_http_invokes_build_parent_app_kwargless() -> None:
+    """The HTTP path calls ``build_parent_app(app)`` with no surface kwargs."""
     app = a2kit.App("test")
+
+    # Need at least one registration so build_parent_app doesn't ValueError
+    # before uvicorn.run is invoked — give the app one @app.api route.
+    @app.api.get("/probe")
+    async def _p() -> dict[str, str]:
+        return {"ok": "1"}
+
     cmd = build_serve_command(app)
     runner = CliRunner()
     with (
@@ -80,33 +78,10 @@ def test_serve_http_default_mounts_both_surfaces() -> None:
         result = runner.invoke(cmd, ["--transport", "http", "--host", "0.0.0.0", "--port", "9999"])
     assert result.exit_code == 0, result.output
     mock_build.assert_called_once()
-    assert mock_build.call_args.kwargs == {"mcp": True, "rest": True}
+    # No mcp= / rest= kwargs; the App alone is passed positionally.
+    assert mock_build.call_args.kwargs == {}
     mock_run.assert_called_once()
     assert mock_run.call_args.kwargs == {"host": "0.0.0.0", "port": 9999}
-
-
-def test_serve_http_mcp_only_mounts_mcp_alone() -> None:
-    cmd = build_serve_command(a2kit.App("test"))
-    runner = CliRunner()
-    with (
-        patch("a2kit.packages.serve.build_parent_app") as mock_build,
-        patch("uvicorn.run"),
-    ):
-        result = runner.invoke(cmd, ["--transport", "http", "--mcp-only"])
-    assert result.exit_code == 0, result.output
-    assert mock_build.call_args.kwargs == {"mcp": True, "rest": False}
-
-
-def test_serve_http_rest_only_mounts_rest_alone() -> None:
-    cmd = build_serve_command(a2kit.App("test"))
-    runner = CliRunner()
-    with (
-        patch("a2kit.packages.serve.build_parent_app") as mock_build,
-        patch("uvicorn.run"),
-    ):
-        result = runner.invoke(cmd, ["--transport", "http", "--rest-only"])
-    assert result.exit_code == 0, result.output
-    assert mock_build.call_args.kwargs == {"mcp": False, "rest": True}
 
 
 def test_build_serve_command_returns_click_command() -> None:

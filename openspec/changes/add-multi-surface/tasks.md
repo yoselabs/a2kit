@@ -35,19 +35,20 @@
 
 ## 5. Auto-mount in serve
 
-- [ ] 5.1 Update `build_parent_app` to determine mounts from runtime registrations:
-  - FastAPI mounts if any projection tool has `"api" in expose` OR any `api_routes` entry exists.
-  - FastMCP mounts if any projection tool has `"mcp" in expose` OR any `mcp_features` entry exists.
-- [ ] 5.2 Remove the `mcp` and `rest` boolean kwargs from `build_parent_app`'s signature. Rename existing `rest=True` callers to nothing (kwarg-less call). Any external caller still passing `rest=` gets a `TypeError`.
-- [ ] 5.3 Raise `ConfigError` if neither substrate would mount.
-- [ ] 5.4 Update CLI `serve` callback in `packages/cli/builder.py` to drop the `--mcp` / `--rest` flag handling (replaced by auto-mount; `--select 'surface=...'` is a separate change).
+- [x] 5.1 Update `build_parent_app` to determine mounts from runtime registrations:
+  - FastAPI mounts when any projection tool exists OR any `api_surface.routes` entry exists.
+  - FastMCP mounts when any projection tool exists OR any `mcp_surface.registrations` entry exists.
+  *(Per-tool `"api" in expose` / `"mcp" in expose` filter lands when ToolDescriptor extensions land in task 4.5; for now projection tools count for both surfaces.)*
+- [x] 5.2 Remove the `mcp` and `rest` boolean kwargs from `build_parent_app`'s signature. Any external caller still passing `rest=` gets a `TypeError` from Python.
+- [x] 5.3 Raise `ValueError` if neither substrate would mount. *(Reused stdlib `ValueError`; no a2kit-specific `ConfigError` introduced.)*
+- [x] 5.4 Update CLI `serve` callback in `packages/mcp/cli.py` to drop the `--mcp-only` / `--rest-only` flag handling (replaced by auto-mount; `--select 'surface=...'` lands in `add-tool-select`).
 
 ## 6. Rename and removal
 
-- [ ] 6.1 Delete `src/a2kit/packages/rest.py` outright. Python's native `ModuleNotFoundError: No module named 'a2kit.packages.rest'` satisfies AGENTS.md §1; no sentinel stub.
-- [ ] 6.2 Update `src/a2kit/packages/serve.py` to import from `a2kit.packages.http` (no `rest`).
-- [ ] 6.3 Find every reference to `build_rest_app` in the codebase. Update to `build_http_app`. Verify no stale references in tests, docs, or examples.
-- [ ] 6.4 Update `a2kit.packages.lint` configuration if needed; existing import-discipline tests must pass.
+- [x] 6.1 Delete `src/a2kit/packages/rest.py` outright. Python's native `ModuleNotFoundError: No module named 'a2kit.packages.rest'` satisfies AGENTS.md §1; no sentinel stub.
+- [x] 6.2 Update `src/a2kit/packages/serve.py` to import from `a2kit.packages.http` (no `rest`).
+- [x] 6.3 Find every reference to `build_rest_app` in the codebase. Update to `build_http_app`. *(tests/packages/test_rest.py was the only consumer; removed.)*
+- [x] 6.4 Update `a2kit.packages.lint` configuration if needed; existing import-discipline tests must pass. *(LAYER_MANIFEST already has `http: 5` from Phase 2; no further lint config needed.)*
 
 ## 7. Ruff banned-imports config
 

@@ -80,42 +80,62 @@ def _mount_paths(parent: Any) -> set[Any]:
 # ------------------------------------------------------------ route-shape tests
 
 
-def test_build_parent_app_mounts_both_surfaces() -> None:
-    parent = build_parent_app(a2kit.App("test"), mcp=True, rest=True)
+def test_build_parent_app_auto_mounts_both_for_projection_app() -> None:
+    """Projection tools default to both surfaces — both mounts present."""
+    parent = build_parent_app(_build_di_app())
     assert _mount_paths(parent) == {"/mcp", "/api"}
 
 
-def test_build_parent_app_mcp_only_mounts_mcp_alone() -> None:
-    parent = build_parent_app(a2kit.App("test"), mcp=True, rest=False)
+def test_build_parent_app_mcp_only_when_only_mcp_registrations() -> None:
+    """``@app.mcp.tool``-only app mounts only ``/mcp``."""
+    app = a2kit.App("mcp-only")
+
+    @app.mcp.tool(name="hello")
+    async def _h() -> dict[str, str]:
+        return {"v": "hi"}
+
+    parent = build_parent_app(app)
     assert _mount_paths(parent) == {"/mcp"}
 
 
-def test_build_parent_app_rest_only_mounts_rest_alone() -> None:
-    parent = build_parent_app(a2kit.App("test"), mcp=False, rest=True)
+def test_build_parent_app_api_only_when_only_api_registrations() -> None:
+    """``@app.api.<method>``-only app mounts only ``/api``."""
+    app = a2kit.App("api-only")
+
+    @app.api.get("/version")
+    async def _v() -> dict[str, str]:
+        return {"v": "1"}
+
+    parent = build_parent_app(app)
     assert _mount_paths(parent) == {"/api"}
 
 
 def test_build_parent_app_requires_a_surface() -> None:
-    with pytest.raises(ValueError, match="at least one surface"):
-        build_parent_app(a2kit.App("test"), mcp=False, rest=False)
+    """Empty App with no registrations raises ValueError on build."""
+    with pytest.raises(ValueError, match="no surfaces have registrations"):
+        build_parent_app(a2kit.App("empty"))
 
 
 # --------------------------------------------------------------- end-to-end
 
 
-def test_rest_only_parent_starts_and_serves_health() -> None:
-    """A ``rest=True, mcp=False`` parent runs its lifespan and serves /api.
-
-    ``TestClient`` as a context manager drives the parent lifespan — the
-    ``AsyncExitStack`` path with one non-FastMCP mount — proving the
-    REST-only topology starts cleanly without an MCP session manager.
-    """
+def test_api_only_parent_starts_and_serves_health() -> None:
+    """An ``@app.api.*``-only parent runs its lifespan and serves /api/health."""
     from starlette.testclient import TestClient
 
-    parent = build_parent_app(a2kit.App("rest-only"), mcp=False, rest=True)
+    app = a2kit.App("api-only")
+
+    @app.api.get("/version")
+    async def _v() -> dict[str, str]:
+        return {"v": "1"}
+
+    parent = build_parent_app(app)
     with TestClient(parent) as client:
         resp = client.get("/api/health")
     assert resp.status_code == 200
+    resp = client.get("/api/version")
+    assert resp.status_code == 200
+    assert resp.json() == {"v": "1"}
 
 
 @pytest.mark.asyncio
@@ -125,7 +145,7 @@ async def test_multiplexed_serve_health_di_tool_and_single_lifecycle() -> None:
     from fastmcp import Client
 
     app = _build_di_app()
-    parent = build_parent_app(app, mcp=True, rest=True)
+    parent = build_parent_app(app)
 
     orig_aenter = AppRuntime.__aenter__
     orig_aexit = AppRuntime.__aexit__
