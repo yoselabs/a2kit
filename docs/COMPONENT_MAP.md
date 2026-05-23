@@ -17,7 +17,7 @@ the lint's own view of the graph.
 | Unit | Layer | Files | Fan-in | Fan-out | Depends on |
 |------|-------|-------|--------|---------|------------|
 | `context` | 0 | 2 | 3 | 1 | `ldd` |
-| `di` | 0 | 9 | 4 | 0 | — |
+| `di` | 0 | 9 | 5 | 0 | — |
 | `formatter` | 0 | 9 | 6 | 0 | — |
 | `health` | 0 | 2 | 2 | 1 | `di` |
 | `ldd` | 0 | 5 | 2 | 0 | — |
@@ -26,7 +26,7 @@ the lint's own view of the graph.
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
 | `runtime` | 3 | 3 | 5 | 6 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
-| `dispatch` | 4 | 4 | 2 | 4 | `authoring`, `context`, `kernel`, `runtime` |
+| `dispatch` | 4 | 5 | 2 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
 | `cli` | 5 | 6 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `mcp` | 5 | 7 | 2 | 6 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime` |
@@ -59,7 +59,7 @@ the lint's own view of the graph.
 ### Layer 4
 
 - `connections` → `authoring`, `di`, `runtime`
-- `dispatch` → `authoring`, `context`, `kernel`, `runtime`
+- `dispatch` → `authoring`, `context`, `di`, `kernel`, `runtime`
 
 ### Layer 5
 
