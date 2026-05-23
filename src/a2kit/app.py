@@ -107,6 +107,13 @@ class App:
 
         self._health: HealthRegistry = HealthRegistry(enabled=False)
 
+        # Lazy substrate decorator accumulators. ``App.api`` and
+        # ``App.mcp`` properties construct them on first touch — `import
+        # a2kit` and `<app> --help` paths never reach them, so neither
+        # ``fastapi`` nor ``fastmcp`` is loaded by attribute access alone.
+        self._api: Any = None
+        self._mcp: Any = None
+
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
         """Raise ``TypeError`` for any kwarg removed in v0.35.
@@ -314,6 +321,40 @@ class App:
         if events is not None:
             self._ldd_events = events
         return self
+
+    # --- substrate-native decorator surfaces ---------------------------- #
+
+    @property
+    def api(self) -> Any:
+        """The ``@app.api.<method>(...)`` decorator family (FastAPI-only).
+
+        Lazy: first touch loads the FastAPI-side ``ApiSurface`` class
+        via ``importlib`` (the ``A2K-LAYER`` rule forbids ``runtime``
+        from a static ``from a2kit.packages.http ...`` import; the
+        dynamic load keeps the constructor a plain-dataclass call that
+        does NOT pull ``fastapi``). Subsequent accesses are idempotent.
+        """
+        if self._api is None:
+            import importlib
+
+            ApiSurface = importlib.import_module("a2kit.packages.http.api").ApiSurface  # noqa: N806
+            self._api = ApiSurface()
+        return self._api
+
+    @property
+    def mcp(self) -> Any:
+        """The ``@app.mcp.tool/.prompt/.resource(...)`` decorator family.
+
+        Lazy: same shape as :meth:`api`. Loads ``McpSurface`` via
+        ``importlib`` to stay within the L3 → L5 layer discipline; the
+        dataclass constructor does NOT pull ``fastmcp``.
+        """
+        if self._mcp is None:
+            import importlib
+
+            McpSurface = importlib.import_module("a2kit.packages.mcp.surface").McpSurface  # noqa: N806
+            self._mcp = McpSurface()
+        return self._mcp
 
     @property
     def ldd_reports(self) -> bool:

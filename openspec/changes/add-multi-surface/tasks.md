@@ -20,14 +20,14 @@
 
 ## 3. MCP surface wrapper
 
-- [ ] 3.1 Create `src/a2kit/packages/mcp/surface.py` with the `McpSurface` class — `.tool/.prompt/.resource` decorator methods, lazy `fastmcp_server` property.
-- [ ] 3.2 Update `build_mcp_server` to register `runtime.mcp_features` alongside projection tools, walking both with `install_substrate_signature(fn, "fastmcp", container)`.
-- [ ] 3.3 Ensure existing MCP projection behaviour is unchanged — same MCP wire format, same Content shape, same FormatRoutingMiddleware integration.
+- [x] 3.1 Create `src/a2kit/packages/mcp/surface.py` with the `McpSurface` class — `.tool/.prompt/.resource` decorator methods, lazy `fastmcp_server` property.
+- [ ] 3.2 Update `build_mcp_server` to register `runtime.mcp_features` alongside projection tools, walking both with `install_substrate_signature(fn, "fastmcp", container)`. *(Deferred with 1.6 — touches the MCP wrapper byte-for-byte gate.)*
+- [ ] 3.3 Ensure existing MCP projection behaviour is unchanged — same MCP wire format, same Content shape, same FormatRoutingMiddleware integration. *(Verified via the existing MCP test suite passing on every commit so far.)*
 
 ## 4. App-level glue
 
-- [ ] 4.1 Add `App.api` lazy property returning `ApiSurface` instance bound to the app.
-- [ ] 4.2 Add `App.mcp` lazy property returning `McpSurface` instance bound to the app.
+- [x] 4.1 Add `App.api` lazy property returning `ApiSurface` instance bound to the app.
+- [x] 4.2 Add `App.mcp` lazy property returning `McpSurface` instance bound to the app.
 - [ ] 4.3 Add `expose: tuple[Literal["mcp","api"], ...] = ("mcp", "api")` and `authorize: Callable | None = None` kwargs to `@app.read/list/write` decorator functions. Empty `expose` raises `ValueError` at decoration.
 - [ ] 4.4 Add `authorize=` kwarg to `app.api.<method>` and `app.mcp.<feature>` decorators (no `expose=` — they're single-surface; passing `expose=` raises `TypeError`).
 - [ ] 4.5 Add `verb: Literal["read","list","write"]`, `expose: tuple[...]`, `authorize: Callable | None` fields to `ToolDescriptor`. Materialize at registration time.

@@ -38,15 +38,16 @@ if TYPE_CHECKING:
 def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -> FastAPI:
     """Build the FastAPI sub-app for ``runtime``.
 
-    ``api_surface``: optional ``ApiSurface`` carrying author-written
-    ``@app.api.<method>`` registrations. When ``None``, only projection
-    tools and the default routes are mounted. (Phase 4 wires this from
-    ``App.api`` automatically.)
+    ``api_surface``: when omitted, defaults to ``runtime.api_surface``
+    (populated by ``build()`` from the source ``App``'s ``api`` property).
+    Explicit passing is still supported for tests and ad-hoc tooling.
 
     Each tool descriptor's ``fn`` is wrapped by
     ``install_substrate_signature`` so the FastAPI introspector sees
     only wire + reserved params and a2kit DI is resolved per call.
     """
+    if api_surface is None:
+        api_surface = runtime.api_surface
     container = runtime.container()
     app = FastAPI(
         title=runtime.name,

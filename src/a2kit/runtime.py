@@ -61,6 +61,8 @@ class AppRuntime:
         ldd_events: bool,
         ldd: Any,
         health: HealthRegistry,
+        api_surface: Any = None,
+        mcp_surface: Any = None,
     ) -> None:
         self.name = name
         self.debug = debug
@@ -74,6 +76,11 @@ class AppRuntime:
         self._ldd_events = ldd_events
         self.ldd = ldd
         self._health = health
+        # Substrate-native decorator surfaces collected by the source
+        # ``App``. ``None`` when the author never touched ``App.api`` /
+        # ``App.mcp`` — no FastAPI / FastMCP-only registrations exist.
+        self.api_surface = api_surface
+        self.mcp_surface = mcp_surface
         # Routers that entered via ``__aenter__`` during this runtime's
         # lifecycle. LIFO unwound on ``__aexit__``.
         self._entered_routers: dict[str, Router] = {}
@@ -243,6 +250,11 @@ def build(app: App | AppRuntime) -> AppRuntime:
         ldd_events=app.ldd_events,
         ldd=app.ldd,
         health=health,
+        # Carry substrate decorator surfaces only if they were touched —
+        # `app._api` / `app._mcp` stay None until the first attribute
+        # access, preserving the cold-start invariant.
+        api_surface=app._api,  # noqa: SLF001 -- finisher snapshot
+        mcp_surface=app._mcp,  # noqa: SLF001 -- finisher snapshot
     )
 
     # Re-bind the synthetic `_meta` health router to the runtime so its

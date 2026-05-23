@@ -30,7 +30,7 @@ the lint's own view of the graph.
 | `cli` | 5 | 6 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `http` | 5 | 3 | 0 | 3 | `dispatch`, `health`, `runtime` |
-| `mcp` | 5 | 7 | 2 | 6 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime` |
+| `mcp` | 5 | 8 | 2 | 6 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime` |
 | `otel` | 5 | 3 | 0 | 0 | — |
 | `testing` | 6 | 7 | 0 | 6 | `authoring`, `context`, `formatter`, `kernel`, `mcp`, `runtime` |
 
