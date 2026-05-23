@@ -39,21 +39,21 @@ if TYPE_CHECKING:
 
 
 def _has_api_registrations(runtime: AppRuntime) -> bool:
-    """True if any projection tool or author-written ``@app.api.*`` route exists.
+    """True if any projection tool exposes on ``api`` OR any ``@app.api.*`` route exists.
 
-    Projection tools default to exposing on both substrates; the per-tool
-    ``expose`` filter (Phase 4 task 4.5) will narrow this. ``@app.api.*``
-    routes always count.
+    Per-tool ``expose`` is honoured: a projection tool registered as
+    ``@app.read(expose=("mcp",))`` does NOT count towards ``/api``.
+    ``@app.api.*`` routes always count.
     """
-    if runtime.tools():
+    if any("api" in d.expose for d in runtime.tools()):
         return True
     api = runtime.api_surface
     return api is not None and bool(api.routes)
 
 
 def _has_mcp_registrations(runtime: AppRuntime) -> bool:
-    """True if any projection tool or author-written ``@app.mcp.*`` exists."""
-    if runtime.tools():
+    """True if any projection tool exposes on ``mcp`` OR any ``@app.mcp.*`` exists."""
+    if any("mcp" in d.expose for d in runtime.tools()):
         return True
     mcp = runtime.mcp_surface
     return mcp is not None and bool(mcp.registrations)

@@ -63,11 +63,12 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     async def _health() -> dict[str, str]:
         return {"status": "ok"}
 
-    # Projection tools as POST /api/<name>. Default expose semantics
-    # (both surfaces) are honoured by including every descriptor; the
-    # per-tool `expose` filter lands in Phase 4 when ToolDescriptor
-    # carries the `expose` field.
+    # Projection tools as POST /api/<name>. Filter by `"api" in expose`
+    # so tools explicitly opted out (e.g. `@app.read(expose=("mcp",))`)
+    # do not surface on the FastAPI sub-app.
     for desc in runtime.tools():
+        if "api" not in desc.expose:
+            continue
         wrapped = install_substrate_signature(desc.fn, "fastapi", container)
         _force_body_binding_for_wire_params(wrapped, desc.fn, container)
         app.add_api_route(

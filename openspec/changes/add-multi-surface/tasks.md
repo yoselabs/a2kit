@@ -28,10 +28,10 @@
 
 - [x] 4.1 Add `App.api` lazy property returning `ApiSurface` instance bound to the app.
 - [x] 4.2 Add `App.mcp` lazy property returning `McpSurface` instance bound to the app.
-- [ ] 4.3 Add `expose: tuple[Literal["mcp","api"], ...] = ("mcp", "api")` and `authorize: Callable | None = None` kwargs to `@app.read/list/write` decorator functions. Empty `expose` raises `ValueError` at decoration.
-- [ ] 4.4 Add `authorize=` kwarg to `app.api.<method>` and `app.mcp.<feature>` decorators (no `expose=` — they're single-surface; passing `expose=` raises `TypeError`).
-- [ ] 4.5 Add `verb: Literal["read","list","write"]`, `expose: tuple[...]`, `authorize: Callable | None` fields to `ToolDescriptor`. Materialize at registration time.
-- [ ] 4.6 Add `runtime.api_routes` and `runtime.mcp_features` registries to `AppRuntime`. Populate them at `build(app)` time from `App`'s collected registrations.
+- [x] 4.3 Add `expose: tuple[Literal["mcp","api"], ...] = ("mcp", "api")` and `authorize: Callable | None = None` kwargs to `@app.read/list/write` decorator functions. Empty `expose` raises `ValueError` at decoration. Unknown substrate values also raise `ValueError`.
+- [x] 4.4 Add `authorize=` kwarg to `app.api.<method>` and `app.mcp.<feature>` decorators (no `expose=` — they're single-surface; passing `expose=` raises `TypeError`). *(Landed in Phase 2 (api) and Phase 3 (mcp).)*
+- [x] 4.5 Add `verb: Literal["read","list","write"]`, `expose: tuple[...]`, `authorize: Callable | None` fields to `ToolDescriptor`. Materialize at registration time.
+- [x] 4.6 Add `runtime.api_routes` and `runtime.mcp_features` registries to `AppRuntime`. *(Materialized as `runtime.api_surface` / `runtime.mcp_surface` in Phase 4.1-4.2; equivalent surface — exposes `routes` / `registrations` attributes for consumers.)*
 
 ## 5. Auto-mount in serve
 

@@ -46,6 +46,13 @@ class A2KitMetaExtras(BaseModel):
     visibility: str | None = None
     list_view: ListViewSettings | None = None
     timeout_seconds: float | None = None
+    # Multi-surface authoring (ADR 0020). ``expose`` carries the
+    # substrates the projection tool registers on; ``authorize``
+    # captures the optional per-tool auth gate (enforcement lands in
+    # ``add-auth``). Stored on extras (not the top-level frozen
+    # dataclass) to avoid breaking the pinned shape of ``A2KitMeta``.
+    expose: tuple[str, ...] = ("mcp", "api")
+    authorize: Any = None
 
 
 @dataclass(frozen=True, slots=True)

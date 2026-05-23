@@ -433,6 +433,13 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
         encoding_plan = build_encoding_plan(return_type)
         meta = get_meta(fn)
         name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
+        # Carry the multi-surface fields onto the descriptor so substrate
+        # adapters and selectors can filter without re-reading A2KitMeta.
+        # `verb` defaults to "read" — the safest default for unstamped
+        # tools (e.g. the _meta.health helper that uses _read_internal).
+        verb = meta.verb if meta is not None else "read"
+        expose = tuple(meta.extras.expose) if meta is not None else ("mcp", "api")
+        authorize = meta.extras.authorize if meta is not None else None
         out.append(
             ToolDescriptor(
                 name=name,
@@ -441,6 +448,9 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
                 return_type=return_type,
                 format_hint=format_hint,
                 encoding_plan=encoding_plan,
+                verb=verb,
+                expose=expose,
+                authorize=authorize,
             )
         )
     return out

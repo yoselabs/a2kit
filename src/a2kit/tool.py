@@ -28,6 +28,13 @@ class ToolDescriptor:
     per call at zero decision cost (ADR 0014). It is the structured
     counterpart of ``format_hint``: it additionally marks flat-array fields
     nested inside a ``BaseModel`` envelope.
+
+    ``verb`` carries the decorator family (``"read"``/``"list"``/``"write"``)
+    so substrate adapters and selectors can filter by verb without
+    re-reading ``A2KitMeta``. ``expose`` is the ordered tuple of
+    substrates the projection tool registers on; default
+    ``("mcp", "api")``. ``authorize`` is the optional per-tool
+    authorization callable (enforcement lands in ``add-auth``).
     """
 
     name: str
@@ -36,6 +43,9 @@ class ToolDescriptor:
     return_type: Any | None
     format_hint: Literal["tsv", "json", "page-tsv"]
     encoding_plan: EncodingPlan
+    verb: Literal["read", "list", "write"] = "read"
+    expose: tuple[Literal["mcp", "api"], ...] = ("mcp", "api")
+    authorize: Callable[..., Any] | None = None
 
 
 class DispatchHook(Protocol):

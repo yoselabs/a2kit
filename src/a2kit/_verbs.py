@@ -89,6 +89,29 @@ def _parse_timeout(value: float | int | str | None) -> float | None:
         raise TypeError(msg) from exc
 
 
+def _validate_expose(verb: str, expose: tuple[str, ...]) -> tuple[str, ...]:
+    """Normalize and validate the ``expose=`` kwarg.
+
+    Empty tuple is rejected at decoration time per ``verb-decorators``
+    spec — a projection tool that exposes on no substrate is dead code.
+    Unknown substrate names raise ``ValueError`` listing the accepted
+    set ``{"mcp", "api"}``.
+    """
+    if not expose:
+        msg = (
+            f"@a2kit.{verb}(expose=()) is empty: a projection tool must expose "
+            f"on at least one substrate. Use expose=('mcp',) or expose=('api',) "
+            f"to opt into one; omit the kwarg for both (the default)."
+        )
+        raise ValueError(msg)
+    allowed = frozenset({"mcp", "api"})
+    bad = [s for s in expose if s not in allowed]
+    if bad:
+        msg = f"@a2kit.{verb}(expose={expose!r}): unknown substrate(s) {bad!r}; accepted values are 'mcp' and 'api'."
+        raise ValueError(msg)
+    return tuple(expose)
+
+
 def _stamp(
     fn: F,
     *,
@@ -101,11 +124,18 @@ def _stamp(
     reports: type | None = None,
     list_view: Any | None = None,
     timeout: float | int | str | None = None,
+    expose: tuple[str, ...] = ("mcp", "api"),
+    authorize: Any = None,
 ) -> F:
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
-    extras_kwargs: dict[str, Any] = {"visibility": visibility}
+    normalized_expose = _validate_expose(verb, expose)
+    extras_kwargs: dict[str, Any] = {
+        "visibility": visibility,
+        "expose": normalized_expose,
+        "authorize": authorize,
+    }
     if reports is not None:
         extras_kwargs["report_type"] = reports
         schema = _compute_report_schema(reports)
@@ -264,6 +294,8 @@ def read(
     idempotent: bool | None = None,
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
+    expose: tuple[str, ...] = ("mcp", "api"),
+    authorize: Any = None,
 ) -> Callable[[F], F]:
     """Read-shaped tool decorator. Sets ``readOnlyHint=True``.
 
@@ -296,6 +328,8 @@ def read(
             visibility=visibility,
             reports=reports,
             timeout=timeout,
+            expose=expose,
+            authorize=authorize,
         )
 
     return deco
@@ -311,6 +345,8 @@ def write(
     reports: type | None = None,
     annotations: ToolAnnotations | None = None,
     timeout: float | int | str | None = None,
+    expose: tuple[str, ...] = ("mcp", "api"),
+    authorize: Any = None,
 ) -> Callable[[F], F]:
     """Write-shaped tool decorator. Sets ``readOnlyHint=False, destructiveHint=True`` by default.
 
@@ -343,6 +379,8 @@ def write(
             visibility=visibility,
             reports=reports,
             timeout=timeout,
+            expose=expose,
+            authorize=authorize,
         )
 
     return deco
@@ -360,6 +398,8 @@ def list_(
     idempotent: bool | None = None,
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
+    expose: tuple[str, ...] = ("mcp", "api"),
+    authorize: Any = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Read-shaped; requires ``list[T]`` return.
 
@@ -412,6 +452,8 @@ def list_(
             reports=reports,
             list_view=settings,
             timeout=timeout,
+            expose=expose,
+            authorize=authorize,
         )
 
     return deco
