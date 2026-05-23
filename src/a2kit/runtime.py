@@ -86,6 +86,9 @@ class AppRuntime:
         self._entered_routers: dict[str, Router] = {}
         # Per-router asyncio.Lock for first-touch coalescing.
         self._router_locks: dict[str, asyncio.Lock] = {}
+        # Name → descriptor lookup; built once from the list in init order.
+        # Substrate adapters consume via descriptor_for / descriptors.
+        self._descriptor_by_name: dict[str, ToolDescriptor] = {d.name: d for d in descriptors}
 
     # --- composed surface accessors ------------------------------------ #
 
@@ -94,6 +97,19 @@ class AppRuntime:
 
     def tools(self) -> list[ToolDescriptor]:
         return list(self._descriptors)
+
+    def descriptors(self) -> tuple[ToolDescriptor, ...]:
+        """Canonical descriptor read surface for substrate adapters.
+
+        Returns a frozen tuple in stable registration order. Container-dependent
+        fields (``wire_param_names``, ``lazy_param_names``) are populated here
+        because ``build()`` re-materialised against the sealed runtime container.
+        """
+        return tuple(self._descriptors)
+
+    def descriptor_for(self, name: str) -> ToolDescriptor:
+        """O(1) descriptor lookup by tool name. Raises ``KeyError`` on miss."""
+        return self._descriptor_by_name[name]
 
     def cli_extras(self) -> list[Any]:
         return list(self._cli_extras)
@@ -237,7 +253,12 @@ def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRunti
     # re-bound to the runtime below so its tool body resolves through the
     # runtime container, not the App's compose-phase container.
     routers: list[Router] = [r for r in app.routers() if r.slug != "_meta"]
-    descriptors: list[ToolDescriptor] = [d for d in app.tools() if getattr(d.router, "slug", None) != "_meta"]
+    # Re-materialise descriptors against the sealed runtime container so
+    # `wire_param_names` / `lazy_param_names` are populated. Pre-build
+    # `app.tools()` still works for introspection (sentinel `None`).
+    descriptors: list[ToolDescriptor] = []
+    for r in routers:
+        descriptors.extend(_build_descriptors(r, container=runtime_container))
     descriptors = _apply_descriptor_selectors(descriptors, compiled_selectors)
     api_surface = _filter_api_surface(app._api, compiled_selectors)  # noqa: SLF001
     mcp_surface = _filter_mcp_surface(app._mcp, compiled_selectors)  # noqa: SLF001
@@ -274,7 +295,11 @@ def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRunti
     if any(r.slug == "_meta" for r in app.routers()):
         meta_router = _make_meta_router(runtime)
         routers.append(meta_router)
-        descriptors.extend(_build_descriptors(meta_router))
+        meta_descs = _build_descriptors(meta_router, container=runtime_container)
+        descriptors.extend(meta_descs)
+        # The lookup dict was sized off the initial descriptors list; refresh
+        # it so the post-init meta descriptors are reachable via descriptor_for.
+        runtime._descriptor_by_name.update({d.name: d for d in meta_descs})  # noqa: SLF001
 
     return runtime
 

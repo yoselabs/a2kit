@@ -419,13 +419,21 @@ def _validate_router_tools(router: Router) -> None:
         raise A2KitDecoratedMethodNotInTools(cls.__name__, missing)
 
 
-def _build_descriptors(router: Router) -> list[ToolDescriptor]:
-    """Materialize one ``ToolDescriptor`` per tool on ``router``."""
+def _build_descriptors(router: Router, container: Container | None = None) -> list[ToolDescriptor]:
+    """Materialize one ``ToolDescriptor`` per tool on ``router``.
+
+    When ``container`` is supplied (typically at ``runtime.build`` time),
+    populates ``wire_param_names`` and ``lazy_param_names``. Without a
+    container (``add_router`` time), those sentinel fields stay ``None``
+    and substrate adapters that need them MUST read via
+    ``AppRuntime.descriptor_for(name)``.
+    """
     from types import MappingProxyType
 
     from a2kit.metadata import get_meta
+    from a2kit.packages.di import lazy_inner_type
     from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
-    from a2kit.signature import resolve_hints
+    from a2kit.signature import resolve_hints, wire_input_params
 
     out: list[ToolDescriptor] = []
     for fn in router.bound_tools():
@@ -463,6 +471,12 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
             )
         else:
             metadata_view = MappingProxyType({})
+        wire_param_names: frozenset[str] | None = None
+        lazy_param_names: frozenset[str] | None = None
+        if container is not None:
+            wire_params, _scopes = wire_input_params(fn, container)
+            wire_param_names = frozenset(wire_params.keys())
+            lazy_param_names = frozenset(pname for pname, ann in hints.items() if pname != "return" and lazy_inner_type(ann) is not None)
         out.append(
             ToolDescriptor(
                 name=name,
@@ -478,6 +492,8 @@ def _build_descriptors(router: Router) -> list[ToolDescriptor]:
                 timeout=timeout,
                 annotations_view=annotations_view,
                 metadata_view=metadata_view,
+                wire_param_names=wire_param_names,
+                lazy_param_names=lazy_param_names,
             )
         )
     return out
