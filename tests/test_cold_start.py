@@ -66,20 +66,46 @@ def test_otel_package_does_not_eagerly_load_opentelemetry() -> None:
 def test_import_a2kit_does_not_load_serve_path() -> None:
     """``import a2kit`` must NOT pull the multiplex-serve path.
 
-    uvicorn (the ASGI server) and ``a2kit.packages.rest`` (the REST
-    sub-app) load only on ``serve --transport=http``. A library consumer
-    who never serves over HTTP must not pay their import cost.
+    uvicorn (the ASGI server), ``a2kit.packages.http`` (the FastAPI
+    sub-app), and ``a2kit.packages.serve`` load only on
+    ``serve --transport=http``. A library consumer who never serves
+    over HTTP must not pay their import cost.
     """
     out = _runtime_check(
         "import sys; import a2kit;"
         "print('uvicorn' in sys.modules);"
-        "print('a2kit.packages.rest' in sys.modules);"
+        "print('a2kit.packages.http' in sys.modules);"
         "print('a2kit.packages.serve' in sys.modules)"
     )
-    uvicorn_str, rest_str, serve_str = out.strip().splitlines()
+    uvicorn_str, http_str, serve_str = out.strip().splitlines()
     assert uvicorn_str == "False", "uvicorn must not load on `import a2kit`"
-    assert rest_str == "False", "a2kit.packages.rest must not load on `import a2kit`"
+    assert http_str == "False", "a2kit.packages.http must not load on `import a2kit`"
     assert serve_str == "False", "a2kit.packages.serve must not load on `import a2kit`"
+
+
+def test_import_a2kit_does_not_load_fastapi() -> None:
+    """``import a2kit`` must NOT trigger ``import fastapi``.
+
+    FastAPI is the HTTP substrate; importing it costs ~150ms. Library
+    consumers who never serve over HTTP (or who use MCP-only) must not
+    pay that cost. The auto-mount design (ADR 0020) keeps FastAPI behind
+    the lazy ``packages.http`` import; ``App.api`` accesses load only
+    a plain dataclass.
+    """
+    out = _runtime_check("import sys; import a2kit; print('fastapi' in sys.modules)")
+    assert out.strip() == "False", "fastapi must not load on `import a2kit`"
+
+
+def test_app_api_attribute_access_does_not_load_fastapi() -> None:
+    """Touching ``app.api`` is a dataclass construction, not a FastAPI import."""
+    out = _runtime_check("import sys; import a2kit;app = a2kit.App('demo');_ = app.api;print('fastapi' in sys.modules)")
+    assert out.strip() == "False", "app.api must not load fastapi"
+
+
+def test_app_mcp_attribute_access_does_not_load_fastmcp() -> None:
+    """Touching ``app.mcp`` is a dataclass construction, not a FastMCP import."""
+    out = _runtime_check("import sys; import a2kit;app = a2kit.App('demo');_ = app.mcp;print('fastmcp' in sys.modules)")
+    assert out.strip() == "False", "app.mcp must not load fastmcp"
 
 
 # --- User-app cold start (with fastmcp loaded) -------------------------- #
