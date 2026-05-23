@@ -127,6 +127,37 @@ def _build_one_tool(
     )
 
 
+def _register_mcp_surface(server: FastMCP, runtime: Any) -> None:
+    """Install ``@app.mcp.tool/.prompt/.resource`` registrations on ``server``.
+
+    Each registration's ``fn`` is wrapped by
+    ``install_substrate_signature(fn, "fastmcp", container)`` so a2kit
+    DI is resolved per call from inside the wrapper. The wrapper's
+    ``__signature__`` exposes only wire + ``Context``; FastMCP's
+    schema introspection sees a clean surface with no DI types.
+
+    Stamps ``runtime.mcp_surface.fastmcp_server = server`` so authors
+    who need the underlying FastMCP instance (escape hatch:
+    ``add_transform`` / ``add_middleware``) can reach it after build.
+    """
+    from a2kit.packages.dispatch import install_substrate_signature
+
+    surface = runtime.mcp_surface
+    container = runtime.container()
+    for reg in surface.registrations:
+        wrapped = install_substrate_signature(reg.fn, "fastmcp", container)
+        if reg.kind == "tool":
+            server.tool(**reg.fastmcp_kwargs)(wrapped)
+        elif reg.kind == "prompt":
+            server.prompt(**reg.fastmcp_kwargs)(wrapped)
+        elif reg.kind == "resource":
+            # ``resource(uri, ...)`` — uri is positional.
+            kwargs = dict(reg.fastmcp_kwargs)
+            uri = kwargs.pop("uri")
+            server.resource(uri, **kwargs)(wrapped)
+    surface.fastmcp_server = server
+
+
 def _build_mcp_mount_lifespan(app: Any, user_lifespan: Any | None) -> Any:
     """Build the MCP-mount ``lifespan(server)`` — transport-scoped only.
 
@@ -247,6 +278,13 @@ def build_mcp_server(
     return_types: dict[str, Any] = {}
 
     for desc in runtime.tools():
+        # Honour per-tool expose: a projection tool registered as
+        # `@a2kit.read(expose=("api",))` does NOT appear on the FastMCP
+        # surface. The pre-extension `_meta.*` health router uses
+        # `_read_internal` which stamps default `expose=("mcp","api")`,
+        # so it continues to land here.
+        if "mcp" not in desc.expose:
+            continue
         tool = _build_one_tool(
             runtime,
             desc,
@@ -259,6 +297,16 @@ def build_mcp_server(
         server.add_tool(tool)
         encoding_plans[tool.name] = desc.encoding_plan
         return_types[tool.name] = desc.return_type
+
+    # Register @app.mcp.tool / .prompt / .resource entries from the App's
+    # mcp_surface. Each fn is wrapped via install_substrate_signature so
+    # FastMCP's introspector sees only wire + reserved params and a2kit
+    # DI is resolved per call from Container.call_scope inside the
+    # wrapper body. These bypass the dispatch pipeline — they are
+    # substrate-native (no LDD ambient, no projection format routing),
+    # which is the whole point of the FastMCP-only family.
+    if runtime.mcp_surface is not None:
+        _register_mcp_surface(server, runtime)
 
     # Hide `_meta.*` tools from default `list_tools` output via FastMCP 3's
     # visibility-transform API. Selector is the `"_meta"` tag stamped above,

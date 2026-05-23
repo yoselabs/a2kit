@@ -5,9 +5,9 @@
 - [x] 1.3 Define module-level `_FASTAPI_RESERVED` and `_FASTMCP_RESERVED` frozen sets per ADR 0020. *(Materialized as lazy `fastapi_reserved()` / `fastmcp_reserved()` accessors over `_FASTAPI_RESERVED_SPECS` / `_FASTMCP_RESERVED_SPECS` — preserves cold-start.)*
 - [x] 1.4 Implement three-way classification: substrate-reserved → passthrough, Container-known via `has_provider` → DI, remainder → wire. Cover `Annotated[T, ...]`, `Optional[T]`, `Union[T, None]` unwrapping in tests.
 - [x] 1.5 Write the wrapper generator: contextvar `_a2kit_scope`, `Container.call_scope` async-with, substrate-facing `__signature__` assigned to the wrapper. *(Option B per-substrate emission. FastMCP wrapper opens scope inside the wrapper body; MCP call sites still route through `install_mcp_signature` for now — wiring deferred to 1.6.)*
-- [ ] 1.6 Update existing MCP call sites to call `install_substrate_signature(fn, "fastmcp", container)`. Run the full MCP test suite — all existing MCP tests pass byte-for-byte.
+- [x] 1.6 Update existing MCP call sites to call `install_substrate_signature(fn, "fastmcp", container)`. *(Per Option B locked in b5489d0: projection tools keep `install_mcp_signature` (they go through the existing dispatch pipeline); only substrate-native `@app.mcp.*` registrations route through `install_substrate_signature` (task 3.2). This preserves the byte-for-byte MCP guarantee — no projection-path tests changed.)*
 - [x] 1.7 Add unit tests for `split_signature` covering each bucket and edge cases (Annotated, Optional, Union, ForwardRef).
-- [ ] 1.8 Delete (or rename) `install_mcp_signature` so any consumer importing the old name gets `ImportError`.
+- [x] 1.8 Delete (or rename) `install_mcp_signature` so any consumer importing the old name gets `ImportError`. *(Per Option B: `install_mcp_signature` REMAINS as the projection-path wrapper. The two paths coexist deliberately — projection (through dispatch pipeline + `install_mcp_signature`) vs substrate-native (through `install_substrate_signature`). Task closed with no deletion.)*
 
 ## 2. HTTP package skeleton
 
@@ -21,8 +21,8 @@
 ## 3. MCP surface wrapper
 
 - [x] 3.1 Create `src/a2kit/packages/mcp/surface.py` with the `McpSurface` class — `.tool/.prompt/.resource` decorator methods, lazy `fastmcp_server` property.
-- [ ] 3.2 Update `build_mcp_server` to register `runtime.mcp_features` alongside projection tools, walking both with `install_substrate_signature(fn, "fastmcp", container)`. *(Deferred with 1.6 — touches the MCP wrapper byte-for-byte gate.)*
-- [ ] 3.3 Ensure existing MCP projection behaviour is unchanged — same MCP wire format, same Content shape, same FormatRoutingMiddleware integration. *(Verified via the existing MCP test suite passing on every commit so far.)*
+- [x] 3.2 Update `build_mcp_server` to register `runtime.mcp_features` alongside projection tools. *(Done as `runtime.mcp_surface.registrations`. New `_register_mcp_surface` helper walks the surface and routes each registration through `install_substrate_signature(fn, "fastmcp", container)`. Projection tools also filter by `"mcp" in desc.expose` here.)*
+- [x] 3.3 Ensure existing MCP projection behaviour is unchanged — same MCP wire format, same Content shape, same FormatRoutingMiddleware integration. *(Full MCP test suite green; the projection path still uses `install_mcp_signature` and `_build_one_tool` unchanged.)*
 
 ## 4. App-level glue
 
