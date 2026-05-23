@@ -27,6 +27,7 @@ LAYER_MANIFEST: dict[str, int] = {
     "lint": 0,
     "context": 0,
     "health": 0,
+    "select": 0,
     # L1-L3 — the core sub-units. The top-level `a2kit.*` modules, split
     # from one `core` pseudo-unit into three lint-enforced layers.
     # `kernel` — leaf type/helper modules importing no `a2kit` sibling.

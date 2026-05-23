@@ -22,15 +22,16 @@ the lint's own view of the graph.
 | `health` | 0 | 2 | 3 | 1 | `di` |
 | `ldd` | 0 | 5 | 2 | 0 | — |
 | `lint` | 0 | 18 | 0 | 0 | — |
+| `select` | 0 | 2 | 2 | 0 | — |
 | `kernel` | 1 | 6 | 6 | 0 | — |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
-| `runtime` | 3 | 3 | 6 | 6 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd` |
+| `runtime` | 3 | 3 | 6 | 7 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 5 | 3 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
 | `cli` | 5 | 6 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `http` | 5 | 3 | 0 | 3 | `dispatch`, `health`, `runtime` |
-| `mcp` | 5 | 8 | 2 | 6 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime` |
+| `mcp` | 5 | 8 | 2 | 7 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime`, `select` |
 | `otel` | 5 | 3 | 0 | 0 | — |
 | `testing` | 6 | 7 | 0 | 6 | `authoring`, `context`, `formatter`, `kernel`, `mcp`, `runtime` |
 
@@ -44,6 +45,7 @@ the lint's own view of the graph.
 - `health` → `di`
 - `ldd` → no cross-unit dependencies
 - `lint` → no cross-unit dependencies
+- `select` → no cross-unit dependencies
 
 ### Layer 1
 
@@ -55,7 +57,7 @@ the lint's own view of the graph.
 
 ### Layer 3
 
-- `runtime` → `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd`
+- `runtime` → `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select`
 
 ### Layer 4
 
@@ -67,7 +69,7 @@ the lint's own view of the graph.
 - `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime`
 - `codemode` → `formatter`
 - `http` → `dispatch`, `health`, `runtime`
-- `mcp` → `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime`
+- `mcp` → `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime`, `select`
 - `otel` → no cross-unit dependencies
 
 ### Layer 6

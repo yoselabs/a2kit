@@ -35,7 +35,20 @@ def build_serve_command(app: App) -> click.Command:
     )
     @click.option("--host", default="127.0.0.1", show_default=True)
     @click.option("--port", default=8000, type=int, show_default=True)
-    def serve_cmd(transport: str, host: str, port: int) -> None:
+    @click.option(
+        "--select",
+        "select",
+        multiple=True,
+        help=(
+            "Filter the exposed tool surface (repeatable). "
+            "Syntax: 'category=values' where category is verb|name|surface "
+            "and values is comma-separated (use !value for exclude). "
+            "Examples: --select 'verb=read,list', --select 'surface=mcp', "
+            "--select 'name=fetch_*,!internal_*'. "
+            "Multiple --select flags AND together."
+        ),
+    )
+    def serve_cmd(transport: str, host: str, port: int, select: tuple[str, ...]) -> None:
         """Run the a2kit server.
 
         Substrate mounts under ``--transport=http`` are determined by the
@@ -46,11 +59,28 @@ def build_serve_command(app: App) -> click.Command:
         ``--select 'surface=mcp'`` (or ``surface=api``) — landing in
         ``add-tool-select``.
         """
-        if transport == "stdio":
-            # A stdio pipe carries one protocol — MCP.
-            from a2kit.packages.mcp.server import build_mcp_server
+        # Compile selectors up front: a parse error must exit 2 with a
+        # one-line stderr message before any uvicorn/build work runs.
+        select_list = list(select)
+        if select_list:
+            from a2kit.packages.select import SelectorError, compile_selector
 
-            build_mcp_server(app).run(transport="stdio")
+            try:
+                for expr in select_list:
+                    compile_selector(expr)
+            except SelectorError as exc:
+                msg = f"--select expression invalid: {exc}"
+                raise click.UsageError(msg) from exc
+
+        if transport == "stdio":
+            # A stdio pipe carries one protocol — MCP. Build the runtime
+            # with selectors applied so `--select 'verb=read'` narrows
+            # the stdio MCP surface too.
+            from a2kit.packages.mcp.server import build_mcp_server
+            from a2kit.runtime import build
+
+            runtime = build(app, select=select_list or None)
+            build_mcp_server(runtime).run(transport="stdio")
             return
 
         # http: one process, one port, an a2kit-owned parent app mounting
@@ -59,8 +89,10 @@ def build_serve_command(app: App) -> click.Command:
         import uvicorn
 
         from a2kit.packages.serve import build_parent_app
+        from a2kit.runtime import build
 
-        parent = build_parent_app(app)
+        runtime = build(app, select=select_list or None)
+        parent = build_parent_app(runtime)
         uvicorn.run(parent, host=host, port=port)
 
     return serve_cmd

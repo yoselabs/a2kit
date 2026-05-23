@@ -200,7 +200,7 @@ class AppRuntime:
             await self._container.__aexit__(exc_type, exc, tb)
 
 
-def build(app: App | AppRuntime) -> AppRuntime:
+def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRuntime:
     """Snapshot a compose-phase ``App`` into a sealed ``AppRuntime``.
 
     The finisher seam. Idempotent on an ``AppRuntime``: passing one back
@@ -229,11 +229,18 @@ def build(app: App | AppRuntime) -> AppRuntime:
     runtime_container = app.container().snapshot()
     runtime_container.seal()
 
+    # Compile selectors once, up-front — any parse error must surface
+    # before any App work happens so the CLI exit-2 path is clean.
+    compiled_selectors = _compile_selectors(select) if select else ()
+
     # Carry every non-synthetic router; the ``_meta`` health router is
     # re-bound to the runtime below so its tool body resolves through the
     # runtime container, not the App's compose-phase container.
     routers: list[Router] = [r for r in app.routers() if r.slug != "_meta"]
     descriptors: list[ToolDescriptor] = [d for d in app.tools() if getattr(d.router, "slug", None) != "_meta"]
+    descriptors = _apply_descriptor_selectors(descriptors, compiled_selectors)
+    api_surface = _filter_api_surface(app._api, compiled_selectors)  # noqa: SLF001
+    mcp_surface = _filter_mcp_surface(app._mcp, compiled_selectors)  # noqa: SLF001
 
     health = HealthRegistry(enabled=app._health.enabled, checks=list(app._health.checks))  # noqa: SLF001 -- finisher snapshot
 
@@ -253,8 +260,10 @@ def build(app: App | AppRuntime) -> AppRuntime:
         # Carry substrate decorator surfaces only if they were touched —
         # `app._api` / `app._mcp` stay None until the first attribute
         # access, preserving the cold-start invariant.
-        api_surface=app._api,  # noqa: SLF001 -- finisher snapshot
-        mcp_surface=app._mcp,  # noqa: SLF001 -- finisher snapshot
+        # When a selector filtered them, `_filter_api_surface` / `_filter_mcp_surface`
+        # returns a copy with the narrowed registrations.
+        api_surface=api_surface,
+        mcp_surface=mcp_surface,
     )
 
     # Re-bind the synthetic `_meta` health router to the runtime so its
@@ -268,6 +277,89 @@ def build(app: App | AppRuntime) -> AppRuntime:
         descriptors.extend(_build_descriptors(meta_router))
 
     return runtime
+
+
+def _compile_selectors(exprs: list[str]) -> tuple[Any, ...]:
+    """Compile every ``--select`` expression once at build time.
+
+    Errors surface here (before any App snapshot work), so the CLI's
+    ``SelectorError`` -> exit-2 handler sees a clean failure path. The
+    selector package is imported lazily so ``import a2kit`` does not
+    load it for consumers that never call ``build(app, select=...)``.
+    """
+    from a2kit.packages.select import compile_selector
+
+    return tuple(compile_selector(e) for e in exprs)
+
+
+def _apply_descriptor_selectors(
+    descriptors: list[ToolDescriptor],
+    selectors: tuple[Any, ...],
+) -> list[ToolDescriptor]:
+    """Filter projection-tool descriptors by ANDed selectors.
+
+    For ``surface=`` selectors, also narrows each descriptor's
+    ``expose`` tuple to the include intersection; a descriptor whose
+    ``expose`` becomes empty is dropped entirely (the tool would have
+    nowhere to surface).
+    """
+    if not selectors:
+        return descriptors
+    from dataclasses import replace
+
+    out: list[ToolDescriptor] = []
+    for desc in descriptors:
+        if not all(s.matches(desc) for s in selectors):
+            continue
+        # Narrow expose to the intersection across all surface=
+        # selectors. Each surface selector already passed `.matches`,
+        # so the intersection is non-empty.
+        narrowed = desc.expose
+        for s in selectors:
+            if s.category != "surface":
+                continue
+            if s.include:
+                narrowed = tuple(sub for sub in narrowed if sub in s.include)
+            if s.exclude:
+                narrowed = tuple(sub for sub in narrowed if sub not in s.exclude)
+        if not narrowed:
+            continue
+        out.append(replace(desc, expose=narrowed) if narrowed != desc.expose else desc)
+    return out
+
+
+def _filter_api_surface(api: Any, selectors: tuple[Any, ...]) -> Any:
+    """Drop the api_surface entirely if any ``surface=`` selector excludes ``api``.
+
+    The ``ApiSurface``'s routes are FastAPI-only by construction —
+    ``surface=mcp`` (i.e. include={'mcp'}) means /api should not mount,
+    so the surface is replaced with ``None``. Equivalent for the
+    explicit ``surface=!api`` form.
+    """
+    if api is None or not selectors:
+        return api
+    for s in selectors:
+        if s.category != "surface":
+            continue
+        if s.include and "api" not in s.include:
+            return None
+        if "api" in s.exclude:
+            return None
+    return api
+
+
+def _filter_mcp_surface(mcp: Any, selectors: tuple[Any, ...]) -> Any:
+    """Same shape as :func:`_filter_api_surface` for the FastMCP surface."""
+    if mcp is None or not selectors:
+        return mcp
+    for s in selectors:
+        if s.category != "surface":
+            continue
+        if s.include and "mcp" not in s.include:
+            return None
+        if "mcp" in s.exclude:
+            return None
+    return mcp
 
 
 __all__ = ["AppRuntime", "build"]
