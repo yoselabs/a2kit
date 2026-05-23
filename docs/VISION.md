@@ -139,7 +139,7 @@ sandbox-specific code in a tool body, the vision has failed.
 
 ### 4. Surfaces are adapters, never peers
 
-There is one dispatch core (`Container.dispatch`). Each surface is
+There is one dispatch core (`Container.call_scope`). Each surface is
 a thin lift over it — a projection on the way out, a parse on the
 way in. A surface adapter may be deleted without touching another.
 Adding a surface must never bend the core's shape. If a new surface

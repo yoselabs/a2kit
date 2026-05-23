@@ -88,14 +88,74 @@ uv pip install a2kit
 
 | Package | Purpose |
 |---|---|
-| `a2kit.packages.mcp` | FastMCP adapter. `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`. The ONE place fastmcp imports. |
+| `a2kit.packages.mcp` | FastMCP adapter. `build_mcp_server(app, **fastmcp_kwargs) -> FastMCP`. Registers projection tools (`@a2kit.read/list/write`) and `@app.mcp.tool/.prompt/.resource` substrate-native registrations. The ONE place fastmcp imports. |
+| `a2kit.packages.http` | FastAPI adapter. `build_http_app(runtime) -> fastapi.FastAPI`. Registers projection tools as `POST /api/<name>` and `@app.api.<method>(path)` author routes. Lazy: `import a2kit` does not pull fastapi. |
 | `a2kit.packages.cli` | Click adapter. `build_full_cli(app)` returns the progressive-disclosure CLI. |
 | `a2kit.packages.connections` | `ConnectionConfig`, `ConnectionStore`, `connections_cli(*types)` — plain Python; the CLI factory mounts via `app.add_cli(...)`. Carries the `Container` (request-scoped DI) consumed via `App.provide(...)`. |
 | `a2kit.packages.formatter` | Consumer-aware rendering — `render(value, consumer)` for the `llm` / `code` / `machine` profiles; TSV / JSON / hybrid `page-tsv` wire forms picked by `build_encoding_plan` from the return type. `format_response` is the `format_hint`-shaped adapter. |
-| `a2kit.packages.select` | `compile`, `evaluate`, `validate_atoms` over real CEL syntax. |
+| `a2kit.packages.select` | `compile_selector(expr) -> Selector` — stdlib parser for the `serve --select EXPR` runtime filter. Categories: `verb`, `name` (fnmatch glob), `surface` (mcp/api). |
 | `a2kit.packages.mcp.reports` | `reports(ReportT)` stacked decorator. Computes the pydantic JSON schema; both keys travel on `meta.extra`. |
 | `a2kit.packages.testing` | Thin pytest fixtures + `compute_schema` helper. |
 | `a2kit.packages.lint` | Static + runtime A2K rules. `a2kit lint static <path>` / `a2kit lint runtime --import pkg:app`. |
+
+### Multi-surface authoring
+
+One typed function reaches every transport. The framework offers three
+decorator families on `App`, all driven by one signature-rewriting
+mechanism so a2kit DI stays type-driven (no `Depends(...)` in author code).
+
+```python
+import a2kit
+
+app = a2kit.App("memory").provide(Database, ...)
+
+class R(a2kit.Router):
+    slug = "memory"
+
+    @a2kit.read                                       # both substrates
+    async def fetch(self, *, id: str, db: Database) -> Memory: ...
+
+    @a2kit.read(expose=("mcp",))                      # MCP only
+    async def llm_fetch(self, *, id: str, db: Database) -> Memory: ...
+
+    @a2kit.write(expose=("api",), authorize=admin_gate)  # API only + auth
+    async def admin_upsert(self, *, item: Item, db: Database) -> Memory: ...
+
+    tools = (fetch, llm_fetch, admin_upsert)
+
+app.add_router(R())
+
+# FastAPI-native — full @app.api.<method>(path, **fastapi_kwargs) surface
+@app.api.get("/version", response_model=Version)
+async def version(*, db: Database) -> Version:
+    return Version(...)
+
+# FastMCP-native — Prompts, Resources, full FastMCP kwargs
+@app.mcp.prompt(name="summarize")
+async def summarize(*, topic: str, db: Database) -> str:
+    return ...
+```
+
+`serve --transport=http` auto-mounts each substrate sub-app based on
+registrations: `/api` mounts if any projection tool exposes `api` or any
+`@app.api.*` route exists; `/mcp` is the dual. Both substrates can serve
+on one port. Operators narrow at deploy time with `--select`:
+
+```bash
+my-app serve --transport=http                       # both substrates
+my-app serve --transport=http --select 'surface=mcp'  # MCP only
+my-app serve --select 'verb=read,list'              # read-only mode
+my-app serve --select 'name=fetch_*,!internal_*'    # pattern + exclude
+```
+
+DI test seam: re-provide on a fresh `App` (last-write-wins).
+FastAPI's `dependency_overrides[T]` does **not** route to a2kit DI —
+that mechanism keys on `Depends` callables; a2kit types are resolved
+through `Container.call_scope`. See `tests/packages/http/test_dependency_override.py`.
+
+See [ADR 0020](docs/adr/0020-multi-surface-authoring.md) for the full
+decision record including the three-way substrate signature split,
+POST-for-all routing rationale, and per-substrate wrapper emission.
 
 ### Dependency injection — typed, request-scoped, sync
 

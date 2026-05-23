@@ -55,6 +55,8 @@ _ALLOWLIST: frozenset[str] = frozenset(
         #     document its migration; not resolving is the point ---
         "a2kit.AppBuilder",  # removed in the one-App collapse (ADR 0017)
         "a2kit.tool",  # removed v0.33 — split into read/write/list_ verbs
+        "Container.dispatch",  # renamed to call_scope (d1dddb7); the spec
+        # scenario cites the absent symbol as proof the rename is loud
         # --- example-only / illustrative placeholders cited in pattern
         #     descriptions (not real surface, not drift) ---
         "App.method",  # illustrative metavariable in docs-code-parity
