@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 import a2kit
-from a2kit.metadata import get_meta, set_meta
+from a2kit.metadata import _get_meta, _set_meta
 from a2kit.packages.mcp.server import build_mcp_server
 
 
@@ -117,10 +117,10 @@ def test_user_meta_tool_rejected_at_build() -> None:
     # `app.tools()` yields ToolDescriptors; the metadata lives on the
     # underlying function object (via descriptor.fn → __func__).
     target = getattr(tool_fn, "__func__", tool_fn)
-    meta = get_meta(target)
+    meta = _get_meta(target)
     assert meta is not None
     mutated = dataclasses.replace(meta, tool_name="_meta.custom")
-    set_meta(target, mutated)
+    _set_meta(target, mutated)
 
     with pytest.raises(ValueError, match="reserved namespace"):
         build_mcp_server(app)

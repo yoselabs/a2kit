@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 import a2kit
-from a2kit.metadata import get_meta
+from a2kit.metadata import _get_meta
 from a2kit.runtime import build
 
 
@@ -131,7 +131,7 @@ def test_meta_extras_carry_expose_and_authorize() -> None:
     async def fetch(*, id: str) -> dict[str, str]:
         return {"id": id}
 
-    meta = get_meta(fetch)
+    meta = _get_meta(fetch)
     assert meta is not None
     assert meta.extras.expose == ("api",)
     assert meta.extras.authorize is _gate

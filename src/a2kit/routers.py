@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from a2kit.metadata import get_meta
+from a2kit.metadata import _get_meta
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -102,7 +102,7 @@ class Router:
                 )
                 raise TypeError(msg)
             bound_method = getattr(self, name)
-            meta = get_meta(bound_method)
+            meta = _get_meta(bound_method)
             if meta is None:
                 msg = (
                     f"Router subclass {cls.__name__!r}: method {name!r} listed "

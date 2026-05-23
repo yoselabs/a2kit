@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from a2kit.app import App
     from a2kit.routers import Router
     from a2kit.runtime import AppRuntime
+    from a2kit.tool import ToolDescriptor
 
 
 class _CliFormat(StrEnum):
@@ -143,7 +144,7 @@ def _needs_json_decode(ann: Any) -> bool:
     return inner not in (bool, int, float, str)
 
 
-def _build_tool_callback(fn: Callable[..., Any], app: AppRuntime, router: Router | None) -> Callable[..., None]:
+def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router | None) -> Callable[..., None]:
     """Synthesize a Typer-compatible callback for tool ``fn``.
 
     The returned callable carries a ``__signature__`` and ``__annotations__``
@@ -156,14 +157,14 @@ def _build_tool_callback(fn: Callable[..., Any], app: AppRuntime, router: Router
     """
     import typer
 
-    from a2kit.metadata import get_meta
     from a2kit.packages.cli._field_to_typer import field_to_typer_annotation
     from a2kit.packages.cli.runtime import invoke_tool_sync
     from a2kit.packages.dispatch import ToolBuildSpec
     from a2kit.packages.formatter import FormatHint, format_response, infer_format_hint
     from a2kit.signature import wire_input_params
 
-    meta = get_meta(fn)
+    fn = desc.fn
+    meta = desc._meta  # noqa: SLF001 -- ToolDescriptor projection seam (privatize-tool-metadata)
     container = app.container()
     params, wire_scopes_needed = wire_input_params(fn, container)
     needs_connection = "connection" in wire_scopes_needed
@@ -322,24 +323,26 @@ def _register_router(typer_app: Any, router: Router, app: AppRuntime) -> None:
     """Add a sub-Typer for ``router`` to ``typer_app``."""
     import typer
 
-    from a2kit.metadata import get_meta
-
     sub = typer.Typer(
         name=router.slug,
         help=f"Tools in router {router.slug!r}.",
         no_args_is_help=True,
         pretty_exceptions_enable=False,
     )
+    descs_by_fn = {d.fn: d for d in app.tools() if d.router is router}
     for fn in router.bound_tools():
-        meta = get_meta(fn)
+        desc = descs_by_fn.get(fn)
+        if desc is None:
+            continue
+        meta = desc._meta  # noqa: SLF001 -- ToolDescriptor projection seam (privatize-tool-metadata)
         hidden = False
         if meta is not None:
             visibility = meta.extras.visibility or "all"
             # All three tiers ("hidden", "cli", "all") mount on CLI.
             # Only "hidden" omits from --help listing.
             hidden = visibility == "hidden"
-        cb = _build_tool_callback(fn, app, router=router)
-        tool_name = meta.tool_name if meta is not None else getattr(fn, "__name__", "tool")
+        cb = _build_tool_callback(desc, app, router=router)
+        tool_name = desc.name
         short = getattr(cb, "_a2kit_short_help", "") or None
         sub.command(name=tool_name, help=cb.__doc__, short_help=short, hidden=hidden)(cb)
     typer_app.add_typer(sub)
@@ -351,7 +354,6 @@ def _register_schema(typer_app: Any, app: AppRuntime) -> None:
 
     import typer
 
-    from a2kit.metadata import get_meta
     from a2kit.packages.formatter import format_response, truncate
 
     def schema_cmd(
@@ -367,10 +369,7 @@ def _register_schema(typer_app: Any, app: AppRuntime) -> None:
         container = app.container()
         schemas: dict[str, dict[str, Any]] = {}
         for desc in app.tools():
-            fn = desc.fn
-            meta = get_meta(fn)
-            name = meta.tool_name if meta is not None else getattr(fn, "__name__", "tool")
-            schemas[name] = compute_schema(fn, container)
+            schemas[desc.name] = compute_schema(desc.fn, container)
 
         if tool_name is not None:
             result: Any = schemas.get(tool_name)

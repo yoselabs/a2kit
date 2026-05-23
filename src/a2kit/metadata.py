@@ -113,9 +113,24 @@ class A2KitMeta:
 META_ATTR = "_a2kit"
 
 
-def get_meta(fn: Any) -> A2KitMeta | None:
+def _get_meta(fn: Any) -> A2KitMeta | None:
     return getattr(fn, META_ATTR, None)
 
 
-def set_meta(fn: Any, meta: A2KitMeta) -> None:
+def _set_meta(fn: Any, meta: A2KitMeta) -> None:
     object.__setattr__(fn, META_ATTR, meta)
+
+
+_PRIVATE_HINT = (
+    "a2kit.metadata.{name} is private since privatize-tool-metadata. "
+    "Read tool data via ToolDescriptor (runtime.descriptor_for(name).metadata_view) "
+    "or its projected fields (annotations_view, ctx_param_name, timeout)."
+)
+
+
+def get_meta(*_a: Any, **_kw: Any) -> A2KitMeta | None:
+    raise AttributeError(_PRIVATE_HINT.format(name="get_meta"))
+
+
+def set_meta(*_a: Any, **_kw: Any) -> None:
+    raise AttributeError(_PRIVATE_HINT.format(name="set_meta"))

@@ -8,7 +8,7 @@ routers stamp named attributes; readers access them by name.
 from __future__ import annotations
 
 import a2kit
-from a2kit.metadata import A2KitMetaExtras, get_meta
+from a2kit.metadata import A2KitMetaExtras, _get_meta
 
 
 def test_default_extras_has_all_fields_none() -> None:
@@ -25,7 +25,7 @@ def test_verb_decorator_stamps_visibility() -> None:
     async def f() -> dict[str, int]:
         return {"k": 1}
 
-    meta = get_meta(f)
+    meta = _get_meta(f)
     assert meta is not None
     assert meta.extras.visibility == "cli"
 
@@ -35,7 +35,7 @@ def test_list_decorator_stamps_list_view() -> None:
     async def f() -> list[dict[str, int]]:
         return [{"id": 1}]
 
-    meta = get_meta(f)
+    meta = _get_meta(f)
     assert meta is not None
     assert meta.extras.list_view is not None
     assert meta.extras.list_view.default_fields == ("id",)
@@ -54,7 +54,7 @@ def test_router_stamps_router_slug() -> None:
 
     router = SampleRouter()
     fn = router.bound_tools()[0]
-    meta = get_meta(fn)
+    meta = _get_meta(fn)
     assert meta is not None
     assert meta.extras.router_slug == "sample"
 
@@ -70,7 +70,7 @@ def test_reports_kwarg_stamps_report_type() -> None:
     async def f() -> dict[str, int]:
         return {"k": 1}
 
-    meta = get_meta(f)
+    meta = _get_meta(f)
     assert meta is not None
     assert meta.extras.report_type is _Report
     assert isinstance(meta.extras.report_schema, dict)
@@ -95,7 +95,7 @@ def test_reports_kwarg_handles_unschemable_type() -> None:
     async def f() -> dict[str, int]:
         return {"k": 1}
 
-    meta = get_meta(f)
+    meta = _get_meta(f)
     assert meta is not None
     assert meta.extras.report_type is _NotSchemable
     # Schema may be present or None depending on TypeAdapter's leniency; the

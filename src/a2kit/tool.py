@@ -9,6 +9,7 @@ from a2kit._verbs import list_, read, write
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
+    from a2kit.metadata import A2KitMeta
     from a2kit.packages.formatter import EncodingPlan
     from a2kit.routers import Router
 
@@ -58,6 +59,12 @@ class ToolDescriptor:
     metadata_view: Mapping[str, Any] = field(default_factory=lambda: _EMPTY_VIEW)
     wire_param_names: frozenset[str] | None = None
     lazy_param_names: frozenset[str] | None = None
+    # Private projection of the full A2KitMeta object. Substrate adapters in
+    # `a2kit.packages.*` read this instead of reaching for `_get_meta(fn)` —
+    # `ToolDescriptor` is the single read surface (privatize-tool-metadata).
+    # Leading underscore signals "internal projection field; not part of
+    # the user-facing descriptor contract".
+    _meta: A2KitMeta | None = None
 
 
 class DispatchHook(Protocol):

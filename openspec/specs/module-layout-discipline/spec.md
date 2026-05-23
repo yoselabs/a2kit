@@ -369,3 +369,22 @@ The `ldd`, `context`, `health`, `codemode`, `connections`, `formatter`, and `tes
 - **WHEN** existing consumer code imports a symbol from one of the seven packages' roots (`a2kit.packages.<name>`)
 - **THEN** the import resolves exactly as before the split
 
+
+### Requirement: `A2K-METADATA-PRIVATE` lint rule
+
+A lint rule `A2K-METADATA-PRIVATE` SHALL AST-scan every file under `src/a2kit/` and reject any import of `_get_meta` or `_set_meta` from `a2kit.metadata` unless the importing module is in the allowlist `{a2kit._verbs, a2kit.metadata, a2kit.runtime, a2kit.tool, a2kit.app, a2kit.routers, a2kit.schema}`.
+
+The allowlist SHALL be a frozen constant at the top of the rule module (`packages/lint/rules/metadata_private.py`). Test files under `tests/` are exempt via the standard `is_fixture_path` filter — tests inspecting decorator-time stamping pre-`build()` may import `_get_meta` directly.
+
+#### Scenario: substrate adapter importing `_get_meta` is rejected
+
+- **GIVEN** a file `src/a2kit/packages/mcp/server.py` contains `from a2kit.metadata import _get_meta`
+- **WHEN** `make lint` runs
+- **THEN** `A2K-METADATA-PRIVATE` raises naming the offending file
+- **AND** the message points to `runtime.descriptor_for(name)` as the replacement
+
+#### Scenario: allowlisted module passes
+
+- **GIVEN** `src/a2kit/app.py` imports `_get_meta` from `a2kit.metadata`
+- **WHEN** `make lint` runs
+- **THEN** `A2K-METADATA-PRIVATE` does not flag it

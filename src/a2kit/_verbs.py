@@ -27,7 +27,7 @@ from a2kit._verb_validators import (
     _check_return,
     _resolve_return_annotation,
 )
-from a2kit.metadata import A2KitMeta, A2KitMetaExtras, ListViewSettings, set_meta
+from a2kit.metadata import A2KitMeta, A2KitMetaExtras, ListViewSettings, _set_meta
 from a2kit.signature import find_context_param
 
 if TYPE_CHECKING:
@@ -156,7 +156,7 @@ def _stamp(
         context_param_name=find_context_param(fn),
         extras=extras,
     )
-    set_meta(fn, meta)
+    _set_meta(fn, meta)
     return fn
 
 

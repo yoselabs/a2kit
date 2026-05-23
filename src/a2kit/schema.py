@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import create_model
 
-from a2kit.metadata import get_meta
+from a2kit.metadata import _get_meta
 from a2kit.signature import wire_input_params
 
 if TYPE_CHECKING:
@@ -92,7 +92,7 @@ def compute_schema(fn: Callable[..., Any], container: Any | None = None) -> dict
     Output keys: ``name``, ``description``, ``inputSchema``, ``outputSchema``,
     ``annotations``, ``tags``, ``meta``. No ``fastmcp`` import.
     """
-    meta = get_meta(fn)
+    meta = _get_meta(fn)
     name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
     description = (fn.__doc__ or "").strip()
     out: dict[str, Any] = {

@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
-from a2kit.metadata import get_meta
+from a2kit.metadata import _get_meta
 
 
 def test_list_title_propagates_to_annotations() -> None:
@@ -19,7 +19,7 @@ def test_list_title_propagates_to_annotations() -> None:
     async def f() -> list[dict[str, int]]:
         return [{"id": 1}]
 
-    meta = get_meta(f)
+    meta = _get_meta(f)
     assert meta is not None
     ann = meta.annotations_as_dict()
     assert ann.get("title") == "Projects"
@@ -31,7 +31,7 @@ def test_list_open_world_flag_propagates() -> None:
     async def f() -> list[dict[str, int]]:
         return [{"id": 1}]
 
-    meta = get_meta(f)
+    meta = _get_meta(f)
     assert meta is not None
     ann = meta.annotations_as_dict()
     assert ann.get("openWorldHint") is True
@@ -60,7 +60,7 @@ def test_list_combined_valid_flags() -> None:
     async def f() -> list[dict[str, int]]:
         return [{"id": 1, "name": 2}]
 
-    meta = get_meta(f)
+    meta = _get_meta(f)
     assert meta is not None
     ann = meta.annotations_as_dict()
     assert ann.get("title") == "Items"

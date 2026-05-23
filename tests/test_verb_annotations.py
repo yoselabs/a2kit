@@ -13,11 +13,11 @@ from __future__ import annotations
 import pytest
 
 import a2kit
-from a2kit.metadata import get_meta
+from a2kit.metadata import _get_meta
 
 
 def _meta_for(fn):
-    return get_meta(fn)
+    return _get_meta(fn)
 
 
 def test_read_with_annotations() -> None:

@@ -409,11 +409,11 @@ def _validate_router_tools(router: Router) -> None:
     drift unless the subclass intends them to be registered.
     """
     from a2kit.exceptions import A2KitDecoratedMethodNotInTools
-    from a2kit.metadata import get_meta
+    from a2kit.metadata import _get_meta
 
     cls = type(router)
     tools_names = {getattr(fn, "__name__", None) for fn in (getattr(cls, "tools", ()) or ())}
-    decorated_methods = {name for name, attr in cls.__dict__.items() if callable(attr) and get_meta(attr) is not None}
+    decorated_methods = {name for name, attr in cls.__dict__.items() if callable(attr) and _get_meta(attr) is not None}
     missing = sorted(decorated_methods - tools_names)
     if missing:
         raise A2KitDecoratedMethodNotInTools(cls.__name__, missing)
@@ -430,7 +430,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
     """
     from types import MappingProxyType
 
-    from a2kit.metadata import get_meta
+    from a2kit.metadata import _get_meta
     from a2kit.packages.di import lazy_inner_type
     from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
     from a2kit.signature import resolve_hints, wire_input_params
@@ -441,7 +441,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
         return_type = hints.get("return")
         format_hint = infer_format_hint(return_type)
         encoding_plan = build_encoding_plan(return_type)
-        meta = get_meta(fn)
+        meta = _get_meta(fn)
         name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
         # Carry the multi-surface fields onto the descriptor so substrate
         # adapters and selectors can filter without re-reading A2KitMeta.
@@ -494,6 +494,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
                 metadata_view=metadata_view,
                 wire_param_names=wire_param_names,
                 lazy_param_names=lazy_param_names,
+                _meta=meta,
             )
         )
     return out

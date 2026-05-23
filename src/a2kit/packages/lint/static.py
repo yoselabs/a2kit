@@ -46,6 +46,7 @@ A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"
 A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
 A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
 A2K_SURFACE_EXPLICIT = "A2K-SURFACE-EXPLICIT"
+A2K_METADATA_PRIVATE = "A2K-METADATA-PRIVATE"
 
 ALL_RULES = (
     A2K002,
@@ -69,6 +70,7 @@ ALL_RULES = (
     A2K_EXTRA_NAMESPACE,
     A2K_TEST_MIRROR,
     A2K_SURFACE_EXPLICIT,
+    A2K_METADATA_PRIVATE,
 )
 
 BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
@@ -154,6 +156,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     )
     from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
     from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
+    from a2kit.packages.lint.rules.metadata_private import rule_metadata_private
     from a2kit.packages.lint.rules.mirror import rule_test_mirror
     from a2kit.packages.lint.rules.purity import rule_extra_namespace
     from a2kit.packages.lint.rules.shape import rule_a2k002, rule_a2k003, rule_a2k011, rule_a2k013
@@ -178,6 +181,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_EXTRA_NAMESPACE, rule_extra_namespace),
         (A2K_TEST_MIRROR, rule_test_mirror),
         (A2K_SURFACE_EXPLICIT, rule_surface_explicit),
+        (A2K_METADATA_PRIVATE, rule_metadata_private),
     )
 
 

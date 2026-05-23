@@ -15,7 +15,7 @@ import pytest
 from fastmcp import Client
 
 import a2kit
-from a2kit.metadata import get_meta
+from a2kit.metadata import _get_meta
 from a2kit.packages.mcp.server import build_mcp_server
 from a2kit._verbs import _parse_timeout
 
@@ -81,7 +81,7 @@ def test_read_decorator_stamps_timeout_seconds() -> None:
     async def fn() -> dict[str, int]:
         return {"k": 1}
 
-    meta = get_meta(fn)
+    meta = _get_meta(fn)
     assert meta is not None
     assert meta.extras.timeout_seconds == 60.0
 
@@ -91,7 +91,7 @@ def test_read_decorator_string_form_parses() -> None:
     async def fn() -> dict[str, int]:
         return {"k": 1}
 
-    meta = get_meta(fn)
+    meta = _get_meta(fn)
     assert meta is not None
     assert meta.extras.timeout_seconds == 0.5
 
@@ -101,7 +101,7 @@ def test_read_decorator_no_timeout_means_none() -> None:
     async def fn() -> dict[str, int]:
         return {"k": 1}
 
-    meta = get_meta(fn)
+    meta = _get_meta(fn)
     assert meta is not None
     assert meta.extras.timeout_seconds is None
 

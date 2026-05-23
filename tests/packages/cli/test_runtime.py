@@ -10,7 +10,7 @@ import typer
 
 import a2kit
 from a2kit.runtime import build
-from a2kit.metadata import get_meta
+from a2kit.metadata import _get_meta
 from a2kit.packages.cli.runtime import _invoke_tool_in_process, invoke_tool_sync
 from a2kit.packages.dispatch import ToolBuildSpec
 
@@ -30,7 +30,7 @@ def _spec(fn: Any, *, app: a2kit.App | None = None, router: Any = None) -> ToolB
     return ToolBuildSpec(
         app=build(app if app is not None else a2kit.App("runtime-test")),
         router=router,
-        meta=get_meta(fn),
+        meta=_get_meta(fn),
     )
 
 

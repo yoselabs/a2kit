@@ -313,9 +313,7 @@ class TestClient:
     def _wire_name(self, tool_name: str) -> str:
         for d in self.app.tools():
             if d.name == tool_name or _qualified(d) == tool_name:
-                from a2kit.metadata import get_meta
-
-                m = get_meta(d.fn)
+                m = d._meta  # noqa: SLF001 -- ToolDescriptor projection seam (privatize-tool-metadata)
                 return m.tool_name if m is not None else d.name
         return tool_name
 

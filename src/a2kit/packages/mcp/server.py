@@ -17,13 +17,15 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
 
-from a2kit.metadata import A2KitMeta, get_meta
 from a2kit.packages.dispatch import ToolBuildSpec, fold_pipeline
+
+if TYPE_CHECKING:
+    from a2kit.metadata import A2KitMeta
 from a2kit.packages.mcp._wrappers import McpErrorRenderStage, install_mcp_signature
 from a2kit.packages.mcp.format_routing import FormatRoutingMiddleware
 from a2kit.packages.mcp.guards import GuardsMiddleware
@@ -80,7 +82,7 @@ def _build_one_tool(
     from a2kit._verb_validators import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
     fn = desc.fn
-    meta = get_meta(fn)
+    meta = desc._meta
     if meta is None:
         return None
     # `"hidden"` and `"cli"` are CLI-only tiers; only `"all"` registers
