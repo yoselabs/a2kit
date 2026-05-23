@@ -30,6 +30,8 @@ This module deliberately keeps the substrate types behind lazy lookups:
 
 from __future__ import annotations
 
+import contextvars
+import functools
 import inspect
 import sys
 import types
@@ -43,6 +45,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from a2kit.packages.di import Container
+
+# Per-call DI scope marker. Set by :func:`install_substrate_signature`'s
+# generated wrapper inside ``Container.call_scope`` and reset on exit.
+# Currently a sentinel — consumers that need to read the open Scope itself
+# can replace the payload type later without changing the contextvar name.
+_a2kit_scope: contextvars.ContextVar[object | None] = contextvars.ContextVar("_a2kit_scope", default=None)
 
 Substrate = Literal["fastapi", "fastmcp"]
 
@@ -291,14 +299,98 @@ def split_signature(
     return split
 
 
+# ---------------------------------------------------------------------------
+# Substrate wrapper emission
+# ---------------------------------------------------------------------------
+
+
+def _build_substrate_signature(split: SplitSignature, return_ann: Any) -> inspect.Signature:
+    """Build the surface ``inspect.Signature`` the substrate introspects.
+
+    Contains only reserved + wire — Container-known params are resolved
+    by a2kit DI inside the wrapper and MUST NOT appear here. Each param
+    is rewritten to ``KEYWORD_ONLY`` so the substrate routes them by
+    name. Annotation and default are preserved.
+    """
+    params: list[inspect.Parameter] = [p.replace(kind=inspect.Parameter.KEYWORD_ONLY) for p in split.reserved.values()]
+    params.extend(p.replace(kind=inspect.Parameter.KEYWORD_ONLY) for p in split.wire.values())
+    return inspect.Signature(parameters=params, return_annotation=return_ann)
+
+
+def install_substrate_signature(
+    fn: Callable[..., Any],
+    substrate: Substrate,
+    container: Container,
+) -> Callable[..., Any]:
+    """Return a substrate-facing async wrapper around ``fn``.
+
+    The returned wrapper:
+
+    1. Classifies ``fn``'s parameters via :func:`split_signature`.
+    2. Carries an ``__signature__`` listing only reserved + wire params
+       — what the substrate (FastAPI / FastMCP) introspects.
+    3. Opens ``Container.call_scope`` per call, populating Container-known
+       params from a2kit DI, merges the reserved kwargs the substrate
+       passed in, and calls ``fn``.
+
+    The per-call DI-scope marker is set on the :data:`_a2kit_scope`
+    contextvar inside the wrapper. The token is reset in ``finally``
+    regardless of success or exception.
+
+    On the FastMCP substrate this wrapper opens its own scope rather
+    than delegating to the existing ``DispatchHookStage`` — the two
+    paths are not yet wired together (that migration is task 1.6). For
+    now, FastMCP consumers continue to use ``install_mcp_signature``;
+    this function is the FastAPI surface's primary entry point.
+    """
+    split = split_signature(fn, substrate, container)
+    hints = resolve_hints(fn)
+    return_ann = hints.get("return", inspect.Signature.empty)
+
+    reserved_names = frozenset(split.reserved)
+
+    @functools.wraps(fn)
+    async def _wrapper(**substrate_kwargs: Any) -> Any:
+        wire_kwargs = {k: v for k, v in substrate_kwargs.items() if k not in reserved_names}
+        reserved_kwargs = {k: v for k, v in substrate_kwargs.items() if k in reserved_names}
+        token = _a2kit_scope.set(object())
+        try:
+            async with container.call_scope(fn, wire_kwargs) as merged:
+                merged_with_reserved = {**merged, **reserved_kwargs}
+                result = fn(**merged_with_reserved)
+                if inspect.isawaitable(result):
+                    result = await result
+                return result
+        finally:
+            _a2kit_scope.reset(token)
+
+    # The surface ``__signature__`` keeps raw Parameter annotations
+    # (may be strings under PEP 563). ``__annotations__`` carries the
+    # resolved hints so substrates / pydantic schema-gen see live types.
+    _wrapper.__signature__ = _build_substrate_signature(split, return_ann)  # type: ignore[attr-defined]
+    new_annotations: dict[str, Any] = {}
+    for name in split.reserved:
+        if name in hints:
+            new_annotations[name] = hints[name]
+    for name in split.wire:
+        if name in hints:
+            new_annotations[name] = hints[name]
+    if return_ann is not inspect.Signature.empty:
+        new_annotations["return"] = return_ann
+    _wrapper.__annotations__ = new_annotations
+    return _wrapper
+
+
 __all__ = [
     "_FASTAPI_RESERVED_SPECS",
     "_FASTMCP_RESERVED_SPECS",
     "SplitSignature",
     "Substrate",
     "SubstrateSignatureError",
+    "_a2kit_scope",
     "_force_reserved",
     "fastapi_reserved",
     "fastmcp_reserved",
+    "install_substrate_signature",
     "split_signature",
 ]

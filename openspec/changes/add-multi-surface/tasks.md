@@ -1,10 +1,10 @@
 ## 1. Substrate signature splitter (foundational)
 
 - [x] 1.1 Locate the current `install_mcp_signature` in the dispatch package; identify all call sites.
-- [x] 1.2 Create `src/a2kit/packages/dispatch/substrate.py` (or equivalent home) with `install_substrate_signature(fn, substrate, container)` and `split_signature(fn, substrate, container) -> SplitSignature`. *(scaffold landed: `SplitSignature` + `split_signature` + reserved-allowlist accessors. `install_substrate_signature` deferred to 1.5 where the wrapper-emission decision is settled.)*
+- [x] 1.2 Create `src/a2kit/packages/dispatch/substrate.py` (or equivalent home) with `install_substrate_signature(fn, substrate, container)` and `split_signature(fn, substrate, container) -> SplitSignature`.
 - [x] 1.3 Define module-level `_FASTAPI_RESERVED` and `_FASTMCP_RESERVED` frozen sets per ADR 0020. *(Materialized as lazy `fastapi_reserved()` / `fastmcp_reserved()` accessors over `_FASTAPI_RESERVED_SPECS` / `_FASTMCP_RESERVED_SPECS` — preserves cold-start.)*
 - [x] 1.4 Implement three-way classification: substrate-reserved → passthrough, Container-known via `has_provider` → DI, remainder → wire. Cover `Annotated[T, ...]`, `Optional[T]`, `Union[T, None]` unwrapping in tests.
-- [ ] 1.5 Write the wrapper generator: contextvar `_a2kit_scope`, `Container.call_scope` async-with, substrate-facing `__signature__` assigned to the wrapper.
+- [x] 1.5 Write the wrapper generator: contextvar `_a2kit_scope`, `Container.call_scope` async-with, substrate-facing `__signature__` assigned to the wrapper. *(Option B per-substrate emission. FastMCP wrapper opens scope inside the wrapper body; MCP call sites still route through `install_mcp_signature` for now — wiring deferred to 1.6.)*
 - [ ] 1.6 Update existing MCP call sites to call `install_substrate_signature(fn, "fastmcp", container)`. Run the full MCP test suite — all existing MCP tests pass byte-for-byte.
 - [x] 1.7 Add unit tests for `split_signature` covering each bucket and edge cases (Annotated, Optional, Union, ForwardRef).
 - [ ] 1.8 Delete (or rename) `install_mcp_signature` so any consumer importing the old name gets `ImportError`.

@@ -275,3 +275,142 @@ def test_splitsignature_is_frozen() -> None:
     split = SplitSignature(substrate="fastapi")
     with pytest.raises(Exception):  # noqa: B017, PT011 -- FrozenInstanceError or AttributeError
         split.substrate = "fastmcp"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# install_substrate_signature — wrapper emission
+# ---------------------------------------------------------------------------
+
+
+import inspect as _inspect  # noqa: E402
+
+from a2kit.packages.dispatch.substrate import (  # noqa: E402
+    _a2kit_scope,
+    install_substrate_signature,
+)
+
+
+class _DBService:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+
+@pytest.mark.asyncio
+async def test_wrapper_signature_lists_only_reserved_and_wire() -> None:
+    """``__signature__`` exposes substrate-routed params only — DI is hidden."""
+
+    async def fn(*, id: str, db: _DBService) -> str:  # noqa: ARG001
+        return id
+
+    c = Container()
+    c.provide(_DBService)
+    async with c:
+        wrapper = install_substrate_signature(fn, "fastmcp", c)
+
+    sig = _inspect.signature(wrapper)
+    assert set(sig.parameters) == {"id"}
+    assert sig.return_annotation is str
+
+
+@pytest.mark.asyncio
+async def test_wrapper_resolves_di_and_passes_wire() -> None:
+    """DI is resolved inside the wrapper; wire kwargs pass through."""
+
+    async def fn(*, id: str, db: _DBService) -> str:
+        db.calls.append(id)
+        return f"got:{id}"
+
+    c = Container()
+    db = _DBService()
+    c.provide(_DBService, lambda: db)
+    async with c:
+        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        result = await wrapper(id="x")
+    assert result == "got:x"
+    assert db.calls == ["x"]
+
+
+@pytest.mark.asyncio
+async def test_wrapper_merges_reserved_kwargs() -> None:
+    """Reserved kwargs the substrate populated land on fn alongside wire+DI."""
+
+    async def fn(*, ctx: fastmcp.Context, id: str, db: _DBService) -> str:  # noqa: ARG001
+        return f"{id}:{type(ctx).__name__}"
+
+    c = Container()
+    c.provide(_DBService)
+    async with c:
+        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        fake_ctx = type("FakeCtx", (), {})()
+        result = await wrapper(id="abc", ctx=fake_ctx)
+    assert result == "abc:FakeCtx"
+
+
+@pytest.mark.asyncio
+async def test_wrapper_sets_scope_contextvar() -> None:
+    """``_a2kit_scope`` is set inside the wrapper body and reset on exit."""
+    observed: dict[str, object | None] = {"during": None, "after": None}
+
+    async def fn(*, id: str) -> str:
+        observed["during"] = _a2kit_scope.get()
+        return id
+
+    c = Container()
+    async with c:
+        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        await wrapper(id="x")
+        observed["after"] = _a2kit_scope.get()
+
+    assert observed["during"] is not None
+    assert observed["after"] is None
+
+
+@pytest.mark.asyncio
+async def test_wrapper_resets_scope_on_exception() -> None:
+    """The scope token is reset even when ``fn`` raises."""
+
+    class _Boom(Exception):
+        pass
+
+    async def fn(*, id: str) -> str:  # noqa: ARG001
+        raise _Boom
+
+    c = Container()
+    async with c:
+        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        with pytest.raises(_Boom):
+            await wrapper(id="x")
+        assert _a2kit_scope.get() is None
+
+
+@pytest.mark.asyncio
+async def test_wrapper_works_with_sync_fn() -> None:
+    """``fn`` may be sync; wrapper awaits the result via ``isawaitable`` check."""
+
+    def fn(*, id: str) -> str:
+        return f"sync:{id}"
+
+    c = Container()
+    async with c:
+        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        result = await wrapper(id="y")
+    assert result == "sync:y"
+
+
+@pytest.mark.asyncio
+async def test_wrapper_signature_includes_reserved() -> None:
+    """``Context`` appears in the wrapper signature (substrate routes it)."""
+
+    async def fn(*, ctx: fastmcp.Context, id: str, db: _DBService) -> str:  # noqa: ARG001
+        return id
+
+    c = Container()
+    c.provide(_DBService)
+    async with c:
+        wrapper = install_substrate_signature(fn, "fastmcp", c)
+
+    sig = _inspect.signature(wrapper)
+    assert set(sig.parameters) == {"ctx", "id"}
+    # PEP 563 stringified annotations: param.annotation is the raw string;
+    # resolved hints live on the wrapper's __annotations__ post-rewrite.
+    assert wrapper.__annotations__["ctx"] is fastmcp.Context
