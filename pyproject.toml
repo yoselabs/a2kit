@@ -19,6 +19,10 @@ classifiers = [
 dependencies = [
     "anyio>=4",
     "click>=8",
+    # FastAPI is the HTTP substrate. Imported only on the `serve
+    # --transport=http` path (lazy in `packages/serve.py` + `packages/http`);
+    # never at `import a2kit` (cold-start budget).
+    "fastapi>=0.115",
     "fastmcp>=3.2,<4",
     "pydantic>=2,<3",
     "pydantic-settings>=2.14,<3",

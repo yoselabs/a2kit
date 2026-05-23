@@ -17,6 +17,7 @@ from typing import Annotated, Union
 
 import fastmcp
 import pytest
+from fastapi import BackgroundTasks
 from starlette.requests import Request
 
 from a2kit.packages.di.container import Container
@@ -153,10 +154,9 @@ def test_fastapi_request_is_reserved() -> None:
 
 
 def test_fastapi_background_tasks_is_reserved() -> None:
-    """BackgroundTasks lives in fastapi; skipped until 2.6 lands the dep."""
-    fastapi = pytest.importorskip("fastapi")
+    """BackgroundTasks is now a real dep (task 2.6)."""
 
-    async def fn(*, tasks: fastapi.BackgroundTasks, id: str) -> str:  # noqa: ARG001
+    async def fn(*, tasks: BackgroundTasks, id: str) -> str:  # noqa: ARG001
         return id
 
     split = split_signature(fn, "fastapi", Container())

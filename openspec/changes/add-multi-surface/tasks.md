@@ -11,12 +11,12 @@
 
 ## 2. HTTP package skeleton
 
-- [ ] 2.1 Create `src/a2kit/packages/http/__init__.py` re-exporting `build_http_app` and `ApiSurface`.
-- [ ] 2.2 Create `src/a2kit/packages/http/build.py` with `build_http_app(runtime) -> fastapi.FastAPI`.
-- [ ] 2.3 Create `src/a2kit/packages/http/api.py` with the `ApiSurface` class — `get/post/put/delete/patch/options/head` methods, lazy `fastapi_app` property.
-- [ ] 2.4 Create `src/a2kit/packages/http/_scope.py` with the `_a2kit_scope` contextvar definition (single source of truth for HTTP-side per-call scope).
-- [ ] 2.5 Implement `build_http_app`: walk `runtime.tools` (filter by `"api" in expose`), walk `runtime.api_routes`, call `install_substrate_signature` per registration, `fastapi.add_api_route(...)`. Default health route at `/api/health`.
-- [ ] 2.6 Add `fastapi` to `pyproject.toml` dependencies. Confirm it is not eagerly imported by anything outside `packages/http/` and `packages/serve.py`'s lazy import block.
+- [x] 2.1 Create `src/a2kit/packages/http/__init__.py` re-exporting `build_http_app` and `ApiSurface`.
+- [x] 2.2 Create `src/a2kit/packages/http/build.py` with `build_http_app(runtime) -> fastapi.FastAPI`.
+- [x] 2.3 Create `src/a2kit/packages/http/api.py` with the `ApiSurface` class — `get/post/put/delete/patch/options/head` methods, lazy `fastapi_app` property.
+- [x] 2.4 Create `src/a2kit/packages/http/_scope.py` with the `_a2kit_scope` contextvar definition (single source of truth for HTTP-side per-call scope). *(Resolved: contextvar lives in `dispatch.substrate` — the wrapper that sets it lives there. `packages/http/build.py::_get_scope_contextvar` documents the rationale and re-exports for HTTP consumers; no separate `_scope.py` file.)*
+- [x] 2.5 Implement `build_http_app`: walk `runtime.tools` (filter by `"api" in expose`), walk `runtime.api_routes`, call `install_substrate_signature` per registration, `fastapi.add_api_route(...)`. Default health route at `/api/health`. *(`expose` filter and `runtime.api_routes` registry land in Phase 4; for Phase 2 every projection tool is exposed and `api_surface` is passed positionally.)*
+- [x] 2.6 Add `fastapi` to `pyproject.toml` dependencies. Confirm it is not eagerly imported by anything outside `packages/http/` and `packages/serve.py`'s lazy import block.
 
 ## 3. MCP surface wrapper
 

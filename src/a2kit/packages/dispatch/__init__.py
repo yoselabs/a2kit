@@ -27,6 +27,15 @@ from a2kit.packages.dispatch.stages import (
     RouterLazyEnterStage,
     TimeoutStage,
 )
+from a2kit.packages.dispatch.substrate import (
+    SplitSignature,
+    Substrate,
+    SubstrateSignatureError,
+    fastapi_reserved,
+    fastmcp_reserved,
+    install_substrate_signature,
+    split_signature,
+)
 
 __all__ = [
     "DISPATCH_PIPELINE",
@@ -38,8 +47,15 @@ __all__ = [
     "ErrorCaptureStage",
     "LddStateStage",
     "RouterLazyEnterStage",
+    "SplitSignature",
+    "Substrate",
+    "SubstrateSignatureError",
     "TimeoutStage",
     "ToolBuildSpec",
+    "fastapi_reserved",
+    "fastmcp_reserved",
     "fold_pipeline",
     "has_injectables",
+    "install_substrate_signature",
+    "split_signature",
 ]

@@ -19,16 +19,17 @@ the lint's own view of the graph.
 | `context` | 0 | 2 | 3 | 1 | `ldd` |
 | `di` | 0 | 9 | 5 | 0 | — |
 | `formatter` | 0 | 9 | 6 | 0 | — |
-| `health` | 0 | 2 | 2 | 1 | `di` |
+| `health` | 0 | 2 | 3 | 1 | `di` |
 | `ldd` | 0 | 5 | 2 | 0 | — |
 | `lint` | 0 | 18 | 0 | 0 | — |
 | `kernel` | 1 | 6 | 6 | 0 | — |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
-| `runtime` | 3 | 3 | 5 | 6 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd` |
+| `runtime` | 3 | 3 | 6 | 6 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
-| `dispatch` | 4 | 5 | 2 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
+| `dispatch` | 4 | 5 | 3 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
 | `cli` | 5 | 6 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
+| `http` | 5 | 3 | 0 | 3 | `dispatch`, `health`, `runtime` |
 | `mcp` | 5 | 7 | 2 | 6 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime` |
 | `otel` | 5 | 3 | 0 | 0 | — |
 | `testing` | 6 | 7 | 0 | 6 | `authoring`, `context`, `formatter`, `kernel`, `mcp`, `runtime` |
@@ -65,6 +66,7 @@ the lint's own view of the graph.
 
 - `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime`
 - `codemode` → `formatter`
+- `http` → `dispatch`, `health`, `runtime`
 - `mcp` → `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime`
 - `otel` → no cross-unit dependencies
 
