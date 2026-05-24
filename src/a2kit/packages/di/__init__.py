@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from a2kit.packages.di._helpers import lazy_inner_type
 from a2kit.packages.di._lazy import Lazy
+from a2kit.packages.di._request_scope import _a2kit_request_scope
 from a2kit.packages.di.container import (
     Container,
     Factory,
@@ -39,5 +40,6 @@ __all__ = [
     "Resolver",
     "Scope",
     "UnresolvableType",
+    "_a2kit_request_scope",
     "lazy_inner_type",
 ]

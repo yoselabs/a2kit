@@ -1,20 +1,20 @@
 """Test seam for swapping a2kit-DI'd dependencies in FastAPI tests.
 
-**The correct seam: re-register on a fresh ``App`` before ``build()``.**
+**The canonical seam: re-register on a fresh ``App`` before ``build()``.**
 
-FastAPI's ``app.dependency_overrides[T] = fake`` mechanism keys on
-``Depends`` callables; a2kit-DI'd types are not ``Depends``. Therefore
-``dependency_overrides[Database] = fake_db`` will NOT swap an
-a2kit-resolved ``Database``.
+For a projection-tool route whose param resolves via a2kit DI directly
+(not via FastAPI ``Depends``), ``app.dependency_overrides[T] = fake`` has
+no effect — FastAPI never consults ``dependency_overrides`` for that
+param because it is hidden from the wrapper's surface signature. The
+canonical override path is ``App.provide(T, fake_factory)`` on a fresh
+``App`` before ``build()``.
 
-The working pattern is to construct a fresh ``App`` with the test
-provider — ``App.provide()`` is last-write-wins, so re-registering
-overrides the prior provider on the new App. The sealed ``AppRuntime``
-takes a snapshot at ``build(app)`` time, so the override is locked in
-for the test's runtime and does not affect the original App.
-
-These tests assert both halves: the positive (re-provide works) and
-the negative (``dependency_overrides`` does NOT route to a2kit DI).
+When a route DOES go through FastAPI ``Depends`` (e.g.
+``Annotated[T, Depends(T)]`` on a ``Security`` guard), the
+[[bridge-container-fastapi-depends]] change wires
+``dependency_overrides[T]`` to the a2kit resolver — so FastAPI's
+override surface composes with a2kit DI. That direction is covered by
+``tests/packages/http/test_di_bridge.py``.
 """
 
 from __future__ import annotations
@@ -64,14 +64,14 @@ async def test_provide_at_app_build_swaps_di() -> None:
     assert real_db.tag == "real"
 
 
-async def test_dependency_overrides_does_not_route_to_a2kit_di() -> None:
-    """FastAPI's ``dependency_overrides[T]`` does NOT swap a2kit-resolved deps.
+async def test_dependency_overrides_does_not_swap_a2kit_di_on_wrapper_routes() -> None:
+    """For routes resolving via a2kit DI directly (no FastAPI ``Depends``),
+    ``app.dependency_overrides[T]`` has no effect — the param is hidden
+    from the surface signature so FastAPI never consults the override.
 
-    This codifies the documented constraint: the FastAPI override
-    mechanism keys on ``Depends`` callables; a2kit DI is type-driven
-    via the wrapper's ``Container.call_scope``. The two do not meet —
-    setting ``dependency_overrides[T]`` is a silent no-op for
-    Container-known types.
+    Routes using ``Annotated[T, Depends(T)]`` (covered separately in
+    ``test_di_bridge.py``) DO get the bridge-installed resolver, and
+    user overrides set on ``dependency_overrides[T]`` would compose.
     """
     real_db = _Database(tag="real")
     fake_db = _Database(tag="this-should-be-ignored")

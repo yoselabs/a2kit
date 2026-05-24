@@ -26,7 +26,7 @@ import inspect
 from typing import TYPE_CHECKING, Annotated
 from typing import Any as _Any
 
-from fastapi import Body, FastAPI
+from fastapi import Body, FastAPI, Request
 
 from a2kit.packages.dispatch import install_substrate_signature, split_signature
 
@@ -55,6 +55,8 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
         docs_url="/docs",
         openapi_url="/openapi.json",
     )
+    _install_request_scope_middleware(app, container)
+    _wire_container_depends_overrides(app, runtime, container)
 
     # Default liveness — matches the existing rest.py stub's contract.
     # Liveness only; the `_meta.health` MCP tool covers degraded-state
@@ -91,6 +93,62 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
         api_surface.fastapi_app = app
 
     return app
+
+
+def _install_request_scope_middleware(app: FastAPI, container: _Any) -> None:
+    """Open a per-request a2kit child container and publish it on the contextvar.
+
+    The `Container.expose_as_fastapi_depends`-generated resolvers read this
+    contextvar to find the active scope. Runs *before* FastAPI's dependency
+    resolution because middlewares wrap the entire request lifecycle.
+    """
+    from a2kit.packages.di import _a2kit_request_scope
+
+    @app.middleware("http")
+    async def _open_request_scope(request: Request, call_next: _Any) -> _Any:
+        child = container.child()
+        async with child as scope:
+            token = _a2kit_request_scope.set(scope)
+            try:
+                return await call_next(request)
+            finally:
+                _a2kit_request_scope.reset(token)
+
+
+def _wire_container_depends_overrides(app: FastAPI, runtime: _Any, container: _Any) -> None:
+    """Register a `Depends` override for every container-known type a tool references.
+
+    Walks every descriptor's wire and substrate-dep chains; for each
+    parameter whose annotation is a container-known type, registers the
+    resolver returned by `container.expose_as_fastapi_depends(T)` into
+    `app.dependency_overrides[T]`. FastAPI then routes any `Depends(T)`
+    binding through the a2kit bridge.
+    """
+    seen: set[type] = set()
+    for desc in runtime.tools():
+        if "api" not in desc.expose:
+            continue
+        split = split_signature(desc.fn, "fastapi", container)
+        for param in (*split.container.values(), *split.substrate_dep.values()):
+            ann = param.annotation
+            target = _resolved_container_type(ann, container)
+            if target is None or target in seen:
+                continue
+            seen.add(target)
+            app.dependency_overrides[target] = container.expose_as_fastapi_depends(target)
+
+
+def _resolved_container_type(ann: _Any, container: _Any) -> type | None:
+    """Resolve `ann` to the underlying container-known concrete type, or None."""
+    from a2kit.packages.dispatch import _unwrap_annotation
+
+    candidate = _unwrap_annotation(ann)
+    if isinstance(candidate, type) and container.has_provider(candidate):
+        return candidate
+    if container.has_provider(ann):
+        # Provider registered against the raw (possibly Annotated) form.
+        return ann if isinstance(ann, type) else None
+    return None
 
 
 def _force_body_binding_for_wire_params(wrapper: _Any, fn: _Any, container: _Any) -> None:

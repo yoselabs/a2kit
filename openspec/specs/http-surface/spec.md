@@ -62,3 +62,14 @@ To swap a Container-known dependency in HTTP handler tests, callers SHALL re-reg
 - **GIVEN** an `App` whose `Database` is provided through `provide()`
 - **WHEN** the test does `fastapi_app.dependency_overrides[Database] = FakeDatabase`
 - **THEN** the handler resolves `db` from the original Container provider, NOT the fake
+
+### Requirement: HTTP build installs the DI bridge
+
+`build_http_app` SHALL install a FastAPI middleware that opens a per-request a2kit child container and publishes it on the `_a2kit_request_scope` contextvar before any FastAPI dependency callable runs. It SHALL also invoke `Container.expose_as_fastapi_depends(T)` for every container-known type referenced by any descriptor's container-bucket or substrate-dep chain, registering the result in `fastapi_app.dependency_overrides[T]`. FastAPI Depends/Security callables keyed on `T` (via `Annotated[T, Depends(T)]`) then resolve through the a2kit bridge.
+
+#### Scenario: dependency_overrides populated for container-known types
+
+- **GIVEN** an app with `Database` registered in the container and an `@app.api.get` route whose handler / guard uses `Annotated[Database, Depends(Database)]`
+- **WHEN** `build_http_app(runtime)` returns
+- **THEN** `fastapi_app.dependency_overrides` contains an entry whose key is `Database`
+- **AND** the registered resolver returns the container's scoped `Database` instance on every request

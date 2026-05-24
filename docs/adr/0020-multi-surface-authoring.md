@@ -235,3 +235,9 @@ Detected by the `test_fastapi_reserved_baseline` and
 - `add-auth` (proposal-only) — turns `authorize=` from kwarg surface
   into enforcement; FastMCP-native OAuth wrappers under
   `a2kit.auth.*`.
+
+## Supersedence: `dependency_overrides[T]` (closed 2026-05-24)
+
+The "`app.dependency_overrides[T] = fake` does NOT work for a2kit-resolved types" clause above is SUPERSEDED by the [[bridge-container-fastapi-depends]] change. `Container.expose_as_fastapi_depends(T)` now publishes a FastAPI-compatible resolver for any container-known type; `build_http_app` registers it in `fastapi_app.dependency_overrides` per type used by any descriptor. A per-request middleware opens the a2kit child container and publishes it on the `_a2kit_request_scope` contextvar before FastAPI dependency resolution runs.
+
+The canonical test seam for swapping a2kit-DI'd deps in FastAPI handler tests remains `container.override(T, fake)` (ADR 0006). `app.dependency_overrides[T] = fake` now ALSO works for container-known types — but the canonical seam is preferred because it composes cleanly with `container.snapshot()`-based test isolation.

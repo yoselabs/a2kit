@@ -273,6 +273,12 @@ class Container:
             return self._parent.has_provider(type_)
         return False
 
+    def expose_as_fastapi_depends(self, type_: type) -> Callable[[], Any]:
+        """Cached FastAPI `Depends`-callable resolving ``type_`` via a2kit DI."""
+        from a2kit.packages.di._fastapi_bridge import resolver_for
+
+        return resolver_for(self, type_)
+
     def providers_view(self) -> dict[type, Factory]:
         """Snapshot of (parent-chain-aware) provider map."""
         merged: dict[type, Factory] = {}
