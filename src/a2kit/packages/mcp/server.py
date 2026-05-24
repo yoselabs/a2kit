@@ -30,6 +30,7 @@ from a2kit.packages.mcp._wrappers import McpErrorRenderStage, install_mcp_signat
 from a2kit.packages.mcp.format_routing import FormatRoutingMiddleware
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
+from a2kit.packages.mcp.principal_middleware import PrincipalMiddleware
 
 
 def _meta_to_dict(meta: A2KitMeta) -> dict[str, Any]:
@@ -330,6 +331,9 @@ def build_mcp_server(
     )
     server.add_middleware(ListViewMiddleware())
     server.add_middleware(GuardsMiddleware())
+    # Publish Principal on `_a2kit_request_principal` so DispatchHookStage and
+    # AuthorizeGateStage seed it as SCOPED in the per-call DI scope.
+    server.add_middleware(PrincipalMiddleware())
     for mw in runtime.mcp_middlewares():
         server.add_middleware(mw)
 

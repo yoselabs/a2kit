@@ -22,13 +22,16 @@ only loaded when the ``serve --transport=http`` path imports
 
 from __future__ import annotations
 
+import functools as _functools
 import inspect
 from typing import TYPE_CHECKING, Annotated
 from typing import Any as _Any
 
 from fastapi import Body, FastAPI, Request
+from fastapi.responses import JSONResponse
 
-from a2kit.packages.dispatch import install_substrate_signature, split_signature
+from a2kit.exceptions import AuthorizationDenied
+from a2kit.packages.dispatch import _run_authorize_gate, install_substrate_signature, split_signature
 
 if TYPE_CHECKING:
     from a2kit.packages.http.api import ApiSurface
@@ -57,6 +60,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     )
     _install_request_scope_middleware(app, container)
     _wire_container_depends_overrides(app, runtime, container)
+    _install_authorization_denied_handler(app)
 
     # Default liveness — matches the existing rest.py stub's contract.
     # Liveness only; the `_meta.health` MCP tool covers degraded-state
@@ -72,6 +76,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
         if "api" not in desc.expose:
             continue
         wrapped = install_substrate_signature(desc.fn, "fastapi", container)
+        wrapped = _apply_authorize_gate(wrapped, desc.authorize, container)
         _force_body_binding_for_wire_params(wrapped, desc.fn, container)
         app.add_api_route(
             path=f"/{desc.name}",
@@ -84,6 +89,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     if api_surface is not None:
         for route in api_surface.routes:
             wrapped = install_substrate_signature(route.fn, "fastapi", container)
+            wrapped = _apply_authorize_gate(wrapped, route.authorize, container)
             app.add_api_route(
                 path=route.path,
                 endpoint=wrapped,
@@ -93,6 +99,56 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
         api_surface.fastapi_app = app
 
     return app
+
+
+def _install_authorization_denied_handler(app: FastAPI) -> None:
+    """Map `AuthorizationDenied` to HTTP 403 with a structured JSON body."""
+
+    @app.exception_handler(AuthorizationDenied)
+    async def _denied(_request: Request, exc: AuthorizationDenied) -> JSONResponse:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "authorization_denied",
+                "reason": exc.reason,
+                "callable": exc.callable_name,
+            },
+        )
+
+
+def _apply_authorize_gate(wrapped: _Any, authorize: _Any, container: _Any) -> _Any:
+    """Wrap `wrapped` so its `authorize=` callable runs before the body.
+
+    No-op when `authorize` is None. Before invoking the gate, scans kwargs
+    for any `Principal` instance (delivered by a FastAPI `Security` guard
+    that returned one) and publishes it on `_a2kit_request_principal` so
+    `_run_authorize_gate` can resolve `principal: Principal` by type.
+    Preserves the wrapper's `__signature__` and `__annotations__` so
+    FastAPI's introspection still sees the surface params installed by
+    `install_substrate_signature`.
+    """
+    if authorize is None:
+        return wrapped
+
+    from a2kit.packages.context import Principal as _Principal
+    from a2kit.packages.context import _a2kit_request_principal
+
+    @_functools.wraps(wrapped)
+    async def _gated(**kwargs: _Any) -> _Any:
+        principal = next((v for v in kwargs.values() if isinstance(v, _Principal)), None)
+        token = _a2kit_request_principal.set(principal) if principal is not None else None
+        try:
+            await _run_authorize_gate(authorize, container)
+            return await wrapped(**kwargs)
+        finally:
+            if token is not None:
+                _a2kit_request_principal.reset(token)
+
+    sig = getattr(wrapped, "__signature__", None)
+    if sig is not None:
+        setattr(_gated, "__signature__", sig)  # noqa: B010 -- ty: setattr keeps both type-checkers quiet
+    _gated.__annotations__ = dict(getattr(wrapped, "__annotations__", {}))
+    return _gated
 
 
 def _install_request_scope_middleware(app: FastAPI, container: _Any) -> None:

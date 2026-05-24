@@ -388,6 +388,35 @@ def _reject_substrate_dep_on_mcp(fn: Callable[..., Any], substrate: Substrate, s
     raise SubstrateSignatureError(message=msg)
 
 
+def _lift_principal_into_scope(
+    reserved_kwargs: dict[str, Any],
+    wire_kwargs: dict[str, Any],
+) -> Any:
+    """Seed `Principal` into the per-call DI scope and request contextvar.
+
+    A FastAPI `Security(...)` guard returning a `Principal` lands in
+    `reserved_kwargs` (substrate_dep bucket). Lift it into the
+    `_a2kit_request_principal` contextvar so inner DI-aware code (tool body,
+    authorize gate) resolves it by type. Seed via the wire pool so
+    `call_scope`'s seeding loop registers it as SCOPED on the child.
+    Returns a contextvar token to reset, or None if no Principal was found.
+    """
+    from a2kit.packages.context import Principal as _Principal
+    from a2kit.packages.context import _a2kit_request_principal
+
+    principal: _Principal | None = (
+        next(
+            (v for v in reserved_kwargs.values() if isinstance(v, _Principal)),
+            None,
+        )
+        or _a2kit_request_principal.get()
+    )
+    if principal is None:
+        return None
+    wire_kwargs.setdefault("_a2kit_principal", principal)
+    return _a2kit_request_principal.set(principal)
+
+
 def install_substrate_signature(
     fn: Callable[..., Any],
     substrate: Substrate,
@@ -425,6 +454,7 @@ def install_substrate_signature(
     async def _wrapper(**substrate_kwargs: Any) -> Any:
         wire_kwargs = {k: v for k, v in substrate_kwargs.items() if k not in reserved_names}
         reserved_kwargs = {k: v for k, v in substrate_kwargs.items() if k in reserved_names}
+        principal_token = _lift_principal_into_scope(reserved_kwargs, wire_kwargs)
         token = _a2kit_scope.set(object())
         try:
             async with container.call_scope(fn, wire_kwargs) as merged:
@@ -435,6 +465,10 @@ def install_substrate_signature(
                 return result
         finally:
             _a2kit_scope.reset(token)
+            if principal_token is not None:
+                from a2kit.packages.context import _a2kit_request_principal
+
+                _a2kit_request_principal.reset(principal_token)
 
     # The surface ``__signature__`` keeps raw Parameter annotations
     # (may be strings under PEP 563). ``__annotations__`` carries the
@@ -443,20 +477,23 @@ def install_substrate_signature(
     # attribute assignment) keeps both mypy and `ty` happy without an
     # ignore — neither tool special-cases the magic attribute.
     setattr(_wrapper, "__signature__", _build_substrate_signature(split, return_ann))  # noqa: B010
-    new_annotations: dict[str, Any] = {}
-    for name in split.reserved:
-        if name in hints:
-            new_annotations[name] = hints[name]
-    for name in split.substrate_dep:
-        if name in hints:
-            new_annotations[name] = hints[name]
-    for name in split.wire:
-        if name in hints:
-            new_annotations[name] = hints[name]
-    if return_ann is not inspect.Signature.empty:
-        new_annotations["return"] = return_ann
-    _wrapper.__annotations__ = new_annotations
+    _wrapper.__annotations__ = _build_wrapper_annotations(split, hints, return_ann)
     return _wrapper
+
+
+def _build_wrapper_annotations(
+    split: SplitSignature,
+    hints: dict[str, Any],
+    return_ann: Any,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for bucket in (split.reserved, split.substrate_dep, split.wire):
+        for name in bucket:
+            if name in hints:
+                out[name] = hints[name]
+    if return_ann is not inspect.Signature.empty:
+        out["return"] = return_ann
+    return out
 
 
 __all__ = [

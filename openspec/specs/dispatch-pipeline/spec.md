@@ -98,3 +98,26 @@ adapter — `ToolError(json)` for MCP, an exit-code mapping for the CLI.
   path yields the mapped non-zero exit code, both from the one neutral
   capture stage
 
+
+### Requirement: `AuthorizeGateStage` is part of `DISPATCH_PIPELINE`
+
+`DISPATCH_PIPELINE` SHALL include `AuthorizeGateStage` immediately after
+`DispatchHookStage` (so wire-side resolution and `call_scope` are both
+ready) and immediately before `LddStateStage`. The stage SHALL
+self-skip when the descriptor's `authorize is None`. When `authorize` is
+set, the stage SHALL resolve the callable's parameters through
+`call_scope` and invoke it; a falsy return SHALL raise
+`AuthorizationDenied`.
+
+#### Scenario: pipeline order is fixed
+
+- **GIVEN** any descriptor with `authorize=` set
+- **WHEN** `DISPATCH_PIPELINE` is inspected
+- **THEN** the position index of `AuthorizeGateStage` is greater than `DispatchHookStage`'s
+- **AND** strictly less than `LddStateStage`'s
+
+#### Scenario: skip is zero-cost when authorize unset
+
+- **GIVEN** a descriptor with `authorize is None`
+- **WHEN** the stage runs
+- **THEN** it returns without invoking any callable or touching `call_scope`

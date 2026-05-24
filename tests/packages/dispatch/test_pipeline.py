@@ -18,6 +18,7 @@ def test_dispatch_pipeline_order_lives_in_one_constant() -> None:
         "enricher",
         "router-lazy-enter",
         "dispatch-hook",
+        "authorize-gate",
         "ldd-state",
         "error-capture",
     ]

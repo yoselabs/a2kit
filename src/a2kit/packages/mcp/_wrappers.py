@@ -55,6 +55,15 @@ class McpErrorRenderStage:
                 if isinstance(exc, FastMCPError):
                     raise exc from None
                 payload: dict[str, Any] = {"class": ce.class_name, "message": ce.message}
+                # `AuthorizationDenied` carries structured fields the
+                # wire envelope surfaces verbatim so MCP clients can
+                # branch on `error.reason` / `error.callable`.
+                from a2kit.exceptions import AuthorizationDenied
+
+                if isinstance(exc, AuthorizationDenied):
+                    payload["error"] = "authorization_denied"
+                    payload["reason"] = exc.reason
+                    payload["callable"] = exc.callable_name
                 if debug:
                     payload["traceback"] = ce.traceback_str
                 raise ToolError(json.dumps(payload)) from exc

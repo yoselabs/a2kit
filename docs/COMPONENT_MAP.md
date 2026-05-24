@@ -16,7 +16,7 @@ the lint's own view of the graph.
 
 | Unit | Layer | Files | Fan-in | Fan-out | Depends on |
 |------|-------|-------|--------|---------|------------|
-| `context` | 0 | 3 | 3 | 1 | `ldd` |
+| `context` | 0 | 3 | 6 | 1 | `ldd` |
 | `di` | 0 | 11 | 6 | 0 | — |
 | `formatter` | 0 | 9 | 6 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
@@ -25,13 +25,13 @@ the lint's own view of the graph.
 | `select` | 0 | 2 | 2 | 0 | — |
 | `kernel` | 1 | 6 | 4 | 0 | — |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
-| `runtime` | 3 | 3 | 6 | 7 | `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
+| `runtime` | 3 | 3 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 5 | 3 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
 | `cli` | 5 | 6 | 0 | 7 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
-| `http` | 5 | 3 | 0 | 4 | `di`, `dispatch`, `health`, `runtime` |
-| `mcp` | 5 | 8 | 2 | 7 | `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime`, `select` |
+| `http` | 5 | 3 | 0 | 5 | `context`, `di`, `dispatch`, `health`, `runtime` |
+| `mcp` | 5 | 9 | 2 | 8 | `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select` |
 | `otel` | 5 | 3 | 0 | 0 | — |
 | `testing` | 6 | 7 | 0 | 5 | `authoring`, `context`, `formatter`, `mcp`, `runtime` |
 
@@ -57,7 +57,7 @@ the lint's own view of the graph.
 
 ### Layer 3
 
-- `runtime` → `authoring`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select`
+- `runtime` → `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select`
 
 ### Layer 4
 
@@ -68,8 +68,8 @@ the lint's own view of the graph.
 
 - `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime`
 - `codemode` → `formatter`
-- `http` → `di`, `dispatch`, `health`, `runtime`
-- `mcp` → `authoring`, `codemode`, `dispatch`, `formatter`, `kernel`, `runtime`, `select`
+- `http` → `context`, `di`, `dispatch`, `health`, `runtime`
+- `mcp` → `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select`
 - `otel` → no cross-unit dependencies
 
 ### Layer 6

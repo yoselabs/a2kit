@@ -147,6 +147,20 @@ class A2KitSingletonTeardownError(A2KitError, RuntimeError):
         super().__init__(f"a2kit singleton-teardown failures ({len(failures)}): {rendered}")
 
 
+class AuthorizationDenied(A2KitError, PermissionError):
+    """Raised by `AuthorizeGateStage` when a tool's `authorize=` callable
+    returns a falsy value.
+
+    Maps to HTTP 403 on FastAPI and to the documented MCP error envelope.
+    The tool body is never invoked.
+    """
+
+    def __init__(self, *, reason: str, callable_name: str) -> None:
+        self.reason = reason
+        self.callable_name = callable_name
+        super().__init__(f"authorization denied by {callable_name!r}: {reason}")
+
+
 class A2KitInvalidContextAnnotation(A2KitError, TypeError):
     """Raised at decoration time when a tool declares ``ctx`` with an
     Optional/Union annotation form.

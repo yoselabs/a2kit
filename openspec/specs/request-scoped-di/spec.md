@@ -220,3 +220,13 @@ The legacy method names (`register`, `register_singleton`, `resolve`, `aresolve`
 - **WHEN** `packages/di/container.py` is inspected for `_override`, `_snapshot`, `_restore`
 - **THEN** no such member is defined on `Container`
 
+
+### Requirement: `Principal` is a SCOPED provider when present
+
+The active `call_scope` SHALL carry the request's `Principal` as a SCOPED provider whenever a substrate produces one. Tool bodies and `authorize=` callables SHALL resolve `principal: Principal` by type annotation alone. The provider SHALL be written by the substrate adapter, not by author code. When no `Principal` is produced (unauthenticated path), the framework-installed placeholder provider SHALL raise `RuntimeError` if a body actually depends on `Principal`.
+
+#### Scenario: Scope carries Principal when authenticated
+
+- **GIVEN** an authenticated request producing `Principal(subject="u1", ...)`
+- **WHEN** the dispatch wrapper enters `call_scope`
+- **THEN** `scope.get(Principal).subject == "u1"`

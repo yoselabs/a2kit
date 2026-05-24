@@ -84,6 +84,19 @@ class App:
         # Eager container init — sync, ~80 LOC, always available. Stays
         # mutable for the App's whole lifetime; ``build()`` snapshots it.
         self._container: Container = Container()
+        # `Principal` is a framework-owned type that the substrate adapter
+        # seeds per call (SCOPED). Pre-register a placeholder provider so
+        # `split_signature` classifies `principal: Principal` into the
+        # container bucket (resolved by a2kit DI, hidden from the wire surface).
+        # The placeholder raises if reached — the per-call seed must be in place.
+        from a2kit.packages.context import Principal as _Principal
+        from a2kit.packages.di import Scope as _Scope
+
+        def _principal_placeholder() -> _Principal:
+            msg = "Principal not seeded for this call (no substrate produced an identity)"
+            raise RuntimeError(msg)
+
+        self._container.provide(_Principal, _principal_placeholder, scope=_Scope.SCOPED)
         # Default dispatch hook is identity over wire kwargs. Consumer
         # packages (e.g. connections) install a hook that performs
         # wire-side conversion only; DI runs after the hook inside

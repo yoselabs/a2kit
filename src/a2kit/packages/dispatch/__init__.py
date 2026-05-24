@@ -20,12 +20,14 @@ from a2kit.packages.dispatch.spec import (
     has_injectables,
 )
 from a2kit.packages.dispatch.stages import (
+    AuthorizeGateStage,
     DispatchHookStage,
     EnricherStage,
     ErrorCaptureStage,
     LddStateStage,
     RouterLazyEnterStage,
     TimeoutStage,
+    _run_authorize_gate,
 )
 from a2kit.packages.dispatch.substrate import (
     SplitSignature,
@@ -41,6 +43,7 @@ from a2kit.packages.dispatch.substrate import (
 __all__ = [
     "DISPATCH_PIPELINE",
     "SYNTHESIZED_CTX_PARAM_NAME",
+    "AuthorizeGateStage",
     "CapturedError",
     "DispatchHookStage",
     "DispatchStage",
@@ -53,6 +56,7 @@ __all__ = [
     "SubstrateSignatureError",
     "TimeoutStage",
     "ToolBuildSpec",
+    "_run_authorize_gate",
     "_unwrap_annotation",
     "fastapi_reserved",
     "fastmcp_reserved",

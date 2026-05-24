@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from a2kit.packages.dispatch.stages import (
+    AuthorizeGateStage,
     DispatchHookStage,
     EnricherStage,
     ErrorCaptureStage,
@@ -35,6 +36,7 @@ DISPATCH_PIPELINE: tuple[DispatchStage, ...] = (
     EnricherStage(),
     RouterLazyEnterStage(),
     DispatchHookStage(),
+    AuthorizeGateStage(),
     LddStateStage(),
     ErrorCaptureStage(),
 )
