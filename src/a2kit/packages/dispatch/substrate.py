@@ -37,7 +37,7 @@ import sys
 import types
 import typing
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from a2kit.signature import resolve_hints
 
@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from a2kit.packages.di import Container
+    from a2kit.packages.dispatch.surface import Surface
 
 # Per-call DI scope marker. Set by :func:`install_substrate_signature`'s
 # generated wrapper inside ``Container.call_scope`` and reset on exit.
@@ -52,16 +53,17 @@ if TYPE_CHECKING:
 # can replace the payload type later without changing the contextvar name.
 _a2kit_scope: contextvars.ContextVar[object | None] = contextvars.ContextVar("_a2kit_scope", default=None)
 
-Substrate = Literal["fastapi", "fastmcp"]
-
 
 class SubstrateSignatureError(TypeError):
-    """A parameter's annotation is reserved by a different substrate.
+    """A parameter's annotation is reserved by a different surface.
 
-    Raised when classifying a tool against substrate ``S`` finds a
-    parameter whose annotation is in the **other** substrate's reserved
-    allowlist. The author either registered the tool on the wrong
-    surface, or pulled in a substrate-specific type by mistake.
+    Raised when classifying a tool against surface ``S`` finds a
+    parameter whose annotation is in another surface's ``reserved_types``.
+    The author either registered the tool on the wrong surface, or
+    pulled in a substrate-specific type by mistake.
+    ``wrong_surface`` / ``right_surface`` carry surface ``name`` strings
+    (e.g. ``"api"``, ``"mcp"``) rather than substrate strings — surface
+    identity flows through Surface objects post-`remove-substrate-literal`.
     """
 
     def __init__(
@@ -70,21 +72,21 @@ class SubstrateSignatureError(TypeError):
         fn_name: str = "",
         param_name: str = "",
         annotation: Any = None,
-        wrong_substrate: Substrate | None = None,
-        right_substrate: Substrate | None = None,
+        wrong_surface: str | None = None,
+        right_surface: str | None = None,
         message: str | None = None,
     ) -> None:
         self.fn_name = fn_name
         self.param_name = param_name
         self.annotation = annotation
-        self.wrong_substrate = wrong_substrate
-        self.right_substrate = right_substrate
+        self.wrong_surface = wrong_surface
+        self.right_surface = right_surface
         if message is None:
             ann_name = getattr(annotation, "__name__", repr(annotation))
             message = (
                 f"{fn_name}: parameter {param_name!r} is annotated {ann_name}, "
-                f"which is reserved by the {right_substrate!r} substrate, not "
-                f"{wrong_substrate!r}. If MCP semantics are intended, register the "
+                f"which is reserved by the {right_surface!r} surface, not "
+                f"{wrong_surface!r}. If MCP semantics are intended, register the "
                 f"tool with @app.mcp.tool; for HTTP, use only FastAPI-native "
                 f"reserved types (Request, Response, BackgroundTasks, WebSocket)."
             )
@@ -104,12 +106,12 @@ class SplitSignature:
     - ``container``: types a2kit DI resolves via ``call_scope``.
     - ``wire``: everything else; substrate routes from the request.
 
-    ``substrate`` records which substrate this split was computed
-    against; consumers use it to pick the matching reserved allowlist
-    when rebuilding signatures.
+    ``surface`` records the surface name (e.g. ``"api"``, ``"mcp"``)
+    this split was computed against; consumers use it when rebuilding
+    signatures or routing the result back into the substrate.
     """
 
-    substrate: Substrate
+    surface: str
     reserved: dict[str, inspect.Parameter] = field(default_factory=dict)
     container: dict[str, inspect.Parameter] = field(default_factory=dict)
     # `substrate_dep` is the 4th bucket (add-substrate-dep-class): params
@@ -161,12 +163,21 @@ def _reserved_types(specs: tuple[tuple[str, str], ...]) -> frozenset[type]:
 
 
 def fastapi_reserved() -> frozenset[type]:
-    """Return the FastAPI reserved-type allowlist (lazy, cold-start-safe)."""
+    """Return the FastAPI reserved-type allowlist (lazy, cold-start-safe).
+
+    Backed by the same `_FASTAPI_RESERVED_SPECS` mirror that the
+    `ApiSurface.reserved_types` property reads from. Retained as the
+    baseline-test entry point and as a convenience accessor for callers
+    that don't have a Surface instance handy.
+    """
     return _reserved_types(_FASTAPI_RESERVED_SPECS)
 
 
 def fastmcp_reserved() -> frozenset[type]:
-    """Return the FastMCP reserved-type allowlist (lazy, cold-start-safe)."""
+    """Return the FastMCP reserved-type allowlist (lazy, cold-start-safe).
+
+    Parallel to :func:`fastapi_reserved` for the FastMCP surface.
+    """
     return _reserved_types(_FASTMCP_RESERVED_SPECS)
 
 
@@ -237,80 +248,81 @@ def _unwrap_annotation(ann: Any) -> Any:
 _BOUND_FIRST = frozenset({"self", "cls"})
 
 
-def _has_fastapi_dep_marker(raw_ann: Any) -> bool:
-    """True iff ``raw_ann`` is ``Annotated[T, ...]`` whose metadata contains
-    a ``fastapi.params.Depends`` or ``fastapi.params.Security`` instance.
+def _foreign_surface_owning(unwrapped: Any, this_surface: Surface) -> str | None:
+    """Return the name of another registered Surface whose `reserved_types`
+    contains ``unwrapped``, or None.
 
-    Lazy: only inspects metadata when the annotation is already an
-    ``Annotated`` form. Importing ``fastapi.params`` happens only inside
-    the metadata loop, never at module load — cold-start preserved when
-    no annotation carries a marker.
+    Walks :data:`SURFACE_REGISTRY` (excluding ``this_surface``). Powers the
+    cross-surface misclassification error path — when an author annotates a
+    param with a type owned by a different surface, the classifier names
+    the surface where the type IS reserved so the error is actionable.
     """
+    from a2kit.packages.dispatch.surface import SURFACE_REGISTRY
+
+    if not isinstance(unwrapped, type):
+        return None
+    for surface in SURFACE_REGISTRY:
+        if surface.name == this_surface.name:
+            continue
+        if unwrapped in surface.reserved_types:
+            return surface.name
+    return None
+
+
+def _has_substrate_dep_marker(raw_ann: Any, markers: frozenset[type]) -> bool:
+    """True iff ``raw_ann`` is ``Annotated[T, ...]`` whose metadata contains
+    an instance of any class in ``markers``.
+
+    Surface-agnostic replacement for the old `_has_fastapi_dep_marker`:
+    the marker set is read from ``surface.substrate_dep_markers`` so any
+    surface declaring marker classes participates uniformly.
+    """
+    if not markers:
+        return False
     if not (typing.get_origin(raw_ann) is typing.Annotated or (hasattr(raw_ann, "__metadata__") and hasattr(raw_ann, "__origin__"))):
         return False
     metadata = getattr(raw_ann, "__metadata__", ())
     if not metadata:
         return False
-    fastapi_params = sys.modules.get("fastapi.params")
-    if fastapi_params is None:
-        # If fastapi.params is not loaded, no marker can be a live instance
-        # of it. Authors who annotate with Depends/Security necessarily
-        # imported fastapi.params (transitively via `from fastapi import Depends`).
-        import importlib
-
-        try:
-            fastapi_params = importlib.import_module("fastapi.params")
-        except ImportError:
-            return False
-    depends_cls = getattr(fastapi_params, "Depends", None)
-    security_cls = getattr(fastapi_params, "Security", None)
-    markers = tuple(cls for cls in (depends_cls, security_cls) if isinstance(cls, type))
-    if not markers:
-        return False
-    return any(isinstance(item, markers) for item in metadata)
+    marker_tuple = tuple(markers)
+    return any(isinstance(item, marker_tuple) for item in metadata)
 
 
 def split_signature(
     fn: Callable[..., Any],
-    substrate: Substrate,
+    surface: Surface,
     container: Container,
 ) -> SplitSignature:
-    """Classify ``fn``'s parameters into reserved / container / wire.
+    """Classify ``fn``'s parameters into reserved / container / substrate_dep / wire.
 
     Walks the raw signature, skipping only ``self``/``cls`` (the bound
     first param for methods). Every other parameter is classified — in
     particular, FastMCP's ``Context`` lands in the ``reserved`` bucket
-    on the ``fastmcp`` substrate, and triggers
-    :class:`SubstrateSignatureError` on the ``fastapi`` substrate.
+    on the MCP surface, and triggers :class:`SubstrateSignatureError`
+    on any other registered surface (e.g. ``api``).
 
     Resolution order per parameter:
 
-    1. If the unwrapped annotation is in the **other** substrate's
-       reserved set -> raise :class:`SubstrateSignatureError`.
-    2. If the unwrapped annotation is in **this** substrate's reserved
-       set -> ``reserved`` bucket.
-    3. If ``container.has_provider(<original ann>)`` is true ->
+    1. If the unwrapped annotation is in another registered surface's
+       ``reserved_types`` -> raise :class:`SubstrateSignatureError`.
+    2. If the unwrapped annotation is in ``surface.reserved_types`` ->
+       ``reserved`` bucket.
+    3. If the parameter carries an ``Annotated[T, marker]`` metadata
+       whose marker is in ``surface.substrate_dep_markers`` ->
+       ``substrate_dep`` bucket.
+    4. If ``container.has_provider(<original ann>)`` is true ->
        ``container`` bucket. (The original annotation is passed, not the
        unwrapped one, so providers registered against ``Annotated``
        forms still match.)
-    4. Else -> ``wire`` bucket.
+    5. Else -> ``wire`` bucket.
 
-    The order matters: substrate-reserved beats container-known. An
-    author who registers a provider for ``Request`` would otherwise
-    leak the substrate-reserved type into the DI graph silently; the
-    explicit precedence makes that a no-op (the substrate populates it).
+    The order matters: surface-reserved beats container-known. An author
+    who registers a provider for ``Request`` would otherwise leak the
+    surface-reserved type into the DI graph silently; the explicit
+    precedence makes that a no-op (the substrate populates it).
     """
-    if substrate == "fastapi":
-        this_reserved = fastapi_reserved()
-        other_reserved = fastmcp_reserved()
-        other_name: Substrate = "fastmcp"
-    elif substrate == "fastmcp":
-        this_reserved = fastmcp_reserved()
-        other_reserved = fastapi_reserved()
-        other_name = "fastapi"
-    else:  # pragma: no cover -- Literal narrows this in practice
-        msg = f"unknown substrate {substrate!r}; expected 'fastapi' or 'fastmcp'"
-        raise ValueError(msg)
+    this_reserved = surface.reserved_types
+    dep_markers = surface.substrate_dep_markers
 
     fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
     hints = resolve_hints(fn)
@@ -323,26 +335,27 @@ def split_signature(
     except Exception:  # noqa: BLE001 — same fallback policy as `resolve_hints`
         hints_ext = {}
     sig = inspect.signature(fn)
-    split = SplitSignature(substrate=substrate)
+    split = SplitSignature(surface=surface.name)
 
     for i, (name, param) in enumerate(sig.parameters.items()):
         if i == 0 and name in _BOUND_FIRST:
             continue
         raw = hints.get(name, param.annotation)
         unwrapped = _unwrap_annotation(raw)
-        if isinstance(unwrapped, type) and unwrapped in other_reserved:
+        foreign = _foreign_surface_owning(unwrapped, surface)
+        if foreign is not None:
             raise SubstrateSignatureError(
                 fn_name=fn_name,
                 param_name=name,
                 annotation=unwrapped,
-                wrong_substrate=substrate,
-                right_substrate=other_name,
+                wrong_surface=surface.name,
+                right_surface=foreign,
             )
         if isinstance(unwrapped, type) and unwrapped in this_reserved:
             split.reserved[name] = param
             continue
         raw_with_metadata = hints_ext.get(name, raw)
-        if _has_fastapi_dep_marker(raw_with_metadata):
+        if _has_substrate_dep_marker(raw_with_metadata, dep_markers):
             split.substrate_dep[name] = param.replace(annotation=raw_with_metadata)
             continue
         if container.has_provider(raw) or (unwrapped is not raw and container.has_provider(unwrapped)):
@@ -375,13 +388,42 @@ def _build_substrate_signature(split: SplitSignature, return_ann: Any) -> inspec
     return inspect.Signature(parameters=params, return_annotation=return_ann)
 
 
-def _reject_substrate_dep_on_mcp(fn: Callable[..., Any], substrate: Substrate, split: SplitSignature) -> None:
-    if substrate != "fastmcp" or not split.substrate_dep:
+def _reject_substrate_dep_on_alien_surface(fn: Callable[..., Any], surface: Surface, split: SplitSignature) -> None:
+    """Raise when an Annotated marker belongs to a foreign surface.
+
+    `split_signature` consults `surface.substrate_dep_markers` only,
+    so a param carrying `Annotated[T, Depends(...)]` lands in `wire`
+    on a surface whose marker set is empty (e.g. `mcp`). That would
+    silently lose the author's intent. Walk every parameter's
+    `Annotated` metadata; if any metadata instance matches another
+    registered surface's markers, raise with the same message shape
+    as before so authors get the same actionable error.
+    """
+    from a2kit.packages.dispatch.surface import SURFACE_REGISTRY
+
+    foreign_marker_classes: list[type] = []
+    for other in SURFACE_REGISTRY:
+        if other.name == surface.name:
+            continue
+        foreign_marker_classes.extend(other.substrate_dep_markers)
+    if not foreign_marker_classes:
+        return
+
+    foreign_tuple = tuple(foreign_marker_classes)
+    offending: list[str] = []
+    try:
+        hints_ext = typing.get_type_hints(fn, include_extras=True)
+    except Exception:  # noqa: BLE001 -- same fallback policy as resolve_hints
+        hints_ext = {}
+    for name, ann in hints_ext.items():
+        metadata = getattr(ann, "__metadata__", ())
+        if any(isinstance(item, foreign_tuple) for item in metadata):
+            offending.append(name)
+    if not offending:
         return
     fn_name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
-    offending = sorted(split.substrate_dep)
     msg = (
-        f"{fn_name}: parameter(s) {offending} carry FastAPI `Depends`/`Security` "
+        f"{fn_name}: parameter(s) {sorted(offending)} carry FastAPI `Depends`/`Security` "
         f"markers, which cannot appear on MCP-exposed tools. Remove the marker "
         f"or scope this tool with expose=('api',)."
     )
@@ -419,7 +461,7 @@ def _lift_principal_into_scope(
 
 def install_substrate_signature(
     fn: Callable[..., Any],
-    substrate: Substrate,
+    surface: Surface,
     container: Container,
 ) -> Callable[..., Any]:
     """Return a substrate-facing async wrapper around ``fn``.
@@ -443,8 +485,8 @@ def install_substrate_signature(
     now, FastMCP consumers continue to use ``install_mcp_signature``;
     this function is the FastAPI surface's primary entry point.
     """
-    split = split_signature(fn, substrate, container)
-    _reject_substrate_dep_on_mcp(fn, substrate, split)
+    split = split_signature(fn, surface, container)
+    _reject_substrate_dep_on_alien_surface(fn, surface, split)
     hints = resolve_hints(fn)
     return_ann = hints.get("return", inspect.Signature.empty)
 
@@ -496,11 +538,30 @@ def _build_wrapper_annotations(
     return out
 
 
+def __getattr__(name: str) -> Any:
+    """Raise with a migration hint on `Substrate` access.
+
+    `Substrate = Literal["fastapi", "fastmcp"]` was retired by the
+    `remove-substrate-literal` change. Surface identity now flows
+    through `Surface` objects from `a2kit.packages.dispatch.surface`.
+    """
+    if name == "Substrate":
+        msg = (
+            "`Substrate` Literal was removed in remove-substrate-literal. "
+            "Surface identity now flows through `Surface` objects: import "
+            "`Surface` from `a2kit.packages.dispatch` and pass a Surface "
+            "instance (e.g. `SURFACE_REGISTRY.get('api')`) to "
+            "`split_signature` / `install_substrate_signature`."
+        )
+        raise AttributeError(msg)
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
+
 __all__ = [
     "_FASTAPI_RESERVED_SPECS",
     "_FASTMCP_RESERVED_SPECS",
     "SplitSignature",
-    "Substrate",
     "SubstrateSignatureError",
     "_a2kit_scope",
     "_force_reserved",

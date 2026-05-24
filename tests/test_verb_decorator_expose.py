@@ -66,7 +66,7 @@ def test_expose_api_only() -> None:
 
 
 def test_empty_expose_raises_at_decoration() -> None:
-    with pytest.raises(ValueError, match="at least one substrate"):
+    with pytest.raises(ValueError, match="at least one surface"):
 
         class R(a2kit.Router):
             slug = "demo"
@@ -79,7 +79,7 @@ def test_empty_expose_raises_at_decoration() -> None:
 
 
 def test_unknown_substrate_raises() -> None:
-    with pytest.raises(ValueError, match="unknown substrate"):
+    with pytest.raises(ValueError, match="unknown surface"):
 
         class R(a2kit.Router):
             slug = "demo"

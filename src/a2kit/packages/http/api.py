@@ -196,15 +196,19 @@ class ApiSurface(DecoratorSurface[ApiRoute]):
     def bind(self, runtime: Any, descriptors: Any = None) -> Any:  # noqa: ARG002
         """Build the FastAPI sub-app for ``runtime``.
 
-        Delegates to :func:`a2kit.packages.http.build.build_http_app`,
-        passing ``self`` as the ``api_surface`` so author-written routes
-        register alongside projection tools. ``descriptors`` is accepted
-        for Protocol uniformity; the underlying builder walks
-        ``runtime.tools()`` itself.
+        Delegates to :func:`a2kit.packages.http.build.build_http_app`.
+        Reads ``runtime.api_surface`` for author-written routes: each
+        App carries its own ``ApiSurface`` instance (the accumulator)
+        which is what holds the registrations. The Surface registered
+        in :data:`SURFACE_REGISTRY` (``self``) is a class-level identity
+        used by the dispatch-layer signature splitter; it is NOT the
+        per-App accumulator. ``descriptors`` is accepted for Protocol
+        uniformity; the underlying builder walks ``runtime.tools()``
+        itself.
         """
         from a2kit.packages.http.build import build_http_app
 
-        return build_http_app(runtime, api_surface=self)
+        return build_http_app(runtime)
 
     def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:  # noqa: ARG002
         """No-op hook: FastAPI DI bridge is installed inside ``build_http_app``.

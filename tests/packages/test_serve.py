@@ -112,7 +112,7 @@ def test_build_parent_app_api_only_when_only_api_registrations() -> None:
 
 def test_build_parent_app_requires_a_surface() -> None:
     """Empty App with no registrations raises ValueError on build."""
-    with pytest.raises(ValueError, match="no surfaces have registrations"):
+    with pytest.raises(ValueError, match="no registered surface has registrations"):
         build_parent_app(a2kit.App("empty"))
 
 

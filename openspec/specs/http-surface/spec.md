@@ -85,6 +85,6 @@ To swap a Container-known dependency in HTTP handler tests, callers SHALL re-reg
 
 #### Scenario: build_http_app remains observably equivalent
 
-- **GIVEN** a runtime with one `@app.read` tool and one `@app.api.get("/x")` route
+- **GIVEN** a runtime with one `@a2kit.read` tool and one `@app.api.get("/x")` route
 - **WHEN** `build_http_app(runtime)` runs (the thin shim)
 - **THEN** the resulting FastAPI app has both routes mounted, identical to pre-migration behaviour

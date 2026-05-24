@@ -31,7 +31,6 @@ from a2kit.packages.dispatch.stages import (
 )
 from a2kit.packages.dispatch.substrate import (
     SplitSignature,
-    Substrate,
     SubstrateSignatureError,
     _unwrap_annotation,
     fastapi_reserved,
@@ -60,7 +59,6 @@ __all__ = [
     "LddStateStage",
     "RouterLazyEnterStage",
     "SplitSignature",
-    "Substrate",
     "SubstrateSignatureError",
     "Surface",
     "SurfaceRegistry",

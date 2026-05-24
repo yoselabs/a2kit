@@ -21,7 +21,7 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterator
 
 R = TypeVar("R")
 
@@ -57,7 +57,7 @@ class Surface(Protocol):
     reserved_types: ClassVar[frozenset[type]]
     substrate_dep_markers: ClassVar[frozenset[type]]
 
-    def bind(self, runtime: Any, descriptors: Any) -> Any: ...
+    def bind(self, runtime: Any, descriptors: Any = None) -> Any: ...
 
     def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None: ...
 
@@ -118,7 +118,7 @@ class SurfaceRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(self._by_name.keys())
 
-    def __iter__(self) -> Iterable[Surface]:
+    def __iter__(self) -> Iterator[Surface]:
         return iter(self._by_name.values())
 
     def __contains__(self, name: object) -> bool:

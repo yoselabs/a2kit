@@ -2,15 +2,20 @@
 
 Under ``serve --transport=http`` a2kit runs a single process on a single
 port. This module builds the a2kit-owned parent ASGI application that
-mounts each populated surface as an independent sub-app: the FastMCP
-streamable-HTTP app under ``/mcp``, the FastAPI sub-app under ``/api``.
+mounts each populated surface as an independent sub-app via the
+``Surface`` Protocol: each surface owns its own ``bind(runtime, ...)``
+build path and is mounted at ``/{surface.name}``.
 
-**Auto-mount** (post-add-multi-surface): each substrate's sub-app is
-mounted only when the runtime carries registrations for it. Projection
-tools (``@app.read``/``@app.list``/``@app.write``) default to both
-substrates; ``@app.api.<method>`` is FastAPI-only; ``@app.mcp.<feature>``
-is FastMCP-only. If neither substrate has registrations, the function
-raises ``ValueError`` — a server with nothing to serve is a config bug.
+**Auto-mount** (post-add-multi-surface + remove-substrate-literal):
+each registered :data:`SURFACE_REGISTRY` surface mounts only when the
+runtime carries registrations for it. The bundled surfaces (``mcp``,
+``api``) self-register at lazy front-door load; future surfaces register
+the same way and mount here without serve-side edits. Projection tools
+(``@app.read``/``@app.list``/``@app.write``) default to both bundled
+substrates; ``@app.api.<method>`` is FastAPI-only;
+``@app.mcp.<feature>`` is FastMCP-only. If no surface has
+registrations, the function raises ``ValueError`` — a server with
+nothing to serve is a config bug.
 
 The parent owns the **one** ``async with app:`` for the whole process.
 Each mounted surface contributes only its transport-scoped lifespan,
@@ -38,78 +43,75 @@ if TYPE_CHECKING:
     from a2kit.runtime import AppRuntime
 
 
-def _has_api_registrations(runtime: AppRuntime) -> bool:
-    """True if any projection tool exposes on ``api`` OR any ``@app.api.*`` route exists.
+def _surface_has_registrations(runtime: AppRuntime, surface_name: str) -> bool:
+    """True if `runtime` has anything to expose on `surface_name`.
 
-    Per-tool ``expose`` is honoured: a projection tool registered as
-    ``@app.read(expose=("mcp",))`` does NOT count towards ``/api``.
-    ``@app.api.*`` routes always count.
+    Honours per-tool `expose=`: a projection tool registered with
+    `@app.read(expose=("mcp",))` does NOT count towards `/api`. Author-
+    written surface-native registrations (e.g. `@app.api.<method>` on
+    `runtime.api_surface`, `@app.mcp.<feature>` on `runtime.mcp_surface`)
+    always count.
+
+    For surfaces beyond the bundled `api`/`mcp` pair we only check the
+    per-tool `expose` filter — future surfaces that publish native
+    registrations through their own accumulator will need to extend the
+    runtime to expose them, then the same filter pattern applies.
     """
-    if any("api" in d.expose for d in runtime.tools()):
+    if any(surface_name in d.expose for d in runtime.tools()):
         return True
-    api = runtime.api_surface
-    return api is not None and bool(api.routes)
-
-
-def _has_mcp_registrations(runtime: AppRuntime) -> bool:
-    """True if any projection tool exposes on ``mcp`` OR any ``@app.mcp.*`` exists."""
-    if any("mcp" in d.expose for d in runtime.tools()):
-        return True
-    mcp = runtime.mcp_surface
-    return mcp is not None and bool(mcp.registrations)
+    if surface_name == "api":
+        api = runtime.api_surface
+        return api is not None and bool(api.registrations)
+    if surface_name == "mcp":
+        mcp = runtime.mcp_surface
+        return mcp is not None and bool(mcp.registrations)
+    return False
 
 
 def build_parent_app(app: App | AppRuntime) -> Starlette:
     """Build the multiplex parent app, auto-mounting populated surfaces.
 
-    The substrate sub-apps mount based on the runtime's registrations:
+    Walks :data:`SURFACE_REGISTRY` (preserving registration order) and
+    mounts each surface with non-empty registrations at `/{surface.name}`
+    via `surface.bind(runtime, ...)`. The App is built into a single
+    `AppRuntime` once; the parent's lifespan enters that runtime
+    exactly once and forwards every mounted surface's lifespan.
 
-    - ``/mcp`` mounts when ``_has_mcp_registrations(runtime)`` is true
-      (any projection tool — defaults to both surfaces — or any
-      ``@app.mcp.<feature>``).
-    - ``/api`` mounts when ``_has_api_registrations(runtime)`` is true
-      (any projection tool or any ``@app.api.<method>``).
-
-    The App is built into a single ``AppRuntime`` once; the parent's
-    lifespan enters that runtime exactly once and forwards every mounted
-    surface's lifespan.
-
-    Raises ``ValueError`` if neither substrate has registrations.
+    Raises `ValueError` if no registered surface has registrations.
     """
+    # Front-door imports trigger surface self-registration. Idempotent
+    # under repeated calls; the registry rejects duplicates so the
+    # `__init__.py` guard prevents a re-register raise.
+    import a2kit.packages.http
+    import a2kit.packages.mcp  # noqa: F401  -- registers McpSurface
+    from a2kit.packages.dispatch import SURFACE_REGISTRY
     from a2kit.runtime import build
 
-    # One runtime for the whole process — both surfaces share it and the
-    # parent owns its single lifecycle. ``build`` is idempotent on an
-    # ``AppRuntime``, so the downstream ``build_mcp_server`` reuses it.
+    # One runtime for the whole process — every surface shares it and
+    # the parent owns its single lifecycle. ``build`` is idempotent on
+    # an ``AppRuntime``, so downstream `surface.bind` reuses it.
     runtime = build(app)
 
-    mcp_mount = _has_mcp_registrations(runtime)
-    api_mount = _has_api_registrations(runtime)
-    if not (mcp_mount or api_mount):
+    mounts: list[tuple[str, Starlette]] = []
+    for surface in SURFACE_REGISTRY:
+        if not _surface_has_registrations(runtime, surface.name):
+            continue
+        sub_app = surface.bind(runtime)
+        # MCP's `bind` returns a FastMCP instance; its ASGI app is
+        # `.http_app(path="/")`. Other surfaces return a Starlette-shaped
+        # ASGI app directly.
+        if surface.name == "mcp":
+            sub_app = sub_app.http_app(path="/")
+        mounts.append((f"/{surface.name}", sub_app))
+
+    if not mounts:
         msg = (
-            "build_parent_app: no surfaces have registrations to expose. "
-            "Register at least one projection tool (@app.read/list/write), "
-            "an @app.api.<method>(...) route, or an @app.mcp.<feature>(...) "
-            "registration."
+            "build_parent_app: no registered surface has registrations to "
+            "expose. Register at least one projection tool "
+            "(@app.read/list/write), an @app.api.<method>(...) route, or "
+            "an @app.mcp.<feature>(...) registration."
         )
         raise ValueError(msg)
-
-    # (mount-path, sub-app) pairs — the single source for both the route
-    # table and the lifespans the parent must forward.
-    mounts: list[tuple[str, Starlette]] = []
-
-    if mcp_mount:
-        from a2kit.packages.mcp import build_mcp_server
-
-        # own_app_lifecycle=False: the mount carries only transport-scoped
-        # setup; this parent owns the single `async with runtime:`.
-        mcp_server = build_mcp_server(runtime, own_app_lifecycle=False)
-        mounts.append(("/mcp", mcp_server.http_app(path="/")))
-
-    if api_mount:
-        from a2kit.packages.http import build_http_app
-
-        mounts.append(("/api", build_http_app(runtime)))
 
     @asynccontextmanager
     async def _parent_lifespan(parent: Starlette) -> AsyncIterator[None]:

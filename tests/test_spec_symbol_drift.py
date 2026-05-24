@@ -57,6 +57,9 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "a2kit.tool",  # removed v0.33 — split into read/write/list_ verbs
         "Container.dispatch",  # renamed to call_scope (d1dddb7); the spec
         # scenario cites the absent symbol as proof the rename is loud
+        "a2kit.packages.dispatch.substrate.Substrate",  # removed in
+        # remove-substrate-literal; surface-protocol spec cites it in the
+        # migration-hint scenario
         # --- example-only / illustrative placeholders cited in pattern
         #     descriptions (not real surface, not drift) ---
         "App.method",  # illustrative metavariable in docs-code-parity

@@ -93,21 +93,25 @@ def _validate_expose(verb: str, expose: tuple[str, ...]) -> tuple[str, ...]:
     """Normalize and validate the ``expose=`` kwarg.
 
     Empty tuple is rejected at decoration time per ``verb-decorators``
-    spec — a projection tool that exposes on no substrate is dead code.
-    Unknown substrate names raise ``ValueError`` listing the accepted
-    set ``{"mcp", "api"}``.
+    spec — a projection tool that exposes on no surface is dead code.
+    Unknown surface names raise ``ValueError``. The accepted set
+    ``{"mcp", "api"}`` is hardcoded here because :data:`SURFACE_REGISTRY`
+    lives in the dispatch layer (L4) and ``_verbs`` is authoring (L2) —
+    reading the registry from here would violate `A2K-LAYER`.
+    Registry-driven open-set validation is queued as follow-up to
+    ``remove-substrate-literal``.
     """
     if not expose:
         msg = (
             f"@a2kit.{verb}(expose=()) is empty: a projection tool must expose "
-            f"on at least one substrate. Use expose=('mcp',) or expose=('api',) "
+            f"on at least one surface. Use expose=('mcp',) or expose=('api',) "
             f"to opt into one; omit the kwarg for both (the default)."
         )
         raise ValueError(msg)
     allowed = frozenset({"mcp", "api"})
     bad = [s for s in expose if s not in allowed]
     if bad:
-        msg = f"@a2kit.{verb}(expose={expose!r}): unknown substrate(s) {bad!r}; accepted values are 'mcp' and 'api'."
+        msg = f"@a2kit.{verb}(expose={expose!r}): unknown surface(s) {bad!r}; accepted values are 'mcp' and 'api'."
         raise ValueError(msg)
     return tuple(expose)
 

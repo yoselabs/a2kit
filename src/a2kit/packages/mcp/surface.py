@@ -136,17 +136,18 @@ class McpSurface(DecoratorSurface[McpRegistration]):
     # --- `Surface` Protocol fulfilment ---------------------------------- #
 
     def bind(self, runtime: Any, descriptors: Any = None) -> Any:  # noqa: ARG002
-        """Build the FastMCP server for ``runtime``.
+        """Build the FastMCP server for ``runtime``, multiplex-ready.
 
-        Delegates to :func:`a2kit.packages.mcp.server.build_mcp_server`,
-        which retains the full kwarg surface (``code_mode``, ``compact``,
-        ``own_app_lifecycle``, ``**fastmcp_kwargs``). ``descriptors`` is
-        accepted for Protocol uniformity; the underlying builder walks
-        ``runtime.tools()`` itself.
+        Delegates to :func:`a2kit.packages.mcp.server.build_mcp_server`
+        with ``own_app_lifecycle=False`` — `bind` is the Surface entry
+        point used by `build_parent_app`, which owns the single
+        ``async with runtime:`` for the whole process. Callers needing
+        the stdio path (sole owner of the lifecycle) call
+        ``build_mcp_server`` directly.
         """
         from a2kit.packages.mcp.server import build_mcp_server
 
-        return build_mcp_server(runtime)
+        return build_mcp_server(runtime, own_app_lifecycle=False)
 
     def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:  # noqa: ARG002
         """No-op hook: FastMCP DI bridge is installed inside ``build_mcp_server``.

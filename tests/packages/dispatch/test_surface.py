@@ -58,7 +58,7 @@ class TestSurfaceRegistry:
             reserved_types: frozenset[type] = frozenset()
             substrate_dep_markers: frozenset[type] = frozenset()
 
-            def bind(self, runtime: Any, descriptors: Any) -> Any:
+            def bind(self, runtime: Any, descriptors: Any = None) -> Any:
                 return None
 
             def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:
@@ -81,7 +81,7 @@ class TestSurfaceRegistry:
             reserved_types: frozenset[type] = frozenset()
             substrate_dep_markers: frozenset[type] = frozenset()
 
-            def bind(self, runtime: Any, descriptors: Any) -> Any:
+            def bind(self, runtime: Any, descriptors: Any = None) -> Any:
                 return None
 
             def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 from a2kit._lifecycle_helpers import (
     resolve_singleton_args,
@@ -466,8 +466,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
         # ToolDescriptor (mcp_surface holds them separately).
         meta_verb = meta.verb if meta is not None else "read"
         verb: Literal["read", "list", "write"] = meta_verb if meta_verb in ("read", "list", "write") else "read"  # type: ignore[assignment]
-        expose_raw = tuple(meta.extras.expose) if meta is not None else ("mcp", "api")
-        expose: tuple[Literal["mcp", "api"], ...] = cast("tuple[Literal['mcp', 'api'], ...]", expose_raw)
+        expose: tuple[str, ...] = tuple(meta.extras.expose) if meta is not None else ("mcp", "api")
         authorize = meta.extras.authorize if meta is not None else None
         ctx_param_name = meta.context_param_name if meta is not None else None
         timeout = meta.extras.timeout_seconds if meta is not None else None

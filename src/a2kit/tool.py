@@ -48,7 +48,7 @@ class ToolDescriptor:
     format_hint: Literal["tsv", "json", "page-tsv"]
     encoding_plan: EncodingPlan
     verb: Literal["read", "list", "write"] = "read"
-    expose: tuple[Literal["mcp", "api"], ...] = ("mcp", "api")
+    expose: tuple[str, ...] = ("mcp", "api")
     authorize: Callable[..., Any] | None = None
     # Projected from A2KitMeta at materialization (extend-descriptor-fields).
     # Container-dependent fields default to None and are finalised by

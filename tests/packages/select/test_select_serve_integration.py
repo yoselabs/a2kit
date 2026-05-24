@@ -53,5 +53,5 @@ def test_filter_to_empty_raises_value_error() -> None:
 
     runtime = build(_make_app(), select=["verb=write"])
     assert runtime.tools() == []
-    with pytest.raises(ValueError, match="no surfaces have registrations"):
+    with pytest.raises(ValueError, match="no registered surface has registrations"):
         build_parent_app(runtime)

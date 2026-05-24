@@ -20,7 +20,10 @@ import pytest
 from fastapi import BackgroundTasks
 from starlette.requests import Request
 
+import a2kit.packages.http  # noqa: F401  -- registers ApiSurface
+import a2kit.packages.mcp  # noqa: F401  -- registers McpSurface
 from a2kit.packages.di.container import Container
+from a2kit.packages.dispatch import SURFACE_REGISTRY
 from a2kit.packages.dispatch.substrate import (
     SplitSignature,
     SubstrateSignatureError,
@@ -31,6 +34,14 @@ from a2kit.packages.dispatch.substrate import (
     fastmcp_reserved,
     split_signature,
 )
+
+
+def _api():
+    return SURFACE_REGISTRY.get("api")
+
+
+def _mcp():
+    return SURFACE_REGISTRY.get("mcp")
 
 
 class _Database:
@@ -56,8 +67,8 @@ def test_wire_and_container_split_on_fastapi() -> None:
     async def fn(*, id: str, db: _Database) -> str:  # noqa: ARG001
         return id
 
-    split = split_signature(fn, "fastapi", _container_with_db())
-    assert split.substrate == "fastapi"
+    split = split_signature(fn, _api(), _container_with_db())
+    assert split.surface == "api"
     assert set(split.wire) == {"id"}
     assert set(split.container) == {"db"}
     assert set(split.reserved) == set()
@@ -67,7 +78,7 @@ def test_wire_and_container_split_on_fastmcp() -> None:
     async def fn(*, id: str, db: _Database) -> str:  # noqa: ARG001
         return id
 
-    split = split_signature(fn, "fastmcp", _container_with_db())
+    split = split_signature(fn, _mcp(), _container_with_db())
     assert set(split.wire) == {"id"}
     assert set(split.container) == {"db"}
     assert set(split.reserved) == set()
@@ -79,7 +90,7 @@ def test_body_without_provider_is_wire() -> None:
     async def fn(*, body: _Body) -> str:  # noqa: ARG001
         return "ok"
 
-    split = split_signature(fn, "fastapi", Container())
+    split = split_signature(fn, _api(), Container())
     assert set(split.wire) == {"body"}
     assert set(split.container) == set()
 
@@ -93,7 +104,7 @@ def test_annotated_metadata_is_stripped() -> None:
     async def fn(*, db: Annotated[_Database, "marker"], id: str) -> str:  # noqa: ARG001
         return id
 
-    split = split_signature(fn, "fastmcp", _container_with_db())
+    split = split_signature(fn, _mcp(), _container_with_db())
     assert set(split.container) == {"db"}
     assert set(split.wire) == {"id"}
 
@@ -102,7 +113,7 @@ def test_optional_type_unwraps_to_inner() -> None:
     async def fn(*, db: _Database | None = None, id: str = "x") -> str:  # noqa: ARG001, UP007
         return id
 
-    split = split_signature(fn, "fastmcp", _container_with_db())
+    split = split_signature(fn, _mcp(), _container_with_db())
     assert set(split.container) == {"db"}
     assert set(split.wire) == {"id"}
 
@@ -111,7 +122,7 @@ def test_pep604_union_with_none_unwraps() -> None:
     async def fn(*, db: _Database | None = None, id: str = "x") -> str:  # noqa: ARG001
         return id
 
-    split = split_signature(fn, "fastmcp", _container_with_db())
+    split = split_signature(fn, _mcp(), _container_with_db())
     assert set(split.container) == {"db"}
     assert set(split.wire) == {"id"}
 
@@ -120,7 +131,7 @@ def test_typing_union_with_none_unwraps() -> None:
     async def fn(*, db: Union[_Database, None] = None, id: str = "x") -> str:  # noqa: ARG001, UP007
         return id
 
-    split = split_signature(fn, "fastmcp", _container_with_db())
+    split = split_signature(fn, _mcp(), _container_with_db())
     assert set(split.container) == {"db"}
     assert set(split.wire) == {"id"}
 
@@ -131,7 +142,7 @@ def test_multi_arm_union_without_none_stays_wire() -> None:
     async def fn(*, value: str | int) -> str:  # noqa: ARG001
         return "ok"
 
-    split = split_signature(fn, "fastapi", Container())
+    split = split_signature(fn, _api(), Container())
     assert set(split.wire) == {"value"}
     assert set(split.container) == set()
 
@@ -147,7 +158,7 @@ def test_fastapi_request_is_reserved() -> None:
     async def fn(*, request: Request, id: str, db: _Database) -> str:  # noqa: ARG001
         return id
 
-    split = split_signature(fn, "fastapi", _container_with_db())
+    split = split_signature(fn, _api(), _container_with_db())
     assert set(split.reserved) == {"request"}
     assert set(split.wire) == {"id"}
     assert set(split.container) == {"db"}
@@ -159,7 +170,7 @@ def test_fastapi_background_tasks_is_reserved() -> None:
     async def fn(*, tasks: BackgroundTasks, id: str) -> str:  # noqa: ARG001
         return id
 
-    split = split_signature(fn, "fastapi", Container())
+    split = split_signature(fn, _api(), Container())
     assert set(split.reserved) == {"tasks"}
     assert set(split.wire) == {"id"}
 
@@ -168,7 +179,7 @@ def test_fastmcp_context_is_reserved() -> None:
     async def fn(*, ctx: fastmcp.Context, id: str, db: _Database) -> str:  # noqa: ARG001
         return id
 
-    split = split_signature(fn, "fastmcp", _container_with_db())
+    split = split_signature(fn, _mcp(), _container_with_db())
     assert set(split.reserved) == {"ctx"}
     assert set(split.wire) == {"id"}
     assert set(split.container) == {"db"}
@@ -186,11 +197,11 @@ def test_context_on_fastapi_raises() -> None:
         return id
 
     with pytest.raises(SubstrateSignatureError) as ei:
-        split_signature(fn, "fastapi", Container())
+        split_signature(fn, _api(), Container())
     err = ei.value
     assert err.param_name == "ctx"
-    assert err.wrong_substrate == "fastapi"
-    assert err.right_substrate == "fastmcp"
+    assert err.wrong_surface == "api"
+    assert err.right_surface == "mcp"
     assert "Context" in str(err)
 
 
@@ -201,11 +212,11 @@ def test_request_on_fastmcp_raises() -> None:
         return id
 
     with pytest.raises(SubstrateSignatureError) as ei:
-        split_signature(fn, "fastmcp", Container())
+        split_signature(fn, _mcp(), Container())
     err = ei.value
     assert err.param_name == "request"
-    assert err.wrong_substrate == "fastmcp"
-    assert err.right_substrate == "fastapi"
+    assert err.wrong_surface == "mcp"
+    assert err.right_surface == "api"
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +235,7 @@ def test_reserved_beats_container_when_both_match() -> None:
     async def fn(*, request: Request) -> str:  # noqa: ARG001
         return "ok"
 
-    split = split_signature(fn, "fastapi", c)
+    split = split_signature(fn, _api(), c)
     assert set(split.reserved) == {"request"}
     assert set(split.container) == set()
 
@@ -272,11 +283,11 @@ def test_lazy_accessors_match_force_when_loaded() -> None:
 
 
 def test_splitsignature_is_frozen() -> None:
-    split = SplitSignature(substrate="fastapi")
+    split = SplitSignature(surface="api")
     # ``setattr`` defers to runtime so the frozen=True check fires here
     # rather than being caught statically by ``ty``.
     with pytest.raises(Exception):  # noqa: B017, PT011
-        setattr(split, "substrate", "fastmcp")  # noqa: B010
+        setattr(split, "surface", "mcp")  # noqa: B010
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +318,7 @@ async def test_wrapper_signature_lists_only_reserved_and_wire() -> None:
     c = Container()
     c.provide(_DBService)
     async with c:
-        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        wrapper = install_substrate_signature(fn, _mcp(), c)
 
     sig = _inspect.signature(wrapper)
     assert set(sig.parameters) == {"id"}
@@ -326,7 +337,7 @@ async def test_wrapper_resolves_di_and_passes_wire() -> None:
     db = _DBService()
     c.provide(_DBService, lambda: db)
     async with c:
-        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        wrapper = install_substrate_signature(fn, _mcp(), c)
         result = await wrapper(id="x")
     assert result == "got:x"
     assert db.calls == ["x"]
@@ -342,7 +353,7 @@ async def test_wrapper_merges_reserved_kwargs() -> None:
     c = Container()
     c.provide(_DBService)
     async with c:
-        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        wrapper = install_substrate_signature(fn, _mcp(), c)
         fake_ctx = type("FakeCtx", (), {})()
         result = await wrapper(id="abc", ctx=fake_ctx)
     assert result == "abc:FakeCtx"
@@ -359,7 +370,7 @@ async def test_wrapper_sets_scope_contextvar() -> None:
 
     c = Container()
     async with c:
-        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        wrapper = install_substrate_signature(fn, _mcp(), c)
         await wrapper(id="x")
         observed["after"] = _a2kit_scope.get()
 
@@ -379,7 +390,7 @@ async def test_wrapper_resets_scope_on_exception() -> None:
 
     c = Container()
     async with c:
-        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        wrapper = install_substrate_signature(fn, _mcp(), c)
         with pytest.raises(_Boom):
             await wrapper(id="x")
         assert _a2kit_scope.get() is None
@@ -394,7 +405,7 @@ async def test_wrapper_works_with_sync_fn() -> None:
 
     c = Container()
     async with c:
-        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        wrapper = install_substrate_signature(fn, _mcp(), c)
         result = await wrapper(id="y")
     assert result == "sync:y"
 
@@ -409,7 +420,7 @@ async def test_wrapper_signature_includes_reserved() -> None:
     c = Container()
     c.provide(_DBService)
     async with c:
-        wrapper = install_substrate_signature(fn, "fastmcp", c)
+        wrapper = install_substrate_signature(fn, _mcp(), c)
 
     sig = _inspect.signature(wrapper)
     assert set(sig.parameters) == {"ctx", "id"}
