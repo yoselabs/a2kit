@@ -4,6 +4,12 @@ Bound to an ``App`` via the ``App.mcp`` lazy property. Records the three
 FastMCP-native feature kinds — ``tool``, ``prompt``, ``resource`` — that
 have no equivalent on the FastAPI substrate.
 
+Satisfies the ``Surface`` Protocol from ``packages/dispatch/surface``:
+the dispatch-layer signature splitter discovers reserved types and
+substrate-dep markers via the Surface's ClassVars rather than a
+hardcoded substrate-string discriminator. Lookup of ``Context`` is
+lazy — see ``reserved_types`` property.
+
 At ``build_mcp_server`` time the recorded registrations are installed on
 the FastMCP server alongside projection tools, each wrapped through
 ``install_substrate_signature(fn, "fastmcp", container)`` for a2kit DI.
@@ -15,8 +21,11 @@ built, it is assigned here so authors can call
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+import sys
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+from a2kit.packages.dispatch import DecoratorSurface
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,8 +53,21 @@ class McpRegistration:
     authorize: Callable[..., Any] | None = None
 
 
-@dataclass
-class McpSurface:
+def _resolve_mcp_reserved() -> frozenset[type]:
+    """Return the live reserved-types frozenset for the FastMCP surface.
+
+    Mirrors ``packages.dispatch.substrate._FASTMCP_RESERVED_SPECS`` so
+    the two sources stay in lockstep until ``remove-substrate-literal``
+    collapses the dispatch-side copy into the Surface attribute.
+    """
+    mod = sys.modules.get("fastmcp")
+    if mod is None:
+        return frozenset()
+    cls = getattr(mod, "Context", None)
+    return frozenset({cls}) if isinstance(cls, type) else frozenset()
+
+
+class McpSurface(DecoratorSurface[McpRegistration]):
     """The ``@app.mcp.tool``/``.prompt``/``.resource`` decorator family.
 
     Each decorator method returns a ``(**kwargs)`` decorator: stacking
@@ -57,8 +79,27 @@ class McpSurface:
     exposure; ``@app.mcp.*`` is single-surface by construction.
     """
 
-    registrations: list[McpRegistration] = field(default_factory=list)
-    fastmcp_server: FastMCP | None = None
+    name: ClassVar[str] = "mcp"
+    # `substrate_dep_markers` is empty for FastMCP: there is no analog
+    # to FastAPI's `Depends`/`Security` marker types on the MCP side.
+    substrate_dep_markers: ClassVar[frozenset[type]] = frozenset()
+
+    # `fastmcp_server` is set by `build_mcp_server` post-construction;
+    # left as an instance attribute (not a ClassVar) so each App's
+    # surface carries its own built server.
+    fastmcp_server: FastMCP | None
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fastmcp_server = None
+
+    # `reserved_types` is a class-level descriptor that resolves to a
+    # frozenset[type] on access. Declared as a property so the Protocol
+    # contract is met at runtime without forcing a `fastmcp` import on
+    # module load.
+    @property
+    def reserved_types(self) -> frozenset[type]:  # type: ignore[override]
+        return _resolve_mcp_reserved()
 
     def _decorator(self, kind: McpFeatureKind, **fastmcp_kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         if "expose" in fastmcp_kwargs:
@@ -71,7 +112,7 @@ class McpSurface:
         authorize = fastmcp_kwargs.pop("authorize", None)
 
         def _wrap(fn: Callable[..., Any]) -> Callable[..., Any]:
-            self.registrations.append(
+            self._record(
                 McpRegistration(
                     kind=kind,
                     fn=fn,
@@ -91,6 +132,31 @@ class McpSurface:
 
     def resource(self, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self._decorator("resource", **kwargs)
+
+    # --- `Surface` Protocol fulfilment ---------------------------------- #
+
+    def bind(self, runtime: Any, descriptors: Any = None) -> Any:  # noqa: ARG002
+        """Build the FastMCP server for ``runtime``.
+
+        Delegates to :func:`a2kit.packages.mcp.server.build_mcp_server`,
+        which retains the full kwarg surface (``code_mode``, ``compact``,
+        ``own_app_lifecycle``, ``**fastmcp_kwargs``). ``descriptors`` is
+        accepted for Protocol uniformity; the underlying builder walks
+        ``runtime.tools()`` itself.
+        """
+        from a2kit.packages.mcp.server import build_mcp_server
+
+        return build_mcp_server(runtime)
+
+    def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:  # noqa: ARG002
+        """No-op hook: FastMCP DI bridge is installed inside ``build_mcp_server``.
+
+        ``PrincipalMiddleware`` is mounted by the builder so the
+        contextvar publication happens uniformly with non-Surface
+        callers (the stdio ``serve`` path). Kept as a method to satisfy
+        the Protocol contract and to give future bridges a hook.
+        """
+        return
 
 
 __all__ = ["McpFeatureKind", "McpRegistration", "McpSurface"]

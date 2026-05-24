@@ -39,12 +39,20 @@ from a2kit.packages.dispatch.substrate import (
     install_substrate_signature,
     split_signature,
 )
+from a2kit.packages.dispatch.surface import (
+    SURFACE_REGISTRY,
+    DecoratorSurface,
+    Surface,
+    SurfaceRegistry,
+)
 
 __all__ = [
     "DISPATCH_PIPELINE",
+    "SURFACE_REGISTRY",
     "SYNTHESIZED_CTX_PARAM_NAME",
     "AuthorizeGateStage",
     "CapturedError",
+    "DecoratorSurface",
     "DispatchHookStage",
     "DispatchStage",
     "EnricherStage",
@@ -54,6 +62,8 @@ __all__ = [
     "SplitSignature",
     "Substrate",
     "SubstrateSignatureError",
+    "Surface",
+    "SurfaceRegistry",
     "TimeoutStage",
     "ToolBuildSpec",
     "_run_authorize_gate",

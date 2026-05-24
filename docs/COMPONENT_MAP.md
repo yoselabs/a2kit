@@ -27,7 +27,7 @@ the lint's own view of the graph.
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
 | `runtime` | 3 | 3 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
-| `dispatch` | 4 | 5 | 3 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
+| `dispatch` | 4 | 6 | 3 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
 | `cli` | 5 | 6 | 0 | 7 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `http` | 5 | 3 | 0 | 5 | `context`, `di`, `dispatch`, `health`, `runtime` |

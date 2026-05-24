@@ -7,6 +7,14 @@ Each decorator method (``get``/``post``/``put``/``delete``/``patch``/
 the recorded routes are installed on the FastAPI sub-app, each wrapped
 by ``install_substrate_signature`` for a2kit DI.
 
+Satisfies the ``Surface`` Protocol from ``packages/dispatch/surface``:
+the dispatch-layer signature splitter discovers FastAPI-reserved types
+(``Request``/``Response``/``BackgroundTasks``/``WebSocket``) and
+substrate-dep markers (``Depends``/``Security``) via the Surface's
+ClassVars rather than a hardcoded substrate-string discriminator.
+Lookups stay lazy — see ``reserved_types``/``substrate_dep_markers``
+properties.
+
 The ``fastapi_app`` lazy property exposes the underlying FastAPI app
 once it has been built, so authors can call ``add_middleware``,
 ``include_router``, etc. — escape hatch, not a normal authoring path.
@@ -14,8 +22,11 @@ once it has been built, so authors can call ``add_middleware``,
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+import sys
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+from a2kit.packages.dispatch import DecoratorSurface
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,8 +55,49 @@ class ApiRoute:
     authorize: Callable[..., Any] | None = None
 
 
-@dataclass
-class ApiSurface:
+def _resolve_api_reserved() -> frozenset[type]:
+    """Live frozenset of FastAPI-reserved types, lazy-resolved by module.
+
+    Mirrors ``packages.dispatch.substrate._FASTAPI_RESERVED_SPECS``. Only
+    contributes types from modules already in ``sys.modules`` — if a
+    substrate dependency is not yet imported, none of its types can
+    appear in any annotation either, so omission is correct and free.
+    """
+    specs = (
+        ("starlette.requests", "Request"),
+        ("starlette.responses", "Response"),
+        ("fastapi", "BackgroundTasks"),
+        ("starlette.websockets", "WebSocket"),
+    )
+    out: set[type] = set()
+    for mod_path, attr in specs:
+        mod = sys.modules.get(mod_path)
+        if mod is None:
+            continue
+        cls = getattr(mod, attr, None)
+        if isinstance(cls, type):
+            out.add(cls)
+    return frozenset(out)
+
+
+def _resolve_api_substrate_dep_markers() -> frozenset[type]:
+    """Live frozenset of FastAPI substrate-dep marker classes.
+
+    Mirrors ``packages.dispatch.substrate``'s marker resolution. Lazy
+    by ``sys.modules`` lookup; empty until fastapi is imported.
+    """
+    mod = sys.modules.get("fastapi.params")
+    if mod is None:
+        return frozenset()
+    out: set[type] = set()
+    for attr in ("Depends", "Security"):
+        cls = getattr(mod, attr, None)
+        if isinstance(cls, type):
+            out.add(cls)
+    return frozenset(out)
+
+
+class ApiSurface(DecoratorSurface[ApiRoute]):
     """The ``@app.api.<method>`` decorator family bound to one ``App``.
 
     Decorator methods are *closures* over the surface: each one returns
@@ -59,8 +111,31 @@ class ApiSurface:
     finalization (rare; documented escape hatch).
     """
 
-    routes: list[ApiRoute] = field(default_factory=list)
-    fastapi_app: FastAPI | None = None
+    name: ClassVar[str] = "api"
+
+    fastapi_app: FastAPI | None
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fastapi_app = None
+
+    @property
+    def reserved_types(self) -> frozenset[type]:  # type: ignore[override]
+        return _resolve_api_reserved()
+
+    @property
+    def substrate_dep_markers(self) -> frozenset[type]:  # type: ignore[override]
+        return _resolve_api_substrate_dep_markers()
+
+    @property
+    def routes(self) -> tuple[ApiRoute, ...]:
+        """Backwards-compatible alias for the inherited ``registrations`` view.
+
+        Existing callers (e.g. ``build_http_app``) read ``api_surface.routes``
+        as the canonical name on the HTTP side. The accumulator itself
+        lives in ``DecoratorSurface[R]._registrations``.
+        """
+        return self.registrations
 
     # --- decorator methods --------------------------------------------- #
 
@@ -82,7 +157,7 @@ class ApiSurface:
         authorize = fastapi_kwargs.pop("authorize", None)
 
         def _wrap(fn: Callable[..., Any]) -> Callable[..., Any]:
-            self.routes.append(
+            self._record(
                 ApiRoute(
                     method=method,
                     path=path,
@@ -115,6 +190,31 @@ class ApiSurface:
 
     def head(self, path: str, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self._decorator("HEAD", path, **kwargs)
+
+    # --- `Surface` Protocol fulfilment ---------------------------------- #
+
+    def bind(self, runtime: Any, descriptors: Any = None) -> Any:  # noqa: ARG002
+        """Build the FastAPI sub-app for ``runtime``.
+
+        Delegates to :func:`a2kit.packages.http.build.build_http_app`,
+        passing ``self`` as the ``api_surface`` so author-written routes
+        register alongside projection tools. ``descriptors`` is accepted
+        for Protocol uniformity; the underlying builder walks
+        ``runtime.tools()`` itself.
+        """
+        from a2kit.packages.http.build import build_http_app
+
+        return build_http_app(runtime, api_surface=self)
+
+    def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:  # noqa: ARG002
+        """No-op hook: FastAPI DI bridge is installed inside ``build_http_app``.
+
+        ``_wire_container_depends_overrides`` mounts the bridge so the
+        wiring happens uniformly for both Surface-driven and direct
+        ``build_http_app`` callers. Kept as a method to satisfy the
+        Protocol contract and to give future bridges a hook.
+        """
+        return
 
 
 __all__ = ["ApiRoute", "ApiSurface", "HttpMethod"]
