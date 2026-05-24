@@ -241,3 +241,13 @@ Detected by the `test_fastapi_reserved_baseline` and
 The "`app.dependency_overrides[T] = fake` does NOT work for a2kit-resolved types" clause above is SUPERSEDED by the [[bridge-container-fastapi-depends]] change. `Container.expose_as_fastapi_depends(T)` now publishes a FastAPI-compatible resolver for any container-known type; `build_http_app` registers it in `fastapi_app.dependency_overrides` per type used by any descriptor. A per-request middleware opens the a2kit child container and publishes it on the `_a2kit_request_scope` contextvar before FastAPI dependency resolution runs.
 
 The canonical test seam for swapping a2kit-DI'd deps in FastAPI handler tests remains `container.override(T, fake)` (ADR 0006). `app.dependency_overrides[T] = fake` now ALSO works for container-known types — but the canonical seam is preferred because it composes cleanly with `container.snapshot()`-based test isolation.
+
+## Supersedence (partial): Surface Protocol landed (2026-05-25)
+
+The "`Substrate = Literal["fastapi", "fastmcp"]` discriminator" architecture this ADR records is SUPERSEDED in part by [[add-surface-protocol-additive]] + [[remove-substrate-literal]]. Surface identity now flows through `Surface` objects from `a2kit.packages.dispatch.surface`; `split_signature` / `install_substrate_signature` take a `Surface` and consume its `reserved_types` / `substrate_dep_markers` attributes directly. `Substrate` no longer exists; access raises with a hint pointing to `Surface`. `ToolDescriptor.expose` widened from `tuple[Literal["mcp","api"], ...]` to `tuple[str, ...]`. `build_parent_app` walks `SURFACE_REGISTRY` instead of hardcoded `_has_*_registrations` helpers.
+
+## Standing: "Two FastMCP code paths coexist by design" (2026-05-25)
+
+The Option-B clause in §Consequences (above) stands. [[unify-signature-installers]] was scoped, attempted, and dropped as SUPERSEDED-by-architecture: the two installers serve different layers — `install_mcp_signature` relabels `__signature__` on a prefolded dispatch pipeline, `install_substrate_signature` wraps a fn body from scratch. Naively replacing one with the other erases the folded pipeline from MCP (ldd ambient, format routing, error capture) — a regression, not a refactor.
+
+The honest unification path requires first folding the transport-neutral dispatch pipeline on the HTTP path (gaining ldd / format-routing / error-capture on FastAPI — actually desirable). Then both paths become "fold pipeline + relabel signature," which is a real consolidation. That work is gated as a separate future change; the §2-no-redundancy debt note here remains accurate but its discharge is deferred until HTTP folds the pipeline.
