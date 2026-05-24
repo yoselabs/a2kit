@@ -66,6 +66,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     _install_request_scope_middleware(app, container)
     _wire_container_depends_overrides(app, runtime, container)
     _install_authorization_denied_handler(app)
+    _install_auth_middlewares(app, runtime)
 
     # Default liveness — matches the existing rest.py stub's contract.
     # Liveness only; the `_meta.health` MCP tool covers degraded-state
@@ -104,6 +105,47 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
         api_surface.fastapi_app = app
 
     return app
+
+
+def _install_auth_middlewares(app: FastAPI, runtime: AppRuntime) -> None:
+    """Mount authentication middlewares from ``runtime.auth_registry``.
+
+    No-op when the registry is empty / ``None``: an App with no
+    ``App.auth(...)`` calls SHALL produce a middleware-free sub-app
+    (per ``http-surface`` capability). Middlewares mount in
+    registration order; the first to set ``_a2kit_request_principal``
+    short-circuits subsequent authenticators.
+
+    Only ``APIKeyAuth`` is wired today; ``JwtAuth`` is queued as a
+    follow-up in the ``add-auth`` change (heavy dep footprint:
+    JWKS fetcher + ``python-jose``).
+    """
+    registry = getattr(runtime, "auth_registry", None)
+    if registry is None or len(registry) == 0:
+        return
+    # Lazy import: the auth package is L5 like ``http``; not pulled
+    # unless the registry has content (the registry's existence is the
+    # signal). Same-layer import, no `A2K-LAYER` concern.
+    from a2kit.packages.auth import APIKeyAuth, build_api_key_middleware
+
+    for spec in registry.for_target("api"):
+        if isinstance(spec, APIKeyAuth):
+            app.add_middleware(_BareAsgiMiddleware, factory=build_api_key_middleware(spec))
+
+
+class _BareAsgiMiddleware:
+    """Adapter wrapping a bare ASGI3 middleware as a Starlette ``Middleware``.
+
+    Starlette's ``add_middleware(cls, **kw)`` expects ``cls(app, **kw)``
+    to return an ASGI3 callable. Our API-key middleware factory already
+    has the form ``factory(app) -> ASGI3`` — this adapter just calls it.
+    """
+
+    def __init__(self, app: _Any, *, factory: _Any) -> None:
+        self._app = factory(app)
+
+    async def __call__(self, scope: dict[str, _Any], receive: _Any, send: _Any) -> None:
+        await self._app(scope, receive, send)
 
 
 def _install_authorization_denied_handler(app: FastAPI) -> None:

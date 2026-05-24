@@ -16,7 +16,7 @@ the lint's own view of the graph.
 
 | Unit | Layer | Files | Fan-in | Fan-out | Depends on |
 |------|-------|-------|--------|---------|------------|
-| `context` | 0 | 3 | 6 | 1 | `ldd` |
+| `context` | 0 | 3 | 7 | 1 | `ldd` |
 | `di` | 0 | 11 | 6 | 0 | — |
 | `formatter` | 0 | 9 | 6 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
@@ -28,9 +28,10 @@ the lint's own view of the graph.
 | `runtime` | 3 | 3 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 6 | 3 | 5 | `authoring`, `context`, `di`, `kernel`, `runtime` |
+| `auth` | 5 | 5 | 1 | 1 | `context` |
 | `cli` | 5 | 6 | 0 | 7 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
-| `http` | 5 | 3 | 0 | 5 | `context`, `di`, `dispatch`, `health`, `runtime` |
+| `http` | 5 | 3 | 0 | 6 | `auth`, `context`, `di`, `dispatch`, `health`, `runtime` |
 | `mcp` | 5 | 9 | 2 | 8 | `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select` |
 | `otel` | 5 | 3 | 0 | 0 | — |
 | `testing` | 6 | 7 | 0 | 5 | `authoring`, `context`, `formatter`, `mcp`, `runtime` |
@@ -66,9 +67,10 @@ the lint's own view of the graph.
 
 ### Layer 5
 
+- `auth` → `context`
 - `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime`
 - `codemode` → `formatter`
-- `http` → `context`, `di`, `dispatch`, `health`, `runtime`
+- `http` → `auth`, `context`, `di`, `dispatch`, `health`, `runtime`
 - `mcp` → `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select`
 - `otel` → no cross-unit dependencies
 

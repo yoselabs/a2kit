@@ -126,6 +126,11 @@ class App:
         # ``fastapi`` nor ``fastmcp`` is loaded by attribute access alone.
         self._api: Any = None
         self._mcp: Any = None
+        # Auth registry — populated by `App.auth(spec)` calls. Stays
+        # ``None`` (no allocation, no `packages.auth` import) until an
+        # author registers an auth spec; cold-start preserved for apps
+        # that don't configure auth.
+        self._auth_registry: Any = None
 
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
@@ -368,6 +373,36 @@ class App:
             McpSurface = importlib.import_module("a2kit.packages.mcp.surface").McpSurface  # noqa: N806
             self._mcp = McpSurface()
         return self._mcp
+
+    def auth(self, spec: Any) -> App:
+        """Register an :class:`AuthSpec` for this App.
+
+        Multiple calls accumulate in registration order. Order matters
+        on HTTP (multiple auth middlewares run in registration order;
+        first to authenticate wins); on MCP only the first OAuth-
+        targeting spec is honoured (FastMCP takes a single ``auth=``).
+
+        Lazy: the first call constructs the :class:`AppAuthRegistry`
+        on demand so apps that never configure auth never load
+        ``a2kit.packages.auth``.
+        """
+        if self._auth_registry is None:
+            import importlib
+
+            AppAuthRegistry = importlib.import_module("a2kit.packages.auth.registry").AppAuthRegistry  # noqa: N806
+            self._auth_registry = AppAuthRegistry()
+        self._auth_registry.add(spec)
+        return self
+
+    @property
+    def auth_registry(self) -> Any:
+        """The :class:`AppAuthRegistry` for this App, or ``None`` if no auth was registered.
+
+        Substrate builders (``build_http_app`` / ``build_mcp_server``)
+        consult this through ``AppRuntime.auth_registry``; the ``None``
+        case preserves the no-auth cold-start path.
+        """
+        return self._auth_registry
 
     @property
     def ldd_reports(self) -> bool:

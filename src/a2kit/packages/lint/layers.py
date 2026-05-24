@@ -46,6 +46,7 @@ LAYER_MANIFEST: dict[str, int] = {
     "codemode": 5,
     "otel": 5,
     "http": 5,
+    "auth": 5,
     # L6 — the test surface, on top of everything.
     "testing": 6,
 }

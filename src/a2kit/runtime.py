@@ -63,6 +63,7 @@ class AppRuntime:
         health: HealthRegistry,
         api_surface: Any = None,
         mcp_surface: Any = None,
+        auth_registry: Any = None,
     ) -> None:
         self.name = name
         self.debug = debug
@@ -81,6 +82,10 @@ class AppRuntime:
         # ``App.mcp`` — no FastAPI / FastMCP-only registrations exist.
         self.api_surface = api_surface
         self.mcp_surface = mcp_surface
+        # Auth registrations from ``App.auth(spec)`` calls. ``None`` when
+        # the source App has no auth configured — substrate builders use
+        # this as the "skip middleware mount" signal (cold-start path).
+        self.auth_registry = auth_registry
         # Routers that entered via ``__aenter__`` during this runtime's
         # lifecycle. LIFO unwound on ``__aexit__``.
         self._entered_routers: dict[str, Router] = {}
@@ -285,6 +290,10 @@ def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRunti
         # returns a copy with the narrowed registrations.
         api_surface=api_surface,
         mcp_surface=mcp_surface,
+        # Auth registry — ``None`` when the source App never called
+        # ``App.auth(...)`` so substrate builders skip middleware mount
+        # entirely (cold-start invariant: no auth imports for no-auth apps).
+        auth_registry=app.auth_registry,
     )
 
     # Re-bind the synthetic `_meta` health router to the runtime so its
