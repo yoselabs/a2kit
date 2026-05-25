@@ -29,6 +29,22 @@ Bundled with this:
 - `operational-contracts` spec scenarios reworded from `App(debug=True)`
   to `app.config.debug == True` (behavior unchanged).
 
+### Added — CLI `--json` flag (end-to-end machine channel)
+
+Every per-tool CLI subcommand gains `--json`. Success emits compact
+`model_dump()` JSON to stdout; error emits the typed envelope to stdout
+in the same shape as MCP `structuredContent.error` and the HTTP body.
+Stderr stays silent in both. Exit code is kind-mapped per sysexits.h.
+Mutually exclusive with `--format` — passing both raises `BadParameter`.
+
+Closes the prose-only-on-error asymmetry that made CLI the odd transport.
+Now `a2kit <subcmd> <tool> --json | jq` works end-to-end.
+
+Implementation: `_cli_json_mode` ContextVar set per-invocation;
+`CliErrorRenderStage` reads it on the error path; `invoke_tool_sync_raw`
+is the success-path sibling that bypasses the formatter pipeline. Carried
+over from a2effect-foundation task 16.3 (deferred at the time).
+
 ### Added — multiplexed `serve --transport=http`
 
 `serve --transport=http` is now a multiplexed server: one process, one

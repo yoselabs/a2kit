@@ -232,11 +232,22 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
     sig_params.append(inspect.Parameter("schema", kind=inspect.Parameter.KEYWORD_ONLY, default=False, annotation=schema_ann))
     annotations["schema"] = schema_ann
 
-    def callback(**kwargs: Any) -> None:
+    json_ann = Annotated[bool, typer.Option("--json", help="End-to-end JSON: success+error on stdout. Mutually exclusive with --format.")]
+    sig_params.append(inspect.Parameter("json", kind=inspect.Parameter.KEYWORD_ONLY, default=False, annotation=json_ann))
+    annotations["json"] = json_ann
+
+    def callback(**kwargs: Any) -> None:  # noqa: PLR0912 -- per-tool dispatch handles many built-in flags (format/schema/json/connection)
         import click as _click
 
         fmt_enum: _CliFormat = kwargs.pop("format", _CliFormat.auto)
         fmt: str = descriptor_hint if fmt_enum == _CliFormat.auto else fmt_enum.value
+        json_mode: bool = bool(kwargs.pop("json", False))
+        if json_mode and fmt_enum != _CliFormat.auto:
+            raise typer.BadParameter(
+                "--json is mutually exclusive with --format. "
+                "Use --json for end-to-end JSON (success + error on stdout) "
+                "or --format=<...> for formatter-pipeline output."
+            )
         if kwargs.pop("schema", False):
             from a2kit.schema import compute_schema
 
@@ -294,7 +305,12 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
             sinks=app.ldd.sinks,
         )
         try:
-            data = invoke_tool_sync(fn, call_kwargs, fmt=fmt, spec=spec)
+            if json_mode:
+                from a2kit.packages.cli.runtime import invoke_tool_sync_json
+
+                data = invoke_tool_sync_json(fn, call_kwargs, spec=spec)
+            else:
+                data = invoke_tool_sync(fn, call_kwargs, fmt=fmt, spec=spec)
         except (_click.ClickException, typer.Exit):
             # ClickException renders itself; typer.Exit is raised by the
             # CLI error-render stage after it has already echoed.
