@@ -106,14 +106,30 @@ class App:
 ### Provider-chain configuration (ADR 0022)
 
 Consumer-owned concerns (debug verbosity, wire-format compatibility,
-transport bind addresses, secrets, telemetry endpoints) escape source
-code via `A2kitConfig` (pydantic-settings) and the `A2KIT_*` env var
-convention. Precedence is **inverted** from the pydantic-settings
-default: env > .env > kwargs > defaults. Developer kwargs are default
-**suggestions**, never **locks**. No `freeze` / `lock` / `bypass_env`
-surface exists. When you build on a2kit, apply the same pattern to
-your own consumer-owned concerns — your `Settings` class is the
-recursive instance of a2kit's reference implementation.
+transport bind addresses, secrets, telemetry endpoints, LDD level
+threshold) escape source code via `A2kitConfig` (pydantic-settings)
+and the `A2KIT_*` env var convention. Precedence is **inverted** from
+the pydantic-settings default: env > .env > kwargs > defaults.
+Developer kwargs are default **suggestions**, never **locks**. No
+`freeze` / `lock` / `bypass_env` surface exists. When you build on
+a2kit, apply the same pattern to your own consumer-owned concerns —
+your `Settings` class is the recursive instance of a2kit's reference
+implementation.
+
+Worked examples currently in `A2kitConfig`:
+
+- `debug` → `A2KIT_DEBUG=true` (tracebacks on stderr / in envelope).
+- `mcp.structured_output` → `A2KIT_MCP__STRUCTURED_OUTPUT=true`
+  (strict structured-content mode; saves tokens on hosts that
+  forward `structuredContent`).
+- `ldd.level` → `A2KIT_LDD__LEVEL=debug` (LDD threshold; default
+  `info` drops `debug()` calls).
+- `ldd.enabled` → `A2KIT_LDD__ENABLED=false` (hard kill-switch).
+
+When you add a new sub-config, the smell to watch for: if every
+emission ends up at the same level, the level isn't doing work —
+promote consistently-noisy ones up, demote consistently-quiet ones
+down. Levels exist to separate signals, not to be uniformly applied.
 
 ### `__getattr__` migration hints
 

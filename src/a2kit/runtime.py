@@ -51,6 +51,7 @@ class AppRuntime:
         *,
         name: str,
         debug: bool,
+        config: Any,
         routers: list[Router],
         descriptors: list[ToolDescriptor],
         cli_extras: list[Any],
@@ -67,6 +68,7 @@ class AppRuntime:
     ) -> None:
         self.name = name
         self.debug = debug
+        self.config = config
         self._routers = routers
         self._descriptors = descriptors
         self._cli_extras = cli_extras
@@ -273,6 +275,7 @@ def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRunti
     runtime = AppRuntime(
         name=app.name,
         debug=app.debug,
+        config=app.config,
         routers=routers,
         descriptors=descriptors,
         cli_extras=app.cli_extras(),

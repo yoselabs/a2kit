@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Breaking — LDD level threshold; default silences `debug()` calls
+
+Adds a level-threshold filter for LDD emissions, configurable via
+`A2kitConfig.ldd.level` (env: `A2KIT_LDD__LEVEL`). The default is
+`info`, which means existing `debug()` calls **no longer reach any
+sink, ctx.log, or stderr**. To restore prior behaviour set
+`A2KIT_LDD__LEVEL=debug` (or `trace` to also see internal dispatch
+traces).
+
+Other breaks bundled into this change:
+
+- The legacy `A2KIT_LDD=off` kill-switch env var is removed. It
+  collided with the new `A2KIT_LDD__*` namespace (pydantic-settings
+  parses `A2KIT_LDD` as JSON for the nested model). Replacement:
+  `A2KIT_LDD__ENABLED=false` (orthogonal to `level` — a hard off).
+- `event(name, **fields)` and `report(payload)` gain a keyword-only
+  `level` parameter (default `"info"`). Calling them positionally is
+  unaffected. Hand-rolled subclasses or wrappers that proxy these
+  signatures need to thread `level` through.
+- `a2kit.ldd.log()`'s `__level` literal widens to include `"trace"`
+  alongside the existing `debug | info | warning | error`. Callers
+  using `log("trace", ...)` now have a valid level below `debug`.
+
+Added:
+
+- `A2kitConfig.ldd.level: Literal["trace","debug","info","warning","error"]`
+  (default `info`). Env: `A2KIT_LDD__LEVEL`.
+- `A2kitConfig.ldd.enabled: bool` (default `True`). Env: `A2KIT_LDD__ENABLED`.
+- `a2kit.ldd.LDD_LEVEL_RANK` — numeric rank map (`trace=10`, `debug=20`,
+  `info=30`, `warning=40`, `error=50`) exposed for sink authors and tests.
+- `a2kit.ldd.LddLevel` — re-export of the level Literal alias.
+- README config table rows for `A2KIT_LDD__LEVEL` and `A2KIT_LDD__ENABLED`.
+- AGENTS.md provider-chain block lists LDD as a worked example, with the
+  "if every emission is the same level, the level isn't doing work" smell.
+
 ### Breaking — `App(debug=...)` kwarg removed (ADR 0022 worked example)
 
 Debug is a consumer-owned concern per ADR 0022 (provider-chain config

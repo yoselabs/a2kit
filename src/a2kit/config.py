@@ -31,6 +31,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from a2kit.packages.ldd import LddLevel  # noqa: TC001 -- pydantic needs the runtime type for Literal validation, not just typing.
+
 
 class McpConfig(BaseModel):
     """MCP-surface configuration (consumer-owned)."""
@@ -61,6 +63,31 @@ class CliConfig(BaseModel):
     """CLI-surface configuration (consumer-owned). Empty stub — knobs land per follow-up changes."""
 
 
+class LddConfig(BaseModel):
+    """LDD (logging / diagnostics) configuration (consumer-owned)."""
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Hard kill-switch for LDD emission (events + reports). "
+            "Env: A2KIT_LDD__ENABLED=false to suppress every emission regardless "
+            "of level. Orthogonal to `level`: enabled=False overrides any level. "
+            "Replaces the v0.x `A2KIT_LDD=off` legacy env (which collides with "
+            "the new `A2KIT_LDD__*` namespace)."
+        ),
+    )
+    level: LddLevel = Field(
+        default="info",
+        description=(
+            "LDD level threshold. Emissions below this rank are dropped before any "
+            "sink, ctx.log, or stderr write. "
+            "Set via env: A2KIT_LDD__LEVEL=debug. "
+            "Default 'info' silences `debug()` calls; flip to 'debug' or 'trace' "
+            "to observe them. See ADR 0022 for the consumer-beats-code rule."
+        ),
+    )
+
+
 class A2kitConfig(BaseSettings):
     """Typed configuration root for a2kit.
 
@@ -80,6 +107,7 @@ class A2kitConfig(BaseSettings):
     mcp: McpConfig = McpConfig()
     http: HttpConfig = HttpConfig()
     cli: CliConfig = CliConfig()
+    ldd: LddConfig = LddConfig()
 
     model_config = SettingsConfigDict(
         env_prefix="A2KIT_",
@@ -104,4 +132,4 @@ class A2kitConfig(BaseSettings):
         return env_settings, dotenv_settings, init_settings, file_secret_settings
 
 
-__all__ = ["A2kitConfig", "CliConfig", "HttpConfig", "McpConfig"]
+__all__ = ["A2kitConfig", "CliConfig", "HttpConfig", "LddConfig", "McpConfig"]

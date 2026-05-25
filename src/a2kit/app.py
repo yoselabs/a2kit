@@ -115,13 +115,13 @@ class App:
         # wire-side conversion only; DI runs after the hook inside
         # ``Container.dispatch`` on the hook's output.
         self._dispatch_hook: Callable[..., Any] = _default_dispatch_hook
-        # LDD kill-switch — env A2KIT_LDD=off disables both channels at
-        # startup; ``set_ldd(...)`` and CLI flags override per-invocation.
-        import os
-
-        env_off = os.environ.get("A2KIT_LDD", "").lower() == "off"
-        self._ldd_reports = not env_off
-        self._ldd_events = not env_off
+        # LDD kill-switch — consumer-owned via A2kitConfig.ldd.enabled
+        # (env A2KIT_LDD__ENABLED=false). ``set_ldd(...)`` and CLI flags
+        # override per-invocation. Replaces the v0.x bare A2KIT_LDD=off
+        # which collided with the new A2KIT_LDD__* namespace.
+        ldd_enabled = bool(self.config.ldd.enabled)
+        self._ldd_reports = ldd_enabled
+        self._ldd_events = ldd_enabled
         # Typed event registry. Lazy import keeps the cold-start path off
         # `a2kit.packages.ldd` for apps that never touch typed events.
         from a2kit.packages.ldd import _AppLdd

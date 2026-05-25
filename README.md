@@ -572,11 +572,13 @@ single underscores stay part of the field name.
 |---|---|---|---|
 | `A2KIT_DEBUG` | `config.debug` | `false` | Adds `traceback` to the wire error envelope and prints tracebacks on CLI stderr. |
 | `A2KIT_MCP__STRUCTURED_OUTPUT` | `config.mcp.structured_output` | `false` | When `true`, the success-path MCP wire emits `structuredContent` + a short content marker (no duplicate JSON). Saves ~50% tokens on hosts that forward structuredContent (Anthropic, ChatGPT, Codex, Copilot). Degrades on Cursor, Hermes, OpenClaw, Kiro, Vercel-AI-SDK consumers. |
+| `A2KIT_LDD__LEVEL` | `config.ldd.level` | `info` | LDD level threshold. Emissions below the rank are dropped before any sink, ctx.log, or stderr write. Values: `trace`, `debug`, `info`, `warning`, `error`. Default `info` silences `debug()` calls; set `debug` or `trace` for fuller traces. |
+| `A2KIT_LDD__ENABLED` | `config.ldd.enabled` | `true` | Hard kill-switch for LDD emission (events + reports). Orthogonal to `level` — `enabled=false` suppresses everything regardless of threshold. Replaces the v0.x `A2KIT_LDD=off` legacy env. |
 
 ### Where it lives
 
 - `a2kit.config.A2kitConfig` — pydantic-settings root with sub-models for
-  `mcp`, `http`, `cli`, plus top-level cross-cutting fields.
+  `mcp`, `http`, `cli`, `ldd`, plus top-level cross-cutting fields.
 - `App.config` — the resolved instance. Read it from anywhere.
 - `App.user_config` — opaque slot for the developer's own pydantic-settings
   instance. a2kit does not introspect; you apply the same env-beats-code

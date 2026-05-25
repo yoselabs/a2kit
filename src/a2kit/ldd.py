@@ -8,7 +8,9 @@ Implementation lives in ``a2kit.packages.ldd`` to keep the canonical layout unde
 from __future__ import annotations
 
 from a2kit.packages.ldd import (
+    LDD_LEVEL_RANK,
     EventRegistry,
+    LddLevel,
     debug,
     error,
     event,
@@ -24,7 +26,9 @@ from a2kit.packages.ldd import (
 # import them from `a2kit.packages.ldd` directly when implementing sinks.
 
 __all__ = [
+    "LDD_LEVEL_RANK",
     "EventRegistry",
+    "LddLevel",
     "debug",
     "error",
     "event",

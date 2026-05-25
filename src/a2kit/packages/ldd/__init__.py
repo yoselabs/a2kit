@@ -32,14 +32,17 @@ from a2kit.packages.ldd.emission import (
     report,
     warning,
 )
+from a2kit.packages.ldd.levels import LDD_LEVEL_RANK, LddLevel
 from a2kit.packages.ldd.sinks import LddEmission, LddSink
 from a2kit.packages.ldd.wire import TEXT_CAP, format_ldd_line
 
 __all__ = [
+    "LDD_LEVEL_RANK",
     "TEXT_CAP",
     "AmbientContextMissing",
     "EventRegistry",
     "LddEmission",
+    "LddLevel",
     "LddSink",
     "_AppLdd",
     "debug",

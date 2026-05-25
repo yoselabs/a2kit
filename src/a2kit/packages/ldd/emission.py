@@ -28,8 +28,15 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from a2kit.exceptions import ReportTypeMismatch, ReportTypeNotDeclared
 from a2kit.packages.ldd.ambient import _elapsed_ms_from, _is_fastmcp_context, _require_ambient_state
+from a2kit.packages.ldd.levels import LDD_LEVEL_RANK, LddLevel
 from a2kit.packages.ldd.sinks import LddEmission, LddSink, _dispatch_sinks
 from a2kit.packages.ldd.wire import _cap_text
+
+
+def _below_threshold(level: LddLevel, threshold: int) -> bool:
+    """Return True when ``level``'s rank is strictly below ``threshold``."""
+    return LDD_LEVEL_RANK[level] < threshold
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -66,7 +73,7 @@ def _typed_event_to_payload(instance: Any, extra: dict[str, Any]) -> tuple[str, 
     return name, payload_dict
 
 
-async def event(__name_or_payload: Any, /, **payload: Any) -> None:
+async def event(__name_or_payload: Any, /, *, level: LddLevel = "info", **payload: Any) -> None:
     """Emit a structured event on either transport. Reads ``ctx`` from the
     ambient ``_LDD_STATE`` set by the dispatcher.
 
@@ -91,11 +98,13 @@ async def event(__name_or_payload: Any, /, **payload: Any) -> None:
     CLI path → stderr line via ``format_ldd_line`` (kind ``event``).
 
     Honors the events kill-switch set via ``ldd_state_for_call``
-    (CLI flag ``--no-events``, env ``A2KIT_LDD=off``). Raises
+    (CLI flag ``--no-events``, env ``A2KIT_LDD__ENABLED=false``). Raises
     :exc:`AmbientContextMissing` if called outside an active dispatch.
     """
     state = _require_ambient_state("a2kit.ldd.event")
     if not state.events_enabled:
+        return
+    if _below_threshold(level, state.level_threshold):
         return
     ctx = state.ctx
     elapsed = _elapsed_ms_from(state)
@@ -138,7 +147,7 @@ async def event(__name_or_payload: Any, /, **payload: Any) -> None:
         )
 
 
-async def report(payload: Any, /) -> None:
+async def report(payload: Any, /, *, level: LddLevel = "info") -> None:
     """Emit a typed structured report on either transport. Reads ``ctx``
     from the ambient ``_LDD_STATE``.
 
@@ -153,6 +162,8 @@ async def report(payload: Any, /) -> None:
     if not isinstance(payload, state.report_type):
         raise ReportTypeMismatch(state.report_type, type(payload), state.tool_name)
     if not state.reports_enabled:
+        return
+    if _below_threshold(level, state.level_threshold):
         return
     ctx = state.ctx
     elapsed = _elapsed_ms_from(state)
@@ -186,11 +197,28 @@ async def report(payload: Any, /) -> None:
         )
 
 
-_LOG_LEVEL_LABEL: dict[str, str] = {"debug": "DEBUG", "info": "INFO", "warning": "WARN", "error": "ERROR"}
+_LOG_LEVEL_LABEL: dict[str, str] = {
+    "trace": "TRACE",
+    "debug": "DEBUG",
+    "info": "INFO",
+    "warning": "WARN",
+    "error": "ERROR",
+}
+
+#: MCP's wire-level vocabulary (debug/info/warning/error). The a2kit-internal
+#: ``"trace"`` level has no MCP counterpart, so it maps to ``"debug"`` on the
+#: wire — clients see debug; the framework still tracks it as trace internally.
+_MCP_LOG_LEVEL: dict[str, Literal["debug", "info", "warning", "error"]] = {
+    "trace": "debug",
+    "debug": "debug",
+    "info": "info",
+    "warning": "warning",
+    "error": "error",
+}
 
 
 async def log(
-    __level: Literal["debug", "info", "warning", "error"],
+    __level: LddLevel,
     __msg_or_instance: Any,
     /,
     **fields: Any,
@@ -213,11 +241,13 @@ async def log(
     CLI path → ``ctx._emit(LEVEL, msg, fields, elapsed_ms=...)`` (same
     backend that ``StderrToolContext.info/warning/error/debug`` use).
 
-    Shares the events kill-switch (``--no-events`` / ``A2KIT_LDD=off``).
+    Shares the events kill-switch (``--no-events`` / ``A2KIT_LDD__ENABLED=false``).
     Raises :exc:`AmbientContextMissing` if called outside an active dispatch.
     """
     state = _require_ambient_state("a2kit.ldd.log")
     if not state.events_enabled:
+        return
+    if _below_threshold(__level, state.level_threshold):
         return
     ctx = state.ctx
     elapsed = _elapsed_ms_from(state)
@@ -233,7 +263,7 @@ async def log(
         # fields stay un-prefixed (users sanitizing their own keys is on
         # them, not the framework). See `event` for the rationale.
         wire_extra = {**payload_dict, "a2kit_elapsed_ms": elapsed}
-        await ctx.log(level=__level, message=_cap_text(msg), extra=wire_extra)
+        await ctx.log(level=_MCP_LOG_LEVEL[__level], message=_cap_text(msg), extra=wire_extra)
     else:
         ctx._emit(_LOG_LEVEL_LABEL[__level], msg, payload_dict, elapsed_ms=elapsed)  # noqa: SLF001 -- LDD wire format owned here
 

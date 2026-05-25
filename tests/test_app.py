@@ -252,14 +252,15 @@ def test_set_ldd_none_keeps_existing() -> None:
 
 
 def test_env_var_off_disables_both(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("A2KIT_LDD", "off")
+    """A2KIT_LDD__ENABLED=false suppresses both channels at startup."""
+    monkeypatch.setenv("A2KIT_LDD__ENABLED", "false")
     app = a2kit.App("p")
     assert app.ldd_reports is False
     assert app.ldd_events is False
 
 
 def test_env_var_unset_default_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("A2KIT_LDD", raising=False)
+    monkeypatch.delenv("A2KIT_LDD__ENABLED", raising=False)
     app = a2kit.App("p")
     assert app.ldd_reports is True
     assert app.ldd_events is True

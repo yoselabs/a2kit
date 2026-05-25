@@ -261,6 +261,15 @@ class LddStateStage:
                 ctx_obj = kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
             if ctx_obj is None:
                 ctx_obj = StderrToolContext()
+            # Read the LDD level threshold off App config per-call; mutating
+            # `app.config.ldd.level` between calls is observed on the next
+            # dispatch. Sentinel 0 if the App somehow lacks a config — keeps
+            # tests that build half-stubs from breaking.
+            from a2kit.packages.ldd import LDD_LEVEL_RANK
+
+            cfg = getattr(spec.app, "config", None)
+            level: Any = getattr(getattr(cfg, "ldd", None), "level", None) if cfg is not None else None
+            threshold: int = LDD_LEVEL_RANK.get(level, 0)
             with ldd_state_for_call(
                 ctx=ctx_obj,
                 events_enabled=spec.events_enabled,
@@ -268,6 +277,7 @@ class LddStateStage:
                 report_type=report_type,
                 tool_name=tool_name,
                 sinks=spec.sinks,
+                level_threshold=threshold,
             ):
                 return await _call(fn, *args, **kwargs)
 

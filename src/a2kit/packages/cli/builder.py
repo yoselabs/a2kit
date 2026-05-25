@@ -555,8 +555,8 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
       - ``health`` (only when the runtime carries an enabled health registry)
 
     Top-level flags ``--no-reports`` / ``--no-events`` disable LDD channels
-    for the invocation; they override ``App.set_ldd(...)`` and the
-    ``A2KIT_LDD`` env var.
+    for the invocation; they override ``App.set_ldd(...)`` and
+    ``A2KIT_LDD__ENABLED``.
     """
     import typer
 

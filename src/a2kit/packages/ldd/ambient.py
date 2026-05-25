@@ -35,6 +35,12 @@ class _LddState:
     tool_name: str | None = None
     start_monotonic: float = field(default_factory=time.monotonic)
     sinks: tuple[LddSink, ...] = ()
+    #: Numeric rank threshold; emissions with rank < threshold are dropped at
+    #: the primitive. Default ``0`` is a sentinel meaning "no filtering" so
+    #: bare ``ldd_state_for_call(ctx=...)`` callers (tests, ad-hoc harnesses)
+    #: observe every emission. The dispatch site stamps the real value from
+    #: ``app.config.ldd.level`` per call.
+    level_threshold: int = 0
 
 
 _LDD_STATE: contextvars.ContextVar[_LddState | None] = contextvars.ContextVar("_a2kit_ldd_state", default=None)
@@ -69,6 +75,7 @@ def ldd_state_for_call(
     report_type: type | None = None,
     tool_name: str | None = None,
     sinks: tuple[LddSink, ...] = (),
+    level_threshold: int = 0,
 ) -> Iterator[None]:
     """Set the per-call LDD state (including the ambient ``ctx``) for the
     lifetime of the wrapped block.
@@ -92,6 +99,7 @@ def ldd_state_for_call(
             tool_name=tool_name,
             start_monotonic=time.monotonic(),
             sinks=sinks,
+            level_threshold=level_threshold,
         )
     )
     try:
