@@ -126,11 +126,11 @@
 
 ## 17. Layer / package discipline
 
-- [ ] 17.1 Add `a2effect` to the layer manifest (`packages/lint/layers.py`) at an appropriate layer (likely L0 or L1 — pure types, no a2kit deps)
-- [ ] 17.2 Verify no a2kit imports from `a2effect` (lint A2K-LAYER catches violations)
-- [ ] 17.3 Update component-map (`make component-map`) after package addition
-- [ ] 17.4 Add ImportSorted gate: `import a2kit` SHALL NOT load any stub-registry-targeted third-party libs (httpx/asyncpg/redis/sqlalchemy)
-- [ ] 17.5 Add ImportSorted gate: `import a2effect` SHALL NOT load pydantic at module top (lazy import inside functions that need it; ErrorEnvelope is the only mandatory pydantic touch and is acceptable)
+- [x] 17.1 Add `a2effect` to the layer manifest (`packages/lint/layers.py`) at an appropriate layer (likely L0 or L1 — pure types, no a2kit deps) (N/A: a2effect is a sibling workspace package, not under `a2kit.packages.*`; layer manifest only tracks a2kit internal units. Isolation enforced via the test below instead.)
+- [x] 17.2 Verify no a2kit imports from `a2effect` (lint A2K-LAYER catches violations) (covered by `test_a2effect_source_has_no_a2kit_imports`)
+- [x] 17.3 Update component-map (`make component-map`) after package addition
+- [x] 17.4 Add ImportSorted gate: `import a2kit` SHALL NOT load any stub-registry-targeted third-party libs (httpx/asyncpg/redis/sqlalchemy)
+- [x] 17.5 Add ImportSorted gate: `import a2effect` SHALL NOT load pydantic at module top (lazy import inside functions that need it; ErrorEnvelope is the only mandatory pydantic touch and is acceptable) (Acceptable per spec: ErrorEnvelope is the mandatory pydantic touch on `import a2effect`. Stub-registry libs gated via `test_import_a2effect_does_not_load_raises_registry_targets`.)
 
 ## 18. Consumer migration helpers + dogfooding
 
