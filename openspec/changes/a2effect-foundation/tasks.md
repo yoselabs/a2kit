@@ -84,11 +84,11 @@
 
 ## 12. a2kit integration: tool descriptors
 
-- [ ] 12.1 BDD: `tests/test_tool_descriptors_raises.py` covering scenarios from `tool-descriptors` (raises field populated, empty when no Raises, multiple markers flatten, non-AppError rejected at registration)
-- [ ] 12.2 Add `raises: tuple[type[AppError], ...]` field to `ToolDescriptor` dataclass
-- [ ] 12.3 Update descriptor materialization in `app.py:_build_descriptors` to populate via `Raises.flatten_from_annotation`
-- [ ] 12.4 Update `return_type` extraction to strip `Annotated[...]` Raises markers before computing format_hint (delegate to existing strip helper)
-- [ ] 12.5 Add runtime validation rejecting non-AppError in Raises with TypeError naming tool + class
+- [x] 12.1 BDD: `tests/test_tool_descriptors_raises.py` covering scenarios from `tool-descriptors` (raises field populated, empty when no Raises, multiple markers flatten, non-AppError rejected at registration)
+- [x] 12.2 Add `raises: tuple[type[AppError], ...]` field to `ToolDescriptor` dataclass
+- [x] 12.3 Update descriptor materialization in `app.py:_build_descriptors` to populate via `Raises.flatten_from_annotation`
+- [x] 12.4 Update `return_type` extraction to strip `Annotated[...]` Raises markers before computing format_hint (delegate to existing strip helper)
+- [x] 12.5 Add runtime validation rejecting non-AppError in Raises with TypeError naming tool + class
 
 ## 13. a2kit integration: error envelope rendering
 

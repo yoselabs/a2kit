@@ -9,6 +9,8 @@ from a2kit._verbs import list_, read, write
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
+    from a2effect import AppError
+
     from a2kit.metadata import A2KitMeta
     from a2kit.packages.formatter import EncodingPlan
     from a2kit.routers import Router
@@ -59,6 +61,11 @@ class ToolDescriptor:
     metadata_view: Mapping[str, Any] = field(default_factory=lambda: _EMPTY_VIEW)
     wire_param_names: frozenset[str] | None = None
     lazy_param_names: frozenset[str] | None = None
+    # Typed error vocabulary materialized from `Annotated[ReturnT, Raises(...)]`
+    # on the tool's return annotation (a2effect-foundation). Empty when no
+    # Raises marker is present. Multiple markers in one Annotated[...] are
+    # flattened additively.
+    raises: tuple[type[AppError], ...] = ()
     # Private projection of the full A2KitMeta object. Substrate adapters in
     # `a2kit.packages.*` read this instead of reaching for `_get_meta(fn)` —
     # `ToolDescriptor` is the single read surface (privatize-tool-metadata).

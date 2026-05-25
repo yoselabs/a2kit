@@ -485,6 +485,25 @@ def _validate_router_tools(router: Router) -> None:
         raise A2KitDecoratedMethodNotInTools(cls.__name__, missing)
 
 
+def _strip_raises_from_annotation(annotation: Any) -> Any:
+    """Strip `Raises(...)` markers from an `Annotated[T, Raises(...), ...]` return
+    annotation, returning either the bare `T` (when only Raises markers remain)
+    or a re-built `Annotated[T, ...]` preserving non-Raises metadata. Non-Annotated
+    types pass through unchanged.
+    """
+    from typing import Annotated, get_args, get_origin
+
+    from a2effect import Raises
+
+    if get_origin(annotation) is not Annotated:
+        return annotation
+    bare, *metadata = get_args(annotation)
+    preserved = [m for m in metadata if not isinstance(m, Raises)]
+    if not preserved:
+        return bare
+    return Annotated[(bare, *preserved)]
+
+
 def _build_descriptors(router: Router, container: Container | None = None) -> list[ToolDescriptor]:
     """Materialize one ``ToolDescriptor`` per tool on ``router``.
 
@@ -496,6 +515,8 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
     """
     from types import MappingProxyType
 
+    from a2effect import AppError, Raises
+
     from a2kit.metadata import _get_meta
     from a2kit.packages.di import lazy_inner_type
     from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
@@ -505,8 +526,20 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
     for fn in router.bound_tools():
         hints = resolve_hints(fn)
         return_type = hints.get("return")
-        format_hint = infer_format_hint(return_type)
-        encoding_plan = build_encoding_plan(return_type)
+        # Strip Annotated[ReturnT, Raises(...)] for format inference: the
+        # Raises metadata is invisible to format-hint / encoding-plan logic.
+        raises = Raises.flatten_from_annotation(fn)
+        for cls in raises:
+            if not (isinstance(cls, type) and issubclass(cls, AppError)):
+                msg = (
+                    f"tool {getattr(fn, '__name__', fn)!r}: Raises({cls!r}) member "
+                    f"is not an AppError subclass; subclass a2effect.AppError or "
+                    f"register an enricher / raises_as mapping"
+                )
+                raise TypeError(msg)
+        bare_return_type = _strip_raises_from_annotation(return_type)
+        format_hint = infer_format_hint(bare_return_type)
+        encoding_plan = build_encoding_plan(bare_return_type)
         meta = _get_meta(fn)
         name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
         # Carry the multi-surface fields onto the descriptor so substrate
@@ -547,7 +580,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
                 name=name,
                 router=router,
                 fn=fn,
-                return_type=return_type,
+                return_type=bare_return_type,
                 format_hint=format_hint,
                 encoding_plan=encoding_plan,
                 verb=verb,
@@ -559,6 +592,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
                 metadata_view=metadata_view,
                 wire_param_names=wire_param_names,
                 lazy_param_names=lazy_param_names,
+                raises=raises,
                 _meta=meta,
             )
         )
