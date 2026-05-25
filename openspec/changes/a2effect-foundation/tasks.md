@@ -22,28 +22,28 @@
 
 ## 4. `ErrorEnvelope` wire schema
 
-- [ ] 4.1 BDD: `tests/test_envelope.py` covering scenarios from `typed-error-contract` (envelope round-trips via pydantic, cause chain populated when raised `from`, envelope_version present)
-- [ ] 4.2 Implement `ErrorEnvelope` as pydantic BaseModel with all fields (`type`, `kind`, `base_kind`, `retryable`, `hint`, `details`, `cause`, `envelope_version`)
-- [ ] 4.3 Implement `AppError.to_envelope() -> ErrorEnvelope` + `to_envelope_dict() -> dict` convenience
-- [ ] 4.4 Implement cause-chain extraction (`__cause__` walking, trace_id generation via uuid)
+- [x] 4.1 BDD: `tests/test_envelope.py` covering scenarios from `typed-error-contract` (envelope round-trips via pydantic, cause chain populated when raised `from`, envelope_version present)
+- [x] 4.2 Implement `ErrorEnvelope` as pydantic BaseModel with all fields (`type`, `kind`, `base_kind`, `retryable`, `hint`, `details`, `cause`, `envelope_version`)
+- [x] 4.3 Implement `AppError.to_envelope() -> ErrorEnvelope` + `to_envelope_dict() -> dict` convenience
+- [x] 4.4 Implement cause-chain extraction (`__cause__` walking, trace_id generation via uuid)
 
 ## 5. `UnexpectedDefect` quarantine
 
-- [ ] 5.1 BDD: `tests/test_defect.py` covering scenarios from `typed-error-contract` (unhandled KeyError becomes UnexpectedDefect, asyncio.CancelledError quarantined, raw type absent from wire)
-- [ ] 5.2 Implement `UnexpectedDefect(AppError)` as final subclass (kind="bug", retryable=False)
-- [ ] 5.3 Implement `quarantine(exc) -> UnexpectedDefect` helper (preserves __cause__, emits structured log entry with trace_id)
+- [x] 5.1 BDD: `tests/test_defect.py` covering scenarios from `typed-error-contract` (unhandled KeyError becomes UnexpectedDefect, asyncio.CancelledError quarantined, raw type absent from wire)
+- [x] 5.2 Implement `UnexpectedDefect(AppError)` as final subclass (kind="bug", retryable=False)
+- [x] 5.3 Implement `quarantine(exc) -> UnexpectedDefect` helper (preserves __cause__, emits structured log entry with trace_id)
 
 ## 6. Inline helpers (`raises_as`, `translate_to`)
 
-- [ ] 6.1 BDD: `tests/test_inline_helpers.py` covering scenarios from `error-translation-pipeline` (mapping translates raised type, callable value receives original, unmatched propagates, multi-statement translate_to wraps block)
-- [ ] 6.2 Implement `async def raises_as(awaitable, mapping) -> Any` with type-or-callable mapping handling
-- [ ] 6.3 Implement `translate_to(target, *sources)` async context manager
+- [x] 6.1 BDD: `tests/test_inline_helpers.py` covering scenarios from `error-translation-pipeline` (mapping translates raised type, callable value receives original, unmatched propagates, multi-statement translate_to wraps block)
+- [x] 6.2 Implement `async def raises_as(awaitable, mapping) -> Any` with type-or-callable mapping handling
+- [x] 6.3 Implement `translate_to(target, *sources)` async context manager
 
 ## 7. Pydantic ValidationError default enricher
 
-- [ ] 7.1 BDD: `tests/test_pydantic_enricher.py` covering the registered enricher translates ValidationError to InputError with details.fields
-- [ ] 7.2 Implement `a2effect.enrichers.pydantic_validation_error_enricher` with lazy pydantic import inside function body
-- [ ] 7.3 Add `a2effect.errors.InputError` (the default target for pydantic translation; kind="input")
+- [x] 7.1 BDD: `tests/test_pydantic_enricher.py` covering the registered enricher translates ValidationError to InputError with details.fields
+- [x] 7.2 Implement `a2effect.enrichers.pydantic_validation_error_enricher` with lazy pydantic import inside function body
+- [x] 7.3 Add `a2effect.errors.InputError` (the default target for pydantic translation; kind="input")
 
 ## 8. `raises_registry` (stubs + extension)
 

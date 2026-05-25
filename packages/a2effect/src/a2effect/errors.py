@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
 
+from a2effect.envelope import ErrorEnvelope, _extract_cause
+
 ErrorKind = Literal["input", "auth", "policy", "infra", "bug"]
 
 _CORE_KINDS: frozenset[str] = frozenset({"input", "auth", "policy", "infra", "bug"})
@@ -97,3 +99,42 @@ class AppError(Exception):
         self.details = details if details is not None else {}
         if cause is not None:
             self.__cause__ = cause
+
+    def to_envelope(self) -> ErrorEnvelope:
+        return ErrorEnvelope(
+            type=type(self).__name__,
+            kind=type(self).kind,
+            base_kind=self.base_kind,
+            retryable=self.retryable,
+            hint=self.hint,
+            details=self.details,
+            cause=_extract_cause(self),
+        )
+
+    def to_envelope_dict(self) -> dict[str, Any]:
+        return self.to_envelope().model_dump()
+
+
+class InputError(AppError):
+    kind = "input"
+    http_status = 400
+    cli_exit_code = 2
+
+
+class AuthError(AppError):
+    kind = "auth"
+    http_status = 401
+    cli_exit_code = 77
+
+
+class PolicyError(AppError):
+    kind = "policy"
+    http_status = 403
+    cli_exit_code = 77
+
+
+class InfrastructureError(AppError):
+    kind = "infra"
+    retryable = True
+    http_status = 503
+    cli_exit_code = 75
