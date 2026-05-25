@@ -109,11 +109,11 @@
 
 ## 15. a2kit integration: HTTP surface rendering
 
-- [ ] 15.1 BDD: `tests/packages/http/test_error_rendering.py` covering scenarios from `http-surface` (NotFound → 404 envelope, InfrastructureError → 503, UnexpectedDefect → 500, body Content-Type, scope teardown preserves typed envelope)
-- [ ] 15.2 Add `AppError` exception handler to FastAPI app in `packages/http/build.py:_install_authorization_denied_handler` (rename to `_install_typed_error_handlers`)
-- [ ] 15.3 Implement HTTP status mapping from kind with per-class override (`AppError.http_status`)
-- [ ] 15.4 Implement response body shape: `JSONResponse(status_code=..., content={"error": envelope_dict})`
-- [ ] 15.5 Remove the existing `AuthorizationDenied` handler (now handled by the same typed-error pathway via the AppError-shaped subclass)
+- [x] 15.1 BDD: `tests/packages/http/test_error_rendering.py` covering scenarios from `http-surface` (NotFound → 404 envelope, InfrastructureError → 503, UnexpectedDefect → 500, body Content-Type, scope teardown preserves typed envelope)
+- [x] 15.2 Add `AppError` exception handler to FastAPI app in `packages/http/build.py:_install_authorization_denied_handler` (rename to `_install_typed_error_handlers`)
+- [x] 15.3 Implement HTTP status mapping from kind with per-class override (`AppError.http_status`)
+- [x] 15.4 Implement response body shape: `JSONResponse(status_code=..., content={"error": envelope_dict})`
+- [x] 15.5 Remove the existing `AuthorizationDenied` handler (now handled by the same typed-error pathway via the AppError-shaped subclass)
 
 ## 16. a2kit integration: CLI surface rendering
 

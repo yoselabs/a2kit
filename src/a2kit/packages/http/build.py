@@ -27,10 +27,11 @@ import inspect
 from typing import TYPE_CHECKING, Annotated
 from typing import Any as _Any
 
+from a2effect import AppError
+from a2effect.defect import quarantine
 from fastapi import Body, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from a2kit.exceptions import AuthorizationDenied
 from a2kit.packages.dispatch import (
     SURFACE_REGISTRY,
     _run_authorize_gate,
@@ -65,7 +66,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     )
     _install_request_scope_middleware(app, container)
     _wire_container_depends_overrides(app, runtime, container)
-    _install_authorization_denied_handler(app)
+    _install_typed_error_handlers(app)
     _install_auth_middlewares(app, runtime)
 
     # Default liveness — matches the existing rest.py stub's contract.
@@ -148,18 +149,49 @@ class _BareAsgiMiddleware:
         await self._app(scope, receive, send)
 
 
-def _install_authorization_denied_handler(app: FastAPI) -> None:
-    """Map `AuthorizationDenied` to HTTP 403 with a structured JSON body."""
+#: HTTP status code map from AppError kind. Per-class `http_status`
+#: ClassVar overrides this. From `error-envelope-rendering`.
+_KIND_HTTP_STATUS: dict[str, int] = {
+    "input": 400,
+    "auth": 401,
+    "policy": 403,
+    "infra": 503,
+    "bug": 500,
+}
 
-    @app.exception_handler(AuthorizationDenied)
-    async def _denied(_request: Request, exc: AuthorizationDenied) -> JSONResponse:
+
+def _http_status_for(exc: AppError) -> int:
+    override = type(exc).http_status
+    if override is not None:
+        return override
+    return _KIND_HTTP_STATUS.get(exc.base_kind, 500)
+
+
+def _install_typed_error_handlers(app: FastAPI) -> None:
+    """Install AppError + catch-all handlers emitting the typed envelope.
+
+    - AppError → status from kind map (with per-class override) +
+      ``{"error": <envelope dict>}`` body.
+    - Anything else → `quarantine` to `UnexpectedDefect`, then same shape.
+
+    Replaces the prior `_install_authorization_denied_handler`:
+    `AuthorizationDenied` is itself an AppError now and flows through
+    this handler with no special-casing.
+    """
+
+    @app.exception_handler(AppError)
+    async def _typed_error(_request: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
-            status_code=403,
-            content={
-                "error": "authorization_denied",
-                "reason": exc.reason,
-                "callable": exc.callable_name,
-            },
+            status_code=_http_status_for(exc),
+            content={"error": exc.to_envelope_dict()},
+        )
+
+    @app.exception_handler(Exception)
+    async def _quarantine(_request: Request, exc: Exception) -> JSONResponse:
+        wrapped = quarantine(exc)
+        return JSONResponse(
+            status_code=_http_status_for(wrapped),
+            content={"error": wrapped.to_envelope_dict()},
         )
 
 

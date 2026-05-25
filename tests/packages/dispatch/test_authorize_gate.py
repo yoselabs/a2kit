@@ -46,7 +46,8 @@ class TestHttpAuthorizeDenies403:
         resp = client.get("/admin")
         assert resp.status_code == 403, resp.text
         body = resp.json()
-        assert body["error"] == "authorization_denied"
+        assert body["error"]["type"] == "AuthorizationDenied"
+        assert body["error"]["kind"] == "auth"
         assert body_calls == []
 
 

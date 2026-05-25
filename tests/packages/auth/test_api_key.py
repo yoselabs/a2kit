@@ -79,7 +79,9 @@ def test_admin_authorize_denies_non_admin_with_403() -> None:
     client = TestClient(build_http_app(runtime))
     resp = client.get("/admin", headers={"X-API-Key": "k-reader"})
     assert resp.status_code == 403, resp.text
-    assert resp.json()["error"] == "authorization_denied"
+    body = resp.json()
+    assert body["error"]["type"] == "AuthorizationDenied"
+    assert body["error"]["kind"] == "auth"
 
 
 def test_admin_authorize_passes_for_admin_with_200() -> None:

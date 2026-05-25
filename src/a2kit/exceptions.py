@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from a2effect import AppError
+
 
 class A2KitError(Exception):
     pass
@@ -147,18 +149,27 @@ class A2KitSingletonTeardownError(A2KitError, RuntimeError):
         super().__init__(f"a2kit singleton-teardown failures ({len(failures)}): {rendered}")
 
 
-class AuthorizationDenied(A2KitError, PermissionError):
+class AuthorizationDenied(AppError):
     """Raised by `AuthorizeGateStage` when a tool's `authorize=` callable
     returns a falsy value.
 
-    Maps to HTTP 403 on FastAPI and to the documented MCP error envelope.
-    The tool body is never invoked.
+    Typed as an `a2effect.AppError` (kind=auth, http_status=403, exit=77)
+    so it flows through the same envelope-rendering pipeline as every
+    other typed error. The tool body is never invoked.
     """
+
+    kind = "auth"
+    http_status = 403
+    cli_exit_code = 77
+    kind_label = "Authorization denied"
 
     def __init__(self, *, reason: str, callable_name: str) -> None:
         self.reason = reason
         self.callable_name = callable_name
-        super().__init__(f"authorization denied by {callable_name!r}: {reason}")
+        super().__init__(
+            f"authorization denied by {callable_name!r}: {reason}",
+            details={"reason": reason, "callable": callable_name},
+        )
 
 
 class A2KitInvalidContextAnnotation(A2KitError, TypeError):
