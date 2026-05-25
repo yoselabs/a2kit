@@ -1,11 +1,43 @@
 from __future__ import annotations
 
+import typing
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from a2kit.metadata import _get_meta
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from a2effect import AppError
+
+    EnricherFn = Callable[[BaseException], AppError | None]
+    EnricherEntry = tuple[type[BaseException], EnricherFn]
+
+
+def _resolve_enricher_filter(fn: Callable[..., Any]) -> type[BaseException]:
+    """Read the first parameter's annotation to decide narrow vs wide dispatch.
+
+    Wide form (Exception / BaseException) returns BaseException; narrow form
+    returns the specific exception type. Unannotated parameter defaults to
+    BaseException (wide), matching the wide-form ergonomics.
+    """
+    try:
+        hints = typing.get_type_hints(fn)
+    except Exception:  # noqa: BLE001 — forward refs / unresolved typing fall back wide
+        return BaseException
+    import inspect
+
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.values())
+    if not params:
+        msg = f"enricher {fn!r} must accept at least one positional parameter (the exception)"
+        raise TypeError(msg)
+    first = params[0]
+    annotation = hints.get(first.name, BaseException)
+    if not (isinstance(annotation, type) and issubclass(annotation, BaseException)):
+        msg = f"enricher {fn!r} first parameter annotation must be a BaseException subclass, got {annotation!r}"
+        raise TypeError(msg)
+    return annotation
 
 
 class Router:
@@ -50,9 +82,6 @@ class Router:
     slug: str
     tools: ClassVar[tuple[Callable[..., Any], ...]]
 
-    #: Per-tool exception enrichers. Subclasses override with a class-level tuple
-    #: (immutable). Empty tuple is the no-enricher default.
-    enrichers: ClassVar[tuple[Callable[[Exception], str | None], ...]] = ()
     providers: ClassVar[tuple[Any, ...]] = ()
 
     #: Default visibility tier for this Router's tools. Per-tool ``visibility=``
@@ -62,6 +91,19 @@ class Router:
     #: visible in --help, hidden from MCP/API/GraphQL; ``"all"`` =
     #: everywhere (default).
     visibility: ClassVar[str] = "all"
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if "enrichers" in cls.__dict__ or "enrich" in cls.__dict__:
+            raise TypeError(
+                f"Router subclass {cls.__name__!r} defines a class-level "
+                f"`enrichers` / `enrich` attribute; that surface was replaced "
+                f"by the instance decorator. Construct the router, then write:\n"
+                f"    router = {cls.__name__}()\n"
+                f"    @router.enricher\n"
+                f"    def my_enricher(exc: SpecificException) -> NotFound | None: ...\n"
+                f"See a2effect-foundation for details."
+            )
 
     def __init__(self, **_kw: Any) -> None:
         if _kw:
@@ -120,10 +162,25 @@ class Router:
             bound.append(bound_method)
 
         self._tools: list[Callable[..., Any]] = bound
+        self._enrichers: list[EnricherEntry] = []
 
     def bound_tools(self) -> list[Callable[..., Any]]:
         """Return bound method references registered as tools on this instance."""
         return list(self._tools)
+
+    def enricher(self, fn: EnricherFn) -> EnricherFn:
+        """Register an exception → AppError|None translator on this router.
+
+        The first parameter's annotation chooses dispatch shape:
+          - ``def f(exc: Exception) -> ...``: wide — called for every raise.
+          - ``def f(exc: SpecificException) -> ...``: narrow — only on isinstance.
+
+        The return annotation MUST be ``AppError | None`` (or a subclass union
+        thereof); the runtime validates the returned object at call time.
+        """
+        filter_type = _resolve_enricher_filter(fn)
+        self._enrichers.append((filter_type, fn))
+        return fn
 
 
 class RouterRegistry:

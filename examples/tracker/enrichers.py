@@ -1,19 +1,25 @@
-"""Error enrichers — turn raw exceptions into agent-actionable messages.
+"""Error enrichers — translate raw exceptions into typed AppError instances.
 
-An enricher is a pure function ``(exc) -> str | None`` (or
-``None`` to pass through). The framework wraps the tool, runs the
-enricher on any exception, and re-raises with the enriched message
-when the enricher returns a string. Routers attach enrichers via the
-``enrichers`` class attribute (or the ``enrich(self, exc)`` method
-when the enricher needs ``self``).
+An enricher is a function ``(exc) -> AppError | None`` registered via the
+router's ``@router.enricher`` decorator. The framework wraps the tool,
+isinstance-dispatches the enricher on raised exceptions, and re-raises
+the returned AppError when non-None. Returning None means the framework
+falls through to the next enricher (router → app → defect quarantine).
 """
 
 from __future__ import annotations
 
+from a2effect import AppError
 
-def tracker_404_enricher(exc: Exception) -> str | None:
-    """Rewrite ``KeyError`` / ``LookupError`` into a typed not-found message."""
-    if isinstance(exc, (KeyError, LookupError)):
-        target = str(exc).strip("'\"")
-        return f"tracker: nothing found matching {target!r}. List first to discover valid ids."
-    return None
+
+class TrackerNotFound(AppError):
+    kind = "input"
+    http_status = 404
+    cli_exit_code = 2
+    hint = "List first to discover valid ids."
+
+
+def tracker_404_enricher(exc: LookupError) -> TrackerNotFound | None:
+    """Rewrite ``KeyError`` / ``LookupError`` into a typed not-found AppError."""
+    target = str(exc).strip("'\"")
+    return TrackerNotFound(f"tracker: nothing found matching {target!r}.")

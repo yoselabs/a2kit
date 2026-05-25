@@ -68,34 +68,14 @@ def test_timeout_stage_fires_when_configured() -> None:
 # --- EnricherStage ------------------------------------------------------- #
 
 
-def test_enricher_stage_self_skips_without_router() -> None:
-    stage = EnricherStage()
-    assert stage.wrap(_stub, _spec(a2kit.App("t"))) is _stub
+def test_enricher_stage_quarantines_uncaught_raises_without_enrichers() -> None:
+    """With the typed-error contract every raise becomes either an
+    enricher-translated AppError or an UnexpectedDefect; ValueError no
+    longer leaks through bare."""
+    from a2effect import UnexpectedDefect
 
-
-def test_enricher_stage_self_skips_when_router_has_no_enrichers() -> None:
     class _Plain(a2kit.Router):
-        slug = "plain"
-
-        @a2kit.read()
-        async def ping(self) -> dict:
-            return {"ok": True}
-
-        tools = (ping,)
-
-    app = a2kit.App("plain-app")
-    app.add_router(_Plain())
-    desc = app.tools()[0]
-    spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
-    assert EnricherStage().wrap(desc.fn, spec) is desc.fn
-
-
-def test_enricher_stage_translates_exceptions() -> None:
-    class _Enriched(a2kit.Router):
-        slug = "enriched"
-
-        def enrich(self, exc: Exception) -> str:
-            return f"enriched: {exc}"
+        slug = "plain-q"
 
         @a2kit.read()
         async def boom(self) -> dict:
@@ -103,12 +83,41 @@ def test_enricher_stage_translates_exceptions() -> None:
 
         tools = (boom,)
 
-    app = a2kit.App("enricher-app")
-    app.add_router(_Enriched())
+    app = a2kit.App("plain-q-app")
+    app.add_router(_Plain())
     desc = app.tools()[0]
     spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
     wrapped = EnricherStage().wrap(desc.fn, spec)
-    with pytest.raises(ValueError, match="enriched: orig"):
+    with pytest.raises(UnexpectedDefect):
+        asyncio.run(wrapped())
+
+
+def test_enricher_stage_translates_exceptions_via_decorator() -> None:
+    from a2effect import AppError
+
+    class Translated(AppError):
+        kind = "infra"
+
+    class _Enriched(a2kit.Router):
+        slug = "enriched"
+
+        @a2kit.read()
+        async def boom(self) -> dict:
+            raise ValueError("orig")
+
+        tools = (boom,)
+
+    router = _Enriched()
+
+    @router.enricher
+    def translate(exc: ValueError) -> Translated | None:
+        return Translated(f"enriched: {exc}")
+
+    app = a2kit.App("enricher-app").add_router(router)
+    desc = app.tools()[0]
+    spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
+    wrapped = EnricherStage().wrap(desc.fn, spec)
+    with pytest.raises(Translated, match="enriched: orig"):
         asyncio.run(wrapped())
 
 

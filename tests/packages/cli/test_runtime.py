@@ -55,17 +55,16 @@ def test_enricher_wraps_exceptions(capsys: pytest.CaptureFixture[str]) -> None:
     enriched message on stderr and exits non-zero.
     """
 
+    from a2effect import AppError
+
     class BoomError(Exception):
         pass
 
-    def enrich(exc: Exception) -> str | None:
-        if isinstance(exc, BoomError):
-            return "nicer message"
-        return None
+    class Nicer(AppError):
+        kind = "infra"
 
     class R(a2kit.Router):
         slug = "r"
-        enrichers = [enrich]
 
         @a2kit.read()
         def boom(self, *, x: int) -> dict:
@@ -73,7 +72,13 @@ def test_enricher_wraps_exceptions(capsys: pytest.CaptureFixture[str]) -> None:
 
         tools = (boom,)
 
-    app = a2kit.App("enricher-runtime").add_router(R())
+    router = R()
+
+    @router.enricher
+    def enrich(exc: BoomError) -> Nicer | None:
+        return Nicer("nicer message")
+
+    app = a2kit.App("enricher-runtime").add_router(router)
     desc = app.tools()[0]
     spec = _spec(desc.fn, app=app, router=app.routers()[0])
 

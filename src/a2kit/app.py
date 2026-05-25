@@ -131,6 +131,11 @@ class App:
         # author registers an auth spec; cold-start preserved for apps
         # that don't configure auth.
         self._auth_registry: Any = None
+        # Typed-error enricher chain — populated via @app.enricher. Each
+        # entry is (filter_type, fn) where filter_type is the first-param
+        # annotation (wide = BaseException; narrow = specific type). Read
+        # by EnricherStage after router-level enrichers.
+        self._enrichers: list[tuple[type[BaseException], Callable[..., Any]]] = []
 
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
@@ -188,6 +193,19 @@ class App:
         return self._health.register(fn)
 
     # --- Composition verbs ---------------------------------------------- #
+
+    def enricher(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register an app-level exception → AppError|None translator.
+
+        Same shape as ``Router.enricher`` — first-param annotation chooses
+        wide (Exception/BaseException) vs narrow (specific type) dispatch.
+        App-level enrichers run AFTER router-level enrichers in the chain.
+        """
+        from a2kit.routers import _resolve_enricher_filter
+
+        filter_type = _resolve_enricher_filter(fn)
+        self._enrichers.append((filter_type, fn))
+        return fn
 
     def add_router(self, router: Router) -> App:
         slug = router.slug

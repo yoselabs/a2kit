@@ -74,13 +74,13 @@
 
 ## 11. a2kit integration: dispatch pipeline
 
-- [ ] 11.1 BDD: `tests/packages/dispatch/test_enricher_stage_typed.py` covering scenarios from `error-translation-pipeline` (chain order, router-before-app, inline-before-router, defect-quarantine catches unhandled)
-- [ ] 11.2 **BREAKING**: change `EnricherStage.wrap` signature contract: enrichers return `AppError | None` (was `str | None`); update all call sites in `packages/dispatch/stages.py`
-- [ ] 11.3 Implement `@router.enricher` decorator (wide + narrow forms; narrow introspects param type at registration)
-- [ ] 11.4 Implement `@app.enricher` decorator (same shape as router-level)
-- [ ] 11.5 Remove class-level `enrichers: tuple` attribute from `Router`; raise TypeError if subclass defines it
-- [ ] 11.6 Add `defect_quarantine` step at end of `EnricherStage` chain
-- [ ] 11.7 Update `routers.py` Router base to remove enrichers attribute
+- [x] 11.1 BDD: `tests/packages/dispatch/test_enricher_stage_typed.py` covering scenarios from `error-translation-pipeline` (chain order, router-before-app, inline-before-router, defect-quarantine catches unhandled)
+- [x] 11.2 **BREAKING**: change `EnricherStage.wrap` signature contract: enrichers return `AppError | None` (was `str | None`); update all call sites in `packages/dispatch/stages.py`
+- [x] 11.3 Implement `@router.enricher` decorator (wide + narrow forms; narrow introspects param type at registration)
+- [x] 11.4 Implement `@app.enricher` decorator (same shape as router-level)
+- [x] 11.5 Remove class-level `enrichers: tuple` attribute from `Router`; raise TypeError if subclass defines it
+- [x] 11.6 Add `defect_quarantine` step at end of `EnricherStage` chain
+- [x] 11.7 Update `routers.py` Router base to remove enrichers attribute
 
 ## 12. a2kit integration: tool descriptors
 

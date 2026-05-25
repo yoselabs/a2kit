@@ -18,7 +18,7 @@ The test SHALL fail the `make lint` target on any drift between README and runti
 - `a2kit.X` and `@a2kit.X` — must `hasattr(a2kit, "X")` on import. Examples: `a2kit.App`, `a2kit.Router`, `@a2kit.read`, `a2kit.ToolContext`, `a2kit.HealthResult`.
 - `a2kit.<submodule>.Y` and `@a2kit.<submodule>.Y` — must resolve via `importlib.import_module("a2kit.<submodule>")` followed by `hasattr(mod, "Y")`. Examples: `a2kit.ldd.event`, `a2kit.testing.client`.
 - `App.method` and `app.method` — must `hasattr(a2kit.App, "method")`. Examples: `App.add_router`, `app.provide`, `app.tools`. A name that names a DI-registration verb other than the live one is not a valid claim — the live registration method is `app.provide`.
-- `Router.attribute` — must `hasattr(a2kit.Router, "attribute")`. Examples: `Router.slug`, `Router.tools`, `Router.enrichers`. An attribute that does not exist on the live `Router` is not a valid claim.
+- `Router.attribute` — must `hasattr(a2kit.Router, "attribute")`. Examples: `Router.slug`, `Router.tools`, `Router.providers`. An attribute that does not exist on the live `Router` is not a valid claim.
 - `@app.X` — must `hasattr(a2kit.App, "X")`. Examples: `@app.health_check`.
 
 **Tolerated false positives.** The test MAY report false positives on prose mentions of identical strings. False positives are acceptable. False negatives (symbol claimed in prose without backticks) are tolerated for the initial implementation.

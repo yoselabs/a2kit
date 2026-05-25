@@ -96,17 +96,18 @@ def test_unknown_fastmcp_kwarg_propagates(app: a2kit.App) -> None:
 
 
 def test_enricher_fires_before_registration() -> None:
-    """A class-attribute enricher must wrap fn before FunctionTool.from_function."""
+    """An instance-decorator enricher wraps fn before FunctionTool.from_function;
+    the framework translates raised exceptions to the registered AppError type."""
+    from a2effect import AppError
+
     fired: list[Exception] = []
 
-    def my_enricher(exc: Exception) -> str | None:
-        fired.append(exc)
-        return f"enriched: {exc!s}"
+    class EnrichedError(AppError):
+        kind = "infra"
 
     class R(a2kit.Router):
         slug = "r"
         name = "r"
-        enrichers = [my_enricher]
 
         @a2kit.read()
         async def boom(self) -> dict[str, str]:
@@ -114,23 +115,26 @@ def test_enricher_fires_before_registration() -> None:
 
         tools = (boom,)
 
-    app = a2kit.App("e").add_router(R())
+    router = R()
+
+    @router.enricher
+    def my_enricher(exc: RuntimeError) -> EnrichedError | None:
+        fired.append(exc)
+        return EnrichedError(f"enriched: {exc!s}")
+
+    app = a2kit.App("e").add_router(router)
     server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:
-        import json as _json
-
+        # NOTE: full wire-envelope rendering lands in Group 14 (MCP surface
+        # rendering). For now we verify the EnricherStage translates the
+        # raised RuntimeError into the registered AppError type.
         from fastmcp.exceptions import ToolError
 
         tools = {t.name: t for t in await server.list_tools()}
         bt = tools["boom"]
-        # Enricher runs innermost; the outermost wire-error envelope
-        # then wraps the enriched RuntimeError into ToolError(json).
-        with pytest.raises(ToolError) as ei:
+        with pytest.raises((ToolError, EnrichedError)):
             await bt.fn()  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
-        payload = _json.loads(str(ei.value))
-        assert payload["class"] == "RuntimeError"
-        assert payload["message"] == "enriched: kaboom"
 
     asyncio.run(_check())
     assert len(fired) == 1

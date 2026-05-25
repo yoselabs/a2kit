@@ -15,14 +15,12 @@ import uuid
 import a2kit
 from a2kit.ldd import event, info, report
 
-from .enrichers import tracker_404_enricher
 from .models import BatchReport, Project, Task
 from .store import TrackerStore
 
 
 class ProjectsRouter(a2kit.Router):
     slug = "projects"
-    enrichers = (tracker_404_enricher,)
 
     @a2kit.list_("id", "name", "archived")
     async def list_projects(self, *, store: TrackerStore) -> list[Project]:
@@ -65,7 +63,6 @@ class ProjectsRouter(a2kit.Router):
 
 class TasksRouter(a2kit.Router):
     slug = "tasks"
-    enrichers = (tracker_404_enricher,)
 
     @a2kit.list_("id", "title", "done", "assignee", page_size=20)
     async def list_tasks(

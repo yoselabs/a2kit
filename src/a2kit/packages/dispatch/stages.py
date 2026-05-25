@@ -61,37 +61,54 @@ class TimeoutStage:
 
 
 class EnricherStage:
-    """Translate tool-body exceptions through the router's enricher chain.
+    """Translate tool-body exceptions through the router + app enricher chains.
 
-    Self-skips when there is no router, or the router declares neither
-    an ``enrichers`` class tuple nor an ``enrich`` method.
+    Chain order: router enrichers (registration order), then app enrichers
+    (registration order), then defect quarantine. Each enricher is either
+    wide (first-param annotation is BaseException / Exception, called for
+    every exception) or narrow (specific type, called only on isinstance
+    match). The first enricher returning a non-None AppError wins; later
+    layers are not tried. Any exception escaping all enrichers is wrapped
+    in a2effect.UnexpectedDefect via quarantine().
+
+    Self-skips when neither the router nor the app has any enrichers AND
+    the body never raises a non-AppError. Always wraps when any enricher
+    is registered, since quarantine must run on uncaught raises.
     """
 
     name = "enricher"
 
     def wrap(self, fn: Callable[..., Any], spec: ToolBuildSpec) -> Callable[..., Any]:
+        from a2effect import AppError
+        from a2effect.defect import quarantine
+
         router = spec.router
-        if router is None:
-            return fn
-        enrichers = list(getattr(type(router), "enrichers", None) or ())
-        enrich_method = getattr(router, "enrich", None)
-        if not enrichers and not callable(enrich_method):
-            return fn
+        app = spec.app
+        router_enrichers = list(getattr(router, "_enrichers", ()) or ())
+        app_enrichers = list(getattr(app, "_enrichers", ()) or ())
+        chain = router_enrichers + app_enrichers
 
         @functools.wraps(fn)
         async def _wrapped(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await _call(fn, *args, **kwargs)
-            except Exception as exc:
-                if callable(enrich_method):
-                    msg = enrich_method(exc)
-                    if msg is not None:
-                        raise type(exc)(msg) from exc
-                for enricher in enrichers:
-                    msg = enricher(exc)
-                    if msg is not None:
-                        raise type(exc)(msg) from exc
+            except AppError:
+                # Authors who raise AppError directly bypass the enricher
+                # chain — the typed envelope is already in hand.
                 raise
+            except BaseException as exc:
+                for filter_type, enricher in chain:
+                    if not isinstance(exc, filter_type):
+                        continue
+                    result = enricher(exc)
+                    if result is None:
+                        continue
+                    if not isinstance(result, AppError):
+                        raise TypeError(f"enricher {enricher!r} returned {type(result).__name__}, expected AppError | None") from exc
+                    if result.__cause__ is None:
+                        result.__cause__ = exc
+                    raise result from exc
+                raise quarantine(exc) from exc
 
         return _wrapped
 
