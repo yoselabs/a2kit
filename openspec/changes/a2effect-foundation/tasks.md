@@ -134,10 +134,10 @@
 
 ## 18. Consumer migration helpers + dogfooding
 
-- [ ] 18.1 a2kit's own internal tools (the `_meta.*` health tools, etc.) gain `Annotated[..., Raises(...)]` annotations
-- [ ] 18.2 a2kit's internal enrichers migrate to the new `(exc) -> AppError | None` signature
-- [ ] 18.3 Migration recipe documented in `docs/MIGRATION_TYPED_ERRORS.md` (mechanical sweep instructions for consumers: enricher signature change, return annotation additions, contract_tests adoption)
-- [ ] 18.4 Run full a2kit test suite under strict mode; resolve any internal raises that fail the lint
+- [x] 18.1 a2kit's own internal tools (the `_meta.*` health tools, etc.) gain `Annotated[..., Raises(...)]` annotations (N/A: the only internal tool is `_meta.health` which doesn't raise from app code; downstream `run_checks` failures become UnexpectedDefect via quarantine, which is the correct behavior)
+- [x] 18.2 a2kit's internal enrichers migrate to the new `(exc) -> AppError | None` signature (N/A: a2kit core has no internal enrichers; the only existing consumer enricher was `examples/tracker/enrichers.py`, already migrated in Group 11)
+- [x] 18.3 Migration recipe documented in `docs/MIGRATION_TYPED_ERRORS.md` (mechanical sweep instructions for consumers: enricher signature change, return annotation additions, contract_tests adoption)
+- [x] 18.4 Run full a2kit test suite under strict mode; resolve any internal raises that fail the lint (1229 pass / 47 skip; consumer-repo migration (a2web/a2atlassian/a2db/a2skill) lands per-repo, tracked outside this change)
 
 ## 19. Spec drift gate updates
 
