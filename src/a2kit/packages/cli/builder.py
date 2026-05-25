@@ -311,6 +311,9 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
         typer.echo(data)
 
     short_help, long_help = _docstring_to_help(fn)
+    raises_block = _render_raises_help(desc.raises)
+    if raises_block:
+        long_help = (long_help or "") + "\n" + raises_block
     callback.__signature__ = inspect.Signature(sig_params)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     callback.__annotations__ = annotations
     callback.__doc__ = long_help or None
@@ -395,6 +398,96 @@ def _register_schema(typer_app: Any, app: AppRuntime) -> None:
         typer.echo(truncate(response.data))
 
     typer_app.command(name="schema")(schema_cmd)
+
+
+_KIND_CLI_EXIT_DEFAULT: dict[str, int] = {
+    "input": 2,
+    "auth": 77,
+    "policy": 77,
+    "infra": 75,
+    "bug": 70,
+}
+
+
+def _render_raises_help(raises: tuple[type, ...]) -> str:
+    """Render the `Errors:` block for a tool's `--help` from its Raises tuple.
+
+    Each declared error gets one line with type, kind, exit code, and hint
+    (when set). Empty `raises` returns an empty string so callers can decide
+    whether to append (omitted for tools with no declared errors).
+    """
+    if not raises:
+        return ""
+    lines = ["", "Errors:"]
+    for cls in raises:
+        kind = getattr(cls, "kind", "?")
+        exit_code = getattr(cls, "cli_exit_code", None)
+        if exit_code is None:
+            base = getattr(cls, "base_kind", None) or kind
+            exit_code = _KIND_CLI_EXIT_DEFAULT.get(base, 70)
+        hint = getattr(cls, "hint", None)
+        bits = [f"  {cls.__name__}: kind={kind}, exit code: {exit_code}"]
+        if hint:
+            bits.append(f"    hint: {hint}")
+        lines.extend(bits)
+    return "\n".join(lines)
+
+
+def _register_list_tools(typer_app: Any, app: AppRuntime) -> None:
+    """Top-level ``list-tools`` discovery command.
+
+    Default: table form (one tool per line: NAME  KIND  EXIT  HINT).
+    ``--json``: machine form (list of dicts with name, kind, exit_code, hint,
+    raises). Reads the same ``ToolDescriptor`` projections every other
+    surface consumes.
+    """
+    import json as _json
+
+    import typer
+
+    def list_tools_cmd(
+        as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON instead of a table.")] = False,
+    ) -> None:
+        """List every registered tool with its declared errors."""
+        rows: list[dict[str, Any]] = []
+        for desc in app.tools():
+            raises_info: list[dict[str, Any]] = []
+            for cls in desc.raises:
+                kind = getattr(cls, "kind", "?")
+                exit_code = getattr(cls, "cli_exit_code", None)
+                if exit_code is None:
+                    base = getattr(cls, "base_kind", None) or kind
+                    exit_code = _KIND_CLI_EXIT_DEFAULT.get(base, 70)
+                raises_info.append(
+                    {
+                        "type": cls.__name__,
+                        "kind": kind,
+                        "exit_code": exit_code,
+                        "hint": getattr(cls, "hint", None),
+                    }
+                )
+            rows.append(
+                {
+                    "name": desc.name,
+                    "verb": desc.verb,
+                    "raises": raises_info,
+                }
+            )
+
+        if as_json:
+            typer.echo(_json.dumps(rows, indent=2, default=str))
+            return
+
+        if not rows:
+            typer.echo("(no tools registered)")
+            return
+        name_w = max(len(r["name"]) for r in rows)
+        typer.echo(f"{'NAME':<{name_w}}  VERB  ERRORS")
+        for r in rows:
+            errs = ", ".join(f"{e['type']}({e['kind']})" for e in r["raises"]) or "-"
+            typer.echo(f"{r['name']:<{name_w}}  {r['verb']:<5} {errs}")
+
+    typer_app.command(name="list-tools")(list_tools_cmd)
 
 
 def _register_health(typer_app: Any, app: AppRuntime) -> None:
@@ -485,6 +578,7 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
         _register_router(main, router, app)
 
     _register_schema(main, app)
+    _register_list_tools(main, app)
     register_serve(main, app)
     register_code(main, app)
     if getattr(app, "_health", None) is not None and app._health.enabled:  # noqa: SLF001
