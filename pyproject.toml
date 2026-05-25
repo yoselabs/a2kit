@@ -153,6 +153,9 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
     # builtin shadowing for clarity, and bind to local addresses for HTTP probes.
     "B017", "S603", "S104", "A002", "A004", "E501",
 ]
+# a2effect testing-helper module ships parametrized test factories whose
+# bodies use bare asserts (the contract checks). Treat it like tests/.
+"packages/a2effect/src/a2effect/testing.py" = ["S101"]
 "packages/*/tests/**" = [
     "S101", "S105", "S106", "E402", "ARG001", "ARG002", "ARG005", "PLR2004", "SLF001",
     "PT011", "PT012", "PT018", "PT022", "PT030", "PLR0915", "PLC0415", "PTH116", "PTH123", "TC001", "TC002", "TC003",

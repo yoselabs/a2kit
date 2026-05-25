@@ -25,6 +25,9 @@ testing = []
 
 # Lint rules ship here, registered for any conforming runner via entry points.
 [project.entry-points."a2lint.rules"]
+"A2K-RAISES-CLOSURE" = "a2effect._lint:raises_closure_rule"
+"A2K-RAISES-UNCOVERED" = "a2effect._lint:raises_uncovered_rule"
+"A2K-RAISES-NOT-TYPED" = "a2effect._lint:raises_not_typed_rule"
 
 [build-system]
 requires = ["hatchling"]

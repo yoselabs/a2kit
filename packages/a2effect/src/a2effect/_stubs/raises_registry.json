@@ -1,0 +1,28 @@
+{
+  "httpx.AsyncClient.get":     ["httpx.RequestError", "httpx.HTTPStatusError", "httpx.TimeoutException"],
+  "httpx.AsyncClient.post":    ["httpx.RequestError", "httpx.HTTPStatusError", "httpx.TimeoutException"],
+  "httpx.AsyncClient.put":     ["httpx.RequestError", "httpx.HTTPStatusError", "httpx.TimeoutException"],
+  "httpx.AsyncClient.delete":  ["httpx.RequestError", "httpx.HTTPStatusError", "httpx.TimeoutException"],
+  "httpx.AsyncClient.patch":   ["httpx.RequestError", "httpx.HTTPStatusError", "httpx.TimeoutException"],
+  "httpx.AsyncClient.request": ["httpx.RequestError", "httpx.HTTPStatusError", "httpx.TimeoutException"],
+  "httpx.AsyncClient.send":    ["httpx.RequestError", "httpx.HTTPStatusError", "httpx.TimeoutException"],
+
+  "asyncpg.Connection.execute":   ["asyncpg.PostgresError"],
+  "asyncpg.Connection.fetch":     ["asyncpg.PostgresError"],
+  "asyncpg.Connection.fetchrow":  ["asyncpg.PostgresError"],
+  "asyncpg.Connection.fetchval":  ["asyncpg.PostgresError"],
+  "asyncpg.Pool.acquire":         ["asyncpg.PostgresError", "asyncpg.InterfaceError"],
+
+  "redis.asyncio.Redis.get":    ["redis.RedisError", "redis.ConnectionError", "redis.TimeoutError"],
+  "redis.asyncio.Redis.set":    ["redis.RedisError", "redis.ConnectionError", "redis.TimeoutError"],
+  "redis.asyncio.Redis.delete": ["redis.RedisError", "redis.ConnectionError", "redis.TimeoutError"],
+  "redis.asyncio.Redis.exists": ["redis.RedisError", "redis.ConnectionError", "redis.TimeoutError"],
+  "redis.asyncio.Redis.expire": ["redis.RedisError", "redis.ConnectionError", "redis.TimeoutError"],
+
+  "sqlalchemy.ext.asyncio.AsyncSession.execute": ["sqlalchemy.exc.SQLAlchemyError"],
+  "sqlalchemy.ext.asyncio.AsyncSession.scalar":  ["sqlalchemy.exc.SQLAlchemyError"],
+  "sqlalchemy.ext.asyncio.AsyncSession.scalars": ["sqlalchemy.exc.SQLAlchemyError"],
+  "sqlalchemy.ext.asyncio.AsyncSession.commit":  ["sqlalchemy.exc.SQLAlchemyError"],
+
+  "fastapi.HTTPException": ["fastapi.HTTPException"]
+}

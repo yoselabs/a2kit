@@ -47,30 +47,30 @@
 
 ## 8. `raises_registry` (stubs + extension)
 
-- [ ] 8.1 BDD: `tests/test_raises_registry.py` covering scenarios from `raises-registry` (builtin lookup, unknown returns empty, pyproject extension merges, inline annotation read, importing registry doesn't pull libs)
-- [ ] 8.2 Author built-in stub data file (`a2effect/_stubs/raises_registry.json`) for httpx/asyncpg/redis/sqlalchemy/fastapi minimum coverage
-- [ ] 8.3 Implement `raises_registry.get(fq_func_name) -> frozenset[str]` with stub-data backing
-- [ ] 8.4 Implement pyproject.toml extension reader (`[tool.a2effect.raises_registry]`) and merge logic
-- [ ] 8.5 Implement inline `# a2effect: may-raise X, Y` annotation reader (AST-based)
+- [x] 8.1 BDD: `tests/test_raises_registry.py` covering scenarios from `raises-registry` (builtin lookup, unknown returns empty, pyproject extension merges, inline annotation read, importing registry doesn't pull libs)
+- [x] 8.2 Author built-in stub data file (`a2effect/_stubs/raises_registry.json`) for httpx/asyncpg/redis/sqlalchemy/fastapi minimum coverage
+- [x] 8.3 Implement `raises_registry.get(fq_func_name) -> frozenset[str]` with stub-data backing
+- [x] 8.4 Implement pyproject.toml extension reader (`[tool.a2effect.raises_registry]`) and merge logic
+- [x] 8.5 Implement inline `# a2effect: may-raise X, Y` annotation reader (AST-based)
 
 ## 9. Lint rules (`A2K-RAISES-*`)
 
-- [ ] 9.1 BDD: `tests/test_lint_raises_closure.py` covering A2K-RAISES-CLOSURE scenarios (undeclared raise fires error, caught-and-re-raised does not fire, enricher-covered does not fire)
-- [ ] 9.2 BDD: `tests/test_lint_raises_uncovered.py` covering A2K-RAISES-UNCOVERED (httpx call without coverage warns, defect-ok annotation suppresses)
-- [ ] 9.3 BDD: `tests/test_lint_raises_not_typed.py` covering A2K-RAISES-NOT-TYPED (raw asyncpg type fires error)
-- [ ] 9.4 Implement shared AST helpers (`a2effect._lint._ast`): tool-function finder, raises-annotation extractor, raise-statement walker, try-except handler tracker, enricher-coverage resolver
-- [ ] 9.5 Implement `A2K-RAISES-CLOSURE` rule
-- [ ] 9.6 Implement `A2K-RAISES-UNCOVERED` rule (consumes `raises_registry`)
-- [ ] 9.7 Implement `A2K-RAISES-NOT-TYPED` rule
-- [ ] 9.8 Register all three rules in a2effect's pyproject.toml under `[project.entry-points."a2lint.rules"]`
-- [ ] 9.9 Implement `python -m a2effect.lint <path>` CLI shim using entry-point discovery for v1 standalone runnability
+- [x] 9.1 BDD: `tests/test_lint_raises_closure.py` covering A2K-RAISES-CLOSURE scenarios (undeclared raise fires error, caught-and-re-raised does not fire, enricher-covered does not fire)
+- [x] 9.2 BDD: `tests/test_lint_raises_uncovered.py` covering A2K-RAISES-UNCOVERED (httpx call without coverage warns, defect-ok annotation suppresses)
+- [x] 9.3 BDD: `tests/test_lint_raises_not_typed.py` covering A2K-RAISES-NOT-TYPED (raw asyncpg type fires error)
+- [x] 9.4 Implement shared AST helpers (`a2effect._lint._ast`): tool-function finder, raises-annotation extractor, raise-statement walker, try-except handler tracker, enricher-coverage resolver
+- [x] 9.5 Implement `A2K-RAISES-CLOSURE` rule
+- [x] 9.6 Implement `A2K-RAISES-UNCOVERED` rule (consumes `raises_registry`)
+- [x] 9.7 Implement `A2K-RAISES-NOT-TYPED` rule
+- [x] 9.8 Register all three rules in a2effect's pyproject.toml under `[project.entry-points."a2lint.rules"]`
+- [x] 9.9 Implement `python -m a2effect.lint <path>` CLI shim using entry-point discovery for v1 standalone runnability
 
 ## 10. `contract_tests` pytest plugin
 
-- [ ] 10.1 BDD: `tests/test_contract_tests_helper.py` covering scenarios from `error-contract-tests` (mis-typed envelope detected, dead enricher detected, surface drift detected, disabling category)
-- [ ] 10.2 Implement `contract_tests(app, *, envelope_round_trip=True, dead_enricher=True, surface_parity=True)` returning pytest-collectible test factory
-- [ ] 10.3 Implement test-ID format (`test_envelope_round_trip[tool_name-ErrorType]`)
-- [ ] 10.4 Smoke: contract_tests over a fixture app passes; failure modes produce clear messages
+- [x] 10.1 BDD: `tests/test_contract_tests_helper.py` covering scenarios from `error-contract-tests` (mis-typed envelope detected, dead enricher detected, surface drift detected, disabling category)
+- [x] 10.2 Implement `contract_tests(app, *, envelope_round_trip=True, dead_enricher=True, surface_parity=True)` returning pytest-collectible test factory
+- [x] 10.3 Implement test-ID format (`test_envelope_round_trip[tool_name-ErrorType]`)
+- [x] 10.4 Smoke: contract_tests over a fixture app passes; failure modes produce clear messages
 
 ## 11. a2kit integration: dispatch pipeline
 
