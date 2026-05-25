@@ -141,9 +141,9 @@
 
 ## 19. Spec drift gate updates
 
-- [ ] 19.1 Audit existing specs for stale references to the old enricher signature; update or note for archival
-- [ ] 19.2 Update `openspec/specs/` materialization after archive (handled at archive time, but verify spec-drift-gate stays green)
-- [ ] 19.3 Add allowlist entries for any symbols dropped from a2kit but still referenced in residual docs (per `spec-drift-gate` capability conventions)
+- [x] 19.1 Audit existing specs for stale references to the old enricher signature; update or note for archival (updated router-conventions Requirement to instance-decorator shape; rewrote core-composition "Enricher attachment is per-tool only" to "via instance decorator only")
+- [x] 19.2 Update `openspec/specs/` materialization after archive (handled at archive time, but verify spec-drift-gate stays green) (full suite green: 1229 pass, includes spec-drift-gate)
+- [x] 19.3 Add allowlist entries for any symbols dropped from a2kit but still referenced in residual docs (per `spec-drift-gate` capability conventions) (no new allowlist needed; updated specs use the new symbols directly)
 
 ## 20. Documentation
 

@@ -3,27 +3,48 @@
 ## Purpose
 TBD - created by archiving change de-magic-3. Update Purpose after archive.
 ## Requirements
-### Requirement: Routers declare enrichers via class attribute and/or `enrich` method
+### Requirement: Routers declare enrichers via the `@router.enricher` instance decorator
 
-Routers SHALL declare exception enrichers using a class attribute `enrichers: tuple[Callable[[Exception], str | None], ...]` and/or an instance method `def enrich(self, exc: Exception) -> str | None`. There is no stacked `@enriches(...)` decorator.
+Routers SHALL declare exception enrichers via the instance-level
+`@router.enricher` decorator on a router instance after construction.
+The class-level `enrichers: tuple` / `enrich` method shapes are
+removed; declaring either at the class body SHALL raise `TypeError`
+from `Router.__init_subclass__` (see `a2effect-foundation`).
 
-#### Scenario: Class-list enrichers
+An enricher SHALL have the signature
+`(exc: <BaseException-subclass>) -> AppError | None`. The first
+parameter's annotation chooses dispatch shape: a bare `Exception` /
+`BaseException` makes it a wide enricher (called on every raise); a
+specific exception type makes it narrow (called only on
+`isinstance(exc, T)`). The return type SHALL be `AppError | None`
+or a subclass union; the runtime validates the returned object at
+call time and raises `TypeError` if a non-`AppError` is returned.
 
-- **GIVEN** `class TasksRouter(a2kit.Router): slug = "tasks"; enrichers = (generic_404, tracker_404)`
-- **WHEN** a tool on this router raises an exception
-- **THEN** the framework calls `generic_404(exc)` first; if it returns `None`, calls `tracker_404(exc)`; the first non-None result is used as the user-facing message
+Chain order is: per-tool inline (`raises_as` / `translate_to`) →
+router enrichers (registration order) → app enrichers (registration
+order) → defect quarantine. The first non-None `AppError` wins;
+anything escaping all layers is wrapped in `UnexpectedDefect`.
 
-#### Scenario: Instance method takes precedence
+#### Scenario: Narrow enricher fires only on isinstance match
 
-- **GIVEN** a router defines both `enrichers = (fallback,)` and `def enrich(self, exc): ...`
-- **WHEN** a tool raises an exception
-- **THEN** `self.enrich(exc)` is invoked first; if it returns `None`, the class tuple is walked
+- **GIVEN** `router = TasksRouter()` and a registered enricher
+  `def f(exc: LookupError) -> TaskNotFound | None: ...`
+- **WHEN** a tool on this router raises a `LookupError`
+- **THEN** the framework invokes `f(exc)` and, if non-None, replaces the in-flight exception with the returned `AppError`
+- **WHEN** the tool raises a `ValueError` instead
+- **THEN** `f` is NOT invoked (no isinstance match)
 
-#### Scenario: Empty enrichers tuple is the default
+#### Scenario: Wide enricher catches everything
 
-- **GIVEN** a router that declares neither `enrichers` nor `enrich`
-- **WHEN** a tool on this router raises an exception
-- **THEN** no enrichment runs and the raw exception message reaches the transport
+- **GIVEN** an enricher `def f(exc: Exception) -> AppError | None: ...`
+- **WHEN** any non-`AppError` exception escapes the body
+- **THEN** `f(exc)` is invoked for every exception; the framework checks the return for None before deciding to translate
+
+#### Scenario: Class-level enrichers/enrich raise at subclass time
+
+- **GIVEN** `class TasksRouter(a2kit.Router): slug = "tasks"; enrichers = (...)`
+- **WHEN** the class statement is evaluated
+- **THEN** `TypeError` fires from `Router.__init_subclass__` directing the author to the `@router.enricher` instance decorator
 
 ### Requirement: Tool methods declare typed dependencies as kwargs
 

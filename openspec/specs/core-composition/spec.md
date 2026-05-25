@@ -108,19 +108,27 @@ The framework MUST NOT define a `Plugin` Protocol, a `DependsResolver` Protocol,
 - **WHEN** user inspects `dir(app)`
 - **THEN** there is no `_plugins`, `plugins()`, `cli_commands()`, `mcp_middlewares()`, `depends_resolvers()`, or `tool_wrappers()` attribute
 
-### Requirement: Enricher attachment is per-tool only
+### Requirement: Enricher attachment is via instance decorator only
 
-The framework SHALL accept an enricher exclusively through `@a2kit.read(enricher=fn)`, `@a2kit.write(enricher=fn)`, `@a2kit.list_(enricher=fn)`, or `@a2kit.tool(enricher=fn)` decorator parameters. The framework MUST NOT support a `Router` class kwarg form (`class R(a2kit.Router, enricher=fn):`), a `self.enricher` instance attribute, or any other implicit attachment mechanism.
+The framework SHALL accept exception enrichers exclusively via the
+instance-level `@router.enricher` / `@app.enricher` decorators on
+constructed router / app instances. The framework MUST NOT support:
+verb-decorator kwargs (`@a2kit.read(enricher=fn)`), class-level
+`enrichers: tuple` attributes, an `enrich(self, exc)` method, or
+`Router` subclass kwargs (`class R(a2kit.Router, enricher=fn):`).
+See the `router-conventions` requirement on the new instance
+decorator and `a2effect-foundation` for the rationale.
 
-#### Scenario: Per-tool enricher applies on raise
+#### Scenario: Class-level enrichers attribute raises
 
-- **WHEN** a tool decorated with `@a2kit.read(enricher=tracker_404)` raises `KeyError`
-- **THEN** Router.tools() returns the tool wrapped, and the enricher transforms the exception when invoked
+- **WHEN** user writes `class TasksRouter(a2kit.Router): enrichers = (...)`
+- **THEN** `Router.__init_subclass__` raises `TypeError` directing the
+  author to `@router.enricher` after construction
 
-#### Scenario: Class kwarg form is removed
+#### Scenario: Verb-decorator enricher kwarg is rejected
 
-- **WHEN** user writes `class TasksRouter(a2kit.Router, enricher=fn):`
-- **THEN** Python raises `TypeError` because `Router.__init_subclass__` no longer accepts the kwarg
+- **WHEN** user writes `@a2kit.read(enricher=fn)`
+- **THEN** the decorator raises `TypeError` for unknown kwarg `enricher`
 
 ### Requirement: Tracker example demonstrates constructor injection
 
