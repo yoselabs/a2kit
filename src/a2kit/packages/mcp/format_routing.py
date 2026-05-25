@@ -32,12 +32,18 @@ class FormatRoutingMiddleware(Middleware):
         plans: dict[str, EncodingPlan],
         consumer: Consumer,
         compact: bool = False,
+        structured_output: bool = False,
     ) -> None:
         self._plans = plans
         self._consumer: Consumer = consumer
         self._compact = compact
+        # ADR 0022 / runtime-config: when True, success-path wire emits
+        # `structured_content` (full payload) and replaces `content[].text`
+        # with a short marker — saves duplicate JSON on hosts that forward
+        # structuredContent to the model. See `mcp.structured_output`.
+        self._structured_output = structured_output
 
-    async def on_call_tool(
+    async def on_call_tool(  # noqa: C901, PLR0911 -- three mutually exclusive wire modes (dual / compact / strict) + early-exit guards
         self,
         context: MiddlewareContext[Any],
         call_next: Any,
@@ -76,6 +82,20 @@ class FormatRoutingMiddleware(Middleware):
                     meta=getattr(result, "meta", None),
                 )
 
+            if self._structured_output and structured is not None:
+                # Strict mode (ADR 0022): keep structured_content; replace
+                # content[].text with a short marker. Saves ~50% success
+                # tokens on hosts that forward structuredContent. Degrades
+                # hosts that don't (Cursor, Hermes, Vercel-AI-SDK, ...).
+                from mcp.types import TextContent
+
+                marker = _short_marker(structured)
+                return type(result)(
+                    content=[TextContent(type="text", text=marker)],
+                    structured_content=structured,
+                    meta=getattr(result, "meta", None),
+                )
+
             if new_content is None:
                 # Nothing tabular to recompress — both channels already fine.
                 return result
@@ -94,6 +114,25 @@ class FormatRoutingMiddleware(Middleware):
                     exc,
                 )
             return result
+
+
+def _short_marker(structured: Any) -> str:
+    """Short type-identifying marker for strict structured-output mode.
+
+    For ``{"result": [...]}`` shapes (lists), report the item count.
+    For ``{"result": {...}}`` shapes (single model), report the
+    `_type` discriminator if present, else "structured".
+    Otherwise emit a static placeholder pointing at structuredContent.
+    """
+    if isinstance(structured, dict):
+        inner = structured.get("result", structured)
+        if isinstance(inner, list):
+            return f"[{len(inner)} item(s)]"
+        if isinstance(inner, dict):
+            type_hint = inner.get("_type") or inner.get("type")
+            if isinstance(type_hint, str) and type_hint:
+                return f"<{type_hint}>"
+    return "(see structuredContent)"
 
 
 __all__ = ["FormatRoutingMiddleware"]

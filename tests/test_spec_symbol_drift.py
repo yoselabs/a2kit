@@ -66,6 +66,15 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "Router.attribute",  # illustrative metavariable in docs-code-parity
         "a2kit.ldd.foo",  # illustrative metavariable in docs-code-parity
         "app.method",  # illustrative metavariable in docs-code-parity
+        # --- a2effect-foundation lint rules: spec-declared, runtime
+        #     implementation deferred to a2lint-extraction follow-up. The
+        #     specs name them now to lock the contract; the live registry
+        #     gains them when a2lint-extraction lands. ---
+        "A2K-RAISES-CLOSURE",
+        "A2K-RAISES-UNCOVERED",
+        "A2K-RAISES-NOT-TYPED",
+        "A2K-RAISES-HELPER-UNTYPED",
+        "A2K-OUTPUT-SCHEMA-COMPAT",
     }
 )
 

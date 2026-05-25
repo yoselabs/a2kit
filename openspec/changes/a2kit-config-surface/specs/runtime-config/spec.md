@@ -80,10 +80,12 @@ Every `A2kitConfig` field SHALL be settable via an environment variable using th
 
 a2kit SHALL NOT expose any documented public API that allows code to prevent env vars from overriding kwargs, freeze a field against future env changes, or otherwise lock a consumer-owned concern. This includes no `frozen=True` kwarg on `A2kitConfig`, no `bypass_env=True` mode, no "developer-pinned" sentinel. The recursive rule from ADR 0022 (consumer beats code at every link in the provider chain) is enforced by the absence of such an API, not by lint or runtime check.
 
-#### Scenario: No frozen kwarg
+#### Scenario: `frozen` kwarg has no lock effect
 
-- **WHEN** code attempts `A2kitConfig(frozen=True)`
-- **THEN** a `ValidationError` or `TypeError` is raised because `frozen` is not a recognized field
+- **GIVEN** the env var `A2KIT_MCP__STRUCTURED_OUTPUT=true`
+- **WHEN** code attempts `A2kitConfig(frozen=True, mcp=McpConfig(structured_output=False))`
+- **THEN** the `frozen=True` kwarg is silently ignored (no `frozen` field exists on A2kitConfig)
+- **AND** `cfg.mcp.structured_output` is `True` (env still wins)
 
 #### Scenario: No bypass_env mode
 

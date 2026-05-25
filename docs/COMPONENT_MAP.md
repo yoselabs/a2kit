@@ -23,7 +23,7 @@ the lint's own view of the graph.
 | `ldd` | 0 | 5 | 2 | 0 | — |
 | `lint` | 0 | 20 | 0 | 0 | — |
 | `select` | 0 | 2 | 2 | 0 | — |
-| `kernel` | 1 | 6 | 4 | 0 | — |
+| `kernel` | 1 | 7 | 4 | 0 | — |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
 | `runtime` | 3 | 3 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |

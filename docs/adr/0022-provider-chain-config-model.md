@@ -1,6 +1,6 @@
 ---
 id: "0022"
-status: proposed
+status: accepted
 date: 2026-05-25
 last_reviewed: 2026-05-25
 supersedes: []
@@ -13,7 +13,7 @@ deciders: [Denis Tomilin]
 
 ## Status
 
-Proposed, 2026-05-25.
+Accepted, 2026-05-25.
 
 ## Summary
 

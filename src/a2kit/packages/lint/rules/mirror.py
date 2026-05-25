@@ -92,6 +92,13 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # SLOC budget; behavior covered by tests/packages/mcp/test_cli.py
         # and tests/packages/codemode/test_cli_code.py.
         "src/a2kit/packages/cli/_serve.py",
+        # why: pydantic-settings A2kitConfig + sub-models — pure-data
+        # surface. Behavior covered by tests/config/test_runtime_config.py
+        # (envelope, env > kwarg inversion, .env, double-underscore),
+        # tests/config/test_app_config_integration.py (App constructor
+        # plumbing), and tests/packages/mcp/test_wire_structured_output.py
+        # (the wire branch the first knob drives).
+        "src/a2kit/config.py",
     }
 )
 

@@ -359,11 +359,19 @@ def build_mcp_server(
     # {"error": <envelope>}` onto the CallToolResult that FastMCP built
     # from the prose-shaped `ToolError`. See `error-envelope-rendering`.
     server.add_middleware(TypedErrorEnvelopeMiddleware())
+    # ADR 0022: structured_output is a consumer-owned concern — read from
+    # `app.config.mcp.structured_output` (env: A2KIT_MCP__STRUCTURED_OUTPUT).
+    # When True, success-path content[] gets a short marker; structured stays
+    # canonical. Default (False) keeps spec-prescribed dual-emit. Mutually
+    # exclusive with `compact`: if both are requested, structured_output wins
+    # (modern wire shape over legacy-client escape hatch).
+    _structured_output = bool(getattr(getattr(app, "config", None), "mcp", None) and app.config.mcp.structured_output)
     server.add_middleware(
         FormatRoutingMiddleware(
             plans=encoding_plans,
             consumer="code" if code_mode else "llm",
-            compact=compact,
+            compact=compact and not _structured_output,
+            structured_output=_structured_output,
         )
     )
     server.add_middleware(ListViewMiddleware())

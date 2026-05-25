@@ -71,12 +71,23 @@ class App:
         name: str,
         *,
         debug: bool = False,
+        config: Any = None,
+        user_config: Any = None,
         **_kw: Any,
     ) -> None:
         if _kw:
             self._raise_unexpected_kwargs(name, _kw)
         self.name = name
         self.debug = debug
+        # ADR 0022: a2kit-owned config. Lazy-construct A2kitConfig() so the
+        # env / .env / defaults are picked up at App() time. Inverted source
+        # order means env beats the kwarg (consumer beats code).
+        from a2kit.config import A2kitConfig
+
+        self.config: A2kitConfig = config if config is not None else A2kitConfig()
+        # ADR 0022: developer-owned config slot. Opaque pass-through.
+        # a2kit does not introspect, validate, or merge.
+        self.user_config: Any = user_config
         self._routers = RouterRegistry()
         self._descriptors: list[ToolDescriptor] = []
         self._cli_extras: list[click.Command] = []

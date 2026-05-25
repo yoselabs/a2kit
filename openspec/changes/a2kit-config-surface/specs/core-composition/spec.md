@@ -6,11 +6,11 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 
 `a2kit.App` SHALL be a pure compose-phase builder with no sealed mode. Composition verbs SHALL remain callable at any time, including after the App has been handed to a finisher. A finisher's internal `build(app)` step snapshots the App's current composition into an `AppRuntime`; a composition verb called after `build()` SHALL affect only subsequent builds and SHALL NOT mutate any already-produced `AppRuntime`. There SHALL be no `_sealed` flag and no `TypeError` raised by a composition verb on the basis of App lifecycle state.
 
-`App.__init__` SHALL accept the following keyword-only parameters in addition to the positional `name`:
+`App.__init__` SHALL accept the following keyword-only parameters in addition to the positional `name` and the existing `debug` parameter:
 - `config: A2kitConfig | None = None` — optional a2kit-owned configuration instance. When `None`, `App.__init__` SHALL construct a fresh `A2kitConfig()`, which picks up env / `.env` / defaults per the inverted source order. The resolved instance SHALL be exposed as `app.config`.
 - `user_config: Any = None` — opaque developer-owned configuration pass-through, exposed as `app.user_config`. a2kit MUST NOT introspect this value.
 
-`App.__init__` SHALL NOT accept a `debug` kwarg. The previous `App(debug=...)` surface is removed; debug mode is now a consumer-owned concern set via `A2KIT_DEBUG` env var or `A2kitConfig(debug=True)` kwarg.
+The `debug` kwarg is preserved unchanged in this change; its migration to `config.debug` is deferred to a follow-up change. The consumer-beats-code rule from ADR 0022 applies to the new `config` and `user_config` surfaces only.
 
 #### Scenario: Adding a Router
 
@@ -52,11 +52,6 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 - **WHEN** user constructs `App("name", config=A2kitConfig(debug=True))`
 - **AND** no `A2KIT_DEBUG` env var is set
 - **THEN** `app.config.debug` is `True`
-
-#### Scenario: App.debug kwarg is removed
-
-- **WHEN** user attempts `App("name", debug=True)`
-- **THEN** a `TypeError` is raised because `debug` is not a recognized parameter
 
 #### Scenario: App.user_config slot accepts arbitrary objects
 

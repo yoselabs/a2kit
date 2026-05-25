@@ -27,11 +27,11 @@ depends on the host fleet, which only the consumer knows.
   developer's own pydantic-settings instance, reachable via
   `container.app.user_config`. a2kit does not introspect, merge, or
   validate it.
-- **BREAKING**: `App.debug` migrates from constructor kwarg to
-  `config.debug` (consumer-owned). Existing `App("name", debug=True)`
-  call sites must move to env (`A2KIT_DEBUG=true`) or pass via
-  `A2kitConfig(debug=True)`. The kwarg shim is removed (per the
-  no-backwards-compat principle).
+- **DEFERRED**: `App.debug` migration. The kwarg stays as-is in this
+  change to keep scope tight. A follow-up change (`migrate-debug-to-
+  config`) will remove the kwarg and route it through `config.debug`
+  once the engine has shipped. The principle (consumer beats code)
+  is already enforced for the new knobs.
 - **NEW**: Wire format branch in `mcp/_wrappers.py` reads
   `app.config.mcp.structured_output` to pick dual-emit vs strict.
 - **NO public freeze/lock surface.** ADR 0022 forbids it.
