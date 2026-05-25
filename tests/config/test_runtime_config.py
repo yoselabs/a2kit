@@ -112,7 +112,7 @@ def test_no_freeze_kwarg_takes_effect(monkeypatch: pytest.MonkeyPatch, no_dotenv
     Passing `frozen=True` must NOT lock structured_output against env override.
     """
     monkeypatch.setenv("A2KIT_MCP__STRUCTURED_OUTPUT", "true")
-    cfg = A2kitConfig(frozen=True, mcp=McpConfig(structured_output=False))  # type: ignore[call-arg]
+    cfg = A2kitConfig(frozen=True, mcp=McpConfig(structured_output=False))  # ty: ignore[unknown-argument]
     # Env still wins. The `frozen=True` is silently ignored — it has no effect.
     assert cfg.mcp.structured_output is True
     assert "frozen" not in A2kitConfig.model_fields

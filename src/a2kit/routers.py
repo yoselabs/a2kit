@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from a2kit.metadata import _get_meta
 
@@ -12,6 +12,12 @@ if TYPE_CHECKING:
 
     EnricherFn = Callable[[BaseException], AppError | None]
     EnricherEntry = tuple[type[BaseException], EnricherFn]
+
+#: Exception TypeVar bound by ``BaseException`` so narrow enricher forms
+#: (``def f(exc: BoomError) -> ...``) type-check against the decorator's
+#: argument slot. Without this, ``Callable[[BoomError], ...]`` is not
+#: assignable to ``Callable[[BaseException], ...]`` under contravariance.
+_E = TypeVar("_E", bound=BaseException)
 
 
 def _resolve_enricher_filter(fn: Callable[..., Any]) -> type[BaseException]:
@@ -168,7 +174,7 @@ class Router:
         """Return bound method references registered as tools on this instance."""
         return list(self._tools)
 
-    def enricher(self, fn: EnricherFn) -> EnricherFn:
+    def enricher(self, fn: Callable[[_E], AppError | None]) -> Callable[[_E], AppError | None]:
         """Register an exception → AppError|None translator on this router.
 
         The first parameter's annotation chooses dispatch shape:
@@ -179,7 +185,10 @@ class Router:
         thereof); the runtime validates the returned object at call time.
         """
         filter_type = _resolve_enricher_filter(fn)
-        self._enrichers.append((filter_type, fn))
+        # The runtime treats `fn` as `Callable[[BaseException], ...]` once
+        # registered — the narrow-form TypeVar only constrains the decorator
+        # boundary so callers' typed-param functions are accepted.
+        self._enrichers.append((filter_type, fn))  # ty: ignore[invalid-argument-type]
         return fn
 
 
