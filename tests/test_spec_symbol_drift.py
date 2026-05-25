@@ -60,6 +60,9 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "a2kit.packages.dispatch.substrate.Substrate",  # removed in
         # remove-substrate-literal; surface-protocol spec cites it in the
         # migration-hint scenario
+        "App.debug",  # removed in di-for-sub-configs (2026-05-25); the
+        "app.debug",  # core-composition + runtime-config specs cite the
+        # name in their tombstone / migration-hint paragraphs.
         # --- example-only / illustrative placeholders cited in pattern
         #     descriptions (not real surface, not drift) ---
         "App.method",  # illustrative metavariable in docs-code-parity

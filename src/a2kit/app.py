@@ -17,6 +17,20 @@ if TYPE_CHECKING:
     from a2kit.packages.di import Resolver
 
 
+#: Removed instance attributes mapped to migration hints. Accessing any
+#: of these on an ``App`` raises ``AttributeError`` with a pointed
+#: message. Mirrors the module-level ``_REMOVED_IN_V033`` pattern in
+#: ``src/a2kit/__init__.py``.
+_REMOVED_ATTRS: dict[str, str] = {
+    "debug": (
+        "App.debug was removed (di-for-sub-configs). Read `app.config.debug` "
+        "for consumer introspection, or resolve `A2kitConfig` via DI in a "
+        "subsystem (`def factory(cfg: A2kitConfig): ...`). The shortcut "
+        "duplicated `app.config.debug` and fragmented the access path."
+    ),
+}
+
+
 def _default_dispatch_hook(
     fn: Callable[..., Any],
     wire_kwargs: dict[str, Any],
@@ -83,10 +97,6 @@ class App:
         from a2kit.config import A2kitConfig
 
         self.config: A2kitConfig = config if config is not None else A2kitConfig()
-        # Debug attribute proxies config.debug. Reading `app.debug` returns
-        # the consumer-resolved value (env wins over kwarg). The `debug=`
-        # kwarg on App() was removed — debug is a consumer-owned concern.
-        self.debug: bool = self.config.debug
         # ADR 0022: developer-owned config slot. Opaque pass-through.
         # a2kit does not introspect, validate, or merge.
         self.user_config: Any = user_config
@@ -110,6 +120,19 @@ class App:
             raise RuntimeError(msg)
 
         self._container.provide(_Principal, _principal_placeholder, scope=_Scope.SCOPED)
+        # ADR 0022 worked example: subsystems consume sub-configs by type
+        # through DI (last-write-wins for test overrides, ADR 0006).
+        from a2kit.config import A2kitConfig as _A2kitConfig
+        from a2kit.config import CliConfig as _CliConfig
+        from a2kit.config import HttpConfig as _HttpConfig
+        from a2kit.config import LddConfig as _LddConfig
+        from a2kit.config import McpConfig as _McpConfig
+
+        self._container.provide(_A2kitConfig, lambda: self.config)
+        self._container.provide(_LddConfig, lambda: self.config.ldd)
+        self._container.provide(_McpConfig, lambda: self.config.mcp)
+        self._container.provide(_HttpConfig, lambda: self.config.http)
+        self._container.provide(_CliConfig, lambda: self.config.cli)
         # Default dispatch hook is identity over wire kwargs. Consumer
         # packages (e.g. connections) install a hook that performs
         # wire-side conversion only; DI runs after the hook inside
@@ -149,6 +172,13 @@ class App:
         # annotation (wide = BaseException; narrow = specific type). Read
         # by EnricherStage after router-level enrichers.
         self._enrichers: list[tuple[type[BaseException], Callable[..., Any]]] = []
+
+    def __getattr__(self, name: str) -> Any:
+        hint = _REMOVED_ATTRS.get(name)
+        if hint is not None:
+            raise AttributeError(hint)
+        msg = f"'App' object has no attribute {name!r}"
+        raise AttributeError(msg)
 
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:

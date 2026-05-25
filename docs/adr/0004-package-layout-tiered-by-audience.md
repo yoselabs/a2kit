@@ -2,7 +2,7 @@
 id: "0004"
 status: accepted
 date: 2026-05-18
-last_reviewed: 2026-05-18
+last_reviewed: 2026-05-25
 supersedes: []
 superseded_by: null
 tags: [surface, packaging, architecture]
@@ -78,10 +78,11 @@ Current Tier-1 names (defined in `src/a2kit/__init__.py`'s `_LAZY_ATTRS`):
 - `ToolContext` — the protocol authors type their `ctx` parameter against
 - `A2KitError` — the umbrella exception for `except a2kit.A2KitError:`
 - `HealthResult` — return type for `@app.health_check`
+- `Principal` — typed dependency for authorized tool bodies (`principal: Principal`); ratified by ADR 0023
 - `run` — the CLI entrypoint
 - `schema` — lazy submodule (the only Tier-1 module re-export)
 
-Promotion of a new name to Tier 1 requires a new ADR. Adding `_LAZY_ATTRS` table entries without an ADR is forbidden.
+Promotion of a new name to Tier 1 requires a new ADR. Adding `_LAZY_ATTRS` table entries without an ADR is forbidden. The snapshot suite under `tests/surface/` (see "Enforcement" below) makes the ADR-paired-with-diff workflow mechanical.
 
 ### Tier 2 — `a2kit.<domain>` (discoverable per-audience modules)
 
@@ -124,9 +125,32 @@ The rule: every named public symbol lives in exactly one Tier-3 module. Tier-1 a
 - Tier-2 modules require maintenance: every new Tier-3 name in their audience has to be added to the re-export `__all__`. The cost is small but real.
 - Some filings will still relitigate the boundary. The ADR does not prevent the conversation; it shortens it from "argue from scratch" to "argue against ADR 0004's reasoning." That second conversation is higher-bar but still possible.
 
+## Enforcement — snapshot tests
+
+Tier 1 and Tier 2 surfaces are gated by pytest snapshots under
+`tests/surface/`. Each tier has a checked-in `expected_*.txt` file
+listing its public names; adding, removing, or renaming a public
+symbol forces a diff against the expectation file. The test fails
+until the snapshot is regenerated (`make surface-snapshot`) and the
+corresponding ADR amendment is filed.
+
+How to promote a symbol to Tier 1:
+
+1. Edit `src/a2kit/__init__.py` (add to `_LAZY_ATTRS` or `_LAZY_MODULES`).
+2. Run `make surface-snapshot` to regenerate `expected_tier1.txt`
+   and `expected_lazy_attrs.txt`.
+3. Amend this ADR (or file a follow-up ADR that supersedes it) with
+   the justification.
+4. Commit the code change, snapshot diffs, and ADR change together.
+
+The paired diff is the review gate — it is not possible to add a
+public symbol without the snapshot change being visible in code
+review.
+
 ## References
 
 - `src/a2kit/__init__.py` — Tier-1 lazy-import table (`_LAZY_ATTRS`) and the "95% authoring surface" comment this ADR formalizes.
 - `src/a2kit/testing.py` — canonical Tier-2 module, re-exporting from Tier-3.
+- `tests/surface/` — snapshot suite that enforces this ADR.
 - `docs/CONSUMER_FEEDBACK_DOCTRINE.md` — F3 and F5 (refuse use-case-specific asks, cite ADRs).
 - `CLAUDE.md` core principle 2 — "no multiple ways of doing the same thing," which constrains how Tier-1/Tier-2 re-exports relate to Tier-3 originals.

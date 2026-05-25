@@ -15,7 +15,7 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 
 `App.__init__` SHALL NOT accept a `debug` kwarg. Debug mode is a consumer-owned concern (ADR 0022) and SHALL be set via env `A2KIT_DEBUG=true` or via `A2kitConfig(debug=True)`. An attempt to construct `App("name", debug=True)` SHALL raise `TypeError` carrying a migration hint pointing at the env var and the config kwarg.
 
-`App.debug` SHALL remain a readable attribute. Its value SHALL be sourced from `self.config.debug` at construction time. External code that reads `app.debug` SHALL observe the consumer-resolved value (env wins per the inverted source order).
+`App` SHALL NOT expose a `debug` attribute. Consumer-side reads of debug mode SHALL use `app.config.debug`. Subsystem-side reads SHALL resolve `A2kitConfig` via DI (typed dependency). Access to `app.debug` SHALL raise `AttributeError` with a migration hint naming both replacement paths.
 
 #### Scenario: Adding a Router
 
@@ -57,7 +57,6 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 - **WHEN** user constructs `App("name", config=A2kitConfig(debug=True))`
 - **AND** no `A2KIT_DEBUG` env var is set
 - **THEN** `app.config.debug` is `True`
-- **AND** `app.debug` is `True`
 
 #### Scenario: App(debug=...) kwarg raises TypeError with migration hint
 
@@ -69,7 +68,13 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 
 - **GIVEN** `A2KIT_DEBUG=false` in process env
 - **WHEN** user constructs `App("name", config=A2kitConfig(debug=True))`
-- **THEN** `app.debug` is `False` (env wins per ADR 0022)
+- **THEN** `app.config.debug` is `False` (env wins per ADR 0022)
+
+#### Scenario: app.debug attribute access raises AttributeError
+
+- **WHEN** user constructs `App("name")` and reads `app.debug`
+- **THEN** `AttributeError` is raised
+- **AND** the message points at `app.config.debug` (consumer path) and `A2kitConfig` DI (subsystem path)
 
 #### Scenario: App.user_config slot accepts arbitrary objects
 

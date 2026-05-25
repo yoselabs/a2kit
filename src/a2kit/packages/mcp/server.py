@@ -291,12 +291,12 @@ def build_mcp_server(
         fastmcp_kwargs["lifespan"] = _build_standalone_lifespan(runtime, user_lifespan)
     else:
         fastmcp_kwargs["lifespan"] = _build_mcp_mount_lifespan(runtime, user_lifespan)
-    # `app.config.debug` (env `A2KIT_DEBUG=true`) adds a `traceback` field to
-    # the wire-error envelope's JSON payload. The envelope itself (see
+    # `runtime.config.debug` (env `A2KIT_DEBUG=true`) adds a `traceback` field
+    # to the wire-error envelope's JSON payload. The envelope itself (see
     # `_wrap_with_error_envelope`) is installed unconditionally and owns the
     # wire bytes via `raise ToolError(json.dumps(...))`, bypassing FastMCP's
     # `mask_error_details` semantics entirely.
-    app_debug = bool(getattr(runtime, "debug", False))
+    app_debug = bool(runtime.config.debug)
     if "mask_error_details" not in fastmcp_kwargs:
         fastmcp_kwargs["mask_error_details"] = not app_debug
     server = FastMCP(name=runtime.name, **fastmcp_kwargs)
@@ -360,12 +360,12 @@ def build_mcp_server(
     # from the prose-shaped `ToolError`. See `error-envelope-rendering`.
     server.add_middleware(TypedErrorEnvelopeMiddleware())
     # ADR 0022: structured_output is a consumer-owned concern — read from
-    # `app.config.mcp.structured_output` (env: A2KIT_MCP__STRUCTURED_OUTPUT).
+    # `runtime.config.mcp.structured_output` (env: A2KIT_MCP__STRUCTURED_OUTPUT).
     # When True, success-path content[] gets a short marker; structured stays
     # canonical. Default (False) keeps spec-prescribed dual-emit. Mutually
     # exclusive with `compact`: if both are requested, structured_output wins
     # (modern wire shape over legacy-client escape hatch).
-    _structured_output = bool(getattr(getattr(app, "config", None), "mcp", None) and app.config.mcp.structured_output)
+    _structured_output = bool(runtime.config.mcp.structured_output)
     server.add_middleware(
         FormatRoutingMiddleware(
             plans=encoding_plans,

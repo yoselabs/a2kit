@@ -148,7 +148,7 @@ The error path is unaffected by this setting and continues to emit prose in `con
 
 `A2kitConfig` SHALL expose a top-level `debug: bool = False` field. The field SHALL be settable via env var `A2KIT_DEBUG` (case-insensitive boolean parsing per pydantic-settings defaults), via `.env` file entry, or via `A2kitConfig(debug=True)` kwarg. Per ADR 0022's inverted source order, env wins over kwargs.
 
-When `App` is constructed, `app.debug` SHALL reflect `app.config.debug`. External code that reads `app.debug` SHALL observe the consumer-resolved value, not whatever was passed to the (removed) `debug` kwarg.
+The `App.debug` shortcut attribute has been removed. Consumer-side code SHALL read `app.config.debug`. Subsystem-side code SHALL resolve `A2kitConfig` via DI (typed dependency). Access to `app.debug` SHALL raise `AttributeError` with a migration hint naming both paths.
 
 #### Scenario: default debug is False
 
@@ -168,12 +168,13 @@ When `App` is constructed, `app.debug` SHALL reflect `app.config.debug`. Externa
 - **WHEN** `A2kitConfig(debug=True)` is constructed
 - **THEN** `cfg.debug` is `False` (env wins per ADR 0022)
 
-#### Scenario: app.debug attribute proxies app.config.debug
+#### Scenario: App.debug access raises with migration hint
 
-- **GIVEN** `A2KIT_DEBUG=true` in process env
-- **WHEN** `a2kit.App("svc")` is constructed
-- **THEN** `app.debug` is `True`
-- **AND** `app.config.debug` is `True`
+- **GIVEN** `a2kit.App("svc")` is constructed
+- **WHEN** code reads `app.debug`
+- **THEN** `AttributeError` is raised
+- **AND** the message names `app.config.debug` as the consumer-side replacement
+- **AND** the message names `A2kitConfig` DI as the subsystem-side replacement
 
 ### Requirement: A2kitConfig.ldd.level is the consumer-owned LDD threshold
 
@@ -233,4 +234,22 @@ When `App` is constructed, `app.debug` SHALL reflect `app.config.debug`. Externa
 - **WHEN** `a2kit.App("svc")` is constructed
 - **THEN** a `pydantic_settings.SettingsError` is raised because pydantic-settings tries to parse "off" as JSON for the entire `ldd` sub-model
 - **AND** consumers MUST migrate to `A2KIT_LDD__ENABLED=false`
+
+### Requirement: A2kitConfig is exposed via DI in addition to App.config
+
+The framework SHALL make `A2kitConfig` available both as the public
+`App.config` attribute (for consumer introspection) and as a DI-resolved
+dependency (for subsystem consumption). Subsystems and tool bodies SHALL
+NOT walk `app.config.<sub>` attribute paths to obtain a sub-config;
+they SHALL declare the typed dependency and let the container resolve
+it.
+
+#### Scenario: Subsystem prefers DI over attribute walk
+
+- **GIVEN** the framework needs `LddConfig` inside `LddStateStage`
+- **WHEN** the stage is constructed
+- **THEN** `LddConfig` is supplied as a constructor argument resolved
+  from the container
+- **AND** the stage body MUST NOT read `app.config.ldd.<field>` at
+  dispatch time
 

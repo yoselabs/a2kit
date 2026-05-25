@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Breaking — `App.debug` attribute removed; sub-configs DI-resolvable
+
+`App.debug` is gone. The shortcut duplicated `app.config.debug` and
+fragmented the access path; ADR 0022 designates `A2kitConfig` as the
+single config surface. Reading `app.debug` now raises `AttributeError`
+with a migration hint.
+
+| Pre v0.40 | Post v0.40 |
+|-----------|------------|
+| `app.debug` | `app.config.debug` (consumer side) |
+| `app.debug` inside a subsystem | `def factory(cfg: A2kitConfig): ...` resolves via DI |
+| `runtime.debug` | `runtime.config.debug` |
+
+Added (additive on top of ADR 0022):
+
+- `A2kitConfig`, `LddConfig`, `McpConfig`, `HttpConfig`, and `CliConfig`
+  are registered as singleton DI providers on every `App`. Subsystems
+  declare a typed parameter (`def factory(ldd: LddConfig): ...`) instead
+  of walking `app.config.ldd.<field>`. Per-test overrides use the
+  standard `app.provide(LddConfig, fake)` pattern (ADR 0006
+  last-write-wins).
+- `LddStateStage` captures `LddConfig` once at wrap time (per-tool,
+  per-runtime) and reads the threshold from the captured value. The
+  previous per-call attribute walk on `spec.app.config.ldd.level` is
+  retired.
+
+Internal: `mcp/server.py` and `http/build.py` now read
+`runtime.config.<sub>.<field>` directly off the typed root instead of
+defensive `getattr` chains; `AppRuntime` no longer carries a `debug`
+field.
+
 ### Breaking — LDD level threshold; default silences `debug()` calls
 
 Adds a level-threshold filter for LDD emissions, configurable via

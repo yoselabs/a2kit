@@ -241,15 +241,33 @@ class LddStateStage:
     a fresh ``StderrToolContext`` so the ambient ``ctx`` is never None
     inside a dispatch. Never self-skips — every dispatched tool runs
     inside an LDD ambient.
+
+    The level threshold is captured at wrap time from the injected
+    ``ldd_config`` (constructor injection at pipeline build time, ADR 0022 +
+    di-for-sub-configs). When the stage is instantiated without a config
+    (the default module-level pipeline), wrap falls back to a one-shot
+    read of ``spec.app.config.ldd`` so the cached value is still
+    per-tool-per-runtime, not per-call.
     """
 
     name = "ldd-state"
 
+    def __init__(self, ldd_config: Any = None) -> None:
+        self._ldd_config = ldd_config
+
     def wrap(self, fn: Callable[..., Any], spec: ToolBuildSpec) -> Callable[..., Any]:
+        from a2kit.packages.ldd import LDD_LEVEL_RANK
+
         meta = spec.meta
         ctx_param_name = meta.context_param_name if meta is not None else None
         report_type = meta.extras.report_type if meta is not None else None
         tool_name = meta.tool_name if meta is not None else None
+
+        # Capture LddConfig at wrap time (per-tool-per-runtime), not per
+        # call. Constructor-injected value wins; otherwise read from the
+        # typed config root, which App.__init__ guarantees.
+        ldd_cfg = self._ldd_config if self._ldd_config is not None else spec.app.config.ldd
+        threshold: int = LDD_LEVEL_RANK.get(ldd_cfg.level, 0)
 
         @functools.wraps(fn)
         async def _wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -261,15 +279,6 @@ class LddStateStage:
                 ctx_obj = kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
             if ctx_obj is None:
                 ctx_obj = StderrToolContext()
-            # Read the LDD level threshold off App config per-call; mutating
-            # `app.config.ldd.level` between calls is observed on the next
-            # dispatch. Sentinel 0 if the App somehow lacks a config — keeps
-            # tests that build half-stubs from breaking.
-            from a2kit.packages.ldd import LDD_LEVEL_RANK
-
-            cfg = getattr(spec.app, "config", None)
-            level: Any = getattr(getattr(cfg, "ldd", None), "level", None) if cfg is not None else None
-            threshold: int = LDD_LEVEL_RANK.get(level, 0)
             with ldd_state_for_call(
                 ctx=ctx_obj,
                 events_enabled=spec.events_enabled,

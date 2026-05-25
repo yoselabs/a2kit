@@ -114,7 +114,6 @@ The `Container` class SHALL implement `__aenter__` and `__aexit__`. Entering the
 - **THEN** cleanup runs in LIFO order (`C`, then `B`, then `A`)
 - **AND** per-resource exception isolation is enforced (see `di-scope-cleanup-stack`)
 
-
 ### Requirement: Container bridges to FastAPI `Depends` via `expose_as_fastapi_depends`
 
 `Container` SHALL provide `expose_as_fastapi_depends(type_: type) -> Callable[..., Any]` returning a FastAPI-compatible resolver that reads the active `_a2kit_request_scope` contextvar. Generated callables SHALL be cached per (container, type) so identical-type calls return the same callable object.
@@ -126,3 +125,28 @@ The `Container` class SHALL implement `__aenter__` and `__aexit__`. Entering the
 - **WHEN** an HTTP request reaches a route protected by `Security(guard)`
 - **THEN** `guard` resolves `db` from the active a2kit call scope
 - **AND** the same instance is visible to the route handler
+
+### Requirement: Framework-owned providers are seeded at App construction
+
+`App.__init__` SHALL seed the DI container with framework-owned
+providers before any user `app.provide(...)` call is accepted. The
+framework-owned providers SHALL include the full set of config types
+(`A2kitConfig` plus each registered sub-config type). User
+registrations made via `app.provide(...)` SHALL win over framework
+defaults, per the standard last-write-wins semantics of the container
+(ADR 0006).
+
+#### Scenario: User override of LddConfig replaces framework default
+
+- **GIVEN** a fresh `App`
+- **WHEN** the user calls `app.provide(LddConfig, lambda: custom)`
+- **AND** the runtime is built
+- **THEN** resolving `LddConfig` from the container returns `custom`
+- **AND** does NOT return the App's `config.ldd`
+
+#### Scenario: Framework providers are present even without user calls
+
+- **GIVEN** a fresh `App` with no user `.provide(...)` calls
+- **WHEN** the runtime is built and `A2kitConfig` is resolved
+- **THEN** the container returns the App's `config` instance
+

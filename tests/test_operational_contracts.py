@@ -119,14 +119,25 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
 
 
 def test_app_debug_flag_defaults_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`App.debug` defaults False; `A2kitConfig(debug=True)` flips."""
+    """`app.config.debug` defaults False; `A2kitConfig(debug=True)` flips."""
     from a2kit.config import A2kitConfig
 
     monkeypatch.delenv("A2KIT_DEBUG", raising=False)
     plain = a2kit.App("plain")
-    assert plain.debug is False
+    assert plain.config.debug is False
     chatty = a2kit.App("chatty", config=A2kitConfig(debug=True))
-    assert chatty.debug is True
+    assert chatty.config.debug is True
+
+
+def test_app_debug_attribute_removed_with_migration_hint() -> None:
+    """`App.debug` is removed (di-for-sub-configs). Access raises with hint."""
+    app = a2kit.App("retired")
+    with pytest.raises(AttributeError) as ei:
+        _ = app.debug  # type: ignore[attr-defined]
+    msg = str(ei.value)
+    assert "App.debug was removed" in msg
+    assert "app.config.debug" in msg
+    assert "A2kitConfig" in msg
 
 
 def test_app_debug_kwarg_raises_with_migration_hint() -> None:
@@ -144,7 +155,6 @@ def test_env_debug_beats_config_kwarg(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("A2KIT_DEBUG", "true")
     app = a2kit.App("env-wins", config=A2kitConfig(debug=False))
-    assert app.debug is True
     assert app.config.debug is True
 
 

@@ -131,6 +131,23 @@ emission ends up at the same level, the level isn't doing work —
 promote consistently-noisy ones up, demote consistently-quiet ones
 down. Levels exist to separate signals, not to be uniformly applied.
 
+Sub-configs are DI-resolvable. `A2kitConfig` and each sub-model
+(`LddConfig`, `McpConfig`, `HttpConfig`, `CliConfig`) are registered
+as singleton providers on every `App`. Subsystems consume them by
+typed parameter:
+
+```python
+@app.provide
+def my_factory(ldd: LddConfig) -> MyService:
+    return MyService(level=ldd.level)
+```
+
+Adding a new sub-config means: (1) define the pydantic model under
+`a2kit.config`, (2) compose it under `A2kitConfig`, (3) add a
+provider registration in `App.__init__`. The `app.config.<sub>`
+attribute-walk path is reserved for consumer-side introspection,
+not subsystem-side reads.
+
 ### `__getattr__` migration hints
 
 ```python
@@ -286,6 +303,14 @@ This is the load-bearing decision behind `src/a2kit/__init__.py`'s lazy
 response. Read `docs/adr/0004-package-layout-tiered-by-audience.md`
 before proposing any change to the top-level surface, and before
 responding to any consumer filing that asks for promotion.
+
+Tier 1 and Tier 2 surfaces are gated by snapshot tests under
+`tests/surface/`. Adding or removing a public name produces a diff
+against `expected_tier1.txt`, `expected_lazy_attrs.txt`, or one of the
+`expected_tier_<domain>.txt` files; pytest fails with an ADR 0004
+pointer until the snapshot is regenerated (`make surface-snapshot`)
+and the corresponding ADR amendment lands. The paired diff is the
+review gate.
 
 `a2kit.App` is the **one public type** — a compose-phase builder. It
 carries the mutable composition verbs (`add_router`, `add_cli`,

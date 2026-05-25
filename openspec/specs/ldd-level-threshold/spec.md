@@ -3,9 +3,7 @@
 ## Purpose
 
 Defines the level vocabulary and threshold-filter contract for a2kit's LDD (logging / data / diagnostics) emissions. Locks the numeric ranks, the load-bearing invariant that the filter sits before every output channel, and the participation rules for `event()`, `report()`, `log()`, and the level shorthands. Lives separate from `runtime-config` because the filter mechanics (rank comparison, ambient-state plumbing) are independent of how the threshold value gets configured.
-
 ## Requirements
-
 ### Requirement: LDD emissions carry a level drawn from a fixed vocabulary
 
 Every LDD emission SHALL carry a level value from the fixed set `{"trace", "debug", "info", "warning", "error"}`. The `log()` primitive's first positional argument SHALL be one of these values. The `event()` and `report()` primitives SHALL accept a keyword-only `level` parameter defaulting to `"info"`. The level shorthands SHALL bind: `debug() → "debug"`, `info() → "info"`, `warning() → "warning"`, `error() → "error"`. There is no `trace()` shorthand in this change; callers wanting trace use `log("trace", ...)`.
@@ -83,19 +81,26 @@ When an LDD primitive is called with a level whose rank is strictly less than th
 
 ### Requirement: The threshold is read once per dispatch and stamped onto ambient state
 
-The dispatch site (the LDD-state stage of `fold_pipeline`) SHALL read `app.config.ldd.level`, convert it to its numeric rank via `LDD_LEVEL_RANK`, and stamp it onto the per-call ambient state object as `level_threshold: int`. Emission primitives SHALL read the threshold from the ambient state, not by re-resolving the App or its config on each call.
+The dispatch site (the LDD-state stage of `fold_pipeline`) SHALL obtain `LddConfig` via constructor injection at pipeline build time (or via a one-shot read of `spec.app.config.ldd` when the stage is built without explicit injection, e.g. the default module-level pipeline). The captured `LddConfig.level` SHALL be converted to its numeric rank via `LDD_LEVEL_RANK` once at wrap time and stamped onto the per-call ambient state object as `level_threshold: int`. Emission primitives SHALL read the threshold from the ambient state, not by re-resolving the App or its config on each call. The previous per-call attribute walk on `spec.app.config.ldd.level` is retired; `LddConfig` is treated as immutable for the lifetime of the runtime.
+
+#### Scenario: Stage captures LddConfig at wrap time
+
+- **GIVEN** a pipeline being constructed for an `App` whose `config.ldd.level` is `"warn"`
+- **WHEN** `LddStateStage` wraps a tool
+- **THEN** the captured `LddConfig.level` is `"warn"`
+- **AND** the captured threshold is stamped onto every subsequent ambient state for that tool
 
 #### Scenario: per-call state carries the threshold rank
 
 - **WHEN** a tool dispatch is in progress with `app.config.ldd.level="debug"`
 - **THEN** the ambient state's `level_threshold` is `20`
 
-#### Scenario: config change between calls is reflected on next call
+#### Scenario: Test rebinds LddConfig before build
 
-- **GIVEN** an `App` whose `config.ldd.level` is mutated from `"info"` to `"debug"` between two tool dispatches
-- **WHEN** the second dispatch begins
-- **THEN** its ambient state's `level_threshold` is `20`
-- **AND** the first dispatch (already completed) is unaffected
+- **GIVEN** a fresh `App` and a test that wants `LddConfig(level="debug")`
+- **WHEN** the test calls `app.provide(LddConfig, lambda: LddConfig(level="debug"))` before building the runtime
+- **THEN** the resulting pipeline's `LddStateStage` is constructed with the test-supplied `LddConfig`
+- **AND** `ldd.debug(...)` emissions are not dropped
 
 ### Requirement: The events_enabled kill-switch is orthogonal to the threshold
 
@@ -112,3 +117,4 @@ The existing `events_enabled` boolean (driven by `A2KIT_LDD=off` / `--no-events`
 - **GIVEN** `A2KIT_LDD=on` (default) and `A2KIT_LDD__LEVEL=warning`
 - **WHEN** a tool calls `await info("ignored")` and `await warning("noted")`
 - **THEN** sinks receive only the warning emission
+
