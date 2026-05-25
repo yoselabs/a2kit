@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Breaking — `App(debug=...)` kwarg removed (ADR 0022 worked example)
+
+Debug is a consumer-owned concern per ADR 0022 (provider-chain config
+model). The kwarg locked consumers out of disabling debug at deploy
+time, which is the anti-pattern ADR 0022 forbids.
+
+Set debug via env `A2KIT_DEBUG=true` or via the new
+`A2kitConfig(debug=True)` instance passed to `App(name, config=...)`.
+
+The `App.debug` *attribute* is preserved (it proxies `app.config.debug`),
+so external code reading `app.debug` keeps working. Only the *write API*
+(the kwarg) is gone. Loud failure: passing `debug=` raises `TypeError`
+with a migration hint.
+
+Bundled with this:
+
+- `A2kitConfig.debug: bool = False` added as a top-level field.
+- README gains `## Configuration` documenting the precedence chain
+  (env > .env > kwarg > default), the `A2KIT_<SUBSYSTEM>__<KNOB>`
+  convention, and worked examples (`A2KIT_DEBUG` +
+  `A2KIT_MCP__STRUCTURED_OUTPUT`).
+- AGENTS.md gains "Provider-chain configuration" pattern block.
+- ANTIPATTERNS.md gains entry #29 — hard-coding consumer concerns in
+  `App()` construction.
+- `operational-contracts` spec scenarios reworded from `App(debug=True)`
+  to `app.config.debug == True` (behavior unchanged).
+
 ### Added — multiplexed `serve --transport=http`
 
 `serve --transport=http` is now a multiplexed server: one process, one

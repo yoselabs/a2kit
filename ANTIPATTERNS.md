@@ -854,3 +854,39 @@ app.provide(LLM, lambda: FakeLLM())
 ```
 
 See `docs/patterns/test-overrides.md`.
+
+## 29. v0.X — hard-coding consumer concerns in `App()` construction
+
+```python
+# Don't:
+app = a2kit.App("svc", debug=True)         # the removed kwarg
+app = a2kit.App("svc", config=A2kitConfig(  # treating the kwarg as a lock
+    debug=True,
+))  # — wrong only if you assumed the consumer cannot override it
+```
+
+ADR 0022 (provider-chain config model) makes consumer-owned concerns —
+debug verbosity, wire format compatibility, transport binding,
+telemetry endpoints, secrets — escape source code. The developer
+suggests defaults; the consumer wins. The `App(debug=...)` kwarg was
+the canonical violation: it locked the consumer out of disabling
+debug at deploy time. It is gone.
+
+```python
+# Do (developer side — suggest a default):
+app = a2kit.App("svc", config=A2kitConfig(debug=True))
+
+# Do (consumer side — override at deploy time):
+# A2KIT_DEBUG=false  (in .env, env, or process invocation)
+# wins over the developer's kwarg per the inverted source order.
+```
+
+The shape generalises. **Any** consumer-owned concern (anything the
+deployer should be able to flip without rebuilding) belongs in
+`A2kitConfig` or in your own pydantic-settings instance hung off
+`App.user_config`. The framework MUST NOT expose a `freeze=True` /
+`bypass_env=True` escape hatch. If your platform-of-platforms needs
+to constrain its downstream, do it at the process boundary
+(env-strip, container policy, wrapper layer), outside a2kit.
+
+Citation: ADR 0022; `src/a2kit/config.py`; `src/a2kit/app.py:_raise_unexpected_kwargs`.

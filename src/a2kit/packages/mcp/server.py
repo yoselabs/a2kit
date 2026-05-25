@@ -291,10 +291,10 @@ def build_mcp_server(
         fastmcp_kwargs["lifespan"] = _build_standalone_lifespan(runtime, user_lifespan)
     else:
         fastmcp_kwargs["lifespan"] = _build_mcp_mount_lifespan(runtime, user_lifespan)
-    # `App(debug=True)` adds a `traceback` field to the wire-error envelope's
-    # JSON payload. The envelope itself (see `_wrap_with_error_envelope`)
-    # is installed unconditionally and owns the wire bytes via
-    # `raise ToolError(json.dumps(...))`, bypassing FastMCP's
+    # `app.config.debug` (env `A2KIT_DEBUG=true`) adds a `traceback` field to
+    # the wire-error envelope's JSON payload. The envelope itself (see
+    # `_wrap_with_error_envelope`) is installed unconditionally and owns the
+    # wire bytes via `raise ToolError(json.dumps(...))`, bypassing FastMCP's
     # `mask_error_details` semantics entirely.
     app_debug = bool(getattr(runtime, "debug", False))
     if "mask_error_details" not in fastmcp_kwargs:

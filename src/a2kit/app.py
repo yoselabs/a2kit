@@ -70,7 +70,6 @@ class App:
         self,
         name: str,
         *,
-        debug: bool = False,
         config: Any = None,
         user_config: Any = None,
         **_kw: Any,
@@ -78,13 +77,16 @@ class App:
         if _kw:
             self._raise_unexpected_kwargs(name, _kw)
         self.name = name
-        self.debug = debug
         # ADR 0022: a2kit-owned config. Lazy-construct A2kitConfig() so the
         # env / .env / defaults are picked up at App() time. Inverted source
         # order means env beats the kwarg (consumer beats code).
         from a2kit.config import A2kitConfig
 
         self.config: A2kitConfig = config if config is not None else A2kitConfig()
+        # Debug attribute proxies config.debug. Reading `app.debug` returns
+        # the consumer-resolved value (env wins over kwarg). The `debug=`
+        # kwarg on App() was removed — debug is a consumer-owned concern.
+        self.debug: bool = self.config.debug
         # ADR 0022: developer-owned config slot. Opaque pass-through.
         # a2kit does not introspect, validate, or merge.
         self.user_config: Any = user_config
@@ -162,6 +164,15 @@ class App:
                 "(``class _Warmup: __aenter__/__aexit__``; "
                 "``app.provide(_Warmup)``) or move the work into "
                 "``main()`` before handing the App to a finisher. See CHANGELOG."
+            )
+            raise TypeError(msg)
+        if "debug" in kw:
+            msg = (
+                f"App({name!r}, debug=...) was removed (ADR 0022). "
+                "Debug mode is a consumer-owned concern — set it at deploy "
+                "time via env `A2KIT_DEBUG=true` or via "
+                "`A2kitConfig(debug=True)` passed as `config=`. The kwarg "
+                "locked consumers out of disabling debug at deploy time."
             )
             raise TypeError(msg)
         if "health_tool" in kw:

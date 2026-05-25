@@ -183,7 +183,8 @@ servers); a2kit shouldn't pick a single answer.
 body or its wrapper chain reaches the MCP wire as `isError: true` with a
 JSON-encoded text payload of shape
 `{"class": "<ExceptionClassName>", "message": "<str(exc)>"}`. When
-`App(debug=True)`, the payload additionally includes
+`app.config.debug` resolves `True` (env `A2KIT_DEBUG=true` or
+`A2kitConfig(debug=True)` per ADR 0022), the payload additionally includes
 `"traceback": "<rendered traceback>"`. The contract is enforced by a2kit's
 outermost tool wrapper (`_wrap_with_error_envelope` in
 `packages/mcp/server.py`) which catches `Exception` and re-raises
@@ -206,7 +207,7 @@ envelope shape is owned here.
 
 **CLI path.** Unchanged from prior behavior. The process exits with a
 non-zero status code; the error message goes to stderr as
-`error: <message>`. When `App(debug=True)`, the full traceback follows
+`error: <message>`. When `app.config.debug` resolves `True`, the full traceback follows
 the error line on stderr; otherwise only the one-line message appears.
 The structured-envelope guarantee is an MCP-transport contract only.
 
@@ -217,7 +218,7 @@ The structured-envelope guarantee is an MCP-transport contract only.
   the recommended pattern for predictable failure modes.
 - Let unexpected exceptions bubble — they'll surface on the MCP wire as
   the structured envelope `{class, message, [traceback]}` and on the
-  CLI side as `error: <message>` + traceback under `debug=True`.
+  CLI side as `error: <message>` + traceback when `A2KIT_DEBUG=true`.
 
 **Why owned by a2kit, not delegated.** The pre-v0.33 implementation
 relied on FastMCP's `mask_error_details` semantics to surface the
@@ -228,8 +229,8 @@ leaving downstream consumers with no diagnostic signal. The envelope
 wrapper bypasses the masking path entirely.
 
 **Regression test.** `tests/test_wire_error_envelope.py` — covers the
-`{class, message}` shape under `debug=False`, the `traceback` field
-addition under `debug=True`, author-raised `ToolError` passthrough,
+`{class, message}` shape when debug is off, the `traceback` field
+addition when debug is on, author-raised `ToolError` passthrough,
 `CancelledError` propagation, special-character round-trip, and the
 FastMCP-independence assertion (same payload shape regardless of
 `mask_error_details`).

@@ -68,6 +68,15 @@ class A2kitConfig(BaseSettings):
     kwargs to suggest code-side defaults (env still wins per ADR 0022).
     """
 
+    debug: bool = Field(
+        default=False,
+        description=(
+            "Debug mode (consumer-owned). Env: A2KIT_DEBUG=true. "
+            "When True, the MCP error envelope includes a `traceback` field and "
+            "the CLI prints tracebacks on stderr. Set per-deployment, not per-build. "
+            "See ADR 0022."
+        ),
+    )
     mcp: McpConfig = McpConfig()
     http: HttpConfig = HttpConfig()
     cli: CliConfig = CliConfig()

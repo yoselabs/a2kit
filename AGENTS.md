@@ -94,7 +94,7 @@ the version (so consumers can grep release notes).
 
 ```python
 class App:
-    def __init__(self, name: str, *, debug=False, **_kw):
+    def __init__(self, name: str, *, config=None, **_kw):
         if _kw:
             raise TypeError(
                 f"Unexpected kwargs: {sorted(_kw)}. "
@@ -102,6 +102,18 @@ class App:
             )
         ...
 ```
+
+### Provider-chain configuration (ADR 0022)
+
+Consumer-owned concerns (debug verbosity, wire-format compatibility,
+transport bind addresses, secrets, telemetry endpoints) escape source
+code via `A2kitConfig` (pydantic-settings) and the `A2KIT_*` env var
+convention. Precedence is **inverted** from the pydantic-settings
+default: env > .env > kwargs > defaults. Developer kwargs are default
+**suggestions**, never **locks**. No `freeze` / `lock` / `bypass_env`
+surface exists. When you build on a2kit, apply the same pattern to
+your own consumer-owned concerns — your `Settings` class is the
+recursive instance of a2kit's reference implementation.
 
 ### `__getattr__` migration hints
 

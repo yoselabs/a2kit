@@ -5,7 +5,7 @@ Each test pins down one behavior documented in `OPERATIONAL_CONTRACTS.md`:
   Scenario Q1: cancellation propagates through the dispatcher to the tool body
   Scenario Q3: two App instances have isolated singletons + lifecycle handlers
   Scenario Q5a: unhandled exceptions reach the caller (no swallow)
-  Scenario Q5b: App(debug=True) toggles traceback exposure (flag-only test —
+  Scenario Q5b: A2kitConfig(debug=True) / A2KIT_DEBUG=true toggles traceback exposure (flag-only test —
                 full MCP envelope shape is out of scope here)
 """
 
@@ -118,12 +118,34 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
     assert payload["message"] == "explicit failure"
 
 
-def test_app_debug_flag_defaults_false() -> None:
-    """`App.debug` defaults False; explicit `debug=True` flips."""
+def test_app_debug_flag_defaults_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`App.debug` defaults False; `A2kitConfig(debug=True)` flips."""
+    from a2kit.config import A2kitConfig
+
+    monkeypatch.delenv("A2KIT_DEBUG", raising=False)
     plain = a2kit.App("plain")
     assert plain.debug is False
-    chatty = a2kit.App("chatty", debug=True)
+    chatty = a2kit.App("chatty", config=A2kitConfig(debug=True))
     assert chatty.debug is True
+
+
+def test_app_debug_kwarg_raises_with_migration_hint() -> None:
+    """`App(debug=True)` (the removed kwarg) raises TypeError per ADR 0022."""
+    with pytest.raises(TypeError) as ei:
+        a2kit.App("legacy", debug=True)  # type: ignore[call-arg]
+    msg = str(ei.value)
+    assert "A2KIT_DEBUG" in msg
+    assert "A2kitConfig" in msg
+
+
+def test_env_debug_beats_config_kwarg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR 0022 inversion: env wins over A2kitConfig(debug=...) kwarg."""
+    from a2kit.config import A2kitConfig
+
+    monkeypatch.setenv("A2KIT_DEBUG", "true")
+    app = a2kit.App("env-wins", config=A2kitConfig(debug=False))
+    assert app.debug is True
+    assert app.config.debug is True
 
 
 def test_cli_error_no_traceback_when_debug_false() -> None:
@@ -164,7 +186,9 @@ def test_cli_error_includes_traceback_when_debug_true() -> None:
 
         tools = (boom,)
 
-    app = a2kit.App("cli-err-dbg", debug=True).add_router(_R())
+    from a2kit.config import A2kitConfig
+
+    app = a2kit.App("cli-err-dbg", config=A2kitConfig(debug=True)).add_router(_R())
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["_r", "boom"])
     assert result.exit_code != 0
@@ -194,7 +218,9 @@ def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
     async def boom() -> None:
         raise ValueError("base msg")
 
-    spec = ToolBuildSpec(app=build(a2kit.App("oc-err", debug=True)), router=None, meta=None)
+    from a2kit.config import A2kitConfig
+
+    spec = ToolBuildSpec(app=build(a2kit.App("oc-err", config=A2kitConfig(debug=True))), router=None, meta=None)
     wrapped = ErrorCaptureStage().wrap(boom, spec)
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
@@ -232,14 +258,16 @@ def test_mcp_error_envelope_passes_cancelled_unchanged() -> None:
     asyncio.run(go())
 
 
-def test_mcp_server_passes_mask_error_details_from_app_debug() -> None:
-    """`App(debug=True)` flips fastmcp's mask_error_details to False."""
+def test_mcp_server_passes_mask_error_details_from_app_debug(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`A2kitConfig(debug=True)` flips fastmcp's mask_error_details to False."""
+    from a2kit.config import A2kitConfig
     from a2kit.packages.mcp.server import build_mcp_server
 
+    monkeypatch.delenv("A2KIT_DEBUG", raising=False)
     plain = a2kit.App("plain")
     server_plain = build_mcp_server(plain)
     assert server_plain._mask_error_details is True
 
-    chatty = a2kit.App("chatty", debug=True)
+    chatty = a2kit.App("chatty", config=A2kitConfig(debug=True))
     server_chatty = build_mcp_server(chatty)
     assert server_chatty._mask_error_details is False

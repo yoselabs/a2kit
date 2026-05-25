@@ -117,7 +117,7 @@ flag; a future change may pick otherwise, and that freedom is the point.
 
 ### One public type, `a2kit.App`
 
-`a2kit.App(name, *, debug=False)` is the single public composition type.
+`a2kit.App(name, *, config=None, user_config=None)` is the single public composition type. Debug mode is a consumer-owned concern set via `A2KIT_DEBUG=true` or `A2kitConfig(debug=True)` per ADR 0022.
 It carries the composition verbs (`add_router`, `add_cli`,
 `add_mcp_middleware`, `provide`, `health_check`, each chainable) and the
 runtime surface (`tools`, `routers`, `container`, the async-CM

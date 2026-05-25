@@ -3,7 +3,7 @@
 When a tool body raises an uncaught exception, the MCP wire SHALL
 carry a JSON-encoded text payload of shape
 ``{"class": <ExceptionClassName>, "message": <str(exc)>}``, with
-``"traceback"`` added when ``App(debug=True)``. The contract is
+``"traceback"`` added when ``app.config.debug`` resolves True. The contract is
 owned by a2kit's outermost tool wrapper and does NOT depend on
 FastMCP's ``mask_error_details`` flag.
 
@@ -64,7 +64,9 @@ def _build_app(*, debug: bool = False) -> a2kit.App:
             calls_bad_int_cast,
         )
 
-    return a2kit.App("envelope", debug=debug).add_router(R())
+    from a2kit.config import A2kitConfig
+
+    return a2kit.App("envelope", config=A2kitConfig(debug=debug)).add_router(R())
 
 
 async def _call_tool(app: a2kit.App, name: str) -> Any:

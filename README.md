@@ -73,7 +73,7 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name, *, debug=False)` | The single public type — a compose-phase builder. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None, *, per_call=False)` for typed DI and `health_check` for readiness probes. Each verb returns the App for chaining. Introspection surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher builds it into a sealed internal runtime (snapshots the composition into a fresh container, validates the provider graph, owns the async-CM lifecycle). There is no public `build()`. `App` is a pure, reusable builder — composition verbs stay callable, and a verb called after a finisher has built a runtime affects only the next build. |
+| `a2kit.App(name, *, config=None, user_config=None)` | The single public type — a compose-phase builder. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None, *, per_call=False)` for typed DI and `health_check` for readiness probes. Each verb returns the App for chaining. Introspection surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher builds it into a sealed internal runtime (snapshots the composition into a fresh container, validates the provider graph, owns the async-CM lifecycle). There is no public `build()`. `App` is a pure, reusable builder — composition verbs stay callable, and a verb called after a finisher has built a runtime affects only the next build. Debug mode and other runtime knobs are consumer-owned, set via env (`A2KIT_*`) or `A2kitConfig(...)` per ADR 0022 — see [Configuration](#configuration). |
 | `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `visibility=` kwarg | Verb decorators accept `visibility: Literal["hidden", "cli", "all"]`. Defaults to inherit from the Router's `visibility` class attribute (default `"all"`). Tier semantics: `"hidden"` — CLI-invokable but absent from `--help` and not on programmatic transports; `"cli"` — visible in `--help`, not on MCP / future REST; `"all"` — registered everywhere. Credential-management tools should declare `visibility="cli"` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
@@ -538,6 +538,49 @@ the quickstart, [`docs/MIGRATION_TYPED_ERRORS.md`](docs/MIGRATION_TYPED_ERRORS.m
 for the mechanical migration recipe, and
 [`docs/adr/0021-typed-error-foundation.md`](docs/adr/0021-typed-error-foundation.md)
 for the why.
+
+## Configuration
+
+a2kit ships into other people's deployments. Runtime knobs (debug
+verbosity, wire-format compatibility, future telemetry / rate limits)
+are **consumer-owned concerns** — the team that deploys an App
+decides them, not the team that wrote it. The developer suggests
+defaults; the consumer wins. No `freeze` / `lock` API exists.
+See ADR 0022 for the full rationale.
+
+### Precedence
+
+```text
+process env (A2KIT_*)
+   >  .env file
+      >  A2kitConfig(...) kwargs in code
+         >  field defaults
+```
+
+This is inverted from pydantic-settings' default: env beats kwargs.
+A developer's `App("svc", config=A2kitConfig(debug=False))` is a
+**default suggestion**, not a binding. A consumer setting
+`A2KIT_DEBUG=true` at deploy time wins.
+
+### Env-var convention
+
+`A2KIT_<SUBSYSTEM>__<KNOB>` — uppercase, the `A2KIT_` prefix on the
+left, **double-underscore (`__`)** delimits the sub-model boundary,
+single underscores stay part of the field name.
+
+| Env var | Field | Default | Effect |
+|---|---|---|---|
+| `A2KIT_DEBUG` | `config.debug` | `false` | Adds `traceback` to the wire error envelope and prints tracebacks on CLI stderr. |
+| `A2KIT_MCP__STRUCTURED_OUTPUT` | `config.mcp.structured_output` | `false` | When `true`, the success-path MCP wire emits `structuredContent` + a short content marker (no duplicate JSON). Saves ~50% tokens on hosts that forward structuredContent (Anthropic, ChatGPT, Codex, Copilot). Degrades on Cursor, Hermes, OpenClaw, Kiro, Vercel-AI-SDK consumers. |
+
+### Where it lives
+
+- `a2kit.config.A2kitConfig` — pydantic-settings root with sub-models for
+  `mcp`, `http`, `cli`, plus top-level cross-cutting fields.
+- `App.config` — the resolved instance. Read it from anywhere.
+- `App.user_config` — opaque slot for the developer's own pydantic-settings
+  instance. a2kit does not introspect; you apply the same env-beats-code
+  pattern in your own `Settings` class. See ADR 0022 (provider chain).
 
 ## Lint
 
