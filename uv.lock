@@ -7,11 +7,30 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+members = [
+    "a2effect",
+    "a2kit",
+]
+
+[[package]]
+name = "a2effect"
+version = "0.1.0"
+source = { editable = "packages/a2effect" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2,<3" }]
+provides-extras = ["testing"]
+
 [[package]]
 name = "a2kit"
 version = "0.39.3"
 source = { editable = "." }
 dependencies = [
+    { name = "a2effect" },
     { name = "anyio" },
     { name = "click" },
     { name = "fastapi" },
@@ -64,6 +83,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "a2effect", editable = "packages/a2effect" },
     { name = "anyio", specifier = ">=4" },
     { name = "click", specifier = ">=8" },
     { name = "cryptography", marker = "extra == 'examples-mcp-google-auth'", specifier = ">=42" },

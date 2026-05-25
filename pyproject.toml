@@ -32,6 +32,9 @@ dependencies = [
     # on that path, never at `import a2kit` (cold-start budget). Starlette
     # (the parent + REST sub-app framework) is already transitive via fastmcp.
     "uvicorn>=0.30",
+    # Typed-error foundation. Workspace member; ships pure types + wire
+    # schema + helpers. a2kit integrates it into dispatch/MCP/HTTP/CLI.
+    "a2effect",
 ]
 
 [project.scripts]
@@ -72,6 +75,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/a2kit"]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+a2effect = { workspace = true }
 
 [tool.ruff]
 target-version = "py311"
@@ -142,6 +151,13 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
     "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206",
     # Tests intentionally use blind asserts, subprocess calls, broad string patterns,
     # builtin shadowing for clarity, and bind to local addresses for HTTP probes.
+    "B017", "S603", "S104", "A002", "A004", "E501",
+]
+"packages/*/tests/**" = [
+    "S101", "S105", "S106", "E402", "ARG001", "ARG002", "ARG005", "PLR2004", "SLF001",
+    "PT011", "PT012", "PT018", "PT022", "PT030", "PLR0915", "PLC0415", "PTH116", "PTH123", "TC001", "TC002", "TC003",
+    "I001", "RUF100", "RUF012", "PLW0108", "F841", "N801",
+    "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206",
     "B017", "S603", "S104", "A002", "A004", "E501",
 ]
 "scripts/**" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201", "ANN202", "RUF059"]
