@@ -56,3 +56,28 @@ a2kit SHALL expose a single typed configuration root, `a2kit.config.A2kitConfig`
 - **GIVEN** no `A2KIT_LDD__LEVEL` env var is set
 - **WHEN** `A2kitConfig(ldd=LddConfig(level="trace"))` is constructed
 - **THEN** `cfg.ldd.level` is `"trace"`
+
+### Requirement: A2kitConfig.ldd.enabled is the hard kill-switch
+
+`LddConfig` SHALL expose a field `enabled: bool` defaulting to `True`. The field SHALL be settable via env var `A2KIT_LDD__ENABLED`, via `.env` file entry, or via `A2kitConfig(ldd=LddConfig(enabled=False))` kwarg. When `enabled=False`, the App's runtime `ldd_reports` and `ldd_events` SHALL both be `False` regardless of any `level` setting — the kill-switch is orthogonal to and overrides the threshold. This replaces the v0.x bare `A2KIT_LDD=off` legacy env var, which is removed (it collided with the new `A2KIT_LDD__*` nested namespace where pydantic-settings parses `A2KIT_LDD` as JSON for the entire `ldd` sub-model).
+
+#### Scenario: default enabled is True
+
+- **GIVEN** no `A2KIT_LDD__ENABLED` env var is set
+- **WHEN** `a2kit.App("svc")` is constructed
+- **THEN** `app.ldd_reports` is `True`
+- **AND** `app.ldd_events` is `True`
+
+#### Scenario: env disables both channels
+
+- **GIVEN** `A2KIT_LDD__ENABLED=false` in process env
+- **WHEN** `a2kit.App("svc")` is constructed
+- **THEN** `app.ldd_reports` is `False`
+- **AND** `app.ldd_events` is `False`
+
+#### Scenario: legacy A2KIT_LDD=off fails loudly
+
+- **GIVEN** `A2KIT_LDD=off` in process env (the v0.x legacy kill-switch var)
+- **WHEN** `a2kit.App("svc")` is constructed
+- **THEN** a `pydantic_settings.SettingsError` is raised because pydantic-settings tries to parse "off" as JSON for the entire `ldd` sub-model
+- **AND** consumers MUST migrate to `A2KIT_LDD__ENABLED=false`
