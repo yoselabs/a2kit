@@ -9,11 +9,13 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 
 `a2kit.App` SHALL be a pure compose-phase builder with no sealed mode. Composition verbs SHALL remain callable at any time, including after the App has been handed to a finisher. A finisher's internal `build(app)` step snapshots the App's current composition into an `AppRuntime`; a composition verb called after `build()` SHALL affect only subsequent builds and SHALL NOT mutate any already-produced `AppRuntime`. There SHALL be no `_sealed` flag and no `TypeError` raised by a composition verb on the basis of App lifecycle state.
 
-`App.__init__` SHALL accept the following keyword-only parameters in addition to the positional `name` and the existing `debug` parameter:
+`App.__init__` SHALL accept the following keyword-only parameters in addition to the positional `name`:
 - `config: A2kitConfig | None = None` — optional a2kit-owned configuration instance. When `None`, `App.__init__` SHALL construct a fresh `A2kitConfig()`, which picks up env / `.env` / defaults per the inverted source order. The resolved instance SHALL be exposed as `app.config`.
 - `user_config: Any = None` — opaque developer-owned configuration pass-through, exposed as `app.user_config`. a2kit MUST NOT introspect this value.
 
-The `debug` kwarg is preserved unchanged in this change; its migration to `config.debug` is deferred to a follow-up change. The consumer-beats-code rule from ADR 0022 applies to the new `config` and `user_config` surfaces only.
+`App.__init__` SHALL NOT accept a `debug` kwarg. Debug mode is a consumer-owned concern (ADR 0022) and SHALL be set via env `A2KIT_DEBUG=true` or via `A2kitConfig(debug=True)`. An attempt to construct `App("name", debug=True)` SHALL raise `TypeError` carrying a migration hint pointing at the env var and the config kwarg.
+
+`App.debug` SHALL remain a readable attribute. Its value SHALL be sourced from `self.config.debug` at construction time. External code that reads `app.debug` SHALL observe the consumer-resolved value (env wins per the inverted source order).
 
 #### Scenario: Adding a Router
 
@@ -55,6 +57,19 @@ The `debug` kwarg is preserved unchanged in this change; its migration to `confi
 - **WHEN** user constructs `App("name", config=A2kitConfig(debug=True))`
 - **AND** no `A2KIT_DEBUG` env var is set
 - **THEN** `app.config.debug` is `True`
+- **AND** `app.debug` is `True`
+
+#### Scenario: App(debug=...) kwarg raises TypeError with migration hint
+
+- **WHEN** user attempts `App("name", debug=True)`
+- **THEN** `TypeError` is raised
+- **AND** the error message names `A2KIT_DEBUG` and `A2kitConfig(debug=True)` as the migration targets
+
+#### Scenario: env beats config kwarg for debug
+
+- **GIVEN** `A2KIT_DEBUG=false` in process env
+- **WHEN** user constructs `App("name", config=A2kitConfig(debug=True))`
+- **THEN** `app.debug` is `False` (env wins per ADR 0022)
 
 #### Scenario: App.user_config slot accepts arbitrary objects
 

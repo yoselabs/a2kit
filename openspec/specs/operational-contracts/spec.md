@@ -40,24 +40,24 @@ When a tool body or its wrapper chain raises an exception that is not `FastMCPEr
 - `class`: the unqualified Python class name of the exception (`type(exc).__name__`)
 - `message`: the result of `str(exc)`
 
-When `App(debug=True)`, the payload SHALL additionally include:
+When `app.config.debug` resolves `True` (env `A2KIT_DEBUG=true` or `A2kitConfig(debug=True)` per ADR 0022), the payload SHALL additionally include:
 
 - `traceback`: the result of `traceback.format_exc()` at the point of catch
 
 `fastmcp.exceptions.FastMCPError` and subclasses (including author-raised `ToolError`) SHALL propagate unwrapped so author-shaped error messages reach the wire on FastMCP's own path. `asyncio.CancelledError`, `KeyboardInterrupt`, and `SystemExit` SHALL propagate unwrapped (they are `BaseException` siblings outside the catch scope). A `BaseExceptionGroup` containing only `CancelledError`s SHALL propagate unwrapped.
 
-The CLI transport is unchanged: exceptions surface as `error: <message>` on stderr (with traceback under `debug=True`) and a non-zero process exit code.
+The CLI transport is unchanged: exceptions surface as `error: <message>` on stderr (with traceback when `app.config.debug` resolves `True`) and a non-zero process exit code.
 
 #### Scenario: MCP path emits structured payload
 
 - **GIVEN** a tool `async def t() -> None` whose body raises `ValueError("bad input")`
-- **WHEN** the tool is invoked via `fastmcp.Client(transport=build_mcp_server(app))` with `App(debug=False)`
+- **WHEN** the tool is invoked via `fastmcp.Client(transport=build_mcp_server(app))` with `app.config.debug == False`
 - **THEN** the response has `isError=True`
 - **AND** `json.loads(response.content[0].text) == {"class": "ValueError", "message": "bad input"}`
 
 #### Scenario: debug flag includes traceback in MCP envelope
 
-- **GIVEN** the same tool with `App(debug=True)`
+- **GIVEN** the same tool with `app.config.debug == True` (set via `A2KIT_DEBUG=true` or `A2kitConfig(debug=True)`)
 - **WHEN** the tool is invoked over MCP
 - **THEN** the JSON payload contains keys `class`, `message`, and `traceback`
 - **AND** the `traceback` value contains the line `"ValueError: bad input"`
@@ -71,7 +71,7 @@ The CLI transport is unchanged: exceptions surface as `error: <message>` on stde
 #### Scenario: Author-raised ToolError passes through unwrapped
 
 - **GIVEN** a tool body `raise ToolError("permission denied")`
-- **WHEN** invoked over MCP with `App(debug=False)`
+- **WHEN** invoked over MCP with `app.config.debug == False`
 - **THEN** the response has `isError=True`
 - **AND** `response.content[0].text == "permission denied"` (NOT JSON-wrapped)
 
@@ -83,10 +83,9 @@ The CLI transport is unchanged: exceptions surface as `error: <message>` on stde
 
 #### Scenario: Envelope is FastMCP-independent
 
-- **GIVEN** an a2kit App whose MCP server is built against the pinned FastMCP version
-- **WHEN** a tool raises `ValueError` and FastMCP's hypothetical `mask_error_details` flag is set to either `True` or `False`
-- **THEN** the wire payload is identical: `{"class": "ValueError", "message": ...}`
-- **AND** the envelope shape does NOT depend on the `mask_error_details` setting
+- **GIVEN** the rule has been refactored to not rely on FastMCP's `mask_error_details` flag
+- **WHEN** a tool raises any non-FastMCP exception
+- **THEN** a2kit produces the envelope payload directly, independently of any FastMCP-internal masking behavior
 
 ### Requirement: Per-tool timeouts are not built-in (recommended pattern documented)
 
