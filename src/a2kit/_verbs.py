@@ -19,6 +19,7 @@ from a2kit._list_helpers import (
 from a2kit._list_helpers import (
     derive_selectable_fields as _derive_selectable_fields,
 )
+from a2kit._surface_names import registered_surface_names
 from a2kit._verb_validators import (
     _BUILTIN_RESERVED_TOOL_NAMES,
     _RESERVED_TOOL_NAME_PREFIX,
@@ -52,6 +53,13 @@ __all__ = [
 ]
 
 _WARN_ONCE_REPORT_SCHEMA: set[str] = set()
+
+#: Sentinel for ``expose=`` defaulting to "both bundled surfaces". Kept
+#: as a distinct singleton so the validator can tell "user passed
+#: ('mcp','api')" (validate strictly) from "kwarg unspecified"
+#: (skip registry validation so cold-start paths that don't import the
+#: surface packages still decorate cleanly).
+_DEFAULT_EXPOSE: tuple[str, ...] = ("mcp", "api")
 
 F = TypeVar("F", bound="Callable[..., Any]")
 
@@ -94,13 +102,17 @@ def _validate_expose(verb: str, expose: tuple[str, ...]) -> tuple[str, ...]:
 
     Empty tuple is rejected at decoration time per ``verb-decorators``
     spec — a projection tool that exposes on no surface is dead code.
-    Unknown surface names raise ``ValueError``. The accepted set
-    ``{"mcp", "api"}`` is hardcoded here because :data:`SURFACE_REGISTRY`
-    lives in the dispatch layer (L4) and ``_verbs`` is authoring (L2) —
-    reading the registry from here would violate `A2K-LAYER`.
-    Registry-driven open-set validation is queued as follow-up to
-    ``remove-substrate-literal``.
+    When ``expose`` is the ``_DEFAULT_EXPOSE`` sentinel (kwarg unspecified),
+    the bundled names are stamped as-is and no registry lookup happens —
+    this keeps cold-start paths (which deliberately skip importing
+    ``a2kit.packages.mcp`` / ``a2kit.packages.http``) decorating cleanly.
+    Any explicit ``expose=(...)`` is validated against the live registry
+    (``a2kit._surface_names``), which the dispatch ``SurfaceRegistry``
+    populates as a side-effect of ``register_surface()``. Unknown names
+    raise ``TypeError`` enumerating the registered surfaces.
     """
+    if expose is _DEFAULT_EXPOSE:
+        return _DEFAULT_EXPOSE
     if not expose:
         msg = (
             f"@a2kit.{verb}(expose=()) is empty: a projection tool must expose "
@@ -108,11 +120,20 @@ def _validate_expose(verb: str, expose: tuple[str, ...]) -> tuple[str, ...]:
             f"to opt into one; omit the kwarg for both (the default)."
         )
         raise ValueError(msg)
-    allowed = frozenset({"mcp", "api"})
+    registered = registered_surface_names()
+    allowed = frozenset(registered)
     bad = [s for s in expose if s not in allowed]
     if bad:
-        msg = f"@a2kit.{verb}(expose={expose!r}): unknown surface(s) {bad!r}; accepted values are 'mcp' and 'api'."
-        raise ValueError(msg)
+        if not registered:
+            msg = (
+                f"@a2kit.{verb}(expose={expose!r}): no surfaces registered yet. "
+                f"Import a surface-mounting package first "
+                f"(e.g. `import a2kit.packages.mcp` or `import a2kit.packages.http`) "
+                f"so its Surface self-registers."
+            )
+        else:
+            msg = f"@a2kit.{verb}(expose={expose!r}): unknown surface(s) {bad!r}. Registered surfaces: {registered!r}."
+        raise TypeError(msg)
     return tuple(expose)
 
 
@@ -128,7 +149,7 @@ def _stamp(
     reports: type | None = None,
     list_view: Any | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = ("mcp", "api"),
+    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     authorize: Any = None,
 ) -> F:
     _check_return(fn)
@@ -298,7 +319,7 @@ def read(
     idempotent: bool | None = None,
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = ("mcp", "api"),
+    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """Read-shaped tool decorator. Sets ``readOnlyHint=True``.
@@ -349,7 +370,7 @@ def write(
     reports: type | None = None,
     annotations: ToolAnnotations | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = ("mcp", "api"),
+    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """Write-shaped tool decorator. Sets ``readOnlyHint=False, destructiveHint=True`` by default.
@@ -402,7 +423,7 @@ def list_(
     idempotent: bool | None = None,
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = ("mcp", "api"),
+    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Read-shaped; requires ``list[T]`` return.

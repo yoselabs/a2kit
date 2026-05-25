@@ -8,6 +8,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+# Eagerly load the bundled surface packages so their Surface instances
+# self-register with the dispatch registry (and the kernel name registry)
+# before any test imports a2kit and decorates a tool. With
+# `surface-set-from-registry` shipped, `@a2kit.read(expose=("mcp","api"))`
+# validates against the live registry; tests that decorate without first
+# importing these packages would hit an empty-registry error.
+import a2kit.packages.http  # noqa: F401, E402
+import a2kit.packages.mcp  # noqa: F401, E402
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 

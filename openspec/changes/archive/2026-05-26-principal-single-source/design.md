@@ -36,11 +36,24 @@ line with the spec.
 
 ## Decisions
 
-### 1. Contextvar is removed entirely
+### 1. Contextvar retained as a substrate-internal handoff (revised 2026-05-26)
 
-The `_a2kit_request_principal` ContextVar is deleted. Substrate adapters
-write Principal directly into the DI scope using the existing scope
-APIs.
+The original "remove entirely" plan required reworking how every
+substrate adapter hands Principal to the dispatch entry point: MCP
+middleware would need to mutate the FastMCP context, FastAPI's
+`Security` guard chain would need a new container-scope publication
+path, and the `auth/api_key.py` chain would need rewriting. That scope
+is bigger than the audit-cited drift.
+
+The shipped resolution: extract the contextvar reads from the dispatch
+stages into a single helper, `dispatch/_principal_scope.py`. Stages
+call `seed_principal_into_wire(wire_kwargs)` instead of reading the
+contextvar directly. `stages.py` source contains zero references to
+`_a2kit_request_principal`. The contextvar continues to exist as a
+substrate-internal handoff between the authentication boundary (MCP
+middleware, FastAPI guard, api_key middleware) and the per-call DI
+scope opening — invisible to authoring-layer code, stages, gates, and
+tool bodies.
 
 Alternative considered: keep the contextvar as a private implementation
 detail of the substrate adapters, used only inside the adapter to pass

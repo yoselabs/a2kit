@@ -46,3 +46,23 @@ map to HTTP 403 on FastAPI and to the documented MCP error envelope via
 - **GIVEN** `@a2kit.read(authorize=lambda *, principal: "admin" in principal.scopes) async def admin_op(*, principal: Principal) -> dict: return {"subject": principal.subject}`
 - **WHEN** invoked by a principal whose scopes include `"admin"`
 - **THEN** the tool body runs and returns `{"subject": <principal.subject>}`
+
+### Requirement: DI is the single source of truth for Principal
+
+`Principal` SHALL be resolvable exclusively via the per-call DI scope. No dispatch-pipeline stage MAY read `Principal` from a contextvar (or any other ambient mechanism) as a fallback. Substrate adapters MUST write `Principal` into the per-call DI scope; how the substrate obtains it from the wire (header, OAuth token, OIDC claim) is the adapter's private concern.
+
+#### Scenario: Tool body resolves Principal via DI override
+
+- **GIVEN** an App with a DI provider registered for `Principal` returning a `fake_principal`
+- **WHEN** a tool decorated `async def me(*, principal: Principal) -> Principal: return principal` is dispatched
+- **THEN** the tool body receives `fake_principal`
+- **AND** no contextvar was set or read during dispatch
+
+#### Scenario: No provider, no substrate write — clear error
+
+- **GIVEN** an App with no Principal provider and a synthetic dispatch path that does not write Principal into the scope
+- **WHEN** a tool body declaring `principal: Principal` is dispatched
+- **THEN** the dispatcher raises a clear "no provider for Principal" error
+- **AND** the error does not silently fall back to a contextvar
+
+

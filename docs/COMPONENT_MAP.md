@@ -23,11 +23,11 @@ the lint's own view of the graph.
 | `ldd` | 0 | 6 | 4 | 0 | — |
 | `lint` | 0 | 20 | 0 | 0 | — |
 | `select` | 0 | 2 | 2 | 0 | — |
-| `kernel` | 1 | 7 | 4 | 1 | `ldd` |
+| `kernel` | 1 | 8 | 4 | 1 | `ldd` |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
 | `runtime` | 3 | 3 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
-| `dispatch` | 4 | 7 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `ldd`, `runtime` |
+| `dispatch` | 4 | 8 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `ldd`, `runtime` |
 | `auth` | 5 | 5 | 1 | 1 | `context` |
 | `cli` | 5 | 6 | 0 | 7 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |

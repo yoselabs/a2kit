@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Internal — dispatch stages no longer read the Principal contextvar
+
+Dispatch stages (`DispatchHookStage`, `AuthorizeGateStage`,
+`LddStateStage`) MUST resolve `Principal` via the per-call DI scope.
+The substrate's `_a2kit_request_principal` contextvar is now read in
+exactly one place: `a2kit.packages.dispatch._principal_scope`, which
+seeds Principal into the per-call wire kwargs. Stage source is
+grep-clean; new code in the dispatch pipeline that needs Principal
+must accept it as a typed DI dependency. Tool authors and `authorize=`
+callables continue to receive `Principal` by type annotation —
+no consumer-side change.
+
 ### Breaking — `App.debug` attribute removed; sub-configs DI-resolvable
 
 `App.debug` is gone. The shortcut duplicated `app.config.debug` and

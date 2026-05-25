@@ -20,6 +20,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
 
+from a2kit._surface_names import register_surface_name
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -111,6 +113,7 @@ class SurfaceRegistry:
             msg = f"surface name {name!r} already registered with {type(self._by_name[name]).__name__}"
             raise ValueError(msg)
         self._by_name[name] = surface
+        register_surface_name(name)
 
     def get(self, name: str) -> Surface:
         return self._by_name[name]

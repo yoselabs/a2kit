@@ -63,6 +63,7 @@ _KERNEL_MODULES = frozenset(
         "_lifecycle_helpers",
         "_field_introspect",
         "config",
+        "_surface_names",
     }
 )
 _AUTHORING_MODULES = frozenset(

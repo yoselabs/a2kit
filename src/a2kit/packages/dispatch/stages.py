@@ -18,6 +18,7 @@ import anyio
 
 from a2kit.ldd import ldd_state_for_call
 from a2kit.packages.context import StderrToolContext
+from a2kit.packages.dispatch._principal_scope import seed_principal_into_wire
 from a2kit.packages.dispatch.spec import (
     SYNTHESIZED_CTX_PARAM_NAME,
     CapturedError,
@@ -164,15 +165,14 @@ class DispatchHookStage:
 
         @functools.wraps(fn)
         async def _wrapped(**kwargs: Any) -> Any:
-            from a2kit.packages.context import _a2kit_request_principal
-
             # ctx is supplied by the transport — keep it out of the wire
             # kwargs the pre_hook + DI see, then merge it back for the body.
             ctx_value = kwargs.pop(ctx_param_name, None) if ctx_param_name else None
             kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
-            principal = _a2kit_request_principal.get()
-            if principal is not None:
-                kwargs.setdefault("_a2kit_principal", principal)
+            # Principal lands on the DI scope via the substrate seeding
+            # helper. Stages MUST NOT read the substrate contextvar directly
+            # (see `_principal_scope.py` and `principal-propagation` spec).
+            seed_principal_into_wire(kwargs)
             async with app._resolver.call_scope(fn, kwargs, pre_hook=hook) as merged:  # noqa: SLF001 -- framework resolver seam
                 if ctx_param_name is not None and ctx_value is not None:
                     merged[ctx_param_name] = ctx_value
@@ -184,24 +184,20 @@ class DispatchHookStage:
 async def _run_authorize_gate(authorize: Callable[..., Any], container: Any) -> None:
     """Resolve and invoke an `authorize=` callable; raise on falsy return.
 
-    Opens a fresh `call_scope` to resolve the callable's DI params (Principal
-    seeded via `_a2kit_request_principal` contextvar), invokes it, raises
-    `AuthorizationDenied` on falsy return. Shared by `AuthorizeGateStage`
-    (CLI / MCP via DISPATCH_PIPELINE) and the HTTP substrate path.
+    Opens a fresh ``call_scope`` and resolves the gate's parameters from
+    DI exclusively. Principal lands on the scope via
+    ``seed_principal_into_wire`` (substrate-internal seeding helper) —
+    this stage source MUST NOT read any contextvar directly per the
+    ``principal-propagation`` spec.
     """
     from a2kit.exceptions import AuthorizationDenied
-    from a2kit.packages.context import _a2kit_request_principal
 
     callable_name = getattr(authorize, "__qualname__", getattr(authorize, "__name__", "<authorize>"))
-    principal = _a2kit_request_principal.get()
     seed: dict[str, Any] = {}
-    if principal is not None:
-        seed["_a2kit_principal"] = principal
+    seed_principal_into_wire(seed)
     async with container.call_scope(authorize, seed) as merged:
         fn_param_names = {p.name for p in inspect.signature(authorize).parameters.values()}
         call_kwargs = {k: v for k, v in merged.items() if k in fn_param_names}
-        if principal is not None and "principal" in fn_param_names and "principal" not in call_kwargs:
-            call_kwargs["principal"] = principal
         decision = await _call(authorize, **call_kwargs)
     if not decision:
         raise AuthorizationDenied(
