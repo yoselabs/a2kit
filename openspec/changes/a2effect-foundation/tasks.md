@@ -147,10 +147,10 @@
 
 ## 20. Documentation
 
-- [ ] 20.1 a2effect README with quickstart (subclass AppError, annotate return, register enricher, run contract_tests)
-- [ ] 20.2 a2kit README "Errors" section pointing at a2effect for the contract details
-- [ ] 20.3 ADR for the typed-error-foundation decision (record the Why, the Effect-not-replicated stance, the open-runway research)
-- [ ] 20.4 ANTIPATTERNS.md entries for the rejected approaches (Result monad, decorator kwarg, dual-write on success)
+- [x] 20.1 a2effect README with quickstart (subclass AppError, annotate return, register enricher, run contract_tests)
+- [x] 20.2 a2kit README "Errors" section pointing at a2effect for the contract details
+- [x] 20.3 ADR for the typed-error-foundation decision (record the Why, the Effect-not-replicated stance, the open-runway research) — `docs/adr/0021-typed-error-foundation.md`
+- [x] 20.4 ANTIPATTERNS.md entries for the rejected approaches (Result monad, decorator kwarg, dual-write on success)
 
 ## 21. Validation against acceptance criteria
 

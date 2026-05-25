@@ -509,6 +509,36 @@ config's `Key` namedtuple.
 
 Cloud-secret backends (AWS / Azure / GCP) compose via pydantic-settings sources — no a2kit-specific resolver registration needed.
 
+## Errors
+
+Typed errors live in the standalone [`a2effect`](packages/a2effect/)
+package. Subclass `AppError`, annotate the return as
+`Annotated[T, Raises(E1, E2)]`, and the framework renders the
+envelope to MCP (`content` prose + `structuredContent.error` envelope),
+HTTP (kind-mapped status + `{"error": <envelope>}` body), and CLI
+(kind-mapped sysexits.h exit code + prose to stderr) without further
+author input. Per-class `http_status` / `cli_exit_code` ClassVars
+override the kind defaults (`NotFound` subclasses commonly set
+`http_status = 404`; `Timeout` subclasses set `504`).
+
+Register enrichers on the constructed router instance:
+
+```python
+router = MyRouter()
+
+@router.enricher
+def pg_enricher(exc: asyncpg.PostgresError) -> UpstreamUnavailable | None:
+    return UpstreamUnavailable(str(exc))
+
+app.add_router(router)
+```
+
+See [`packages/a2effect/README.md`](packages/a2effect/README.md) for
+the quickstart, [`docs/MIGRATION_TYPED_ERRORS.md`](docs/MIGRATION_TYPED_ERRORS.md)
+for the mechanical migration recipe, and
+[`docs/adr/0021-typed-error-foundation.md`](docs/adr/0021-typed-error-foundation.md)
+for the why.
+
 ## Lint
 
 ```bash
