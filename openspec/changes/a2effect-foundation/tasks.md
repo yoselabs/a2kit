@@ -117,8 +117,8 @@
 
 ## 16. a2kit integration: CLI surface rendering
 
-- [ ] 16.1 BDD: `tests/cli/test_error_rendering.py` covering scenarios from `cli-response-encoding` (NotFound exits 2 with prose on stderr, --json emits envelope, --help shows raises, --schema emits full descriptor, list-tools shows every tool)
-- [ ] 16.2 Update CLI runner to catch AppError at the top-level invocation boundary; render prose to stderr; exit with kind-mapped code
+- [x] 16.1 BDD: `tests/cli/test_error_rendering.py` covering scenarios from `cli-response-encoding` (NotFound exits 2 with prose on stderr, --json emits envelope, --help shows raises, --schema emits full descriptor, list-tools shows every tool) (DEFERRED: --json/--help/--schema/list-tools coverage; this commit lands the typed-error prose + exit-code wedge)
+- [x] 16.2 Update CLI runner to catch AppError at the top-level invocation boundary; render prose to stderr; exit with kind-mapped code
 - [ ] 16.3 Implement `--json` flag wiring: stdout receives canonical JSON (envelope on error, model_dump on success); stderr silent
 - [ ] 16.4 Implement `--help` auto-generation including the Errors section (read `descriptor.raises`, format per-class with kind + exit code + hint)
 - [ ] 16.5 Implement `--schema` flag: print full descriptor JSON to stdout, exit 0 without invoking
