@@ -26,7 +26,7 @@ from a2kit.packages.dispatch import ToolBuildSpec, fold_pipeline
 
 if TYPE_CHECKING:
     from a2kit.metadata import A2KitMeta
-from a2kit.packages.mcp._wrappers import McpErrorRenderStage, install_mcp_signature
+from a2kit.packages.mcp._wrappers import McpErrorRenderStage, TypedErrorEnvelopeMiddleware, install_mcp_signature
 from a2kit.packages.mcp.format_routing import FormatRoutingMiddleware
 from a2kit.packages.mcp.guards import GuardsMiddleware
 from a2kit.packages.mcp.listview import ListViewMiddleware
@@ -323,6 +323,11 @@ def build_mcp_server(
     # channels stay equivalent. The consumer regime is fixed by ``code_mode``:
     # code mode renders real tools for the sandbox (``code``, uncompressed);
     # otherwise real tools face the LLM (``llm``, compressed).
+    # Typed-error envelope middleware runs outermost on the error path:
+    # paired with `McpErrorRenderStage`, it patches `structured_content =
+    # {"error": <envelope>}` onto the CallToolResult that FastMCP built
+    # from the prose-shaped `ToolError`. See `error-envelope-rendering`.
+    server.add_middleware(TypedErrorEnvelopeMiddleware())
     server.add_middleware(
         FormatRoutingMiddleware(
             plans=encoding_plans,

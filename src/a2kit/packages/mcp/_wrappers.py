@@ -10,41 +10,112 @@ params (and injects ``ctx``).
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import inspect
 import json
 import logging
 from typing import Any
 
+from fastmcp.server.middleware import Middleware
+from fastmcp.tools import ToolResult
+
 from a2kit.packages.dispatch import SYNTHESIZED_CTX_PARAM_NAME, CapturedError
 
 _log = logging.getLogger(__name__)
 _WARN_ONCE: set[str] = set()
 
+# Per-call channel from McpErrorRenderStage to TypedErrorEnvelopeMiddleware.
+# The middleware pre-installs a mutable list in the contextvar BEFORE
+# `call_next`; the stage appends the typed envelope dict. List mutation is
+# visible across asyncio task boundaries (the binding is per-context but
+# the list object itself is shared by reference), so the middleware reads
+# the envelope after call_next returns even when FastMCP spawned a child
+# task for the tool body.
+_pending_typed_envelope: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+    "_a2kit_pending_typed_envelope", default=None
+)
+
+
+def install_pending_envelope_slot() -> list[dict[str, Any]]:
+    """Install a fresh per-call envelope slot; return the slot list."""
+    slot: list[dict[str, Any]] = []
+    _pending_typed_envelope.set(slot)
+    return slot
+
+
+def stash_typed_envelope(envelope: dict[str, Any]) -> None:
+    """Append the typed envelope dict to the current per-call slot (if any)."""
+    slot = _pending_typed_envelope.get()
+    if slot is not None:
+        slot.append(envelope)
+
+
+class _TypedErrorToolResult(ToolResult):
+    """ToolResult that converts to ``CallToolResult(isError=True)``."""
+
+    def to_mcp_result(self) -> Any:
+        from mcp.types import CallToolResult
+
+        return CallToolResult(
+            content=self.content,
+            structuredContent=self.structured_content,
+            isError=True,
+        )
+
+
+class TypedErrorEnvelopeMiddleware(Middleware):
+    """Patch ``structured_content`` onto error results from typed AppErrors.
+
+    Pairs with :class:`McpErrorRenderStage`: that stage stashes the
+    rendered envelope dict on a per-call mutable slot before raising
+    ``ToolError(prose)``. We catch the ToolError from ``call_next`` and
+    return a ``_TypedErrorToolResult`` carrying prose in content +
+    ``{"error": envelope}`` in structured_content + isError=true.
+    """
+
+    async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+        from fastmcp.exceptions import ToolError
+        from mcp.types import TextContent
+
+        slot = install_pending_envelope_slot()
+        try:
+            return await call_next(context)
+        except ToolError as te:
+            if not slot:
+                raise
+            return _TypedErrorToolResult(
+                content=[TextContent(type="text", text=str(te))],
+                structured_content={"error": slot[0]},
+            )
+
 
 class McpErrorRenderStage:
     """Render a captured tool-body error as the MCP wire envelope.
 
-    Catches the neutral :class:`~a2kit.packages.dispatch.CapturedError`
-    from the dispatch pipeline and re-raises
-    ``ToolError(json.dumps({"class", "message", [traceback]}))``.
-    FastMCP re-raises ``FastMCPError`` subclasses unchanged before any
-    masking — so the JSON payload reaches the wire verbatim as
-    ``content[0].text`` with ``isError: true``, regardless of
-    ``mask_error_details``.
+    Two paths:
 
-    Exception: when the original was itself a ``FastMCPError`` (incl. an
-    author-raised ``ToolError``) it passes through unwrapped, so
-    author-shaped messages are not double-encoded. ``App(debug=True)``
-    adds the ``traceback`` field to the JSON payload.
+    - **Typed `AppError`** (incl. `UnexpectedDefect`): emit the fixed prose
+      form via `ToolError(prose)` (which becomes `content[0].text` with
+      `isError=true`), AND stash the envelope dict on a per-call ContextVar
+      so `TypedErrorEnvelopeMiddleware` patches `structured_content =
+      {"error": envelope}` onto the resulting CallToolResult. The
+      single-mode wire rule (`error-envelope-rendering`): prose for the LLM,
+      envelope for machine consumers, with non-overlapping info.
+
+    - **Author-raised `FastMCPError`** (incl. plain `ToolError`): pass
+      through unwrapped so author-shaped messages are not double-encoded.
+
+    Anything else escaping the enricher chain is `quarantine`-d to
+    `UnexpectedDefect` upstream, so this stage only sees AppError or
+    FastMCPError on the typed path.
     """
 
     name = "mcp-error-render"
 
-    def wrap(self, fn: Any, spec: Any) -> Any:
+    def wrap(self, fn: Any, spec: Any) -> Any:  # noqa: ARG002
+        from a2effect import AppError
         from fastmcp.exceptions import FastMCPError, ToolError
-
-        debug = bool(getattr(spec.app, "debug", False))
 
         @functools.wraps(fn)
         async def _wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -54,18 +125,15 @@ class McpErrorRenderStage:
                 exc = ce.original
                 if isinstance(exc, FastMCPError):
                     raise exc from None
+                if isinstance(exc, AppError):
+                    prose = getattr(exc, "rendered_prose", None) or str(exc)
+                    envelope = getattr(exc, "rendered_envelope_dict", None) or exc.to_envelope_dict()
+                    stash_typed_envelope(envelope)
+                    raise ToolError(prose) from exc
+                # Anything else escaped the enricher chain — should be
+                # rare since defect quarantine wraps non-AppError as
+                # UnexpectedDefect. Fall back to JSON-shaped legacy error.
                 payload: dict[str, Any] = {"class": ce.class_name, "message": ce.message}
-                # `AuthorizationDenied` carries structured fields the
-                # wire envelope surfaces verbatim so MCP clients can
-                # branch on `error.reason` / `error.callable`.
-                from a2kit.exceptions import AuthorizationDenied
-
-                if isinstance(exc, AuthorizationDenied):
-                    payload["error"] = "authorization_denied"
-                    payload["reason"] = exc.reason
-                    payload["callable"] = exc.callable_name
-                if debug:
-                    payload["traceback"] = ce.traceback_str
                 raise ToolError(json.dumps(payload)) from exc
 
         return _wrapped

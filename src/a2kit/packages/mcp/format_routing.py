@@ -44,11 +44,11 @@ class FormatRoutingMiddleware(Middleware):
     ) -> Any:
         result = await call_next(context)
 
-        # Only the `llm` consumer compresses. `code` / `machine` want the
-        # structure uncompressed — the middleware is a no-op for them.
-        if self._consumer != "llm":
+        # Skip when: (a) error result (envelope owns structured_content,
+        # set by TypedErrorEnvelopeMiddleware), (b) consumer is not the
+        # compressing `llm` tier, or (c) no tool name on context.
+        if getattr(result, "is_error", False) or self._consumer != "llm":
             return result
-
         tool_name = getattr(context.message, "name", None)
         if not tool_name:
             return result

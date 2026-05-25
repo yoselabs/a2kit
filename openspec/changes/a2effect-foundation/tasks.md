@@ -100,9 +100,9 @@
 
 ## 14. a2kit integration: MCP surface rendering
 
-- [ ] 14.1 BDD: `tests/packages/mcp/test_result_rendering.py` covering scenarios from `mcp-tool-annotations` (success emits text only, error emits prose + structuredContent, ToolAnnotations compose with Raises)
-- [ ] 14.2 Update `packages/mcp/server.py` result rendering: success → `content[0].text = json.dumps(model_dump)`, structuredContent omitted; primitive → `content[0].text = str(value)`; None → `"ok"`
-- [ ] 14.3 Update error rendering: `content[0].text = prose form`, `structuredContent = {"error": envelope_dict}`, `isError = true`
+- [x] 14.1 BDD: `tests/packages/mcp/test_result_rendering.py` covering scenarios from `mcp-tool-annotations` (success emits text only, error emits prose + structuredContent, ToolAnnotations compose with Raises)
+- [ ] 14.2 Update `packages/mcp/server.py` result rendering: success → `content[0].text = json.dumps(model_dump)`, structuredContent omitted; primitive → `content[0].text = str(value)`; None → `"ok"` (DEFERRED: MCP outputSchema validation requires structuredContent when schema is declared; success-side dedup needs paired outputSchema suppression — pulls in tasks 14.4-14.5)
+- [x] 14.3 Update error rendering: `content[0].text = prose form`, `structuredContent = {"error": envelope_dict}`, `isError = true`
 - [ ] 14.4 Implement outputSchema auto-generation: `oneOf[BareReturnSchema, {"$ref": "#/components/schemas/ErrorEnvelope"}]`
 - [ ] 14.5 Add ErrorEnvelope schema once to MCP `components.schemas` and `$ref` from every tool's outputSchema
 - [ ] 14.6 BDD: `tests/packages/mcp/test_tools_list_schemas.py` for outputSchema oneOf union + single ErrorEnvelope component
