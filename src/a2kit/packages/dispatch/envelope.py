@@ -92,8 +92,12 @@ class ErrorEnvelopeStage:
             try:
                 return await _call(fn, *args, **kwargs)
             except AppError as exc:
-                exc.rendered_prose = format_error_prose(exc)
-                exc.rendered_envelope_dict = exc.to_envelope_dict()
+                # Stash transport-neutral render artifacts on the exception
+                # for surface adapters (MCP / CLI) to read via getattr.
+                # `AppError` is owned by a2effect and intentionally does not
+                # declare these — a2kit's dispatch contract attaches them.
+                exc.rendered_prose = format_error_prose(exc)  # ty: ignore[unresolved-attribute]
+                exc.rendered_envelope_dict = exc.to_envelope_dict()  # ty: ignore[unresolved-attribute]
                 raise
 
         return _wrapped

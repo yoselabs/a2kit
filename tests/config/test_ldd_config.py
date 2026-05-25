@@ -63,12 +63,12 @@ def test_invalid_level_raises_at_construction(monkeypatch: pytest.MonkeyPatch, n
 
 def test_invalid_kwarg_raises(no_dotenv: Path) -> None:
     with pytest.raises(ValidationError):
-        LddConfig(level="loud")  # type: ignore[arg-type]
+        LddConfig(level="loud")  # ty: ignore[invalid-argument-type]
 
 
 def test_all_documented_levels_accepted(no_dotenv: Path) -> None:
     for lvl in ("trace", "debug", "info", "warning", "error"):
-        cfg = A2kitConfig(ldd=LddConfig(level=lvl))  # type: ignore[arg-type]
+        cfg = A2kitConfig(ldd=LddConfig(level=lvl))
         assert cfg.ldd.level == lvl
 
 

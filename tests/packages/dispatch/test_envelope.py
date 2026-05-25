@@ -80,8 +80,11 @@ async def test_stage_attaches_rendered_prose_and_envelope_on_error() -> None:
     with pytest.raises(_Boom) as info:
         await wrapped()
     exc = info.value
-    assert exc.rendered_prose == "Service unavailable (_Boom): db down"
-    env = exc.rendered_envelope_dict
+    # ErrorEnvelopeStage attaches these render artifacts to the exception;
+    # AppError (a2effect) intentionally doesn't declare them — a2kit's
+    # dispatch contract does. See src/a2kit/packages/dispatch/envelope.py.
+    assert exc.rendered_prose == "Service unavailable (_Boom): db down"  # ty: ignore[unresolved-attribute]
+    env = exc.rendered_envelope_dict  # ty: ignore[unresolved-attribute]
     assert env["type"] == "_Boom"
     assert env["kind"] == "infra"
     assert env["retryable"] is False or env["retryable"] is True  # class default
