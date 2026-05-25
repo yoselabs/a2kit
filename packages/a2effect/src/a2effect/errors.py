@@ -51,6 +51,10 @@ class AppError(Exception):
     hint: ClassVar[str | None] = None
     http_status: ClassVar[int | None] = None
     cli_exit_code: ClassVar[int | None] = None
+    #: Overrides the default kind label in error prose (e.g.,
+    #: ``"Authorization denied"`` for an auth-kind subclass that wants
+    #: distinct framing from the default ``"Authentication required"``).
+    kind_label: ClassVar[str | None] = None
 
     base_kind: str
     details: dict[str, Any]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from a2kit.packages.dispatch.envelope import ErrorEnvelopeStage
 from a2kit.packages.dispatch.stages import (
     AuthorizeGateStage,
     DispatchHookStage,
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
 DISPATCH_PIPELINE: tuple[DispatchStage, ...] = (
     TimeoutStage(),
     EnricherStage(),
+    ErrorEnvelopeStage(),
     RouterLazyEnterStage(),
     DispatchHookStage(),
     AuthorizeGateStage(),

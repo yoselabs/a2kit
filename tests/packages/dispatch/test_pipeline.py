@@ -16,6 +16,7 @@ def test_dispatch_pipeline_order_lives_in_one_constant() -> None:
     assert [s.name for s in DISPATCH_PIPELINE] == [
         "timeout",
         "enricher",
+        "error-envelope",
         "router-lazy-enter",
         "dispatch-hook",
         "authorize-gate",

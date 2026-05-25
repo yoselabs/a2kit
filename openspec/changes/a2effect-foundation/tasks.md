@@ -92,11 +92,11 @@
 
 ## 13. a2kit integration: error envelope rendering
 
-- [ ] 13.1 BDD: `tests/packages/dispatch/test_envelope_stage.py` covering scenarios from `error-envelope-rendering` (success emits text only, error emits both, prose format with/without hint, structuredContent absent on success)
-- [ ] 13.2 Create new `packages/dispatch/envelope.py` with `ErrorEnvelopeStage` (terminal stage of pipeline)
-- [ ] 13.3 Implement prose formatter (kind label + type + message + optional hint) per `error-envelope-rendering` Requirement
-- [ ] 13.4 Implement kind label registry (Input error / Authentication required / Not allowed / Service unavailable / Internal error, plus extension-aware lookup)
-- [ ] 13.5 Wire ErrorEnvelopeStage into the dispatch pipeline registration order (after EnricherStage, before surface rendering)
+- [x] 13.1 BDD: `tests/packages/dispatch/test_envelope_stage.py` covering scenarios from `error-envelope-rendering` (success emits text only, error emits both, prose format with/without hint, structuredContent absent on success)
+- [x] 13.2 Create new `packages/dispatch/envelope.py` with `ErrorEnvelopeStage` (terminal stage of pipeline)
+- [x] 13.3 Implement prose formatter (kind label + type + message + optional hint) per `error-envelope-rendering` Requirement
+- [x] 13.4 Implement kind label registry (Input error / Authentication required / Not allowed / Service unavailable / Internal error, plus extension-aware lookup)
+- [x] 13.5 Wire ErrorEnvelopeStage into the dispatch pipeline registration order (after EnricherStage, before surface rendering)
 
 ## 14. a2kit integration: MCP surface rendering
 
