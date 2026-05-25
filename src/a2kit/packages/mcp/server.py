@@ -121,13 +121,44 @@ def _build_one_tool(
         )
         raise ValueError(msg)
     tool_tags = {*meta.tags, "_meta"} if is_meta else set(meta.tags)
+    extra_kwargs: dict[str, Any] = {}
+    union_schema = _maybe_build_union_output_schema(desc, wrapped)
+    if union_schema is not None:
+        extra_kwargs["output_schema"] = union_schema
     return FunctionTool.from_function(
         wrapped,
         name=meta.tool_name,
         tags=tool_tags,
         annotations=meta.annotations,
         meta={"a2kit": _meta_to_dict(meta)},
+        **extra_kwargs,
     )
+
+
+def _maybe_build_union_output_schema(desc: Any, wrapped: Any) -> dict[str, Any] | None:
+    """When `desc.raises` is non-empty, return the oneOf union outputSchema.
+
+    Branches: the bare ReturnT schema (computed via pydantic TypeAdapter) +
+    the ErrorEnvelope schema. Returns None for tools without declared
+    raises so FastMCP keeps its auto-generated bare schema.
+    """
+    if not desc.raises:
+        return None
+    from a2effect import ErrorEnvelope
+    from pydantic import TypeAdapter
+
+    return_type = desc.return_type
+    try:
+        bare_schema = TypeAdapter(return_type).json_schema()
+    except Exception:  # noqa: BLE001 — schema generation must not break tool registration
+        return None
+    # MCP spec constraint: outputSchema MUST be type=object. Both union
+    # branches are object schemas already; we add `type: object` at the
+    # root so FastMCP's _is_object_schema check passes.
+    return {
+        "type": "object",
+        "oneOf": [bare_schema, ErrorEnvelope.model_json_schema()],
+    }
 
 
 def _register_mcp_surface(server: FastMCP, runtime: Any) -> None:
