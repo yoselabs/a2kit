@@ -440,13 +440,13 @@ def _resolve_request_principal(reserved_kwargs: dict[str, Any]) -> Any:
     published into. Returns ``None`` when no path produced an identity.
     """
     from a2kit.packages.context import Principal as _Principal
-    from a2kit.packages.dispatch._principal_bridge import current_request_principal
+    from a2kit.packages.context import request_scope
 
     direct = next(
         (v for v in reserved_kwargs.values() if isinstance(v, _Principal)),
         None,
     )
-    return direct if direct is not None else current_request_principal()
+    return direct if direct is not None else request_scope.try_get(_Principal)
 
 
 def install_substrate_signature(
@@ -484,19 +484,15 @@ def install_substrate_signature(
 
     @functools.wraps(fn)
     async def _wrapper(**substrate_kwargs: Any) -> Any:
-        from a2kit.packages.dispatch._principal_bridge import (
-            current_request_principal_seeds,
-            reset_request_principal,
-            set_request_principal,
-        )
+        from a2kit.packages.context import request_scope
 
         wire_kwargs = {k: v for k, v in substrate_kwargs.items() if k not in reserved_names}
         reserved_kwargs = {k: v for k, v in substrate_kwargs.items() if k in reserved_names}
         principal = _resolve_request_principal(reserved_kwargs)
-        principal_token = set_request_principal(principal) if principal is not None else None
+        principal_token = request_scope.publish(principal) if principal is not None else None
         token = _a2kit_scope.set(object())
         try:
-            async with container.call_scope(fn, wire_kwargs, scoped_seeds=current_request_principal_seeds()) as merged:
+            async with container.call_scope(fn, wire_kwargs, framework_seeds=request_scope.all_seeds()) as merged:
                 merged_with_reserved = {**merged, **reserved_kwargs}
                 result = fn(**merged_with_reserved)
                 if inspect.isawaitable(result):
@@ -505,7 +501,7 @@ def install_substrate_signature(
         finally:
             _a2kit_scope.reset(token)
             if principal_token is not None:
-                reset_request_principal(principal_token)
+                request_scope.reset(principal_token)
 
     # The surface ``__signature__`` keeps raw Parameter annotations
     # (may be strings under PEP 563). ``__annotations__`` carries the

@@ -1,7 +1,9 @@
 """FastAPI bridge resolvers — extracted to keep `container.py` under the SLOC budget.
 
 The HTTP middleware in `packages/http/build.py` opens a per-request a2kit
-child container and publishes it on the `_a2kit_request_scope` contextvar.
+child container and publishes it on the `_a2kit_request_scope` contextvar
+(DI-local, so the DI package stays standalone-shippable) AND on the
+shared `request_scope` bridge (so dispatch stages can `get(Container)`).
 `_make_resolver(T)` returns a zero-arg async callable that reads the
 contextvar and awaits `scope.get(T)` — usable as a FastAPI `Depends(...)`
 dependency. Cached on the container (see `Container.expose_as_fastapi_depends`)
@@ -25,7 +27,11 @@ def _make_resolver(type_: type) -> Callable[[], Any]:
     async def _resolve_a2kit_dep() -> Any:
         scope = _a2kit_request_scope.get()
         if scope is None:
-            msg = "a2kit Depends resolver called outside call_scope"
+            msg = (
+                "a2kit Depends resolver called outside call_scope: "
+                "FastAPI evaluated this dependency before a2kit's "
+                "request-scope middleware ran."
+            )
             raise RuntimeError(msg)
         return await scope.get(type_)
 

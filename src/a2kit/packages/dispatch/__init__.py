@@ -11,6 +11,7 @@ afford the cold-start cost.
 
 from __future__ import annotations
 
+from a2kit.packages.context import request_scope
 from a2kit.packages.dispatch._principal_bridge import (
     current_request_principal,
     current_request_principal_seeds,
@@ -96,6 +97,7 @@ __all__ = [
     "has_injectables",
     "install_substrate_signature",
     "open_render_state",
+    "request_scope",
     "reset_request_principal",
     "set_rendered_error",
     "set_request_principal",

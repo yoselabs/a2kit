@@ -51,16 +51,21 @@ class AmbientContextMissing(A2KitError, RuntimeError):
 
     Two failure modes share this class (v0.33 splits the message):
 
-    - **Mode A — no active dispatch.** The ``_LDD_STATE`` ContextVar is unset.
-      Happens when LDD primitives are called from module-import-time code,
-      lifecycle hooks, or any pre-dispatch context.
+    - **Mode A — no active dispatch.** No ``_LddState`` is published on
+      the request-scope bridge. Happens when LDD primitives are called
+      from module-import-time code, lifecycle hooks, or any pre-dispatch
+      context. The raised instance chains from
+      :class:`a2kit.packages.dispatch.request_scope.RequestScopeMissing`
+      via ``__cause__``.
     - **Mode B — dispatch active, tool missing ``ctx`` parameter.** The
-      ContextVar IS set (the dispatcher entered a scope), but the running
-      tool's signature does not declare ``ctx: a2kit.ToolContext``, so
-      ``state.ctx is None``.
+      LDD state IS published (the dispatcher entered a scope), but the
+      running tool's signature does not declare ``ctx: a2kit.ToolContext``,
+      so ``state.ctx is None``.
 
     The message identifies which mode fired and points at the actionable
-    fix at the call site.
+    fix at the call site. Post ``generalise-context-bridges`` this class
+    is a deprecation-shim retained for one release; new code SHOULD
+    catch ``request_scope.RequestScopeMissing`` instead.
     """
 
     MODE_NO_DISPATCH = "no_dispatch"

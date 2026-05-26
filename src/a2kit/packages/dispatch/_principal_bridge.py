@@ -1,52 +1,58 @@
-"""Per-request ``Principal`` bridge between substrate auth and the DI scope.
+"""Deprecation-shim wrappers for the Principal request-scope bridge.
 
-Stdlib ``contextvars`` carries the identity published by a substrate
-authentication boundary into the per-call DI scope opened by dispatch
-stages. The ContextVar itself is module-private; writers/readers use
-the named functions below.
+The Principal bridge moved into the unified
+:mod:`a2kit.packages.dispatch.request_scope` per
+``generalise-context-bridges`` (2026-05-27). This module exists for one
+release to keep out-of-tree callers of ``set_request_principal`` /
+``reset_request_principal`` / ``current_request_principal`` /
+``current_request_principal_seeds`` working. New code SHOULD use
+``request_scope.publish(principal)`` / ``request_scope.get(Principal)``
+directly.
 
-See ``openspec/specs/principal-bridge`` for the locked contract.
+Each function emits :class:`DeprecationWarning` on call.
 """
 
 from __future__ import annotations
 
-import contextvars
+import warnings
 from typing import TYPE_CHECKING, Any
+
+from a2kit.packages.context import request_scope
 
 if TYPE_CHECKING:
     from a2kit.packages.context import Principal
 
-
-_request_principal: contextvars.ContextVar[Principal | None] = contextvars.ContextVar(
-    "a2kit_request_principal",
-    default=None,
+_DEPRECATION_MESSAGE = (
+    "a2kit.packages.dispatch._principal_bridge is a deprecation shim; use a2kit.packages.dispatch.request_scope.publish/get/reset directly."
 )
 
 
-def set_request_principal(principal: Principal) -> contextvars.Token[Principal | None]:
-    """Publish ``principal`` for the current async context.
-
-    Returns a token the caller MUST pass to :func:`reset_request_principal`
-    in a ``finally`` block to restore the prior state.
-    """
-    return _request_principal.set(principal)
+def set_request_principal(principal: Principal) -> request_scope.ScopeToken:
+    """Publish ``principal`` via :func:`request_scope.publish`. Deprecated."""
+    warnings.warn(_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+    return request_scope.publish(principal)
 
 
-def reset_request_principal(token: contextvars.Token[Principal | None]) -> None:
-    """Restore the state captured by a prior :func:`set_request_principal`."""
-    _request_principal.reset(token)
+def reset_request_principal(token: request_scope.ScopeToken) -> None:
+    """Reset the token returned by :func:`set_request_principal`. Deprecated."""
+    warnings.warn(_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+    request_scope.reset(token)
 
 
 def current_request_principal() -> Principal | None:
-    """Return the substrate-published Principal for the current context, or None."""
-    return _request_principal.get()
+    """Read the published ``Principal`` for the current context. Deprecated."""
+    warnings.warn(_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+    from a2kit.packages.context import Principal as _Principal
+
+    return request_scope.try_get(_Principal)
 
 
 def current_request_principal_seeds() -> dict[type, Any]:
-    """Return ``{Principal: p}`` when published, else ``{}`` — ready for ``scoped_seeds=``."""
+    """Return ``{Principal: p}`` when published, else ``{}``. Deprecated."""
+    warnings.warn(_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
     from a2kit.packages.context import Principal as _Principal
 
-    principal = _request_principal.get()
+    principal = request_scope.try_get(_Principal)
     return {_Principal: principal} if principal is not None else {}
 
 

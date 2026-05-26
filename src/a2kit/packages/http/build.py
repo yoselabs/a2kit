@@ -209,21 +209,18 @@ def _apply_authorize_gate(wrapped: _Any, authorize: _Any, container: _Any) -> _A
         return wrapped
 
     from a2kit.packages.context import Principal as _Principal
-    from a2kit.packages.dispatch import (
-        reset_request_principal,
-        set_request_principal,
-    )
+    from a2kit.packages.context import request_scope
 
     @_functools.wraps(wrapped)
     async def _gated(**kwargs: _Any) -> _Any:
         principal = next((v for v in kwargs.values() if isinstance(v, _Principal)), None)
-        token = set_request_principal(principal) if principal is not None else None
+        token = request_scope.publish(principal) if principal is not None else None
         try:
             await _run_authorize_gate(authorize, container)
             return await wrapped(**kwargs)
         finally:
             if token is not None:
-                reset_request_principal(token)
+                request_scope.reset(token)
 
     sig = getattr(wrapped, "__signature__", None)
     if sig is not None:
@@ -239,17 +236,24 @@ def _install_request_scope_middleware(app: FastAPI, container: _Any) -> None:
     contextvar to find the active scope. Runs *before* FastAPI's dependency
     resolution because middlewares wrap the entire request lifecycle.
     """
+    # Dual write: publish on the shared request_scope (dispatch reads
+    # Container via request_scope.get(Container)) AND set the DI-local
+    # contextvar (FastAPI Depends bridge reads from there; keeps DI
+    # package standalone-shippable per di-container-package).
+    from a2kit.packages.context import request_scope
     from a2kit.packages.di import _a2kit_request_scope
 
     @app.middleware("http")
     async def _open_request_scope(request: Request, call_next: _Any) -> _Any:
         child = container.child()
         async with child as scope:
-            token = _a2kit_request_scope.set(scope)
+            rs_token = request_scope.publish(scope)
+            di_token = _a2kit_request_scope.set(scope)
             try:
                 return await call_next(request)
             finally:
-                _a2kit_request_scope.reset(token)
+                _a2kit_request_scope.reset(di_token)
+                request_scope.reset(rs_token)
 
 
 def _wire_container_depends_overrides(app: FastAPI, runtime: _Any, container: _Any) -> None:

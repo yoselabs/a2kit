@@ -321,7 +321,10 @@ class StderrToolContext:
         *,
         elapsed_ms: int | None = None,
     ) -> None:
-        from a2kit.packages.ldd import format_ldd_line
+        # GRANDFATHERED: context <-> ldd lateral coupling. `ldd.ambient`
+        # also lazily imports `context.request_scope`; both legs are lazy
+        # framework plumbing. Tracked in BACKLOG for a relocation.
+        from a2kit.packages.ldd import format_ldd_line  # noqa: A2K-LAYER
 
         if elapsed_ms is None:
             elapsed_ms = round((time.monotonic() - self._start_ts) * 1000)

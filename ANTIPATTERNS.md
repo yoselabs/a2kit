@@ -930,3 +930,46 @@ Citation: `src/a2kit/packages/dispatch/_render_state.py`;
 `src/a2kit/packages/dispatch/envelope.py:ErrorEnvelopeStage`;
 `src/a2kit/packages/mcp/_wrappers.py:McpErrorRenderStage`;
 `src/a2kit/packages/cli/runtime.py:CliErrorRenderStage`; ADR 0021.
+
+## 31. v0.X — adding a per-type `ContextVar` bridge or `_<x>_bridge.py` module
+
+```python
+# Don't:
+# packages/dispatch/_tenant_bridge.py
+_tenant: ContextVar[TenantId | None] = ContextVar("tenant", default=None)
+def set_tenant(t: TenantId) -> Token: return _tenant.set(t)
+def current_tenant() -> TenantId | None: return _tenant.get()
+```
+
+Three independent per-type bridges (`_request_principal`,
+`_a2kit_request_scope`, `_LDD_STATE`) used to live in the codebase,
+each with the same shape and the same silent-`None`-on-miss failure
+mode. `generalise-context-bridges` collapsed them into one
+`request_scope` module with `publish` / `get` / `try_get` /
+`all_seeds` / `reset`. Adding a new bridge module re-fragments the
+substrate↔dispatch boundary that the generalisation just unified.
+
+Publish through `request_scope` instead. The cost of a new
+request-scoped type drops to two lines (one publish at the substrate
+seam, one get at the reader) with a typed
+`RequestScopeMissing(TenantId)` failure surface.
+
+```python
+# Do:
+from a2kit.packages.context import request_scope
+
+# substrate (e.g. tenant-header ASGI middleware):
+token = request_scope.publish(TenantId(value=header))
+try:
+    await app(scope, receive, send)
+finally:
+    request_scope.reset(token)
+
+# reader (any dispatch stage):
+tenant = request_scope.get(TenantId)        # raises typed on miss
+maybe = request_scope.try_get(TenantId)     # None on miss
+```
+
+Citation: `src/a2kit/packages/context/request_scope.py`;
+`docs/patterns/request-scope-bridge.md`;
+`openspec/specs/request-scope/spec.md`.

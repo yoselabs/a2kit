@@ -1,18 +1,20 @@
-"""Per-call LDD state — the dispatch-bound :class:`contextvars.ContextVar` and accessors.
+"""Per-call LDD state — published on the shared request scope by every dispatcher.
 
 Every dispatcher (CLI runtime, MCP wrapper, in-process test client) wraps a
-tool invocation in :func:`ldd_state_for_call`, which binds the live ``ctx``
-plus per-call flags (event/report kill-switches, report type, tool name,
-elapsed-ms basis, sinks) to a ContextVar. The LDD primitives read it from
-there; calling one outside an active dispatch raises
-:exc:`a2kit.exceptions.AmbientContextMissing` — fail loud, never silently
-no-op.
+tool invocation in :func:`ldd_state_for_call`, which publishes a
+:class:`_LddState` instance on
+:mod:`a2kit.packages.dispatch.request_scope` (the shared request-scope
+bridge — Principal, per-request Container, and LDD state all flow
+through it). The LDD primitives read it from there; calling one outside
+an active dispatch raises :exc:`a2kit.exceptions.AmbientContextMissing`
+(a deprecation-shim subclass of
+:class:`a2kit.packages.dispatch.request_scope.RequestScopeMissing`),
+fail loud, never silently no-op.
 """
 
 from __future__ import annotations
 
 import contextlib
-import contextvars
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -43,9 +45,6 @@ class _LddState:
     level_threshold: int = 0
 
 
-_LDD_STATE: contextvars.ContextVar[_LddState | None] = contextvars.ContextVar("_a2kit_ldd_state", default=None)
-
-
 def _require_ambient_state(fn_name: str) -> _LddState:
     """Return the active LDD state or raise :exc:`AmbientContextMissing`.
 
@@ -53,9 +52,24 @@ def _require_ambient_state(fn_name: str) -> _LddState:
     primitives directly must wrap with ``ldd_state_for_call(ctx=stub, ...)``.
 
     v0.33: distinguishes two failure modes — see :class:`AmbientContextMissing`.
+    Post ``generalise-context-bridges``: the underlying lookup uses
+    ``request_scope.try_get(_LddState)``. When absent, the raised
+    ``AmbientContextMissing`` chains from ``RequestScopeMissing(_LddState)``
+    via ``__cause__``. Local import keeps ldd off the dispatch package's
+    import-time graph (avoids dispatch -> stages -> ldd cycle).
     """
-    state = _LDD_STATE.get()
+    # GRANDFATHERED: context <-> ldd lateral coupling — `context.stderr`
+    # already lazily imports `ldd.format_ldd_line`; this is the reverse
+    # leg for the request-scope bridge. Both are lazy, both are framework
+    # plumbing. Tracked in BACKLOG for a future relocation of `request_scope`.
+    from a2kit.packages.context import request_scope  # noqa: A2K-LAYER
+
+    state = request_scope.try_get(_LddState)
     if state is None:
+        try:
+            request_scope.get(_LddState)
+        except request_scope.RequestScopeMissing as exc:
+            raise AmbientContextMissing(fn_name, mode=AmbientContextMissing.MODE_NO_DISPATCH) from exc
         raise AmbientContextMissing(fn_name, mode=AmbientContextMissing.MODE_NO_DISPATCH)
     if state.ctx is None:
         raise AmbientContextMissing(fn_name, mode=AmbientContextMissing.MODE_MISSING_CTX_PARAM)
@@ -77,8 +91,7 @@ def ldd_state_for_call(
     sinks: tuple[LddSink, ...] = (),
     level_threshold: int = 0,
 ) -> Iterator[None]:
-    """Set the per-call LDD state (including the ambient ``ctx``) for the
-    lifetime of the wrapped block.
+    """Publish per-call LDD state on ``request_scope`` for the wrapped block.
 
     Called by every dispatcher (CLI runtime, MCP wrapper, in-process test
     client) immediately before invoking the tool body. The ``ctx`` it
@@ -90,22 +103,24 @@ def ldd_state_for_call(
     via ``app.ldd.add_sink(...)``; the primitives fan out to each after
     the wire emit.
     """
-    token = _LDD_STATE.set(
-        _LddState(
-            ctx=ctx,
-            events_enabled=events_enabled,
-            reports_enabled=reports_enabled,
-            report_type=report_type,
-            tool_name=tool_name,
-            start_monotonic=time.monotonic(),
-            sinks=sinks,
-            level_threshold=level_threshold,
-        )
+    # GRANDFATHERED: see _require_ambient_state.
+    from a2kit.packages.context import request_scope  # noqa: A2K-LAYER
+
+    state = _LddState(
+        ctx=ctx,
+        events_enabled=events_enabled,
+        reports_enabled=reports_enabled,
+        report_type=report_type,
+        tool_name=tool_name,
+        start_monotonic=time.monotonic(),
+        sinks=sinks,
+        level_threshold=level_threshold,
     )
+    token = request_scope.publish(state)
     try:
         yield
     finally:
-        _LDD_STATE.reset(token)
+        request_scope.reset(token)
 
 
 def _is_fastmcp_context(ctx: Any) -> bool:

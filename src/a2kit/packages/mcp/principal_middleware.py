@@ -13,11 +13,7 @@ from typing import Any
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
-from a2kit.packages.context import Principal
-from a2kit.packages.dispatch import (
-    reset_request_principal,
-    set_request_principal,
-)
+from a2kit.packages.context import Principal, request_scope
 
 
 def _principal_from_context(fastmcp_context: Any) -> Principal | None:
@@ -61,11 +57,11 @@ class PrincipalMiddleware(Middleware):
         principal = _principal_from_context(getattr(context, "fastmcp_context", None))
         if principal is None:
             return await call_next(context)
-        token = set_request_principal(principal)
+        token = request_scope.publish(principal)
         try:
             return await call_next(context)
         finally:
-            reset_request_principal(token)
+            request_scope.reset(token)
 
 
 __all__ = ["PrincipalMiddleware"]

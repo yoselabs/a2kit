@@ -59,6 +59,7 @@ class Resolver(Protocol):
         wire_kwargs: dict[str, Any] | None = None,
         *,
         pre_hook: Callable[..., Any] | None = None,
+        framework_seeds: dict[type, Any] | None = None,
         scoped_seeds: dict[type, Any] | None = None,
     ) -> AbstractAsyncContextManager[dict[str, Any]]:
         """Open the per-call DI scope (async context manager).
@@ -66,9 +67,11 @@ class Resolver(Protocol):
         Returns an async-CM whose ``__aenter__`` yields the merged kwarg
         dict and whose ``__aexit__`` unwinds the per-call cleanup stack.
 
-        ``scoped_seeds`` publishes typed instances on the child as SCOPED
-        providers before resolution — used by substrate adapters that
-        already have the instance in hand.
+        ``framework_seeds`` publishes typed instances on the child as
+        SCOPED providers before resolution — sourced from
+        ``request_scope.all_seeds()`` by dispatch stages. ``scoped_seeds``
+        is the deprecated keyword alias, removed one release after
+        ``generalise-context-bridges``.
         """
         ...
 

@@ -17,8 +17,7 @@ from typing import TYPE_CHECKING, Any
 import anyio
 
 from a2kit.ldd import ldd_state_for_call
-from a2kit.packages.context import StderrToolContext
-from a2kit.packages.dispatch._principal_bridge import current_request_principal_seeds
+from a2kit.packages.context import StderrToolContext, request_scope
 from a2kit.packages.dispatch.spec import (
     SYNTHESIZED_CTX_PARAM_NAME,
     CapturedError,
@@ -173,7 +172,7 @@ class DispatchHookStage:
                 fn,
                 kwargs,
                 pre_hook=hook,
-                scoped_seeds=current_request_principal_seeds(),
+                framework_seeds=request_scope.all_seeds(),
             ) as merged:
                 if ctx_param_name is not None and ctx_value is not None:
                     merged[ctx_param_name] = ctx_value
@@ -192,7 +191,7 @@ async def _run_authorize_gate(authorize: Callable[..., Any], container: Any) -> 
     from a2kit.exceptions import AuthorizationDenied
 
     callable_name = getattr(authorize, "__qualname__", getattr(authorize, "__name__", "<authorize>"))
-    async with container.call_scope(authorize, {}, scoped_seeds=current_request_principal_seeds()) as merged:
+    async with container.call_scope(authorize, {}, framework_seeds=request_scope.all_seeds()) as merged:
         fn_param_names = {p.name for p in inspect.signature(authorize).parameters.values()}
         call_kwargs = {k: v for k, v in merged.items() if k in fn_param_names}
         decision = await _call(authorize, **call_kwargs)

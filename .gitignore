@@ -29,3 +29,4 @@ html/
 .idea/
 .vscode/
 *.swp
+.aider*

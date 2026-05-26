@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Internal — Single typed request-scope bridge (`request_scope`)
+
+Per `generalise-context-bridges` (2026-05-27):
+
+- New `a2kit.packages.context.request_scope` (also re-exported at
+  `a2kit.packages.dispatch.request_scope`) — single typed
+  substrate→dispatch bridge with `publish(*values)` / `get(T)` /
+  `try_get(T)` / `all_seeds()` / `reset(token)` and a typed
+  `RequestScopeMissing(T)` failure mode.
+- Three pre-existing per-type ContextVar bridges collapsed into this
+  one shape: the `Principal` bridge (`_request_principal`), the
+  FastAPI per-request `Container` bridge (`_a2kit_request_scope`), and
+  the LDD ambient bridge (`_LDD_STATE`). All readers and writers now
+  route through `request_scope`.
+- `Container.call_scope` accepts `framework_seeds=` (new) sourced from
+  `request_scope.all_seeds()`. The prior `scoped_seeds=` keyword is a
+  deprecation-shim alias emitting `DeprecationWarning` for one release.
+- `a2kit.packages.dispatch._principal_bridge` (the
+  `set_request_principal` / `current_request_principal_seeds` /
+  `reset_request_principal` named API) is now a deprecation-shim
+  wrapper around `request_scope.publish` / `get` / `reset`. Each
+  function emits `DeprecationWarning`. New code SHOULD use
+  `request_scope` directly.
+- `AmbientContextMissing` is now a deprecation-shim subclass whose
+  no-dispatch path chains from `RequestScopeMissing(_LddState)` via
+  `__cause__`.
+- The FastAPI Depends bridge keeps reading from the DI-package-local
+  `_a2kit_request_scope` ContextVar (the http middleware dual-writes
+  to both bridges) to preserve `di-container-package`'s
+  standalone-shippability invariant.
+- New capability spec `request-scope` ADDED; `dispatch-pipeline`
+  MODIFIED with the framework_seeds rename + stages-read-via-scope
+  requirement.
+- Adding a new request-scoped type (TenantId, TraceContext, RequestId)
+  is now two lines (one `publish` at the substrate seam, one `get` at
+  the reader) — zero new ContextVars, zero new bridge modules.
+
 ### Internal — Error envelope render state moved to an explicit side channel
 
 Per `error-envelope-side-channel` (2026-05-27):

@@ -103,10 +103,7 @@ def build_api_key_middleware(spec: APIKeyAuth) -> Any:
     (``lifespan`` / ``websocket``) pass through untouched — websockets
     would need their own challenge flow if/when we add one.
     """
-    from a2kit.packages.dispatch import (
-        reset_request_principal,
-        set_request_principal,
-    )
+    from a2kit.packages.context import request_scope
 
     keys_by_value = _materialise_keys(spec)
     header_bytes = spec.header.encode("ascii").lower()
@@ -129,11 +126,11 @@ def build_api_key_middleware(spec: APIKeyAuth) -> Any:
                 await _send_401(send, "invalid API key")
                 return
             principal = _principal_from_key(key)
-            token = set_request_principal(principal)
+            token = request_scope.publish(principal)
             try:
                 await app(scope, receive, send)
             finally:
-                reset_request_principal(token)
+                request_scope.reset(token)
 
         return middleware
 
