@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Internal — Plugin-manifest extension shape (pilot: API-key auth)
+
+Per `adopt-plugin-manifests` (2026-05-27):
+
+- New private framework module `a2kit.packages._plugin` ported from
+  a2web (ADR-0001 Pattern 2): `PluginManifest[T]` + `Unavailable`
+  sentinel + `load_surface()` / `load_surface_sorted()` reflection.
+  Single declarative shape collapsing registration,
+  capability-aware configuration delivery, and unavailability handling.
+- Pilot surface migrated: API-key auth providers under
+  `packages/auth/_providers/api_key.py` declares a `MANIFEST`. The
+  factory returns `Unavailable("no api keys configured")` when no
+  keys are present, so the provider never lands in the registry on
+  an unconfigured deploy.
+- `a2kit.packages.auth.discover_api_key_providers(context)` is the
+  new lazy entry that wraps `load_surface(...)`. Imperative
+  `App.auth(APIKeyAuth(...))` registration continues to work.
+- Manifest modules SHALL be side-effect-free at import time; a new
+  architecture test walks each manifest module's AST and rejects
+  top-level calls (other than `PluginManifest(...)`).
+- New capability spec `plugin-manifest` ADDED; `surface-protocol`
+  MODIFIED with the forward-looking "new Surface implementations
+  register via MANIFEST" requirement.
+- Remaining surfaces (connections, future auth providers, LDD sinks,
+  code-mode tools, `expose=` validation) migrate in follow-up changes.
+
 ### Internal — Single typed request-scope bridge (`request_scope`)
 
 Per `generalise-context-bridges` (2026-05-27):

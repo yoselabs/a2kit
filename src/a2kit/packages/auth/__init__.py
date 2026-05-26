@@ -37,6 +37,10 @@ def __getattr__(name: str) -> Any:
         from a2kit.packages.auth import testing
 
         return testing.make_principal
+    if name == "discover_api_key_providers":
+        from a2kit.packages.auth import discovery
+
+        return discovery.discover_api_key_providers
     raise AttributeError(f"module 'a2kit.packages.auth' has no attribute {name!r}")
 
 
@@ -46,5 +50,6 @@ __all__ = [
     "AppAuthRegistry",
     "AuthSpec",
     "AuthTarget",
+    "discover_api_key_providers",
     "make_principal",
 ]
