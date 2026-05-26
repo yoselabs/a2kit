@@ -36,7 +36,15 @@ from a2kit.packages.ldd.emission import (  # noqa: A2K-PKG-INIT-PURITY
     warning,
 )
 from a2kit.packages.ldd.levels import LDD_LEVEL_RANK, LddLevel
-from a2kit.packages.ldd.sinks import LddEmission, LddSink
+from a2kit.packages.ldd.sinks import (
+    LddEmission,
+    LddSink,
+    live_sink,
+    make_live_sink,
+    otel_sink,
+    stderr_json_sink,
+    stderr_pretty_sink,
+)
 from a2kit.packages.ldd.wire import TEXT_CAP, format_ldd_line
 
 __all__ = [
@@ -54,7 +62,12 @@ __all__ = [
     "format_ldd_line",
     "info",
     "ldd_state_for_call",
+    "live_sink",
     "log",
+    "make_live_sink",
+    "otel_sink",
     "report",
+    "stderr_json_sink",
+    "stderr_pretty_sink",
     "warning",
 ]

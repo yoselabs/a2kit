@@ -111,7 +111,7 @@ def test_sink_exception_does_not_break_dispatch(caplog) -> None:
         with ldd_state_for_call(ctx=ctx, sinks=(bad_sink,)):
             await ldd_event("x")  # must complete without raising
 
-    with caplog.at_level(logging.ERROR, logger="a2kit.ldd.sinks"):
+    with caplog.at_level(logging.WARNING, logger="a2kit.ldd.sink_failed"):
         anyio.run(run)
     assert any("LDD sink" in r.getMessage() for r in caplog.records)
 

@@ -81,6 +81,7 @@ _RUNTIME_MODULES = frozenset(
         "app",
         "runtime",
         "__main__",
+        "_ldd_bootstrap",
     }
 )
 

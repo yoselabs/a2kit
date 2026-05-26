@@ -26,7 +26,7 @@ provider chain) is enforced by the absence of such an API.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -84,6 +84,45 @@ class LddConfig(BaseModel):
             "Set via env: A2KIT_LDD__LEVEL=debug. "
             "Default 'info' silences `debug()` calls; flip to 'debug' or 'trace' "
             "to observe them. See ADR 0022 for the consumer-beats-code rule."
+        ),
+    )
+    stderr_sink: Literal["none", "pretty", "json"] = Field(
+        default="none",
+        description=(
+            "Built-in stderr operator sink. `none` (default) preserves the "
+            "v0.x behaviour. `pretty` writes one human-readable line per "
+            "emission. `json` writes one JSON record per line. "
+            "Env: A2KIT_LDD__STDERR_SINK=pretty."
+        ),
+    )
+    otel_sink: Literal["auto", "on", "off"] = Field(
+        default="auto",
+        description=(
+            "Built-in OTel operator sink. `auto` (default) registers the "
+            "sink iff the `opentelemetry` SDK is importable AND at least "
+            "one `OTEL_EXPORTER_*` env var is set. `on` always registers; "
+            "`off` never. Spans are emitted per `*Ended` event; the sink "
+            "silently drains when the SDK is missing."
+        ),
+    )
+    live_sink: Literal["off", "on"] = Field(
+        default="off",
+        description=(
+            "Built-in live operator sink for long-running multi-event tasks. "
+            "Default `off` (the sink is noisy). When `on`, one stdout line "
+            "per `*Started`/`*Ended` event under an asyncio.Lock + a "
+            "heartbeat line every `live_heartbeat_seconds` while events are "
+            "in flight."
+        ),
+    )
+    live_heartbeat_seconds: float = Field(
+        default=30.0,
+        description="Heartbeat period for the live operator sink (seconds). 0 disables the heartbeat.",
+    )
+    live_event_prefixes: tuple[str, ...] = Field(
+        default=("",),
+        description=(
+            "Event-name prefix filter for the live sink. Default `('',)` matches every event; pass e.g. `('Cell',)` to scope to a family."
         ),
     )
 

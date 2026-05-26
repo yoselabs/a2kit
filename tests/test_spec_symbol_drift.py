@@ -78,6 +78,10 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "A2K-RAISES-NOT-TYPED",
         "A2K-RAISES-HELPER-UNTYPED",
         "A2K-OUTPUT-SCHEMA-COMPAT",
+        # adopt-plugin-manifests forward-looking rule: surface-protocol
+        # spec cites this name; the rule lands when the remaining Surface
+        # implementations port to MANIFEST (BACKLOG follow-up).
+        "A2K-SURFACE-REGISTRY",
     }
 )
 

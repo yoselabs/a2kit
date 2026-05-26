@@ -154,6 +154,13 @@ class App:
 
         self.ldd = _AppLdd()
 
+        # Built-in operator sinks per `reshape-ldd-operator-wire-fanout`.
+        # Registered BEFORE any user-added sink so the documented order is
+        # `[built-ins...] + [user-added in registration order]`.
+        from a2kit._ldd_bootstrap import register_builtin_ldd_sinks
+
+        register_builtin_ldd_sinks(self.ldd, self.config.ldd)
+
         # Health probe — auto-installed on the first ``health_check`` call.
         from a2kit.packages.health import HealthRegistry
 

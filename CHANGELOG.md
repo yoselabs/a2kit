@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Feature — Built-in LDD operator sinks + parallel fan-out
+
+Per `reshape-ldd-operator-wire-fanout` (2026-05-27):
+
+- New `a2kit.packages.ldd.sinks` subpackage with four built-in
+  operator sinks: `stderr_pretty_sink`, `stderr_json_sink`,
+  `otel_sink`, and `live_sink` (with `make_live_sink(...)` for
+  custom event-prefix filters + heartbeat).
+- Operator-sink fan-out now runs in parallel via
+  `asyncio.gather(..., return_exceptions=True)`. Per-sink failures
+  are logged at WARN under `a2kit.ldd.sink_failed` and dropped,
+  isolating the producer + sibling sinks + the wire path. Replaces
+  the previous sequential `try / except` per sink.
+- `LddConfig` gains 5 knobs: `stderr_sink` (none | pretty | json,
+  default none), `otel_sink` (auto | on | off, default auto),
+  `live_sink` (off | on, default off), `live_heartbeat_seconds`,
+  `live_event_prefixes`. All available via `A2KIT_LDD__*` env.
+- The `auto` OTel heuristic registers the sink iff the
+  `opentelemetry` SDK is importable AND at least one
+  `OTEL_EXPORTER_*` env var is set — avoids the surprise of "I
+  imported the SDK for an unrelated reason and now my LDD output
+  disappears."
+- App boot reads `LddConfig` and registers enabled built-in sinks
+  BEFORE any user-added sink (documented order: built-ins, then
+  user-added in registration order).
+- No breaking change: default config preserves v0.x behaviour;
+  `app.ldd.add_sink(...)` keeps working; `LddEmission` shape and
+  wire path are unchanged.
+- New capability spec `ldd-operator-sinks` ADDED; `ldd-level-threshold`
+  MODIFIED to clarify the single-threshold-before-fan-out invariant;
+  `otel-adapter` MODIFIED with the drain-on-missing-SDK contract.
+
 ### Internal — Plugin-manifest extension shape (pilot: API-key auth)
 
 Per `adopt-plugin-manifests` (2026-05-27):

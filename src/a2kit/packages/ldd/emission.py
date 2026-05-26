@@ -29,7 +29,8 @@ from typing import TYPE_CHECKING, Any, Literal
 from a2kit.exceptions import ReportTypeMismatch, ReportTypeNotDeclared
 from a2kit.packages.ldd.ambient import _elapsed_ms_from, _is_fastmcp_context, _require_ambient_state
 from a2kit.packages.ldd.levels import LDD_LEVEL_RANK, LddLevel
-from a2kit.packages.ldd.sinks import LddEmission, LddSink, _dispatch_sinks
+from a2kit.packages.ldd.sinks import LddEmission, LddSink
+from a2kit.packages.ldd.sinks._core import _dispatch_sinks
 from a2kit.packages.ldd.wire import _cap_text
 
 

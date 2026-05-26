@@ -20,12 +20,12 @@ the lint's own view of the graph.
 | `di` | 0 | 11 | 6 | 0 | — |
 | `formatter` | 0 | 9 | 6 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
-| `ldd` | 0 | 6 | 4 | 1 | `context` |
+| `ldd` | 0 | 11 | 4 | 1 | `context` |
 | `lint` | 0 | 20 | 0 | 0 | — |
 | `select` | 0 | 2 | 2 | 0 | — |
 | `kernel` | 1 | 8 | 4 | 1 | `ldd` |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
-| `runtime` | 3 | 3 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
+| `runtime` | 3 | 4 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 9 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `ldd`, `runtime` |
 | `auth` | 5 | 8 | 1 | 1 | `context` |

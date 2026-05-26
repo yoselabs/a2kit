@@ -71,3 +71,27 @@ declared under `[project.optional-dependencies] otel = [...]`.
 - **WHEN** `grep -rE "^(from|import) opentelemetry" src/a2kit/` is run, excluding `src/a2kit/packages/otel/`
 - **THEN** the result is empty
 
+
+### Requirement: Built-in OTel LDD sink with drain-on-missing-SDK invariant
+
+The framework SHALL ship a built-in `otel_sink` operator sink in `a2kit.packages.ldd.sinks.otel` that emits one OTel span per `*Ended` LDD emission. `*Started` events and emissions whose name does not end in `Ended` SHALL be silently consumed. When the `opentelemetry` SDK is not importable (or no tracer provider is configured), the sink SHALL drain every emission without raising — preserving the operator-fan-out failure-isolation contract.
+
+The sink is registered at App boot when `A2kitConfig.ldd.otel_sink` is `"on"`, or `"auto"` (default) AND the SDK is importable AND at least one `OTEL_EXPORTER_*` env var is set.
+
+#### Scenario: otel_sink drains when SDK is missing
+
+- **GIVEN** the `opentelemetry` package is not importable
+- **WHEN** `otel_sink(emission)` is called for any emission
+- **THEN** the call returns normally and no span is emitted
+
+#### Scenario: Span emitted per *Ended event
+
+- **GIVEN** the SDK is configured and a tracer is available
+- **WHEN** an emission with `name="CellEnded"` reaches the sink
+- **THEN** one span named `CellEnded` is started and ended within the call
+
+#### Scenario: auto heuristic predicates both conditions
+
+- **GIVEN** `A2kitConfig.ldd.otel_sink == "auto"`
+- **WHEN** `should_register_otel_sink("auto")` runs
+- **THEN** it returns True iff `opentelemetry` is importable AND at least one `OTEL_EXPORTER_*` env var is set
