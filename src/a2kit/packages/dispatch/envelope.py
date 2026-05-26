@@ -4,9 +4,10 @@ The prose formatter and kind label registry are pure functions reused
 by every surface (MCP, HTTP, CLI). ``ErrorEnvelopeStage`` is the
 terminal stage of the dispatch pipeline (after ``EnricherStage``,
 before surface rendering): on any escaping ``AppError`` it pre-computes
-``rendered_prose`` and ``rendered_envelope_dict`` attributes on the
-exception so surface adapters can read them without re-running the
-formatter per transport.
+the rendered prose + envelope dict and stashes them on the per-call
+render-state side channel (``a2kit.packages.dispatch._render_state``)
+so surface adapters can read them via :func:`get_rendered_error`
+without re-running the formatter per transport.
 """
 
 from __future__ import annotations
@@ -75,11 +76,11 @@ async def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
 class ErrorEnvelopeStage:
     """Pre-compute prose + envelope dict on any escaping ``AppError``.
 
-    Terminal stage: surface adapters (MCP/HTTP/CLI) then read
-    ``rendered_prose`` and ``rendered_envelope_dict`` off the exception
-    without re-running the formatter per transport. Non-``AppError``
-    exceptions propagate untouched (the enricher stage's quarantine
-    runs before this stage).
+    Terminal stage: surface adapters (MCP/HTTP/CLI) then read the
+    rendered prose + envelope via :func:`get_rendered_error` on the
+    per-call render-state side channel, without re-running the formatter
+    per transport. Non-``AppError`` exceptions propagate untouched (the
+    enricher stage's quarantine runs before this stage).
     """
 
     name = "error-envelope"
@@ -87,17 +88,20 @@ class ErrorEnvelopeStage:
     def wrap(self, fn: Callable[..., Any], spec: Any) -> Callable[..., Any]:  # noqa: ARG002
         from a2effect import AppError
 
+        from a2kit.packages.dispatch._render_state import RenderedError, set_rendered_error
+
         @functools.wraps(fn)
         async def _wrapped(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await _call(fn, *args, **kwargs)
             except AppError as exc:
-                # Stash transport-neutral render artifacts on the exception
-                # for surface adapters (MCP / CLI) to read via getattr.
-                # `AppError` is owned by a2effect and intentionally does not
-                # declare these — a2kit's dispatch contract attaches them.
-                exc.rendered_prose = format_error_prose(exc)  # ty: ignore[unresolved-attribute]
-                exc.rendered_envelope_dict = exc.to_envelope_dict()  # ty: ignore[unresolved-attribute]
+                set_rendered_error(
+                    exc,
+                    RenderedError(
+                        prose=format_error_prose(exc),
+                        envelope=exc.to_envelope_dict(),
+                    ),
+                )
                 raise
 
         return _wrapped

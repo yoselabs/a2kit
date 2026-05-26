@@ -10,7 +10,6 @@ params (and injects ``ctx``).
 
 from __future__ import annotations
 
-import contextvars
 import functools
 import inspect
 import json
@@ -20,35 +19,16 @@ from typing import Any
 from fastmcp.server.middleware import Middleware
 from fastmcp.tools import ToolResult
 
-from a2kit.packages.dispatch import SYNTHESIZED_CTX_PARAM_NAME, CapturedError
+from a2kit.packages.dispatch import (
+    SYNTHESIZED_CTX_PARAM_NAME,
+    CapturedError,
+    close_render_state,
+    get_rendered_error,
+    open_render_state,
+)
 
 _log = logging.getLogger(__name__)
 _WARN_ONCE: set[str] = set()
-
-# Per-call channel from McpErrorRenderStage to TypedErrorEnvelopeMiddleware.
-# The middleware pre-installs a mutable list in the contextvar BEFORE
-# `call_next`; the stage appends the typed envelope dict. List mutation is
-# visible across asyncio task boundaries (the binding is per-context but
-# the list object itself is shared by reference), so the middleware reads
-# the envelope after call_next returns even when FastMCP spawned a child
-# task for the tool body.
-_pending_typed_envelope: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
-    "_a2kit_pending_typed_envelope", default=None
-)
-
-
-def install_pending_envelope_slot() -> list[dict[str, Any]]:
-    """Install a fresh per-call envelope slot; return the slot list."""
-    slot: list[dict[str, Any]] = []
-    _pending_typed_envelope.set(slot)
-    return slot
-
-
-def stash_typed_envelope(envelope: dict[str, Any]) -> None:
-    """Append the typed envelope dict to the current per-call slot (if any)."""
-    slot = _pending_typed_envelope.get()
-    if slot is not None:
-        slot.append(envelope)
 
 
 class _TypedErrorToolResult(ToolResult):
@@ -67,27 +47,36 @@ class _TypedErrorToolResult(ToolResult):
 class TypedErrorEnvelopeMiddleware(Middleware):
     """Patch ``structured_content`` onto error results from typed AppErrors.
 
-    Pairs with :class:`McpErrorRenderStage`: that stage stashes the
-    rendered envelope dict on a per-call mutable slot before raising
-    ``ToolError(prose)``. We catch the ToolError from ``call_next`` and
-    return a ``_TypedErrorToolResult`` carrying prose in content +
+    Pairs with :class:`McpErrorRenderStage`: that stage looks up the
+    rendered envelope on the per-call render-state side channel before
+    raising ``ToolError(prose) from exc``. We open the side-channel slot
+    around ``call_next``, catch the ToolError, recover the envelope by
+    looking up the chained AppError, and return a
+    ``_TypedErrorToolResult`` carrying prose in content +
     ``{"error": envelope}`` in structured_content + isError=true.
     """
 
     async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+        from a2effect import AppError
         from fastmcp.exceptions import ToolError
         from mcp.types import TextContent
 
-        slot = install_pending_envelope_slot()
+        token = open_render_state()
         try:
-            return await call_next(context)
-        except ToolError as te:
-            if not slot:
-                raise
-            return _TypedErrorToolResult(
-                content=[TextContent(type="text", text=str(te))],
-                structured_content={"error": slot[0]},
-            )
+            try:
+                return await call_next(context)
+            except ToolError as te:
+                cause = te.__cause__
+                if not isinstance(cause, AppError):
+                    raise
+                rendered = get_rendered_error(cause)
+                envelope = rendered.envelope if rendered is not None else cause.to_envelope_dict()
+                return _TypedErrorToolResult(
+                    content=[TextContent(type="text", text=str(te))],
+                    structured_content={"error": envelope},
+                )
+        finally:
+            close_render_state(token)
 
 
 class McpErrorRenderStage:
@@ -126,9 +115,15 @@ class McpErrorRenderStage:
                 if isinstance(exc, FastMCPError):
                     raise exc from None
                 if isinstance(exc, AppError):
-                    prose = getattr(exc, "rendered_prose", None) or str(exc)
-                    envelope = getattr(exc, "rendered_envelope_dict", None) or exc.to_envelope_dict()
-                    stash_typed_envelope(envelope)
+                    # The render-state side channel (opened by
+                    # TypedErrorEnvelopeMiddleware) carries the prose +
+                    # envelope written by ErrorEnvelopeStage. The
+                    # ``else`` branches are defensive fallbacks for the
+                    # rare case where the middleware did not run (e.g.
+                    # an integration test invoking this stage in
+                    # isolation).
+                    rendered = get_rendered_error(exc)
+                    prose = rendered.prose if rendered is not None else str(exc)
                     raise ToolError(prose) from exc
                 # Anything else escaped the enricher chain — should be
                 # rare since defect quarantine wraps non-AppError as

@@ -890,3 +890,43 @@ to constrain its downstream, do it at the process boundary
 (env-strip, container policy, wrapper layer), outside a2kit.
 
 Citation: ADR 0022; `src/a2kit/config.py`; `src/a2kit/app.py:_raise_unexpected_kwargs`.
+
+## 30. v0.X — mutating exception instances to carry rendering state
+
+```python
+# Don't:
+exc.rendered_prose = format_error_prose(exc)            # ty: ignore[unresolved-attribute]
+exc.rendered_envelope_dict = exc.to_envelope_dict()      # ty: ignore[unresolved-attribute]
+# ... later, in a transport adapter:
+prose = getattr(exc, "rendered_prose", None) or str(exc)
+```
+
+The pattern silently couples two modules through untyped exception
+attributes the owning class never declared. The `# ty: ignore` comments
+are the smell; the `getattr(..., None) or fallback` line on the reader
+side is its twin — it hides a missing-precondition bug instead of
+failing loudly when the writer never ran.
+
+Carry per-call render state on an explicit side channel keyed by
+`id(exc)`. The writer publishes via a typed setter; the readers retrieve
+via a typed getter that returns `RenderedError | None`. The exception
+class stays a pure domain value.
+
+```python
+# Do:
+from a2kit.packages.dispatch import (
+    RenderedError, set_rendered_error, get_rendered_error,
+)
+
+# writer (terminal dispatch stage):
+set_rendered_error(exc, RenderedError(prose=..., envelope=...))
+
+# reader (transport render stage):
+rendered = get_rendered_error(exc)
+prose = rendered.prose if rendered is not None else str(exc)  # defensive only
+```
+
+Citation: `src/a2kit/packages/dispatch/_render_state.py`;
+`src/a2kit/packages/dispatch/envelope.py:ErrorEnvelopeStage`;
+`src/a2kit/packages/mcp/_wrappers.py:McpErrorRenderStage`;
+`src/a2kit/packages/cli/runtime.py:CliErrorRenderStage`; ADR 0021.

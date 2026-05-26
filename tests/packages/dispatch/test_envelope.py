@@ -5,6 +5,11 @@ from __future__ import annotations
 import pytest
 from a2effect import AppError
 
+from a2kit.packages.dispatch._render_state import (
+    close_render_state,
+    get_rendered_error,
+    open_render_state,
+)
 from a2kit.packages.dispatch.envelope import (
     ErrorEnvelopeStage,
     format_error_prose,
@@ -70,24 +75,30 @@ async def test_stage_passes_success_through() -> None:
     assert await wrapped() == 42
 
 
-async def test_stage_attaches_rendered_prose_and_envelope_on_error() -> None:
+async def test_stage_writes_rendered_prose_and_envelope_to_side_channel() -> None:
     stage = ErrorEnvelopeStage()
 
     async def body() -> int:
         raise _Boom("db down")
 
     wrapped = stage.wrap(body, spec=None)
-    with pytest.raises(_Boom) as info:
-        await wrapped()
-    exc = info.value
-    # ErrorEnvelopeStage attaches these render artifacts to the exception;
-    # AppError (a2effect) intentionally doesn't declare them — a2kit's
-    # dispatch contract does. See src/a2kit/packages/dispatch/envelope.py.
-    assert exc.rendered_prose == "Service unavailable (_Boom): db down"  # ty: ignore[unresolved-attribute]
-    env = exc.rendered_envelope_dict  # ty: ignore[unresolved-attribute]
-    assert env["type"] == "_Boom"
-    assert env["kind"] == "infra"
-    assert env["retryable"] is False or env["retryable"] is True  # class default
+    token = open_render_state()
+    try:
+        with pytest.raises(_Boom) as info:
+            await wrapped()
+        exc = info.value
+        # AppError stays a pure domain value — no rendering metadata on
+        # the instance. The side channel carries it.
+        assert not hasattr(exc, "rendered_prose")
+        assert not hasattr(exc, "rendered_envelope_dict")
+        rendered = get_rendered_error(exc)
+        assert rendered is not None
+        assert rendered.prose == "Service unavailable (_Boom): db down"
+        assert rendered.envelope["type"] == "_Boom"
+        assert rendered.envelope["kind"] == "infra"
+        assert rendered.envelope["retryable"] is False or rendered.envelope["retryable"] is True
+    finally:
+        close_render_state(token)
 
 
 async def test_stage_does_not_touch_non_app_error() -> None:

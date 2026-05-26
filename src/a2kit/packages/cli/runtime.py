@@ -11,7 +11,14 @@ from typing import TYPE_CHECKING, Any, cast
 import typer
 
 from a2kit.packages.context import StderrToolContext
-from a2kit.packages.dispatch import CapturedError, ToolBuildSpec, fold_pipeline
+from a2kit.packages.dispatch import (
+    CapturedError,
+    ToolBuildSpec,
+    close_render_state,
+    fold_pipeline,
+    get_rendered_error,
+    open_render_state,
+)
 from a2kit.packages.formatter import FormatHint, format_response
 
 if TYPE_CHECKING:
@@ -54,10 +61,11 @@ class CliErrorRenderStage:
     ``AppError`` (non-AppError raises become ``UnexpectedDefect`` via
     quarantine).
 
-    Renders ``rendered_prose`` (set by ``ErrorEnvelopeStage``) to stderr
-    and raises ``typer.Exit(code)`` with the kind-mapped exit code
-    (per-class ``cli_exit_code`` ClassVar wins; otherwise the
-    base-kind default per sysexits.h).
+    Renders the prose written by ``ErrorEnvelopeStage`` (carried via
+    the render-state side channel) to stderr and raises
+    ``typer.Exit(code)`` with the kind-mapped exit code (per-class
+    ``cli_exit_code`` ClassVar wins; otherwise the base-kind default
+    per sysexits.h).
     """
 
     name = "cli-error-render"
@@ -81,7 +89,14 @@ class CliErrorRenderStage:
                         envelope = orig.to_envelope_dict()
                         typer.echo(_json.dumps({"error": envelope}, separators=(",", ":"), default=str))
                         raise typer.Exit(_cli_exit_for(orig)) from orig
-                    prose = getattr(orig, "rendered_prose", None) or str(orig)
+                    # The render-state side channel (opened by the CLI
+                    # entry point) carries the prose written by
+                    # ErrorEnvelopeStage. The ``else`` branch is a
+                    # defensive fallback for the rare case where the
+                    # entry point did not open the slot (e.g. a stage
+                    # exercised in isolation by a unit test).
+                    rendered = get_rendered_error(orig)
+                    prose = rendered.prose if rendered is not None else str(orig)
                     typer.echo(prose, err=True)
                     if debug:
                         typer.echo(ce.traceback_str, err=True)
@@ -123,7 +138,11 @@ async def _invoke_tool_in_process(
 
     wrapped = fold_pipeline(fn, spec)
     wrapped = CliErrorRenderStage().wrap(wrapped, spec)
-    raw = await wrapped(**call_kwargs)
+    token = open_render_state()
+    try:
+        raw = await wrapped(**call_kwargs)
+    finally:
+        close_render_state(token)
 
     response = format_response(raw, format_hint=cast("FormatHint", fmt))
     return response.data
@@ -171,7 +190,11 @@ async def _invoke_tool_in_process_raw(
 
     wrapped = fold_pipeline(fn, spec)
     wrapped = CliErrorRenderStage().wrap(wrapped, spec)
-    return await wrapped(**call_kwargs)
+    token = open_render_state()
+    try:
+        return await wrapped(**call_kwargs)
+    finally:
+        close_render_state(token)
 
 
 def invoke_tool_sync_raw(

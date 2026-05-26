@@ -17,6 +17,13 @@ from a2kit.packages.dispatch._principal_bridge import (
     reset_request_principal,
     set_request_principal,
 )
+from a2kit.packages.dispatch._render_state import (
+    RenderedError,
+    close_render_state,
+    get_rendered_error,
+    open_render_state,
+    set_rendered_error,
+)
 from a2kit.packages.dispatch.pipeline import DISPATCH_PIPELINE, fold_pipeline
 from a2kit.packages.dispatch.spec import (
     SYNTHESIZED_CTX_PARAM_NAME,
@@ -69,6 +76,7 @@ __all__ = [
     "EnricherStage",
     "ErrorCaptureStage",
     "LddStateStage",
+    "RenderedError",
     "RouterLazyEnterStage",
     "SplitSignature",
     "SubstrateSignatureError",
@@ -78,14 +86,18 @@ __all__ = [
     "ToolBuildSpec",
     "_run_authorize_gate",  # noqa: A2K-PKG-INIT-PURITY
     "_unwrap_annotation",  # noqa: A2K-PKG-INIT-PURITY
+    "close_render_state",
     "current_request_principal",
     "current_request_principal_seeds",
     "fastapi_reserved",
     "fastmcp_reserved",
     "fold_pipeline",
+    "get_rendered_error",
     "has_injectables",
     "install_substrate_signature",
+    "open_render_state",
     "reset_request_principal",
+    "set_rendered_error",
     "set_request_principal",
     "split_signature",
 ]

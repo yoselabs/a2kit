@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Internal — Error envelope render state moved to an explicit side channel
+
+Per `error-envelope-side-channel` (2026-05-27):
+
+- `ErrorEnvelopeStage` no longer mutates `AppError` instances with
+  `rendered_prose` / `rendered_envelope_dict` attributes. Render output
+  now lives on a per-call side channel under
+  `a2kit.packages.dispatch._render_state` (`RenderedError`,
+  `set_rendered_error`, `get_rendered_error`, `open_render_state`,
+  `close_render_state`, re-exported from `a2kit.packages.dispatch`).
+- `McpErrorRenderStage` and `CliErrorRenderStage` retrieve prose +
+  envelope via `get_rendered_error(exc)` instead of untyped `getattr`.
+- The MCP `_pending_typed_envelope` ContextVar (a second side channel
+  between `McpErrorRenderStage` and `TypedErrorEnvelopeMiddleware`) is
+  retired; both readers use the unified `_render_state` slot.
+- Removes the two `# ty: ignore[unresolved-attribute]` comments in
+  `packages/dispatch/envelope.py`.
+- No change to wire envelope shape, prose format, or CLI exit codes.
+
 ### Breaking (internal API) — Surfaces are passive; composition is explicit
 
 Per `bootstrap-surfaces-explicit` (2026-05-26):
