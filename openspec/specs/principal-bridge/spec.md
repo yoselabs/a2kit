@@ -1,107 +1,41 @@
 # principal-bridge Specification
 
 ## Purpose
-
-A single, private, named bridge module that carries per-request
-`Principal` between substrate authentication boundaries (FastAPI
-`Security`, MCP `PrincipalMiddleware`) and the per-call DI scope
-opening in the dispatch pipeline. The bridge replaces ad-hoc
-ContextVar imports scattered across substrate adapters and dispatch
-stages with one canonical writer/reader API. Structural import-path
-discipline (only `_principal_bridge.py` references the raw
-ContextVar) replaces the previous grep-based stage-source test.
+Carry the substrate-published :class:`Principal` from authentication
+boundary code into the per-call DI scope opened by the dispatch
+pipeline. **Subsumed** by the unified
+[`request-scope`](../request-scope/spec.md) bridge (per
+`generalise-context-bridges`, 2026-05-27). All Principal flow now
+travels through the shared `a2kit.packages.context.request_scope`
+module — there is no dedicated `_principal_bridge` module.
 
 ## Requirements
-### Requirement: The principal bridge is a private dispatch-layer module
 
-The framework SHALL carry per-request `Principal` between substrate
-authentication boundaries and the per-call DI scope opening through
-a single named bridge module:
-`a2kit.packages.dispatch._principal_bridge`. The module is private
-(`_`-prefixed) and lives in the dispatch layer (L4). The underlying
-`contextvars.ContextVar` instance is module-private and MUST NOT be
-re-exported through any `__all__` or package front door.
+### Requirement: Principal is published via `request_scope.publish(p)`
 
-#### Scenario: Bridge module exists at the canonical path
+Substrate authentication boundary code (`packages/auth/api_key`,
+`packages/mcp/principal_middleware`, `packages/http/build`) SHALL
+publish the request `Principal` via
+`a2kit.packages.context.request_scope.publish(p)` and SHALL reset
+via `request_scope.reset(token)` in a `finally` block.
 
-- **WHEN** importing `a2kit.packages.dispatch._principal_bridge`
-- **THEN** the module exposes `set_request_principal`,
-  `reset_request_principal`, and `current_request_principal` as
-  callable names
-- **AND** the module's `__all__` lists exactly these three names
+#### Scenario: Middleware publishes and resets
 
-#### Scenario: ContextVar is not re-exported
+- **GIVEN** a substrate middleware extracts a `Principal` from the request
+- **WHEN** the middleware calls `request_scope.publish(p)` and then invokes the downstream chain
+- **THEN** `request_scope.get(Principal)` inside the downstream resolves to `p`
+- **AND** after `request_scope.reset(token)` runs in the middleware's `finally` block, the lookup falls back to absent for subsequent unrelated requests
 
-- **WHEN** inspecting `a2kit.packages.context` and its public surface
-- **THEN** no attribute named `_a2kit_request_principal` (or any
-  other Principal-carrying ContextVar) appears in `__all__`
-- **AND** `from a2kit.packages.context import _a2kit_request_principal`
-  raises `ImportError` (the symbol was removed)
+### Requirement: Dispatch stages read Principal via `request_scope`
 
-### Requirement: Named writer API for substrate adapters
+Dispatch stages (`DispatchHookStage`, `AuthorizeGateStage`, future
+stages) SHALL thread `Principal` into `Container.call_scope` via
+`framework_seeds=request_scope.all_seeds()`. They SHALL NOT name a
+per-type Principal reader.
 
-Substrate adapters that authenticate a request SHALL publish
-`Principal` via the named bridge writer API. They MUST NOT import
-the underlying ContextVar directly.
+#### Scenario: DispatchHookStage seeds Principal via framework_seeds
 
-`set_request_principal(p: Principal) -> Token` publishes `p` for the
-current async context, returning a `Token` that callers MUST pass to
-`reset_request_principal(token: Token) -> None` in a `finally` block.
-
-#### Scenario: A substrate writer publishes Principal via the named API
-
-- **GIVEN** a substrate middleware that has authenticated a request
-- **WHEN** the middleware calls `set_request_principal(p)` and then
-  invokes downstream dispatch
-- **THEN** `current_request_principal()` inside the downstream
-  dispatch returns `p`
-- **AND** the writer's source contains no reference to the raw
-  ContextVar by name
-
-#### Scenario: Reset restores prior state
-
-- **GIVEN** `set_request_principal(p1)` was called producing `token1`
-- **WHEN** another async task in the same context calls
-  `set_request_principal(p2)` (producing `token2`) and then
-  `reset_request_principal(token2)`
-- **THEN** `current_request_principal()` returns `p1`
-- **AND** subsequent `reset_request_principal(token1)` restores the
-  pre-`p1` state (`None` if there was no prior set)
-
-### Requirement: Reader API for dispatch stages
-
-Dispatch stages that need `Principal` SHALL read it via
-`current_request_principal()` returning `Principal | None`. The reader
-returns `None` when no substrate has published a Principal for the
-current context (unauthenticated transport).
-
-#### Scenario: Reader returns None outside a request
-
-- **GIVEN** no substrate has called `set_request_principal`
-- **WHEN** `current_request_principal()` is invoked
-- **THEN** it returns `None`
-
-#### Scenario: Stages use the reader, not the raw ContextVar
-
-- **WHEN** the source of any module under
-  `a2kit/packages/dispatch/stages.py`,
-  `a2kit/packages/dispatch/substrate.py`,
-  `a2kit/packages/auth/`,
-  `a2kit/packages/mcp/`,
-  `a2kit/packages/http/` is scanned
-- **THEN** no module other than `_principal_bridge` references the
-  raw ContextVar name `_request_principal` directly
-- **AND** all reads happen through `current_request_principal()`
-- **AND** all writes happen through `set_request_principal` /
-  `reset_request_principal`
-
-### Requirement: Structural enforcement replaces grep-based enforcement
-
-The grep-based stage-source test from `principal-single-source` SHALL be retired in favor of import-path discipline: only `_principal_bridge.py` MUST import the underlying ContextVar; the file structure prevents accidental re-introduction in stage code.
-
-#### Scenario: The grep-based stage-source test is retired
-
-- **WHEN** the test suite is inspected
-- **THEN** no test asserts "stages.py contains no `_a2kit_request_principal`"
-- **AND** the equivalent guarantee is provided by the bridge module
-  being the only path to the ContextVar
+- **GIVEN** substrate middleware published a `Principal`
+- **WHEN** `DispatchHookStage._wrapped` opens a child container
+- **THEN** the stage passes `framework_seeds=request_scope.all_seeds()` to `call_scope`
+- **AND** the tool body's `principal: Principal` parameter resolves to the published value

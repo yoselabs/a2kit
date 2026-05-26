@@ -4,14 +4,8 @@ The framework's extension point for substrate adapters. Every substrate
 (MCP, HTTP, future A2A/gRPC/GraphQL) satisfies the ``Surface`` Protocol.
 Surfaces are PASSIVE — importing a surface module does NOT mutate any
 registry. The registry is composed explicitly at ``runtime.build()``
-time from its ``surfaces=`` tuple, per the ``bootstrap-surfaces-explicit``
-change.
-
-The module-level ``SURFACE_REGISTRY`` is a deprecation shim proxy that
-routes to the active runtime's registry (``runtime.surfaces``) when one
-is bound, and raises a clear ``RuntimeError`` otherwise. Direct
-``SURFACE_REGISTRY.register_surface(...)`` calls emit
-``DeprecationWarning`` pointing at the explicit-composition pattern.
+time from its ``surfaces=`` tuple. Internal callers that need the
+active per-runtime registry use :func:`current_registry`.
 
 This module sits at L4 (dispatch) and MUST NOT import any substrate
 library (fastapi, fastmcp, etc.). Cold-start preserved.
@@ -19,12 +13,9 @@ library (fastapi, fastmcp, etc.). Cold-start preserved.
 
 from __future__ import annotations
 
-import warnings
 from collections import OrderedDict
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
-
-from a2kit._surface_names import register_surface_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -118,7 +109,6 @@ class SurfaceRegistry:
             msg = f"surface name {name!r} already registered with {type(self._by_name[name]).__name__}"
             raise ValueError(msg)
         self._by_name[name] = surface
-        register_surface_name(name)
 
     def get(self, name: str) -> Surface:
         return self._by_name[name]
@@ -161,53 +151,7 @@ def reset_active_registry(token: Token[SurfaceRegistry | None]) -> None:
     _ACTIVE_REGISTRY.reset(token)
 
 
-class _SurfaceRegistryProxy:
-    """Deprecation shim — the module-level `SURFACE_REGISTRY` of yore.
-
-    Routes every operation to the active runtime's registry (bound by
-    `runtime.build()`). Raises `RuntimeError` when accessed before any
-    runtime is built — that's the new contract: registry reads need a
-    runtime in scope. Direct `register_surface(...)` emits
-    `DeprecationWarning` pointing at the `surfaces=` parameter.
-    """
-
-    def _active(self) -> SurfaceRegistry:
-        reg = _ACTIVE_REGISTRY.get()
-        if reg is None:
-            msg = (
-                "SURFACE_REGISTRY accessed before any AppRuntime was built. "
-                "Build a runtime via `a2kit.runtime.build(app, surfaces=(...))` first, "
-                "or read from `runtime.surfaces` directly."
-            )
-            raise RuntimeError(msg)
-        return reg
-
-    def register_surface(self, surface: Surface) -> None:
-        warnings.warn(
-            "SURFACE_REGISTRY.register_surface(...) is deprecated; pass surfaces via `runtime.build(app, surfaces=(...))` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._active().register_surface(surface)
-
-    def get(self, name: str) -> Surface:
-        return self._active().get(name)
-
-    def names(self) -> tuple[str, ...]:
-        return self._active().names()
-
-    def __iter__(self) -> Iterator[Surface]:
-        return iter(self._active())
-
-    def __contains__(self, name: object) -> bool:
-        return name in self._active()
-
-
-SURFACE_REGISTRY = _SurfaceRegistryProxy()
-
-
 __all__ = [
-    "SURFACE_REGISTRY",
     "DecoratorSurface",
     "Surface",
     "SurfaceRegistry",

@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Breaking (internal) — Deprecation shims deleted; context↔ldd cycle broken
+
+Per the 2026-05-27 cleanup sweep:
+
+- `packages/dispatch/_principal_bridge.py` deleted. The
+  `set_request_principal` / `current_request_principal` /
+  `current_request_principal_seeds` / `reset_request_principal`
+  named API is gone. Use `a2kit.packages.context.request_scope`
+  (`publish` / `get` / `try_get` / `reset`) directly.
+- `Container.call_scope(scoped_seeds=...)` keyword removed.
+  Use `framework_seeds=` (the rename landed in
+  `generalise-context-bridges`).
+- `packages/dispatch.SURFACE_REGISTRY` module-level proxy deleted.
+  The per-runtime `runtime.surfaces` registry is the only canonical
+  access path; internal callers without a runtime in hand use
+  `a2kit.packages.dispatch.surface.current_registry()`.
+- `a2kit._surface_names` kernel module deleted (it served the
+  decoration-time `expose=` validation that moved to build time).
+- `runtime.build(app)` now always composes a default surface set when
+  `surfaces=` is omitted (via the layer-exempt facade), so
+  `runtime.surfaces` is never None and `expose=` validation always
+  runs against the canonical registry.
+- The context↔ldd lazy-import cycle is broken: `context.stderr`
+  inlines a private copy of `format_ldd_line` (with a parity test
+  pinning byte-identical output), so `context` no longer imports
+  from `ldd`. The `# noqa: A2K-LAYER` GRANDFATHERED markers on
+  both legs are gone.
+- Specs updated to the post-shim API: `principal-bridge` now points
+  at `request-scope` as the canonical home; `tool-authorization`,
+  `dispatch-pipeline`, and `serve-topology` rewritten.
+
 ### Feature — Built-in LDD operator sinks + parallel fan-out
 
 Per `reshape-ldd-operator-wire-fanout` (2026-05-27):

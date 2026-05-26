@@ -30,20 +30,20 @@ The `authorize=` kwarg accepted by `@a2kit.read` / `@a2kit.write` / `@a2kit.list
 
 ### Requirement: `auth.testing.make_principal` is the supported Principal factory for tests
 
-`a2kit.packages.auth.testing.make_principal(*, subject, scopes=(), claims=None, issued_by="test")` SHALL construct a `Principal` for unit-test use, mirroring the default Principal shape. Tests that need to publish a Principal without spinning up middleware use the named bridge writer API directly (`a2kit.packages.dispatch._principal_bridge.set_request_principal` / `reset_request_principal`), or override the DI provider on an `App` (`app.container().provide(Principal, lambda: fake)`). The previous `authenticated_as` contextmanager was removed in `consolidate-principal-bridge` as a redundant wrapper.
+`a2kit.packages.auth.testing.make_principal(*, subject, scopes=(), claims=None, issued_by="test")` SHALL construct a `Principal` for unit-test use, mirroring the default Principal shape. Tests that need to publish a Principal without spinning up middleware use the shared request-scope bridge directly (`a2kit.packages.context.request_scope.publish(p)` / `reset(token)`), or override the DI provider on an `App` (`app.container().provide(Principal, lambda: fake)`).
 
 #### Scenario: make_principal returns the documented default shape
 
 - **WHEN** `make_principal(subject="u1")` is called
 - **THEN** the result is a `Principal` with `subject="u1"`, `scopes=frozenset()`, `claims={}`, `issued_by="test"`, `raw_token=None`
 
-#### Scenario: Tool body resolves Principal via the named bridge writer API
+#### Scenario: Tool body resolves Principal via the shared request-scope bridge
 
 - **GIVEN** `async def me(*, principal: Principal) -> str: return principal.subject`
-- **AND** `token = set_request_principal(make_principal(subject="u1"))`
+- **AND** `token = request_scope.publish(make_principal(subject="u1"))`
 - **WHEN** the tool body is dispatched (per-call DI scope reads the bridge)
 - **THEN** the result is `"u1"`
-- **AND** `reset_request_principal(token)` restores the prior state
+- **AND** `request_scope.reset(token)` restores the prior state
 
 ### Requirement: 401 vs 403 stay distinct on HTTP
 

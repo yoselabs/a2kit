@@ -12,12 +12,6 @@ afford the cold-start cost.
 from __future__ import annotations
 
 from a2kit.packages.context import request_scope
-from a2kit.packages.dispatch._principal_bridge import (
-    current_request_principal,
-    current_request_principal_seeds,
-    reset_request_principal,
-    set_request_principal,
-)
 from a2kit.packages.dispatch._render_state import (
     RenderedError,
     close_render_state,
@@ -59,7 +53,6 @@ from a2kit.packages.dispatch.substrate import (  # noqa: A2K-PKG-INIT-PURITY
     split_signature,
 )
 from a2kit.packages.dispatch.surface import (
-    SURFACE_REGISTRY,
     DecoratorSurface,
     Surface,
     SurfaceRegistry,
@@ -67,7 +60,6 @@ from a2kit.packages.dispatch.surface import (
 
 __all__ = [
     "DISPATCH_PIPELINE",
-    "SURFACE_REGISTRY",
     "SYNTHESIZED_CTX_PARAM_NAME",
     "AuthorizeGateStage",
     "CapturedError",
@@ -88,8 +80,6 @@ __all__ = [
     "_run_authorize_gate",  # noqa: A2K-PKG-INIT-PURITY
     "_unwrap_annotation",  # noqa: A2K-PKG-INIT-PURITY
     "close_render_state",
-    "current_request_principal",
-    "current_request_principal_seeds",
     "fastapi_reserved",
     "fastmcp_reserved",
     "fold_pipeline",
@@ -98,8 +88,6 @@ __all__ = [
     "install_substrate_signature",
     "open_render_state",
     "request_scope",
-    "reset_request_principal",
     "set_rendered_error",
-    "set_request_principal",
     "split_signature",
 ]

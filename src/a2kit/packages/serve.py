@@ -79,21 +79,17 @@ def build_parent_app(app: App | AppRuntime) -> Starlette:
 
     Raises `ValueError` if no registered surface has registrations.
     """
-    # Front-door imports trigger surface self-registration. Idempotent
-    # under repeated calls; the registry rejects duplicates so the
-    # `__init__.py` guard prevents a re-register raise.
-    import a2kit.packages.http
-    import a2kit.packages.mcp  # noqa: F401  -- registers McpSurface
-    from a2kit.packages.dispatch import SURFACE_REGISTRY
     from a2kit.runtime import build
 
     # One runtime for the whole process — every surface shares it and
     # the parent owns its single lifecycle. ``build`` is idempotent on
-    # an ``AppRuntime``, so downstream `surface.bind` reuses it.
+    # an ``AppRuntime``, so downstream `surface.bind` reuses it. The
+    # runtime carries the per-runtime surface registry composed at
+    # build time (default: McpSurface + ApiSurface).
     runtime = build(app)
 
     mounts: list[tuple[str, Starlette]] = []
-    for surface in SURFACE_REGISTRY:
+    for surface in runtime.surfaces:
         if not _surface_has_registrations(runtime, surface.name):
             continue
         sub_app = surface.bind(runtime)

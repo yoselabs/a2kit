@@ -258,13 +258,19 @@ def build(
     if isinstance(app, AppRuntime):
         return app
 
-    # Per `bootstrap-surfaces-explicit`, the per-runtime surface registry
-    # is composed by the facade (`a2kit/__init__.py:compose_default_surfaces`)
-    # and passed in via `surfaces=`. Composing here would require importing
-    # L4/L5 modules from this L3 module, which the layer DAG forbids. When
-    # `surfaces=None` (programmatic callers that bypass the facade),
-    # `runtime.surfaces` stays None and `expose=` validation is skipped.
-    surface_registry: Any = surfaces
+    # The per-runtime surface registry is the facade's
+    # `compose_default_surfaces()` by default — composing once at build
+    # time gives every reader (`runtime.surfaces`, `expose=` validation)
+    # the same canonical registry. Callers that need a custom surface set
+    # pass `surfaces=` explicitly. The facade lives in `a2kit/__init__.py`,
+    # which is layer-exempt, so late-import keeps the L3 → L4/L5 edge
+    # off the static graph.
+    if surfaces is None:
+        from a2kit import compose_default_surfaces  # noqa: A2K-PKG-INIT-IMPORT
+
+        surface_registry: Any = compose_default_surfaces()
+    else:
+        surface_registry = surfaces
 
     runtime_container = app.container().snapshot()
     runtime_container.seal()

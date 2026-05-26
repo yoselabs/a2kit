@@ -252,16 +252,20 @@ def _foreign_surface_owning(unwrapped: Any, this_surface: Surface) -> str | None
     """Return the name of another registered Surface whose `reserved_types`
     contains ``unwrapped``, or None.
 
-    Walks :data:`SURFACE_REGISTRY` (excluding ``this_surface``). Powers the
-    cross-surface misclassification error path — when an author annotates a
-    param with a type owned by a different surface, the classifier names
-    the surface where the type IS reserved so the error is actionable.
+    Walks the active surface registry (excluding ``this_surface``).
+    Powers the cross-surface misclassification error path — when an
+    author annotates a param with a type owned by a different surface,
+    the classifier names the surface where the type IS reserved so the
+    error is actionable.
     """
-    from a2kit.packages.dispatch.surface import SURFACE_REGISTRY
+    from a2kit.packages.dispatch.surface import current_registry
 
     if not isinstance(unwrapped, type):
         return None
-    for surface in SURFACE_REGISTRY:
+    registry = current_registry()
+    if registry is None:
+        return None
+    for surface in registry:
         if surface.name == this_surface.name:
             continue
         if unwrapped in surface.reserved_types:
@@ -399,13 +403,15 @@ def _reject_substrate_dep_on_alien_surface(fn: Callable[..., Any], surface: Surf
     registered surface's markers, raise with the same message shape
     as before so authors get the same actionable error.
     """
-    from a2kit.packages.dispatch.surface import SURFACE_REGISTRY
+    from a2kit.packages.dispatch.surface import current_registry
 
+    registry = current_registry()
     foreign_marker_classes: list[type] = []
-    for other in SURFACE_REGISTRY:
-        if other.name == surface.name:
-            continue
-        foreign_marker_classes.extend(other.substrate_dep_markers)
+    if registry is not None:
+        for other in registry:
+            if other.name == surface.name:
+                continue
+            foreign_marker_classes.extend(other.substrate_dep_markers)
     if not foreign_marker_classes:
         return
 

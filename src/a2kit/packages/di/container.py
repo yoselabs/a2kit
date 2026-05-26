@@ -344,7 +344,6 @@ class Container:
         *,
         pre_hook: Callable[..., Any] | None = None,
         framework_seeds: dict[type, Any] | None = None,
-        scoped_seeds: dict[type, Any] | None = None,
     ) -> Any:
         """Open the per-call DI scope for one tool dispatch.
 
@@ -364,27 +363,11 @@ class Container:
         ``framework_seeds``: ``{Type: instance}`` — sourced from
         ``request_scope.all_seeds()`` by dispatch stages. App-author
         seeds continue to flow through ``pre_hook``'s ``seed: SeedFn``.
-
-        ``scoped_seeds``: deprecation alias for ``framework_seeds``.
-        Removed one release after ``generalise-context-bridges``.
         """
-        seeds = framework_seeds
-        if scoped_seeds is not None:
-            import warnings
-
-            warnings.warn(
-                "Container.call_scope(scoped_seeds=...) is deprecated; "
-                "rename to framework_seeds=. The old keyword forwards "
-                "to the new one with identical semantics.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if seeds is None:
-                seeds = scoped_seeds
         wire: dict[str, Any] = dict(wire_kwargs) if wire_kwargs else {}
         async with self.child() as child:
-            if seeds:
-                for type_, value in seeds.items():
+            if framework_seeds:
+                for type_, value in framework_seeds.items():
                     if value is not None:
                         child.seed_scoped(type_, value)
             if pre_hook is not None:

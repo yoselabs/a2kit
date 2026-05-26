@@ -33,7 +33,6 @@ from fastapi import Body, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from a2kit.packages.dispatch import (
-    SURFACE_REGISTRY,
     _run_authorize_gate,
     install_substrate_signature,
     split_signature,
@@ -82,9 +81,9 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     for desc in runtime.tools():
         if "api" not in desc.expose:
             continue
-        wrapped = install_substrate_signature(desc.fn, SURFACE_REGISTRY.get("api"), container)
+        wrapped = install_substrate_signature(desc.fn, runtime.surfaces.get("api"), container)
         wrapped = _apply_authorize_gate(wrapped, desc.authorize, container)
-        _force_body_binding_for_wire_params(wrapped, desc.fn, container)
+        _force_body_binding_for_wire_params(wrapped, desc.fn, container, runtime.surfaces.get("api"))
         app.add_api_route(
             path=f"/{desc.name}",
             endpoint=wrapped,
@@ -95,7 +94,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     # Author-written @app.api.<method>(path) routes.
     if api_surface is not None:
         for route in api_surface.routes:
-            wrapped = install_substrate_signature(route.fn, SURFACE_REGISTRY.get("api"), container)
+            wrapped = install_substrate_signature(route.fn, runtime.surfaces.get("api"), container)
             wrapped = _apply_authorize_gate(wrapped, route.authorize, container)
             app.add_api_route(
                 path=route.path,
@@ -269,7 +268,7 @@ def _wire_container_depends_overrides(app: FastAPI, runtime: _Any, container: _A
     for desc in runtime.tools():
         if "api" not in desc.expose:
             continue
-        split = split_signature(desc.fn, SURFACE_REGISTRY.get("api"), container)
+        split = split_signature(desc.fn, runtime.surfaces.get("api"), container)
         for param in (*split.container.values(), *split.substrate_dep.values()):
             ann = param.annotation
             target = _resolved_container_type(ann, container)
@@ -292,7 +291,7 @@ def _resolved_container_type(ann: _Any, container: _Any) -> type | None:
     return None
 
 
-def _force_body_binding_for_wire_params(wrapper: _Any, fn: _Any, container: _Any) -> None:
+def _force_body_binding_for_wire_params(wrapper: _Any, fn: _Any, container: _Any, api_surface_obj: _Any) -> None:
     """Mark every wire parameter on ``wrapper.__signature__`` as ``Body``-bound.
 
     Projection tools take their wire params from the JSON request body
@@ -306,7 +305,7 @@ def _force_body_binding_for_wire_params(wrapper: _Any, fn: _Any, container: _Any
     params (``Request``/``Response``/etc.) are left untouched —
     substrates own their routing decisions for those.
     """
-    split = split_signature(fn, SURFACE_REGISTRY.get("api"), container)
+    split = split_signature(fn, api_surface_obj, container)
     sig = wrapper.__signature__
     new_params: list[inspect.Parameter] = []
     for param in sig.parameters.values():

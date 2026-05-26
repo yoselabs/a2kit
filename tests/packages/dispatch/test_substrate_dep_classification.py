@@ -8,23 +8,23 @@ import pytest
 from fastapi import Depends, Security
 from pydantic import BaseModel
 
-import a2kit.packages.http  # noqa: F401  -- registers ApiSurface
-import a2kit.packages.mcp  # noqa: F401  -- registers McpSurface
+import a2kit
 from a2kit.packages.di import Container
-from a2kit.packages.dispatch import SURFACE_REGISTRY
 from a2kit.packages.dispatch.substrate import (
     SubstrateSignatureError,
     install_substrate_signature,
     split_signature,
 )
 
+_REGISTRY = a2kit.compose_default_surfaces()
+
 
 def _api():
-    return SURFACE_REGISTRY.get("api")
+    return _REGISTRY.get("api")
 
 
 def _mcp():
-    return SURFACE_REGISTRY.get("mcp")
+    return _REGISTRY.get("mcp")
 
 
 class _Memory(BaseModel):

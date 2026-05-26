@@ -59,10 +59,7 @@ class TestMcpPrincipalReachesBody:
     """
 
     async def test_dispatch_hook_seeds_principal_from_bridge(self) -> None:
-        from a2kit.packages.dispatch._principal_bridge import (
-            reset_request_principal,
-            set_request_principal,
-        )
+        from a2kit.packages.context import request_scope
 
         app = a2kit.App("principal-mcp")
 
@@ -79,14 +76,12 @@ class TestMcpPrincipalReachesBody:
         runtime = build(app)
 
         p = Principal(subject="u1", scopes=frozenset())
-        token = set_request_principal(p)
+        token = request_scope.publish(p)
         try:
             desc = next(d for d in runtime.tools() if d.name == "whoami")
-            # Drive the unwrapped tool through the per-call scope path:
-            # explicit `scoped_seeds` is what production stages use.
-            async with runtime.container().call_scope(desc.fn, {}, scoped_seeds={Principal: p}) as merged:
+            async with runtime.container().call_scope(desc.fn, {}, framework_seeds={Principal: p}) as merged:
                 result = await desc.fn(**{k: v for k, v in merged.items() if k == "principal"})
         finally:
-            reset_request_principal(token)
+            request_scope.reset(token)
 
         assert result == {"subject": "u1"}

@@ -7,8 +7,7 @@ from typing import Any
 
 import pytest
 
-from a2kit.packages.context import Principal
-from a2kit.packages.dispatch._principal_bridge import current_request_principal
+from a2kit.packages.context import Principal, request_scope
 from a2kit.packages.mcp.principal_middleware import PrincipalMiddleware, _principal_from_context
 
 
@@ -38,10 +37,10 @@ async def test_middleware_publishes_and_resets_via_bridge() -> None:
     seen: list[Principal | None] = []
 
     async def _call_next(_ctx: Any) -> None:
-        seen.append(current_request_principal())
+        seen.append(request_scope.try_get(Principal))
 
     p = Principal(subject="u1", scopes=frozenset())
     middleware_ctx = SimpleNamespace(fastmcp_context=SimpleNamespace(principal=p))
     await PrincipalMiddleware().on_call_tool(middleware_ctx, _call_next)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]  # why: SimpleNamespace stub for MiddlewareContext duck-typing
     assert seen == [p]
-    assert current_request_principal() is None
+    assert request_scope.try_get(Principal) is None

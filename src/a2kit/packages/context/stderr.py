@@ -321,12 +321,40 @@ class StderrToolContext:
         *,
         elapsed_ms: int | None = None,
     ) -> None:
-        # GRANDFATHERED: context <-> ldd lateral coupling. `ldd.ambient`
-        # also lazily imports `context.request_scope`; both legs are lazy
-        # framework plumbing. Tracked in BACKLOG for a relocation.
-        from a2kit.packages.ldd import format_ldd_line  # noqa: A2K-LAYER
-
         if elapsed_ms is None:
             elapsed_ms = round((time.monotonic() - self._start_ts) * 1000)
-        line = format_ldd_line(level, msg, fields, elapsed_ms)
+        line = _format_ldd_line(level, msg, fields, elapsed_ms)
         print(line, file=sys.stderr, flush=True)  # noqa: T201
+
+
+#: Maximum characters for the ``msg`` portion of an LDD line / log payload.
+#: Kept in sync with `a2kit.packages.ldd.wire.TEXT_CAP` (60). Inlined here
+#: so the L0 `context` module has zero `ldd` dependency.
+_TEXT_CAP = 60
+
+
+def _cap_text(text: str, cap: int = _TEXT_CAP) -> str:
+    if len(text) <= cap:
+        return text
+    return text[: cap - 1] + "…"
+
+
+def _format_kv(fields: Mapping[str, Any]) -> str:
+    if not fields:
+        return ""
+    return " ".join(f"{k}={v!r}" if isinstance(v, str) else f"{k}={v}" for k, v in fields.items())
+
+
+def _format_ldd_line(level: str, msg: str, fields: Mapping[str, Any], elapsed_ms: int) -> str:
+    """Local copy of `a2kit.packages.ldd.wire.format_ldd_line` to keep the
+    L0 `context` module free of `ldd` imports. Both must produce
+    byte-identical output; a test in `tests/packages/context/` pins the
+    invariant.
+    """
+    elapsed_s = elapsed_ms / 1000.0
+    msg_capped = _cap_text(msg)
+    head = f"[ +{elapsed_s:6.3f} {level:<8}]"
+    body = f" {msg_capped}" if msg_capped else ""
+    kv = _format_kv(fields)
+    tail = f" {kv}" if kv else ""
+    return head + body + tail

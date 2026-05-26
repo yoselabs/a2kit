@@ -20,10 +20,8 @@ import pytest
 from fastapi import BackgroundTasks
 from starlette.requests import Request
 
-import a2kit.packages.http  # noqa: F401  -- registers ApiSurface
-import a2kit.packages.mcp  # noqa: F401  -- registers McpSurface
+import a2kit
 from a2kit.packages.di.container import Container
-from a2kit.packages.dispatch import SURFACE_REGISTRY
 from a2kit.packages.dispatch.substrate import (
     SplitSignature,
     SubstrateSignatureError,
@@ -35,13 +33,15 @@ from a2kit.packages.dispatch.substrate import (
     split_signature,
 )
 
+_REGISTRY = a2kit.compose_default_surfaces()
+
 
 def _api():
-    return SURFACE_REGISTRY.get("api")
+    return _REGISTRY.get("api")
 
 
 def _mcp():
-    return SURFACE_REGISTRY.get("mcp")
+    return _REGISTRY.get("mcp")
 
 
 class _Database:

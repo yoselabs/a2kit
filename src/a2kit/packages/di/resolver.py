@@ -60,7 +60,6 @@ class Resolver(Protocol):
         *,
         pre_hook: Callable[..., Any] | None = None,
         framework_seeds: dict[type, Any] | None = None,
-        scoped_seeds: dict[type, Any] | None = None,
     ) -> AbstractAsyncContextManager[dict[str, Any]]:
         """Open the per-call DI scope (async context manager).
 
@@ -69,9 +68,7 @@ class Resolver(Protocol):
 
         ``framework_seeds`` publishes typed instances on the child as
         SCOPED providers before resolution — sourced from
-        ``request_scope.all_seeds()`` by dispatch stages. ``scoped_seeds``
-        is the deprecated keyword alias, removed one release after
-        ``generalise-context-bridges``.
+        ``request_scope.all_seeds()`` by dispatch stages.
         """
         ...
 

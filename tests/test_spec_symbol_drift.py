@@ -82,6 +82,10 @@ _ALLOWLIST: frozenset[str] = frozenset(
         # spec cites this name; the rule lands when the remaining Surface
         # implementations port to MANIFEST (BACKLOG follow-up).
         "A2K-SURFACE-REGISTRY",
+        # --- string names cited in scenarios (logger names, span attrs)
+        #     that look like dotted import paths but are not ---
+        "a2kit.ldd.sink_failed",  # logger name for the WARN-log on sink failures
+        "a2kit.dur_ms",  # OTel span attribute name
     }
 )
 

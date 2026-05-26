@@ -16,8 +16,8 @@ from typing import Any
 
 import pytest
 
+import a2kit
 from a2kit.packages.dispatch.surface import (
-    SURFACE_REGISTRY,
     DecoratorSurface,
     Surface,
     SurfaceRegistry,
@@ -96,12 +96,12 @@ class TestSurfaceRegistry:
         with pytest.raises(KeyError):
             reg.get("nope")
 
-    def test_bundled_surfaces_self_register(self) -> None:
-        # Front-door imports trigger registration of bundled surfaces.
-        import a2kit.packages.http  # noqa: F401
-        import a2kit.packages.mcp  # noqa: F401
-
-        names = SURFACE_REGISTRY.names()
+    def test_bundled_surfaces_compose_to_named_registry(self) -> None:
+        # `compose_default_surfaces()` builds the canonical default
+        # registry — surfaces are passive; importing the packages does
+        # not mutate any registry.
+        registry = a2kit.compose_default_surfaces()
+        names = registry.names()
         assert "mcp" in names
         assert "api" in names
 

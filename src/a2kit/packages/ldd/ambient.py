@@ -58,11 +58,7 @@ def _require_ambient_state(fn_name: str) -> _LddState:
     via ``__cause__``. Local import keeps ldd off the dispatch package's
     import-time graph (avoids dispatch -> stages -> ldd cycle).
     """
-    # GRANDFATHERED: context <-> ldd lateral coupling — `context.stderr`
-    # already lazily imports `ldd.format_ldd_line`; this is the reverse
-    # leg for the request-scope bridge. Both are lazy, both are framework
-    # plumbing. Tracked in BACKLOG for a future relocation of `request_scope`.
-    from a2kit.packages.context import request_scope  # noqa: A2K-LAYER
+    from a2kit.packages.context import request_scope
 
     state = request_scope.try_get(_LddState)
     if state is None:
@@ -103,7 +99,6 @@ def ldd_state_for_call(
     via ``app.ldd.add_sink(...)``; the primitives fan out to each after
     the wire emit.
     """
-    # GRANDFATHERED: see _require_ambient_state.
     from a2kit.packages.context import request_scope  # noqa: A2K-LAYER
 
     state = _LddState(

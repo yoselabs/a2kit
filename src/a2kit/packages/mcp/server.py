@@ -174,11 +174,11 @@ def _register_mcp_surface(server: FastMCP, runtime: Any) -> None:
     who need the underlying FastMCP instance (escape hatch:
     ``add_transform`` / ``add_middleware``) can reach it after build.
     """
-    from a2kit.packages.dispatch import SURFACE_REGISTRY, install_substrate_signature
+    from a2kit.packages.dispatch import install_substrate_signature
 
     surface = runtime.mcp_surface
     container = runtime.container()
-    mcp_surface_obj = SURFACE_REGISTRY.get("mcp")
+    mcp_surface_obj = runtime.surfaces.get("mcp")
     for reg in surface.registrations:
         wrapped = install_substrate_signature(reg.fn, mcp_surface_obj, container)
         if reg.kind == "tool":

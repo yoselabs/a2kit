@@ -72,9 +72,10 @@ def test_expose_unknown_error_lists_composed_surfaces() -> None:
         assert name in msg, f"composed surface {name!r} missing from error: {msg!r}"
 
 
-def test_expose_validation_skipped_when_no_registry_passed() -> None:
-    """Programmatic callers bypassing the facade (no `surfaces=`) get no
-    validation. This is the documented behaviour.
+def test_expose_validation_runs_against_default_registry_when_no_surfaces_passed() -> None:
+    """`runtime.build()` with no `surfaces=` composes the default registry
+    and validates `expose=` against it — there is no longer a no-registry
+    bypass.
     """
 
     class R(a2kit.Router):
@@ -87,9 +88,8 @@ def test_expose_validation_skipped_when_no_registry_passed() -> None:
         tools = (t,)
 
     app = a2kit.App("demo").add_router(R())
-    # No surfaces= → registry None → validation skipped.
-    runtime = build(app)
-    assert runtime.surfaces is None
+    with pytest.raises(TypeError, match="nonexistent"):
+        build(app)
 
 
 def test_expose_validation_skipped_with_empty_registry() -> None:

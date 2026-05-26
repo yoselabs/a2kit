@@ -122,44 +122,9 @@ set, the stage SHALL resolve the callable's parameters through
 - **WHEN** the stage runs
 - **THEN** it returns without invoking any callable or touching `call_scope`
 
-### Requirement: Dispatch stages MUST read Principal via the named bridge
-
-Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `LddStateStage`, and any future stage) SHALL read `Principal` only through the named bridge function `current_request_principal()` (from `a2kit.packages.dispatch._principal_bridge`) and SHALL publish it to the per-call DI scope via `Container.seed_scoped(Principal, p)`. Direct reads of the underlying ContextVar from stage code are forbidden. This requirement SHALL be enforced structurally: only `_principal_bridge.py` MUST import the raw symbol.
-
-#### Scenario: DispatchHookStage uses the bridge and seed_scoped
-
-- **GIVEN** a substrate middleware has called `set_request_principal(p)`
-- **WHEN** `DispatchHookStage._wrapped` runs and opens a child
-  container
-- **THEN** the stage's wire code reads `p` via
-  `current_request_principal()`
-- **AND** publishes it via `child.seed_scoped(Principal, p)`
-- **AND** the stage's source contains no
-  `_a2kit_request_principal.get()` or
-  `_request_principal.get()` call
-
-#### Scenario: AuthorizeGateStage uses the bridge and seed_scoped
-
-- **GIVEN** a tool with `authorize=lambda *, principal: ...`
-- **WHEN** `AuthorizeGateStage` resolves the gate's parameters
-- **THEN** Principal is read via `current_request_principal()` and
-  seeded via `child.seed_scoped(Principal, p)`
-- **AND** the kwargs-by-name `principal` fallback is absent
-- **AND** the stage's source contains no direct contextvar read
-
-#### Scenario: Structural enforcement — only the bridge imports the ContextVar
-
-- **WHEN** every module under `a2kit/packages/` (recursively) is
-  scanned for imports of the underlying Principal ContextVar
-- **THEN** the only file with such an import is
-  `a2kit/packages/dispatch/_principal_bridge.py`
-- **AND** all other writers and readers use the named functions
-  `set_request_principal`, `reset_request_principal`,
-  `current_request_principal`
-
 ### Requirement: Dispatch stages read request-scoped values via `request_scope.get(T)`
 
-Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `LddStateStage`, and any future stage) SHALL read request-scoped values exclusively via `a2kit.packages.context.request_scope.get(T)` (or `try_get(T)` where absence is valid). Per-type bridge readers (e.g. `current_request_principal_seeds()`, `_LDD_STATE.get()`, `_a2kit_request_scope.get()`) SHALL be deprecation shims for one release, then removed. The FastAPI `Depends` bridge MAY keep reading from a DI-package-local ContextVar (the http middleware dual-writes) to preserve `di-container-package`'s standalone-shippability invariant.
+Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `LddStateStage`, and any future stage) SHALL read request-scoped values exclusively via `a2kit.packages.context.request_scope.get(T)` (or `try_get(T)` where absence is valid). The previous per-type bridge modules and named-API helpers (e.g. `_principal_bridge.set_request_principal`, `_LDD_STATE.get()`) have been removed. The FastAPI `Depends` bridge keeps reading from a DI-package-local ContextVar (the http middleware dual-writes) to preserve `di-container-package`'s standalone-shippability invariant.
 
 #### Scenario: DispatchHookStage reads Principal via request_scope
 
@@ -176,7 +141,7 @@ Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `Ldd
 
 ### Requirement: `Container.call_scope` accepts `framework_seeds=` (rename)
 
-`Container.call_scope` SHALL accept a `framework_seeds: dict[type, Any] | None = None` parameter sourced from `request_scope.all_seeds()`. The prior `scoped_seeds=` keyword SHALL be accepted for one release as a deprecation-shim alias forwarding to `framework_seeds=`, emitting `DeprecationWarning`.
+`Container.call_scope` SHALL accept a `framework_seeds: dict[type, Any] | None = None` parameter sourced from `request_scope.all_seeds()`. The prior `scoped_seeds=` keyword has been removed.
 
 The rename clarifies the tier split: `framework_seeds` is for framework-tier published values (Principal, LddState, per-request Container). App-author seeds continue to flow through `pre_hook`'s `seed: SeedFn` parameter (the user tier).
 
@@ -185,9 +150,9 @@ The rename clarifies the tier split: `framework_seeds` is for framework-tier pub
 - **WHEN** dispatch pipeline code opens a child scope
 - **THEN** the call site is `container.call_scope(framework_seeds=request_scope.all_seeds(), ...)`
 
-#### Scenario: scoped_seeds emits DeprecationWarning
+#### Scenario: scoped_seeds keyword is removed
 
-- **GIVEN** out-of-tree code calling `container.call_scope(scoped_seeds={...})`
+- **GIVEN** code calling `container.call_scope(scoped_seeds={...})`
 - **WHEN** the call runs
-- **THEN** `DeprecationWarning` is emitted pointing at `framework_seeds=`
-- **AND** the call still succeeds with identical semantics
+- **THEN** Python raises `TypeError: got an unexpected keyword argument 'scoped_seeds'`
+- **AND** there is no remaining alias

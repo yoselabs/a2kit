@@ -6,8 +6,8 @@ synthetic identity, then either:
 
 - override the DI provider on the App
   (``app.container().provide(Principal, lambda: p)``), or
-- publish via the named bridge for tests without an App
-  (``a2kit.packages.dispatch.set_request_principal``).
+- publish on the shared request scope for tests without an App
+  (``a2kit.packages.context.request_scope.publish(p)``).
 """
 
 from __future__ import annotations
