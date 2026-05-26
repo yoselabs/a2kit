@@ -101,8 +101,7 @@ class Container:
         # first-touches coalesce.
         self._get_locks: dict[type, asyncio.Lock] = {}
 
-    # -- retired v0.38 surface (loud-crash shims) ------------------------ #
-    # Compact: each shim is one line via the shared `_retired` helper.
+    # -- retired surface (loud-crash shims; see CHANGELOG) ---------------- #
 
     def register(self, type_: type, factory: Factory | None = None) -> NoReturn:  # noqa: ARG002
         _retired("register(T, factory)", "Container.provide(T, factory)")

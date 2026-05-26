@@ -122,20 +122,37 @@ set, the stage SHALL resolve the callable's parameters through
 - **WHEN** the stage runs
 - **THEN** it returns without invoking any callable or touching `call_scope`
 
-### Requirement: Dispatch stages MUST NOT read Principal from a contextvar
+### Requirement: Dispatch stages MUST read Principal via the named bridge
 
-No stage in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `LddStateStage`, and any future stage) MAY read `_a2kit_request_principal` or any equivalent contextvar to obtain `Principal`. Stages SHALL resolve `Principal` (or any other typed dependency) through the per-call DI scope only. The kwargs seeding pattern that re-injects Principal after a contextvar read MUST be removed.
+Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `LddStateStage`, and any future stage) SHALL read `Principal` only through the named bridge function `current_request_principal()` (from `a2kit.packages.dispatch._principal_bridge`) and SHALL publish it to the per-call DI scope via `Container.seed_scoped(Principal, p)`. Direct reads of the underlying ContextVar from stage code are forbidden. This requirement SHALL be enforced structurally: only `_principal_bridge.py` MUST import the raw symbol.
 
-#### Scenario: DispatchHookStage resolves Principal from DI
+#### Scenario: DispatchHookStage uses the bridge and seed_scoped
 
-- **GIVEN** a dispatch with a registered DispatchHookStage and a Principal written into the DI scope by the substrate adapter
-- **WHEN** the stage's `.wrap()` runs
-- **THEN** any Principal needed by the hook is obtained via the DI scope
-- **AND** the stage's source contains no `_a2kit_request_principal.get()` call
+- **GIVEN** a substrate middleware has called `set_request_principal(p)`
+- **WHEN** `DispatchHookStage._wrapped` runs and opens a child
+  container
+- **THEN** the stage's wire code reads `p` via
+  `current_request_principal()`
+- **AND** publishes it via `child.seed_scoped(Principal, p)`
+- **AND** the stage's source contains no
+  `_a2kit_request_principal.get()` or
+  `_request_principal.get()` call
 
-#### Scenario: AuthorizeGateStage resolves the gate's dependencies via DI only
+#### Scenario: AuthorizeGateStage uses the bridge and seed_scoped
 
 - **GIVEN** a tool with `authorize=lambda *, principal: ...`
 - **WHEN** `AuthorizeGateStage` resolves the gate's parameters
-- **THEN** `Principal` is obtained from the DI scope
-- **AND** the stage source contains no contextvar-based fallback for Principal
+- **THEN** Principal is read via `current_request_principal()` and
+  seeded via `child.seed_scoped(Principal, p)`
+- **AND** the kwargs-by-name `principal` fallback is absent
+- **AND** the stage's source contains no direct contextvar read
+
+#### Scenario: Structural enforcement — only the bridge imports the ContextVar
+
+- **WHEN** every module under `a2kit/packages/` (recursively) is
+  scanned for imports of the underlying Principal ContextVar
+- **THEN** the only file with such an import is
+  `a2kit/packages/dispatch/_principal_bridge.py`
+- **AND** all other writers and readers use the named functions
+  `set_request_principal`, `reset_request_principal`,
+  `current_request_principal`

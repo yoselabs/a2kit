@@ -484,8 +484,8 @@ def install_substrate_signature(
 
     @functools.wraps(fn)
     async def _wrapper(**substrate_kwargs: Any) -> Any:
-        from a2kit.packages.context import Principal as _Principal
         from a2kit.packages.dispatch._principal_bridge import (
+            current_request_principal_seeds,
             reset_request_principal,
             set_request_principal,
         )
@@ -493,15 +493,10 @@ def install_substrate_signature(
         wire_kwargs = {k: v for k, v in substrate_kwargs.items() if k not in reserved_names}
         reserved_kwargs = {k: v for k, v in substrate_kwargs.items() if k in reserved_names}
         principal = _resolve_request_principal(reserved_kwargs)
-        # Publish on the bridge so any deeper code path (e.g. an
-        # authorize gate that opens its own call_scope) can read the
-        # current identity. Token may be None when no Principal exists
-        # for this request.
         principal_token = set_request_principal(principal) if principal is not None else None
         token = _a2kit_scope.set(object())
         try:
-            seeds: dict[type, Any] = {_Principal: principal} if principal is not None else {}
-            async with container.call_scope(fn, wire_kwargs, scoped_seeds=seeds) as merged:
+            async with container.call_scope(fn, wire_kwargs, scoped_seeds=current_request_principal_seeds()) as merged:
                 merged_with_reserved = {**merged, **reserved_kwargs}
                 result = fn(**merged_with_reserved)
                 if inspect.isawaitable(result):

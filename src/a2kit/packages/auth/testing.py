@@ -7,12 +7,7 @@ synthetic identity, then either:
 - override the DI provider on the App
   (``app.container().provide(Principal, lambda: p)``), or
 - publish via the named bridge for tests without an App
-  (``a2kit.packages.dispatch._principal_bridge.set_request_principal``).
-
-The previous ``authenticated_as`` contextmanager was a thin wrapper
-over the contextvar set/reset and was removed in
-``consolidate-principal-bridge`` — the bridge writer API is the single
-documented entry point.
+  (``a2kit.packages.dispatch.set_request_principal``).
 """
 
 from __future__ import annotations

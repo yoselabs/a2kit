@@ -1,16 +1,8 @@
-"""Spec coverage for ``consolidate-principal-bridge``.
+"""Structural invariants for the Principal bridge.
 
-Locks the structural invariants:
-
-- ``principal-propagation``: DI scope is the single consumption path
-  for ``Principal``; an injected DI provider flows through to a tool
-  body, and the named bridge writer API is the only way substrate
-  adapters publish Principal.
-- ``dispatch-pipeline``: only ``_principal_bridge`` imports the
-  underlying ContextVar; everywhere else uses the named writer/reader
-  API. Enforced **structurally** by import-path discipline (the
-  ContextVar is module-private and not re-exported through any
-  package front door).
+- DI scope is the single consumption path for ``Principal``.
+- Only ``_principal_bridge`` names the underlying ContextVar; all
+  other call sites use the named writer/reader API.
 """
 
 from __future__ import annotations

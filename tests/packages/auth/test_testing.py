@@ -1,10 +1,4 @@
-"""BDD: `make_principal` test seam.
-
-The previous `authenticated_as` context manager was removed in
-`consolidate-principal-bridge` — the named bridge writer API in
-`packages.dispatch._principal_bridge` is the single documented
-entry point for publishing a Principal in tests that lack an App.
-"""
+"""BDD: `make_principal` test seam."""
 
 from __future__ import annotations
 

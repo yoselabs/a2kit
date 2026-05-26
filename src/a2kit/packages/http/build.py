@@ -198,20 +198,12 @@ def _install_typed_error_handlers(app: FastAPI) -> None:
 def _apply_authorize_gate(wrapped: _Any, authorize: _Any, container: _Any) -> _Any:
     """Wrap `wrapped` so its `authorize=` callable runs before the body.
 
-    No-op when `authorize` is None. The FastAPI `Security` guard delivers
-    its return value (a `Principal` when used as an auth guard) into the
-    kwargs the route handler is called with. This wrapper extracts that
-    Principal and publishes it via the dispatch principal bridge so
-    `_run_authorize_gate` and the downstream body wrapper resolve
-    `principal: Principal` by type from the per-call DI scope.
-
-    The kwargs-scan is the explicit conversion between FastAPI's
-    parameter-injection mechanism and a2kit's DI mechanism — the one
-    place this bridging happens for HTTP-side guards.
-
-    Preserves the wrapper's `__signature__` and `__annotations__` so
-    FastAPI's introspection still sees the surface params installed by
-    `install_substrate_signature`.
+    No-op when `authorize` is None. A FastAPI ``Security`` guard's
+    returned ``Principal`` lands in route kwargs; this wrapper scans for
+    it, publishes via the dispatch bridge, then delegates to
+    ``_run_authorize_gate``. Preserves ``__signature__`` /
+    ``__annotations__`` so FastAPI's introspection still sees the
+    substrate-installed surface params.
     """
     if authorize is None:
         return wrapped

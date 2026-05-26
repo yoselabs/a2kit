@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from a2kit.packages.dispatch._principal_bridge import (
     current_request_principal,
+    current_request_principal_seeds,
     reset_request_principal,
     set_request_principal,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "_run_authorize_gate",
     "_unwrap_annotation",
     "current_request_principal",
+    "current_request_principal_seeds",
     "fastapi_reserved",
     "fastmcp_reserved",
     "fold_pipeline",

@@ -1,16 +1,10 @@
-"""MCP middleware that publishes the request `Principal` via the dispatch bridge.
+"""MCP middleware that publishes the request `Principal` on the dispatch bridge.
 
-FastMCP's authentication chain produces an access token on the
-request-bound `Context` (or framework-equivalent attribute). This
-middleware extracts it, constructs a substrate-neutral `Principal`, and
-publishes it via the named bridge writer API in
-:mod:`a2kit.packages.dispatch._principal_bridge` around `call_next`.
-Inner stages (`DispatchHookStage`, `AuthorizeGateStage`) read the
-bridge and seed `Principal` as SCOPED into the per-call DI scope so
-tool bodies and `authorize=` callables can resolve it by type alone.
-
-When no token is present (unauthenticated transport / public tool), the
-bridge stays unset and downstream stages skip the SCOPED-write.
+Extracts identity from the FastMCP request context (direct
+``.principal`` attribute, falling back to ``.access_token`` claims) and
+publishes it around ``call_next``. Downstream dispatch stages seed it
+into the per-call DI scope. Unauthenticated calls leave the bridge
+unset and pass through untouched.
 """
 
 from __future__ import annotations

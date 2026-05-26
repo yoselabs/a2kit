@@ -63,6 +63,7 @@ def test_module_does_not_export_raw_contextvar() -> None:
 
     assert set(bridge.__all__) == {
         "current_request_principal",
+        "current_request_principal_seeds",
         "reset_request_principal",
         "set_request_principal",
     }

@@ -49,20 +49,45 @@ map to HTTP 403 on FastAPI and to the documented MCP error envelope via
 
 ### Requirement: DI is the single source of truth for Principal
 
-`Principal` SHALL be resolvable exclusively via the per-call DI scope. No dispatch-pipeline stage MAY read `Principal` from a contextvar (or any other ambient mechanism) as a fallback. Substrate adapters MUST write `Principal` into the per-call DI scope; how the substrate obtains it from the wire (header, OAuth token, OIDC claim) is the adapter's private concern.
+`Principal` SHALL be resolvable in tool bodies and `authorize=`
+callables exclusively via the per-call DI scope. The dispatch
+pipeline seeds Principal into the scope via the explicit
+`Container.seed_scoped(Principal, p)` API, with `p` obtained from
+the named bridge (`current_request_principal()`).
+
+There SHALL be no other "ambient lookup" path inside the dispatch
+pipeline: no `_a2kit_request_principal.get()` direct reads in stage
+code, no `next((v for v in kwargs.values() if isinstance(v, Principal)))`
+scan-and-stuff dance, no magic wire-key (`"_a2kit_principal"`) seed.
 
 #### Scenario: Tool body resolves Principal via DI override
 
-- **GIVEN** an App with a DI provider registered for `Principal` returning a `fake_principal`
-- **WHEN** a tool decorated `async def me(*, principal: Principal) -> Principal: return principal` is dispatched
+- **GIVEN** an `App` with `app.container().provide(Principal, lambda: fake_principal)`
+- **WHEN** a tool decorated `async def me(*, principal: Principal) -> ...`
+  is dispatched
 - **THEN** the tool body receives `fake_principal`
-- **AND** no contextvar was set or read during dispatch
+- **AND** dispatch source code contains no `kwargs.values()` scan for
+  Principal instances and no magic wire-key seed
 
-#### Scenario: No provider, no substrate write — clear error
+#### Scenario: No substrate publication and no DI provider — clear error
 
-- **GIVEN** an App with no Principal provider and a synthetic dispatch path that does not write Principal into the scope
+- **GIVEN** an `App` with no `Principal` provider and a synthetic
+  dispatch path where no substrate has called `set_request_principal`
 - **WHEN** a tool body declaring `principal: Principal` is dispatched
-- **THEN** the dispatcher raises a clear "no provider for Principal" error
-- **AND** the error does not silently fall back to a contextvar
+- **THEN** the dispatcher raises a clear "no provider for Principal"
+  error
+- **AND** the error does not silently fall back to a ContextVar or
+  a kwargs scan
+
+#### Scenario: Substrate publication flows via the named bridge
+
+- **GIVEN** a substrate middleware that calls
+  `set_request_principal(p)` at the authentication boundary
+- **WHEN** a downstream tool body declaring `principal: Principal`
+  is dispatched
+- **THEN** the tool body receives `p`
+- **AND** the path inside the dispatch pipeline is:
+  `current_request_principal()` → `child.seed_scoped(Principal, p)` →
+  DI resolution by type
 
 

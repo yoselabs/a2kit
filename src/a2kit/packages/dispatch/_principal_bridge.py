@@ -1,24 +1,9 @@
-"""The named bridge between substrate authentication and the DI scope.
+"""Per-request ``Principal`` bridge between substrate auth and the DI scope.
 
-Carries the per-request ``Principal`` from the substrate's
-authentication boundary (HTTP `Security` guard, FastAPI middleware,
-FastMCP middleware, APIKey ASGI middleware) into the per-call DI
-scope opened by dispatch stages. Stdlib `contextvars` is the bridge
-mechanism — robust, async-safe, well-understood.
-
-Discipline this module enforces:
-
-- The underlying ContextVar (``_request_principal``) is module-private
-  and MUST NOT be re-exported. Writers use the named functions
-  ``set_request_principal`` / ``reset_request_principal``; readers
-  use ``current_request_principal``.
-- Stage code (``DispatchHookStage``, ``AuthorizeGateStage``,
-  ``LddStateStage``) consumes Principal via DI — it reads the bridge
-  once and explicitly publishes via ``Container.seed_scoped``. There
-  is no other ambient path.
-- Adding a new writer means importing the named writer API from this
-  module, not the raw ContextVar. The import path is structural; no
-  grep gate is needed.
+Stdlib ``contextvars`` carries the identity published by a substrate
+authentication boundary into the per-call DI scope opened by dispatch
+stages. The ContextVar itself is module-private; writers/readers use
+the named functions below.
 
 See ``openspec/specs/principal-bridge`` for the locked contract.
 """
@@ -26,7 +11,7 @@ See ``openspec/specs/principal-bridge`` for the locked contract.
 from __future__ import annotations
 
 import contextvars
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from a2kit.packages.context import Principal
@@ -57,8 +42,17 @@ def current_request_principal() -> Principal | None:
     return _request_principal.get()
 
 
+def current_request_principal_seeds() -> dict[type, Any]:
+    """Return ``{Principal: p}`` when published, else ``{}`` — ready for ``scoped_seeds=``."""
+    from a2kit.packages.context import Principal as _Principal
+
+    principal = _request_principal.get()
+    return {_Principal: principal} if principal is not None else {}
+
+
 __all__ = [
     "current_request_principal",
+    "current_request_principal_seeds",
     "reset_request_principal",
     "set_request_principal",
 ]
