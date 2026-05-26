@@ -25,7 +25,10 @@ from a2kit.packages.dispatch.spec import (
     ToolBuildSpec,
     has_injectables,
 )
-from a2kit.packages.dispatch.stages import (
+
+# GRANDFATHERED: `_run_authorize_gate` is re-exported for test + sibling-stage
+# use; remove from __all__ when a refactor makes the symbol fully internal.
+from a2kit.packages.dispatch.stages import (  # noqa: A2K-PKG-INIT-PURITY
     AuthorizeGateStage,
     DispatchHookStage,
     EnricherStage,
@@ -35,7 +38,10 @@ from a2kit.packages.dispatch.stages import (
     TimeoutStage,
     _run_authorize_gate,
 )
-from a2kit.packages.dispatch.substrate import (
+
+# GRANDFATHERED: `_unwrap_annotation` is re-exported for signature plumbing;
+# remove from __all__ when a refactor makes it fully internal.
+from a2kit.packages.dispatch.substrate import (  # noqa: A2K-PKG-INIT-PURITY
     SplitSignature,
     SubstrateSignatureError,
     _unwrap_annotation,
@@ -70,8 +76,8 @@ __all__ = [
     "SurfaceRegistry",
     "TimeoutStage",
     "ToolBuildSpec",
-    "_run_authorize_gate",
-    "_unwrap_annotation",
+    "_run_authorize_gate",  # noqa: A2K-PKG-INIT-PURITY
+    "_unwrap_annotation",  # noqa: A2K-PKG-INIT-PURITY
     "current_request_principal",
     "current_request_principal_seeds",
     "fastapi_reserved",

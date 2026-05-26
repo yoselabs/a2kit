@@ -21,7 +21,10 @@ from __future__ import annotations
 
 from a2kit.exceptions import AmbientContextMissing
 from a2kit.packages.ldd.ambient import ldd_state_for_call
-from a2kit.packages.ldd.emission import (
+
+# GRANDFATHERED: `_AppLdd` is surfaced for typing convenience; remove from
+# __all__ when `reshape-ldd-operator-wire-fanout` lands.
+from a2kit.packages.ldd.emission import (  # noqa: A2K-PKG-INIT-PURITY
     EventRegistry,
     _AppLdd,
     debug,
@@ -44,7 +47,7 @@ __all__ = [
     "LddEmission",
     "LddLevel",
     "LddSink",
-    "_AppLdd",
+    "_AppLdd",  # noqa: A2K-PKG-INIT-PURITY
     "debug",
     "error",
     "event",

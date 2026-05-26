@@ -233,6 +233,84 @@ def rule_pkg_init_impl(tree: ast.AST, filename: str, source: str) -> Iterable[Li
         )
 
 
+_PRIVATE_PREFIX = "_"
+_DUNDER_PREFIX = "__"
+
+
+def _is_private_leak(name: str) -> bool:
+    return name.startswith(_PRIVATE_PREFIX) and not name.startswith(_DUNDER_PREFIX)
+
+
+def _iter_dunder_all_leaks(tree: ast.Module, filename: str, noqa: dict[int, set[str]]) -> Iterable[LintMessage]:
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+            continue
+        value = node.value
+        if not isinstance(value, ast.List | ast.Tuple):
+            continue
+        for elt in value.elts:
+            if not (isinstance(elt, ast.Constant) and isinstance(elt.value, str) and _is_private_leak(elt.value)):
+                continue
+            lineno = getattr(elt, "lineno", node.lineno)
+            if suppressed(noqa, "A2K-PKG-INIT-PURITY", lineno):
+                continue
+            yield LintMessage(
+                rule="A2K-PKG-INIT-PURITY",
+                filename=filename,
+                line=lineno,
+                col=getattr(elt, "col_offset", 0),
+                message=(f"`__all__` lists private name `{elt.value}`; private symbols must not be re-exported through the front door"),
+            )
+
+
+def _iter_import_leaks(tree: ast.AST, filename: str, noqa: dict[int, set[str]]) -> Iterable[LintMessage]:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if suppressed(noqa, "A2K-PKG-INIT-PURITY", node.lineno):
+            continue
+        for alias in node.names:
+            bound = alias.asname or alias.name
+            if not _is_private_leak(bound):
+                continue
+            yield LintMessage(
+                rule="A2K-PKG-INIT-PURITY",
+                filename=filename,
+                line=node.lineno,
+                col=node.col_offset,
+                message=(
+                    f"`from {node.module or '.'} import {alias.name}"
+                    f"{' as ' + alias.asname if alias.asname else ''}` "
+                    "re-exports a private name through the front door"
+                ),
+            )
+
+
+def rule_pkg_init_purity(tree: ast.AST, filename: str, source: str) -> Iterable[LintMessage]:
+    """A2K-PKG-INIT-PURITY — package front door leaks `_`-prefixed names.
+
+    Complement of ``A2K-PKG-FRONT-DOOR``: that rule catches `_`-prefixed
+    imports past the front door (from outside the package). This rule
+    catches the reverse direction — private names leaking *out* through
+    the front door via ``__all__`` entries or ``from ._x import _y``
+    re-exports. Either route makes the private symbol part of the
+    package's public API and defeats the private-by-default contract.
+
+    Existing legacy leaks SHALL be suppressed inline with
+    ``# noqa: A2K-PKG-INIT-PURITY`` and retired by a follow-up.
+    """
+    norm = filename.replace("\\", "/")
+    if is_fixture_path(filename) or "/a2kit/packages/" not in norm or not norm.endswith("/__init__.py"):
+        return
+    if not isinstance(tree, ast.Module):
+        return
+    noqa = parse_noqa(source)
+    yield from _iter_dunder_all_leaks(tree, filename, noqa)
+    yield from _iter_import_leaks(tree, filename, noqa)
+
+
 def _layer_import_targets(node: ast.AST) -> list[str]:
     """Dotted module names an import node references (``[]`` for non-imports)."""
     if isinstance(node, ast.ImportFrom):

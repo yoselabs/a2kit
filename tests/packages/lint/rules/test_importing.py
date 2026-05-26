@@ -14,6 +14,7 @@ from a2kit.packages.lint.static import (
     A2K_PKG_FRONT_DOOR,
     A2K_PKG_INIT_IMPL,
     A2K_PKG_INIT_IMPORT,
+    A2K_PKG_INIT_PURITY,
     run_static_rules,
 )
 
@@ -304,3 +305,70 @@ def test_init_impl_noqa_suppresses(tmp_path: Path) -> None:
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPL not in _codes(findings)
+
+
+# --------------------------- A2K-PKG-INIT-PURITY ------------------------- #
+
+
+def test_init_purity_underscore_in_all_fires(tmp_path: Path) -> None:
+    """A `_`-prefixed name in `__all__` is flagged."""
+    body = '__all__ = ["public_thing", "_internal_thing"]\n'
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY in _codes(findings)
+
+
+def test_init_purity_underscore_from_import_fires(tmp_path: Path) -> None:
+    """`from ._x import _y` re-exports a private name through the front door."""
+    body = "from ._impl import _internal\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY in _codes(findings)
+
+
+def test_init_purity_aliased_underscore_fires(tmp_path: Path) -> None:
+    """`from ._x import y as _z` — the bound name still leaks privately."""
+    body = "from ._impl import public_y as _z\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY in _codes(findings)
+
+
+def test_init_purity_dunder_names_pass(tmp_path: Path) -> None:
+    """Dunder names like `__all__`, `__getattr__` are not private leaks."""
+    body = '__all__ = ["__version__"]\nfrom .meta import __version__\n'
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY not in _codes(findings)
+
+
+def test_init_purity_clean_init_passes(tmp_path: Path) -> None:
+    """An `__init__.py` re-exporting only public names is clean."""
+    body = 'from .wire import format_ldd_line\n\n__all__ = ["format_ldd_line"]\n'
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY not in _codes(findings)
+
+
+def test_init_purity_outside_packages_silent(tmp_path: Path) -> None:
+    """The rule scopes to `src/a2kit/packages/<x>/__init__.py` only."""
+    body = '__all__ = ["_private"]\n'
+    p = _write(tmp_path / "src" / "a2kit" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY not in _codes(findings)
+
+
+def test_init_purity_noqa_suppresses_import(tmp_path: Path) -> None:
+    """An inline `# noqa: A2K-PKG-INIT-PURITY` on the import line suppresses."""
+    body = "from ._impl import _internal  # noqa: A2K-PKG-INIT-PURITY\n"
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY not in _codes(findings)
+
+
+def test_init_purity_noqa_suppresses_all_entry(tmp_path: Path) -> None:
+    """An inline `# noqa: A2K-PKG-INIT-PURITY` on an `__all__` entry suppresses."""
+    body = '__all__ = [\n    "public",\n    "_internal",  # noqa: A2K-PKG-INIT-PURITY\n]\n'
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
+    findings = run_static_rules([p])
+    assert A2K_PKG_INIT_PURITY not in _codes(findings)
