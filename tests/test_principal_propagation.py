@@ -1,13 +1,15 @@
 """BDD: a `Principal` produced by either substrate reaches the tool body via DI.
 
 HTTP path: a FastAPI `Security` guard returns a `Principal`; the substrate
-wrapper detects it in `reserved_kwargs`, lifts it onto the
-`_a2kit_request_principal` contextvar, and seeds it into the call scope.
-The tool body taking `principal: Principal` then resolves it via a2kit DI.
+wrapper detects it in `reserved_kwargs`, publishes it via the dispatch
+principal bridge, and seeds it into the per-call DI scope via
+`scoped_seeds={Principal: ...}`. The tool body taking
+`principal: Principal` resolves it via a2kit DI.
 
 MCP path: the `PrincipalMiddleware` reads the request `Context.access_token`
-(simulated via a stub here), sets the same contextvar around `call_next`,
-and `DispatchHookStage` seeds it into call_scope so the tool body sees it.
+(simulated via a stub here), publishes via the named bridge writer API
+around `call_next`, and `DispatchHookStage` reads the bridge and seeds
+the per-call DI scope so the tool body sees it.
 """
 
 from __future__ import annotations
@@ -47,16 +49,20 @@ class TestHttpPrincipalReachesBody:
 
 
 class TestMcpPrincipalReachesBody:
-    """Exercises the contextvar-seed path used by `DispatchHookStage`.
+    """Exercises the bridge-seed path used by `DispatchHookStage`.
 
-    We do not stand up a full FastMCP transport in this unit (covered by the
-    integration suite); instead, we set the contextvar directly to model
-    what `PrincipalMiddleware` does in the on_call_tool wrapper and assert
-    the dispatch hook's call_scope sees a SCOPED Principal.
+    We do not stand up a full FastMCP transport in this unit (covered by
+    the integration suite); instead, we publish via the bridge writer API
+    directly to model what `PrincipalMiddleware` does in the on_call_tool
+    wrapper, and assert the dispatch hook's call_scope sees a SCOPED
+    Principal.
     """
 
-    async def test_dispatch_hook_seeds_principal_from_contextvar(self) -> None:
-        from a2kit.packages.context import _a2kit_request_principal
+    async def test_dispatch_hook_seeds_principal_from_bridge(self) -> None:
+        from a2kit.packages.dispatch._principal_bridge import (
+            reset_request_principal,
+            set_request_principal,
+        )
 
         app = a2kit.App("principal-mcp")
 
@@ -72,13 +78,15 @@ class TestMcpPrincipalReachesBody:
         app.add_router(R())
         runtime = build(app)
 
-        token = _a2kit_request_principal.set(Principal(subject="u1", scopes=frozenset()))
+        p = Principal(subject="u1", scopes=frozenset())
+        token = set_request_principal(p)
         try:
             desc = next(d for d in runtime.tools() if d.name == "whoami")
-            # Drive the unwrapped tool through DispatchHookStage's path.
-            async with runtime.container().call_scope(desc.fn, {"_a2kit_principal": _a2kit_request_principal.get()}) as merged:
+            # Drive the unwrapped tool through the per-call scope path:
+            # explicit `scoped_seeds` is what production stages use.
+            async with runtime.container().call_scope(desc.fn, {}, scoped_seeds={Principal: p}) as merged:
                 result = await desc.fn(**{k: v for k, v in merged.items() if k == "principal"})
         finally:
-            _a2kit_request_principal.reset(token)
+            reset_request_principal(token)
 
         assert result == {"subject": "u1"}

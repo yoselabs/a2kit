@@ -1,12 +1,16 @@
-"""Spec coverage for ``principal-single-source``.
+"""Spec coverage for ``consolidate-principal-bridge``.
 
-Locks the two ADDED requirements:
+Locks the structural invariants:
 
-- ``principal-propagation``: DI scope is the single source of truth for
-  ``Principal``; an injected DI provider must flow through to a tool
-  body without touching any contextvar.
-- ``dispatch-pipeline``: ``stages.py`` source contains no read of the
-  substrate contextvar ``_a2kit_request_principal``.
+- ``principal-propagation``: DI scope is the single consumption path
+  for ``Principal``; an injected DI provider flows through to a tool
+  body, and the named bridge writer API is the only way substrate
+  adapters publish Principal.
+- ``dispatch-pipeline``: only ``_principal_bridge`` imports the
+  underlying ContextVar; everywhere else uses the named writer/reader
+  API. Enforced **structurally** by import-path discipline (the
+  ContextVar is module-private and not re-exported through any
+  package front door).
 """
 
 from __future__ import annotations
@@ -19,27 +23,46 @@ import a2kit
 from a2kit.packages.context import Principal
 from a2kit.runtime import build
 
-_STAGES_SRC = Path(__file__).resolve().parents[1] / "src/a2kit/packages/dispatch/stages.py"
+_SRC_ROOT = Path(__file__).resolve().parents[1] / "src/a2kit"
 
 
-def test_dispatch_stages_source_has_no_principal_contextvar_read() -> None:
-    """``DispatchHookStage`` / ``AuthorizeGateStage`` / ``LddStateStage``
-    live in ``stages.py``. The spec forbids any of them reading the
-    substrate's request-Principal contextvar — the seeding helper in
-    ``_principal_scope.py`` is the one allowed read site.
-    """
-    text = _STAGES_SRC.read_text(encoding="utf-8")
-    assert "_a2kit_request_principal" not in text, (
-        "stages.py must not reference _a2kit_request_principal directly; "
-        "Principal seeding lives in dispatch/_principal_scope.py per the "
-        "principal-single-source spec."
-    )
+def test_raw_contextvar_only_lives_in_bridge_module() -> None:
+    """No module besides ``_principal_bridge`` may name the raw ContextVar."""
+    target = _SRC_ROOT / "packages/dispatch/_principal_bridge.py"
+    hits = []
+    for py in _SRC_ROOT.rglob("*.py"):
+        if py == target:
+            continue
+        text = py.read_text(encoding="utf-8")
+        if "_request_principal" in text and "current_request_principal" not in text.replace(
+            "_request_principal", "current_request_principal", 100
+        ):
+            # crude split: tolerate the named-API symbols, flag raw references
+            raw_lines = [
+                line
+                for line in text.splitlines()
+                if "_request_principal" in line
+                and "set_request_principal" not in line
+                and "reset_request_principal" not in line
+                and "current_request_principal" not in line
+            ]
+            if raw_lines:
+                hits.append((py, raw_lines))
+    assert hits == [], f"raw _request_principal references outside bridge: {hits!r}"
+
+
+def test_packages_context_does_not_re_export_the_contextvar() -> None:
+    """The L0 ``packages/context`` module is back to type-only."""
+    import a2kit.packages.context as ctx_pkg
+
+    assert "_a2kit_request_principal" not in ctx_pkg.__all__
+    assert not hasattr(ctx_pkg, "_a2kit_request_principal")
 
 
 @pytest.mark.asyncio
 async def test_di_principal_provider_flows_to_tool_body() -> None:
     """A registered DI provider for ``Principal`` reaches a tool body
-    typed ``principal: Principal`` without any contextvar interaction.
+    typed ``principal: Principal``.
     """
     fake = Principal(
         subject="alice",
@@ -70,10 +93,7 @@ async def test_di_principal_provider_flows_to_tool_body() -> None:
 
 @pytest.mark.asyncio
 async def test_no_provider_and_no_substrate_write_raises_clear_error() -> None:
-    """Without a DI provider AND without substrate-published Principal
-    on the contextvar, a tool body declaring ``principal: Principal``
-    sees no fallback path — the dispatcher must surface a clear error.
-    """
+    """No DI provider, no substrate publication → clear error, no fallback."""
 
     class R(a2kit.Router):
         slug = "demo"

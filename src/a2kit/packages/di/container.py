@@ -1,28 +1,18 @@
 """Typed DI container — feature-agnostic, async lifecycle-aware resolution.
 
-Resolution surface (post-v0.38 retire-legacy-di-surface):
-
-- ``Container.provide(t, factory, *, scope)`` / ``has_provider`` /
-  ``providers_view`` — registration.
-- ``Container.call_scope(fn, wire_kwargs, *, pre_hook=None)`` — async-CM
-  for the per-call DI scope (opens a child, runs the optional pre_hook,
-  runs ``resolve_params`` for DI, yields merged kwargs, unwinds
-  per-call cleanup on exit).
-- ``Container.resolve_params(fn)`` — resolves a function's parameters
-  through DI, ``Lazy[T]``-aware.
-- ``Container.get(t)`` — async lifecycle-aware resolve honoring scope,
-  ``__aenter__``, cleanup recording.
-- ``Container.child()`` — open a per-call child container.
-- ``Container.aclose()`` + ``__aenter__`` / ``__aexit__`` — lifecycle.
+Public surface: ``provide`` / ``seed_scoped`` / ``has_provider`` /
+``providers_view`` (registration); ``call_scope`` / ``resolve_params``
+/ ``get`` / ``child`` (resolution); async lifecycle via ``__aenter__`` /
+``__aexit__`` / ``aclose``.
 
 Wire-input transformation (e.g. ``connection: str`` → typed config)
-lives in the consumer's dispatch hook (``pre_hook`` arg), wire-side only
-— DI runs after, on the hook's output.
+lives in the consumer's dispatch hook (``pre_hook`` arg). The hook may
+publish typed instances on the per-call child via the ``seed`` callable
+it receives.
 
 Legacy methods (``register`` / ``register_singleton`` / ``resolve`` /
-``aresolve`` / ``has`` / ``has_async_singleton`` /
-``has_any_async_singletons``) raise ``TypeError`` with v0.38 migration
-hints. See CHANGELOG.
+``aresolve`` / ``has`` / async-singleton helpers) raise ``TypeError``
+with v0.38 migration hints. See CHANGELOG.
 """
 
 from __future__ import annotations
@@ -82,18 +72,14 @@ class Container:
         # ``_build_singleton`` on first ``get(T)``. Absent keys mean "not
         # yet built" (lazy first-use, post-v0.36).
         self._singletons: dict[type, Any] = {}
-        # Cached parameter introspection per factory, keyed on the live factory
-        # object via a ``WeakKeyDictionary``. The id(factory)-keyed cache that
-        # preceded this would hit stale entries when CPython recycled function
-        # ids across nested test scopes — the same hazard documented for the
-        # tool-signature cache in ``a2kit/signature.py``'s design note.
+        # Cached parameter introspection per factory, WeakKeyDictionary so
+        # CPython id-recycling across test scopes doesn't surface stale entries
+        # (same hazard as ``a2kit/signature.py``'s tool-signature cache).
         self._param_cache: weakref.WeakKeyDictionary[Factory, list[_ParamSpec]] = weakref.WeakKeyDictionary()
-        # Generic "wire-scoped string" registry. Consumer packages register
-        # a scope name (e.g. ``"connection"``) and the types whose values
-        # are populated from that wire string. The container holds the
-        # mapping but knows nothing about specific scope semantics — those
-        # live in the consumer's dispatch hook. Schema generation consults
-        # this to synthesize the wire-side string param.
+        # Wire-scope name → typed members. Consumer packages register a scope
+        # name (e.g. ``"connection"``) and the types whose values are populated
+        # from that wire string. Schema generation reads this to synthesize the
+        # wire-side string param.
         self._wire_scopes: dict[str, set[type]] = {}
 
         # Registered scope per type. Defaults to SINGLETON for ``provide``;
@@ -115,55 +101,29 @@ class Container:
         # first-touches coalesce.
         self._get_locks: dict[type, asyncio.Lock] = {}
 
-    # -- retired legacy surface (loud-crash with v0.38 hints) ------------ #
+    # -- retired v0.38 surface (loud-crash shims) ------------------------ #
+    # Compact: each shim is one line via the shared `_retired` helper.
 
     def register(self, type_: type, factory: Factory | None = None) -> NoReturn:  # noqa: ARG002
-        _retired(
-            "register(T, factory)",
-            "Container.provide(T, factory) — see CHANGELOG retire-legacy-di-surface",
-        )
+        _retired("register(T, factory)", "Container.provide(T, factory)")
 
     def register_singleton(self, type_: type, factory: Factory) -> NoReturn:  # noqa: ARG002
-        _retired(
-            "register_singleton(T, factory)",
-            "Container.provide(T, factory, scope=Scope.SINGLETON)",
-        )
+        _retired("register_singleton(T, factory)", "Container.provide(T, factory, scope=Scope.SINGLETON)")
 
-    def resolve(
-        self,
-        type_: type,  # noqa: ARG002
-        *,
-        cache: dict[type, Any] | None = None,  # noqa: ARG002
-        chain: list[type] | None = None,  # noqa: ARG002
-    ) -> NoReturn:
-        _retired(
-            "resolve(T)",
-            "await Container.get(T) (async; honors __aenter__ and cleanup)",
-        )
+    def resolve(self, type_: type, *, cache: Any = None, chain: Any = None) -> NoReturn:  # noqa: ARG002
+        _retired("resolve(T)", "await Container.get(T)")
 
-    async def aresolve(
-        self,
-        type_: type,  # noqa: ARG002
-        *,
-        cache: dict[type, Any] | None = None,  # noqa: ARG002
-        chain: list[type] | None = None,  # noqa: ARG002
-    ) -> NoReturn:
+    async def aresolve(self, type_: type, *, cache: Any = None, chain: Any = None) -> NoReturn:  # noqa: ARG002
         _retired("aresolve(T)", "await Container.get(T)")
 
     def has(self, type_: Any) -> NoReturn:  # noqa: ARG002
         _retired("has(T)", "Container.has_provider(T)")
 
     def has_async_singleton(self, type_: type) -> NoReturn:  # noqa: ARG002
-        _retired(
-            "has_async_singleton(T)",
-            "no replacement — provide(scope=SINGLETON) accepts both sync and async factories",
-        )
+        _retired("has_async_singleton(T)", "no replacement — provide(scope=SINGLETON) takes sync or async factories")
 
     def has_any_async_singletons(self) -> NoReturn:
-        _retired(
-            "has_any_async_singletons()",
-            "no replacement — async vs sync factories are no longer distinguished at registration",
-        )
+        _retired("has_any_async_singletons()", "no replacement — async/sync factories no longer distinguished")
 
     # -- registration --------------------------------------------------- #
 
@@ -273,6 +233,25 @@ class Container:
             return self._parent.has_provider(type_)
         return False
 
+    def seed_scoped(self, type_: type, value: Any) -> None:
+        """Register ``value`` as a SCOPED provider for ``type_`` on a child container.
+
+        Explicit per-call publish — substrate adapters and pre_hooks call
+        this to make a typed instance resolvable for the rest of the
+        scope. Last-write-wins. Raises ``TypeError`` if called on a root
+        container (SCOPED registrations there would leak across calls).
+        """
+        if self._parent is None:
+            msg = (
+                f"seed_scoped({type_!r}) requires a child container; got the root. "
+                "Open one via container.child() or call this on the child inside "
+                "call_scope / pre_hook."
+            )
+            raise TypeError(msg)
+        self._providers[type_] = lambda v=value: v
+        self._scope_metadata[type_] = Scope.SCOPED
+        self._scoped_cache[type_] = value
+
     def expose_as_fastapi_depends(self, type_: type) -> Callable[[], Any]:
         """Cached FastAPI `Depends`-callable resolving ``type_`` via a2kit DI."""
         from a2kit.packages.di._fastapi_bridge import resolver_for
@@ -365,49 +344,38 @@ class Container:
         wire_kwargs: dict[str, Any] | None = None,
         *,
         pre_hook: Callable[..., Any] | None = None,
+        scoped_seeds: dict[type, Any] | None = None,
     ) -> Any:
         """Open the per-call DI scope for one tool dispatch.
 
-        Opens a child resolver, optionally calls ``pre_hook`` for
-        wire-side resolution (e.g. connection-string → typed config),
-        resolves ``fn``'s injectable kwargs from the child container
-        (including ``Lazy[T]`` closures), merges everything, yields
-        the merged kwarg dict. On exit, unwinds the child's cleanup
-        stack — per-call resources see the propagating exception via
-        standard ``__aexit__`` semantics.
+        Opens a child resolver, applies ``scoped_seeds`` (explicit typed
+        instances published on the child), optionally calls ``pre_hook``
+        for wire-side resolution, resolves ``fn``'s injectable kwargs
+        (including ``Lazy[T]`` closures), merges everything, yields the
+        merged kwarg dict. On exit, unwinds the child's cleanup stack.
 
-        ``pre_hook`` contract: wire-side conversion only. The hook
-        receives ``(fn, dict(wire_kwargs))``, may be sync or async,
-        and returns a ``dict[str, Any]`` of wire-side resolved kwargs
-        (e.g. ``{"connection": <TrackerConn instance>}``). It MUST NOT
-        call DI — DI is the framework's job, run after the hook on
-        the hook's output.
+        ``pre_hook`` contract: ``(fn, wire_kwargs, seed) -> dict`` — the
+        hook does wire-side conversion (e.g. ``"conn_name"`` →
+        ``TrackerConn`` instance) and publishes typed instances on the
+        child via ``seed(type_, value)``. May be sync or async.
 
-        Example::
-
-            async def my_hook(fn, kw):
-                kw["connection"] = await store.load(kw["connection"])
-                return kw
-
-            async with app._resolver.call_scope(tool_fn, {"connection": "x"}, pre_hook=my_hook) as kw:
-                result = await tool_fn(**kw)
+        ``scoped_seeds``: ``{Type: instance}`` — equivalent to calling
+        ``child.seed_scoped(Type, instance)`` for each entry before
+        ``pre_hook`` runs. Used by substrate adapters with the typed
+        instance in hand (e.g. a ``Principal`` from a FastAPI
+        ``Security`` guard).
         """
         wire: dict[str, Any] = dict(wire_kwargs) if wire_kwargs else {}
         async with self.child() as child:
+            if scoped_seeds:
+                for type_, value in scoped_seeds.items():
+                    if value is not None:
+                        child.seed_scoped(type_, value)
             if pre_hook is not None:
-                hook_result = pre_hook(fn, wire)
+                hook_result = pre_hook(fn, wire, child.seed_scoped)
                 if inspect.isawaitable(hook_result):
                     hook_result = await hook_result
                 wire = dict(hook_result) if hook_result else {}
-            # Seed the child with wire-resolved typed instances as
-            # SCOPED providers so chain resolution from any factory
-            # can find them. Walks ALL wire kwargs: each value's
-            # concrete class becomes a type-keyed seed on the child.
-            for _wire_val in wire.values():
-                _t = type(_wire_val)
-                child._providers[_t] = lambda v=_wire_val: v
-                child._scope_metadata[_t] = Scope.SCOPED
-                child._scoped_cache[_t] = _wire_val
             resolved = await child.resolve_params(fn)
             # Filter merged kwargs to fn's actual params so wire-side
             # inputs that the hook used (e.g. raw connection string) but

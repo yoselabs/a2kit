@@ -430,33 +430,23 @@ def _reject_substrate_dep_on_alien_surface(fn: Callable[..., Any], surface: Surf
     raise SubstrateSignatureError(message=msg)
 
 
-def _lift_principal_into_scope(
-    reserved_kwargs: dict[str, Any],
-    wire_kwargs: dict[str, Any],
-) -> Any:
-    """Seed `Principal` into the per-call DI scope and request contextvar.
+def _resolve_request_principal(reserved_kwargs: dict[str, Any]) -> Any:
+    """Resolve the current request's `Principal`, preferring direct delivery.
 
     A FastAPI `Security(...)` guard returning a `Principal` lands in
-    `reserved_kwargs` (substrate_dep bucket). Lift it into the
-    `_a2kit_request_principal` contextvar so inner DI-aware code (tool body,
-    authorize gate) resolves it by type. Seed via the wire pool so
-    `call_scope`'s seeding loop registers it as SCOPED on the child.
-    Returns a contextvar token to reset, or None if no Principal was found.
+    `reserved_kwargs` (substrate_dep bucket) — that wins. Otherwise we
+    read from the dispatch principal bridge, which an earlier substrate
+    layer (APIKey ASGI middleware, MCP `PrincipalMiddleware`) may have
+    published into. Returns ``None`` when no path produced an identity.
     """
     from a2kit.packages.context import Principal as _Principal
-    from a2kit.packages.context import _a2kit_request_principal
+    from a2kit.packages.dispatch._principal_bridge import current_request_principal
 
-    principal: _Principal | None = (
-        next(
-            (v for v in reserved_kwargs.values() if isinstance(v, _Principal)),
-            None,
-        )
-        or _a2kit_request_principal.get()
+    direct = next(
+        (v for v in reserved_kwargs.values() if isinstance(v, _Principal)),
+        None,
     )
-    if principal is None:
-        return None
-    wire_kwargs.setdefault("_a2kit_principal", principal)
-    return _a2kit_request_principal.set(principal)
+    return direct if direct is not None else current_request_principal()
 
 
 def install_substrate_signature(
@@ -494,12 +484,24 @@ def install_substrate_signature(
 
     @functools.wraps(fn)
     async def _wrapper(**substrate_kwargs: Any) -> Any:
+        from a2kit.packages.context import Principal as _Principal
+        from a2kit.packages.dispatch._principal_bridge import (
+            reset_request_principal,
+            set_request_principal,
+        )
+
         wire_kwargs = {k: v for k, v in substrate_kwargs.items() if k not in reserved_names}
         reserved_kwargs = {k: v for k, v in substrate_kwargs.items() if k in reserved_names}
-        principal_token = _lift_principal_into_scope(reserved_kwargs, wire_kwargs)
+        principal = _resolve_request_principal(reserved_kwargs)
+        # Publish on the bridge so any deeper code path (e.g. an
+        # authorize gate that opens its own call_scope) can read the
+        # current identity. Token may be None when no Principal exists
+        # for this request.
+        principal_token = set_request_principal(principal) if principal is not None else None
         token = _a2kit_scope.set(object())
         try:
-            async with container.call_scope(fn, wire_kwargs) as merged:
+            seeds: dict[type, Any] = {_Principal: principal} if principal is not None else {}
+            async with container.call_scope(fn, wire_kwargs, scoped_seeds=seeds) as merged:
                 merged_with_reserved = {**merged, **reserved_kwargs}
                 result = fn(**merged_with_reserved)
                 if inspect.isawaitable(result):
@@ -508,9 +510,7 @@ def install_substrate_signature(
         finally:
             _a2kit_scope.reset(token)
             if principal_token is not None:
-                from a2kit.packages.context import _a2kit_request_principal
-
-                _a2kit_request_principal.reset(principal_token)
+                reset_request_principal(principal_token)
 
     # The surface ``__signature__`` keeps raw Parameter annotations
     # (may be strings under PEP 563). ``__annotations__`` carries the

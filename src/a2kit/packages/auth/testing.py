@@ -1,19 +1,26 @@
-"""Test seam — bind a :class:`Principal` without spinning up middleware.
+"""Test seam — build :class:`Principal` instances without touching middleware.
 
 Authors testing ``authorize=`` callables or tool bodies that resolve
-``principal: Principal`` use ``authenticated_as(...)`` to bind the
-contextvar for the duration of a block. The MCP / HTTP middlewares
-do the same thing in production; this helper isolates the bind without
-the substrate machinery.
+``principal: Principal`` use :func:`make_principal` to construct a
+synthetic identity, then either:
+
+- override the DI provider on the App
+  (``app.container().provide(Principal, lambda: p)``), or
+- publish via the named bridge for tests without an App
+  (``a2kit.packages.dispatch._principal_bridge.set_request_principal``).
+
+The previous ``authenticated_as`` contextmanager was a thin wrapper
+over the contextvar set/reset and was removed in
+``consolidate-principal-bridge`` — the bridge writer API is the single
+documented entry point.
 """
 
 from __future__ import annotations
 
-import contextlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable
 
     from a2kit.packages.context import Principal
 
@@ -42,21 +49,4 @@ def make_principal(
     )
 
 
-@contextlib.contextmanager
-def authenticated_as(principal: Principal) -> Iterator[None]:
-    """Bind ``principal`` on ``_a2kit_request_principal`` for the block.
-
-    Resets the contextvar on exit, whether the block raised or not.
-    Equivalent to what the production middlewares do per request, but
-    callable directly from a test without an ASGI scope.
-    """
-    from a2kit.packages.context import _a2kit_request_principal
-
-    token = _a2kit_request_principal.set(principal)
-    try:
-        yield
-    finally:
-        _a2kit_request_principal.reset(token)
-
-
-__all__ = ["authenticated_as", "make_principal"]
+__all__ = ["make_principal"]

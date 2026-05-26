@@ -34,6 +34,7 @@ _REMOVED_ATTRS: dict[str, str] = {
 def _default_dispatch_hook(
     fn: Callable[..., Any],
     wire_kwargs: dict[str, Any],
+    seed: Callable[[type, Any], None],
 ) -> Any:
     """Default dispatch hook — identity over ``wire_kwargs``.
 
@@ -42,10 +43,12 @@ def _default_dispatch_hook(
     against this single object. A bound method would not compare equal
     across copies.
 
-    v0.36+ contract: hooks are wire-side resolution only. The default
-    hook does nothing — wire kwargs pass through unchanged. DI resolution
-    (provider chain, ``Lazy[T]``, per-call scope) runs inside
-    ``Container.dispatch`` AFTER the hook, on the hook's output.
+    Contract: hooks are wire-side resolution only. The default hook does
+    nothing — wire kwargs pass through unchanged, no DI seeding. DI
+    resolution (provider chain, ``Lazy[T]``, per-call scope) runs inside
+    ``Container.call_scope`` AFTER the hook, on the hook's output.
+    The ``seed`` callable lets hooks publish typed instances on the
+    per-call DI child; the identity hook ignores it.
     """
     return wire_kwargs
 

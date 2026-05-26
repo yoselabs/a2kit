@@ -61,21 +61,29 @@ def make_connection_hook(
 ) -> Callable[..., Any]:
     """Build an async dispatch hook that resolves the wire ``connection`` string.
 
-    v0.37 (dispatch-lifecycle-wiring): the hook performs **wire-side
-    conversion only**. It awaits the appropriate store's ``load`` to
-    turn the wire ``connection`` string into typed ``ConnectionConfig``
-    instances and surfaces them as wire kwargs by tool-param name.
-    It does NOT call ``container.apply_kwargs`` — DI is the framework's
-    responsibility, run by ``Container.call_scope`` after this hook on
-    the hook's output. Wire-resolved typed configs become SCOPED
-    providers on the per-call child container so chain resolution
-    finds them.
+    The hook performs **wire-side conversion only**. It awaits the
+    appropriate store's ``load`` to turn the wire ``connection`` string
+    into typed ``ConnectionConfig`` instances and:
+
+    1. Surfaces them as wire kwargs by tool-param name when the tool
+       declares the config directly.
+    2. Publishes them on the per-call DI child container via the
+       explicit ``seed(type, value)`` callable so chain resolution from
+       app-scope factories (e.g. Store → ConnectionConfig) finds the
+       wire-resolved instance.
+
+    DI itself is the framework's responsibility — run by
+    ``Container.call_scope`` after this hook returns.
 
     ``stores`` maps each registered ConnectionConfig subclass to its
     store (built by :func:`install_connection_hook`).
     """
 
-    async def hook(fn: Callable[..., Any], wire_kwargs: dict[str, Any]) -> dict[str, Any]:
+    async def hook(
+        fn: Callable[..., Any],
+        wire_kwargs: dict[str, Any],
+        seed: Callable[[type, Any], None],
+    ) -> dict[str, Any]:
         out = dict(wire_kwargs)
         conn = out.pop(_WIRE_CONN_KEY, None)
         if conn is not None:
@@ -85,20 +93,10 @@ def make_connection_hook(
                     instance = await store.load(parts[0])
                 else:
                     instance = await store.load(*parts)
-                # Always surface the resolved typed config in wire kwargs.
-                # Container.call_scope's wire-seeder picks it up by value type
-                # and registers a SCOPED provider on the per-call child so
-                # chain resolution from app-scope factories (e.g. Store →
-                # ConnectionConfig) finds the wire-resolved instance.
+                seed(config_type, instance)
                 param_name = _fn_param_for_type(fn, config_type)
                 if param_name is not None and param_name not in out:
                     out[param_name] = instance
-                else:
-                    # Tool doesn't take the config directly. Use a stable
-                    # underscore-prefixed key so it survives into the
-                    # call_scope wire-seeder but the merged-kwargs filter
-                    # (to fn's declared params) strips it from the call.
-                    out[f"_a2k_seed_{config_type.__name__}"] = instance
         return out
 
     return hook

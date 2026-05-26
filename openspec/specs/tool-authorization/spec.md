@@ -28,21 +28,22 @@ The `authorize=` kwarg accepted by `@a2kit.read` / `@a2kit.write` / `@a2kit.list
 - **AND** MCP raises `ToolError` carrying the same structured fields
 - **AND** the tool body is never invoked in either case
 
-### Requirement: `auth.testing.authenticated_as(principal)` binds the request contextvar
+### Requirement: `auth.testing.make_principal` is the supported Principal factory for tests
 
-`a2kit.packages.auth.testing.authenticated_as(principal: Principal)` SHALL be a context manager that sets `_a2kit_request_principal` to `principal` on enter and resets on exit (success or exception). This SHALL be the supported way to unit-test `authorize=` callables and tool bodies without spinning up middleware. `make_principal(*, subject, scopes=())` SHALL be a factory mirroring the default Principal shape.
+`a2kit.packages.auth.testing.make_principal(*, subject, scopes=(), claims=None, issued_by="test")` SHALL construct a `Principal` for unit-test use, mirroring the default Principal shape. Tests that need to publish a Principal without spinning up middleware use the named bridge writer API directly (`a2kit.packages.dispatch._principal_bridge.set_request_principal` / `reset_request_principal`), or override the DI provider on an `App` (`app.container().provide(Principal, lambda: fake)`). The previous `authenticated_as` contextmanager was removed in `consolidate-principal-bridge` as a redundant wrapper.
 
-#### Scenario: authenticated_as resets contextvar on exception
+#### Scenario: make_principal returns the documented default shape
 
-- **GIVEN** `_a2kit_request_principal.get() is None` outside the block
-- **WHEN** `with authenticated_as(p): raise RuntimeError("boom")` runs
-- **THEN** `RuntimeError` propagates AND `_a2kit_request_principal.get() is None` after the block
+- **WHEN** `make_principal(subject="u1")` is called
+- **THEN** the result is a `Principal` with `subject="u1"`, `scopes=frozenset()`, `claims={}`, `issued_by="test"`, `raw_token=None`
 
-#### Scenario: Tool body resolves Principal under authenticated_as
+#### Scenario: Tool body resolves Principal via the named bridge writer API
 
 - **GIVEN** `async def me(*, principal: Principal) -> str: return principal.subject`
-- **WHEN** invoked under `authenticated_as(make_principal(subject="u1"))`
+- **AND** `token = set_request_principal(make_principal(subject="u1"))`
+- **WHEN** the tool body is dispatched (per-call DI scope reads the bridge)
 - **THEN** the result is `"u1"`
+- **AND** `reset_request_principal(token)` restores the prior state
 
 ### Requirement: 401 vs 403 stay distinct on HTTP
 

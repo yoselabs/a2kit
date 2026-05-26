@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Breaking (internal API) — Principal bridge consolidated
+
+The per-request Principal contextvar moved out of L0
+`a2kit.packages.context` into a private dispatch-layer module:
+`a2kit.packages.dispatch._principal_bridge`. The raw ContextVar is
+module-private; substrate adapters publish via the named writer API
+`set_request_principal` / `reset_request_principal` and dispatch stages
+read via `current_request_principal`. All three are re-exported from
+`a2kit.packages.dispatch` for substrate-package consumers.
+
+`_a2kit_request_principal` is no longer importable from
+`a2kit.packages.context`. If you imported it directly, switch to the
+named bridge API.
+
+`auth.testing.authenticated_as` was removed — it wrapped two lines of
+contextvar set/reset around the writer API. Replace with either an
+inline `set_request_principal` / `reset_request_principal` block, or
+the DI override pattern when an `App` is in hand
+(`app.container().provide(Principal, lambda: fake)`).
+
+### Breaking (internal API) — explicit per-call DI seeding
+
+`Container.seed_scoped(type_, value)` is the new explicit way to
+publish a typed instance on a per-call (child) container. Substrate
+adapters that need to inject a SCOPED instance for one dispatch use
+this; the previous implicit "values placed in `wire_kwargs` become
+SCOPED providers by `type(value)`" side effect of `Container.call_scope`
+is removed.
+
+`Container.call_scope` gains a `scoped_seeds: dict[type, Any] | None`
+kwarg — equivalent to calling `seed_scoped` for each entry before
+`pre_hook` runs. Used by `_lift_principal_into_scope` and
+`DispatchHookStage._wrapped`.
+
+`pre_hook` signature widens from `(fn, wire_kwargs)` to
+`(fn, wire_kwargs, seed)`. The third argument is a callable
+`(type_: type, value: Any) -> None` that publishes typed instances on
+the per-call DI child. Existing hooks must accept the third argument;
+hooks that relied on the implicit wire-by-type loop must call
+`seed(T, instance)` explicitly. Migration: every in-repo consumer was
+migrated in this change.
+
 ### Internal — dispatch stages no longer read the Principal contextvar
 
 Dispatch stages (`DispatchHookStage`, `AuthorizeGateStage`,

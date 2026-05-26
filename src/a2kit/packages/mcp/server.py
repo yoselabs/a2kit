@@ -376,7 +376,7 @@ def build_mcp_server(
     )
     server.add_middleware(ListViewMiddleware())
     server.add_middleware(GuardsMiddleware())
-    # Publish Principal on `_a2kit_request_principal` so DispatchHookStage and
+    # Publish Principal on the dispatch principal bridge so DispatchHookStage and
     # AuthorizeGateStage seed it as SCOPED in the per-call DI scope.
     server.add_middleware(PrincipalMiddleware())
     for mw in runtime.mcp_middlewares():

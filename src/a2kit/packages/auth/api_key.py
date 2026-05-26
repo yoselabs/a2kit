@@ -3,8 +3,9 @@
 Authors configure a set of keys (literal iterable or zero-arg callable
 for env / secrets-manager sourcing). The middleware reads the
 configured header, looks up the key, synthesises a :class:`Principal`,
-and publishes it on the per-request ``_a2kit_request_principal``
-contextvar so :class:`AuthorizeGateStage` and tool bodies resolve
+and publishes it via the dispatch principal bridge
+(:mod:`a2kit.packages.dispatch._principal_bridge`) so
+:class:`AuthorizeGateStage` and tool bodies resolve
 ``principal: Principal`` by type.
 
 Missing or unknown keys return 401 with a stable JSON envelope.
@@ -102,7 +103,10 @@ def build_api_key_middleware(spec: APIKeyAuth) -> Any:
     (``lifespan`` / ``websocket``) pass through untouched — websockets
     would need their own challenge flow if/when we add one.
     """
-    from a2kit.packages.context import _a2kit_request_principal
+    from a2kit.packages.dispatch import (
+        reset_request_principal,
+        set_request_principal,
+    )
 
     keys_by_value = _materialise_keys(spec)
     header_bytes = spec.header.encode("ascii").lower()
@@ -125,11 +129,11 @@ def build_api_key_middleware(spec: APIKeyAuth) -> Any:
                 await _send_401(send, "invalid API key")
                 return
             principal = _principal_from_key(key)
-            token = _a2kit_request_principal.set(principal)
+            token = set_request_principal(principal)
             try:
                 await app(scope, receive, send)
             finally:
-                _a2kit_request_principal.reset(token)
+                reset_request_principal(token)
 
         return middleware
 

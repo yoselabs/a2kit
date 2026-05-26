@@ -114,8 +114,8 @@ def _install_auth_middlewares(app: FastAPI, runtime: AppRuntime) -> None:
     No-op when the registry is empty / ``None``: an App with no
     ``App.auth(...)`` calls SHALL produce a middleware-free sub-app
     (per ``http-surface`` capability). Middlewares mount in
-    registration order; the first to set ``_a2kit_request_principal``
-    short-circuits subsequent authenticators.
+    registration order; the first to publish via the dispatch
+    principal bridge short-circuits subsequent authenticators.
 
     Only ``APIKeyAuth`` is wired today; ``JwtAuth`` is queued as a
     follow-up in the ``add-auth`` change (heavy dep footprint:
@@ -198,10 +198,17 @@ def _install_typed_error_handlers(app: FastAPI) -> None:
 def _apply_authorize_gate(wrapped: _Any, authorize: _Any, container: _Any) -> _Any:
     """Wrap `wrapped` so its `authorize=` callable runs before the body.
 
-    No-op when `authorize` is None. Before invoking the gate, scans kwargs
-    for any `Principal` instance (delivered by a FastAPI `Security` guard
-    that returned one) and publishes it on `_a2kit_request_principal` so
-    `_run_authorize_gate` can resolve `principal: Principal` by type.
+    No-op when `authorize` is None. The FastAPI `Security` guard delivers
+    its return value (a `Principal` when used as an auth guard) into the
+    kwargs the route handler is called with. This wrapper extracts that
+    Principal and publishes it via the dispatch principal bridge so
+    `_run_authorize_gate` and the downstream body wrapper resolve
+    `principal: Principal` by type from the per-call DI scope.
+
+    The kwargs-scan is the explicit conversion between FastAPI's
+    parameter-injection mechanism and a2kit's DI mechanism — the one
+    place this bridging happens for HTTP-side guards.
+
     Preserves the wrapper's `__signature__` and `__annotations__` so
     FastAPI's introspection still sees the surface params installed by
     `install_substrate_signature`.
@@ -210,18 +217,21 @@ def _apply_authorize_gate(wrapped: _Any, authorize: _Any, container: _Any) -> _A
         return wrapped
 
     from a2kit.packages.context import Principal as _Principal
-    from a2kit.packages.context import _a2kit_request_principal
+    from a2kit.packages.dispatch import (
+        reset_request_principal,
+        set_request_principal,
+    )
 
     @_functools.wraps(wrapped)
     async def _gated(**kwargs: _Any) -> _Any:
         principal = next((v for v in kwargs.values() if isinstance(v, _Principal)), None)
-        token = _a2kit_request_principal.set(principal) if principal is not None else None
+        token = set_request_principal(principal) if principal is not None else None
         try:
             await _run_authorize_gate(authorize, container)
             return await wrapped(**kwargs)
         finally:
             if token is not None:
-                _a2kit_request_principal.reset(token)
+                reset_request_principal(token)
 
     sig = getattr(wrapped, "__signature__", None)
     if sig is not None:

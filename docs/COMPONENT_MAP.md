@@ -27,8 +27,8 @@ the lint's own view of the graph.
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
 | `runtime` | 3 | 3 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
 | `connections` | 4 | 9 | 0 | 3 | `authoring`, `di`, `runtime` |
-| `dispatch` | 4 | 8 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `ldd`, `runtime` |
-| `auth` | 5 | 5 | 1 | 1 | `context` |
+| `dispatch` | 4 | 8 | 4 | 6 | `authoring`, `context`, `di`, `kernel`, `ldd`, `runtime` |
+| `auth` | 5 | 5 | 1 | 2 | `context`, `dispatch` |
 | `cli` | 5 | 6 | 0 | 7 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `http` | 5 | 3 | 0 | 6 | `auth`, `context`, `di`, `dispatch`, `health`, `runtime` |
@@ -67,7 +67,7 @@ the lint's own view of the graph.
 
 ### Layer 5
 
-- `auth` → `context`
+- `auth` → `context`, `dispatch`
 - `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime`
 - `codemode` → `formatter`
 - `http` → `auth`, `context`, `di`, `dispatch`, `health`, `runtime`

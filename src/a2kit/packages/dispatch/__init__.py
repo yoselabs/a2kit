@@ -11,6 +11,11 @@ afford the cold-start cost.
 
 from __future__ import annotations
 
+from a2kit.packages.dispatch._principal_bridge import (
+    current_request_principal,
+    reset_request_principal,
+    set_request_principal,
+)
 from a2kit.packages.dispatch.pipeline import DISPATCH_PIPELINE, fold_pipeline
 from a2kit.packages.dispatch.spec import (
     SYNTHESIZED_CTX_PARAM_NAME,
@@ -66,10 +71,13 @@ __all__ = [
     "ToolBuildSpec",
     "_run_authorize_gate",
     "_unwrap_annotation",
+    "current_request_principal",
     "fastapi_reserved",
     "fastmcp_reserved",
     "fold_pipeline",
     "has_injectables",
     "install_substrate_signature",
+    "reset_request_principal",
+    "set_request_principal",
     "split_signature",
 ]

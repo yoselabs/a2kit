@@ -16,8 +16,12 @@ from fastapi.testclient import TestClient
 
 import a2kit
 from a2kit.exceptions import AuthorizationDenied
-from a2kit.packages.context import Principal, _a2kit_request_principal
+from a2kit.packages.context import Principal
 from a2kit.packages.dispatch import DISPATCH_PIPELINE, AuthorizeGateStage, _run_authorize_gate
+from a2kit.packages.dispatch._principal_bridge import (
+    reset_request_principal,
+    set_request_principal,
+)
 from a2kit.packages.dispatch.spec import ToolBuildSpec
 from a2kit.packages.http.build import build_http_app
 from a2kit.runtime import build
@@ -63,22 +67,22 @@ class TestRunAuthorizeGate:
     async def test_falsy_return_raises_authorization_denied(self) -> None:
         app = a2kit.App("authz-direct")
         runtime = build(app)
-        token = _a2kit_request_principal.set(Principal(subject="u1", scopes=frozenset()))
+        token = set_request_principal(Principal(subject="u1", scopes=frozenset()))
         try:
             with pytest.raises(AuthorizationDenied) as exc:
                 await _run_authorize_gate(_admin_only, runtime.container())
         finally:
-            _a2kit_request_principal.reset(token)
+            reset_request_principal(token)
         assert exc.value.callable_name.endswith("_admin_only")
 
     async def test_truthy_return_allows(self) -> None:
         app = a2kit.App("authz-direct-allow")
         runtime = build(app)
-        token = _a2kit_request_principal.set(Principal(subject="u1", scopes=frozenset({"admin"})))
+        token = set_request_principal(Principal(subject="u1", scopes=frozenset({"admin"})))
         try:
             await _run_authorize_gate(_admin_only, runtime.container())  # no raise
         finally:
-            _a2kit_request_principal.reset(token)
+            reset_request_principal(token)
 
 
 class TestAuthorizeGateStageSelfSkips:

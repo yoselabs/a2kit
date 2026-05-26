@@ -8,6 +8,8 @@ cleanup with exception preservation.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 import a2kit
@@ -118,7 +120,7 @@ async def test_pre_hook_runs_before_di_resolution() -> None:
     """``pre_hook`` is awaited and its output replaces ``wire_kwargs`` before DI."""
     call_log: list[str] = []
 
-    async def hook(fn: object, wire: dict) -> dict:
+    async def hook(fn: object, wire: dict, seed: Callable[[type, object], None]) -> dict:
         call_log.append("hook")
         # Convert the wire connection string to a typed config.
         return {**wire, "conn": _ConnCfg(wire["conn_str"])}
@@ -149,8 +151,10 @@ async def test_pre_hook_output_seeds_chain_resolution() -> None:
     construct one through a (non-existent) provider for ``_ConnCfg``.
     """
 
-    async def hook(fn: object, wire: dict) -> dict:
-        return {**wire, "conn": _ConnCfg(wire["conn_str"])}
+    async def hook(fn: object, wire: dict, seed: Callable[[type, object], None]) -> dict:
+        conn = _ConnCfg(wire["conn_str"])
+        seed(_ConnCfg, conn)  # publish typed instance explicitly on the child
+        return {**wire, "conn": conn}
 
     async def tool(store: _Store) -> str:
         return store.conn.host
