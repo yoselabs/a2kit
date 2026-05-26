@@ -19,7 +19,6 @@ from a2kit._list_helpers import (
 from a2kit._list_helpers import (
     derive_selectable_fields as _derive_selectable_fields,
 )
-from a2kit._surface_names import registered_surface_names
 from a2kit._verb_validators import (
     _BUILTIN_RESERVED_TOOL_NAMES,
     _RESERVED_TOOL_NAME_PREFIX,
@@ -98,18 +97,20 @@ def _parse_timeout(value: float | int | str | None) -> float | None:
 
 
 def _validate_expose(verb: str, expose: tuple[str, ...]) -> tuple[str, ...]:
-    """Normalize and validate the ``expose=`` kwarg.
+    """Normalize the ``expose=`` kwarg. Empty tuple rejected at decoration;
+    surface-name validation deferred to ``runtime.build()``.
 
-    Empty tuple is rejected at decoration time per ``verb-decorators``
-    spec — a projection tool that exposes on no surface is dead code.
-    When ``expose`` is the ``_DEFAULT_EXPOSE`` sentinel (kwarg unspecified),
-    the bundled names are stamped as-is and no registry lookup happens —
-    this keeps cold-start paths (which deliberately skip importing
-    ``a2kit.packages.mcp`` / ``a2kit.packages.http``) decorating cleanly.
-    Any explicit ``expose=(...)`` is validated against the live registry
-    (``a2kit._surface_names``), which the dispatch ``SurfaceRegistry``
-    populates as a side-effect of ``register_surface()``. Unknown names
-    raise ``TypeError`` enumerating the registered surfaces.
+    Per ``bootstrap-surfaces-explicit`` (2026-05-26), the surface set is
+    composed at ``runtime.build(surfaces=...)`` time rather than
+    accumulated by import-time self-registration. Validating surface
+    names at decoration would require the registry to be populated
+    before any ``App`` exists, which conflicts with the "no import-time
+    mutation" invariant. ``runtime.build()`` walks every captured
+    descriptor and fails with a precise ``TypeError`` naming unknown
+    surfaces alongside the registered ones.
+
+    The empty-tuple check stays at decoration because it's a structural
+    spec rule (per ``verb-decorators``) independent of the registry.
     """
     if expose is _DEFAULT_EXPOSE:
         return _DEFAULT_EXPOSE
@@ -120,20 +121,6 @@ def _validate_expose(verb: str, expose: tuple[str, ...]) -> tuple[str, ...]:
             f"to opt into one; omit the kwarg for both (the default)."
         )
         raise ValueError(msg)
-    registered = registered_surface_names()
-    allowed = frozenset(registered)
-    bad = [s for s in expose if s not in allowed]
-    if bad:
-        if not registered:
-            msg = (
-                f"@a2kit.{verb}(expose={expose!r}): no surfaces registered yet. "
-                f"Import a surface-mounting package first "
-                f"(e.g. `import a2kit.packages.mcp` or `import a2kit.packages.http`) "
-                f"so its Surface self-registers."
-            )
-        else:
-            msg = f"@a2kit.{verb}(expose={expose!r}): unknown surface(s) {bad!r}. Registered surfaces: {registered!r}."
-        raise TypeError(msg)
     return tuple(expose)
 
 

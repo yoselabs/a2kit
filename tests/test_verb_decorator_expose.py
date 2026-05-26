@@ -1,12 +1,15 @@
 """``expose=`` and ``authorize=`` kwargs on ``@a2kit.read/list/write``.
 
-Per ``verb-decorators`` ADDED requirements (add-multi-surface):
+Per ``verb-decorators`` ADDED requirements (add-multi-surface) and
+``bootstrap-surfaces-explicit`` (2026-05-26):
 
 - Default ``expose=("mcp", "api")``.
 - Empty tuple raises ``ValueError`` at decoration time (a tool exposed
   on no substrate is dead code).
-- Unknown substrate names raise ``TypeError`` (per
-  ``surface-set-from-registry``) enumerating the registered names.
+- Unknown surface names raise ``TypeError`` at **runtime.build()**
+  time (NOT at decoration), per ``bootstrap-surfaces-explicit``:
+  surface validation requires the composed registry, which is built
+  at ``runtime.build(surfaces=...)`` time.
 - ``authorize`` is the per-tool auth callable; surface stamped here,
   enforcement lands in ``add-auth``.
 - Values land on ``ToolDescriptor.expose`` / ``.authorize`` / ``.verb``
@@ -79,48 +82,59 @@ def test_empty_expose_raises_at_decoration() -> None:
             tools = (t,)
 
 
-def test_unknown_substrate_raises() -> None:
+def test_unknown_substrate_raises_at_build() -> None:
+    """Per `bootstrap-surfaces-explicit`: unknown surface in expose= is
+    a build-time error, not a decoration-time error. The decorator
+    captures expose= unchanged; build() walks descriptors and validates
+    against the composed surface registry passed via `surfaces=`.
+    """
+
+    class R(a2kit.Router):
+        slug = "demo"
+
+        @a2kit.read(expose=("mcp", "graphql"))  # type: ignore[arg-type]
+        async def t(self, *, k: str) -> dict[str, str]:
+            return {"k": k}
+
+        tools = (t,)
+
+    app = a2kit.App("demo").add_router(R())
+    surfaces = a2kit.compose_default_surfaces()
     with pytest.raises(TypeError, match="unknown surface"):
-
-        class R(a2kit.Router):
-            slug = "demo"
-
-            @a2kit.read(expose=("mcp", "graphql"))  # type: ignore[arg-type]
-            async def t(self, *, k: str) -> dict[str, str]:
-                return {"k": k}
-
-            tools = (t,)
+        build(app, surfaces=surfaces)
 
 
 def test_unknown_surface_error_enumerates_registered_names() -> None:
-    """``surface-set-from-registry``: the error lists the live registry,
-    not a hardcoded literal.
+    """Per `bootstrap-surfaces-explicit`: the build-time error lists the
+    composed surface set, not a hardcoded literal.
     """
-    from a2kit._surface_names import registered_surface_names
 
-    registered = registered_surface_names()
+    class R(a2kit.Router):
+        slug = "demo"
+
+        @a2kit.read(expose=("zzz",))  # type: ignore[arg-type]
+        async def t(self, *, k: str) -> dict[str, str]:
+            return {"k": k}
+
+        tools = (t,)
+
+    app = a2kit.App("demo").add_router(R())
+    surfaces = a2kit.compose_default_surfaces()
     with pytest.raises(TypeError) as exc:
-
-        class R(a2kit.Router):
-            slug = "demo"
-
-            @a2kit.read(expose=("zzz",))  # type: ignore[arg-type]
-            async def t(self, *, k: str) -> dict[str, str]:
-                return {"k": k}
-
-            tools = (t,)
+        build(app, surfaces=surfaces)
 
     msg = str(exc.value)
-    for name in registered:
-        assert name in msg, f"expected registered surface {name!r} in error: {msg!r}"
+    # Default surfaces = (McpSurface(), ApiSurface()) → names "mcp", "api"
+    for name in ("mcp", "api"):
+        assert name in msg, f"expected composed surface {name!r} in error: {msg!r}"
 
 
-def test_newly_registered_surface_name_is_accepted_without_verb_edits() -> None:
-    """Spec scenario: registering a synthetic Surface makes its name
-    valid in ``expose=`` with no edits to ``_verbs.py``.
+def test_newly_registered_surface_name_is_accepted_via_explicit_surfaces() -> None:
+    """Per `bootstrap-surfaces-explicit`: registering a synthetic Surface
+    is done by passing it via `build(app, surfaces=(...))`, not by
+    mutating a module-level registry. The decorator captures the name
+    unchanged; build accepts it when the composed surface set includes it.
     """
-    from a2kit._surface_names import _REGISTERED_SURFACE_NAMES
-    from a2kit.packages.dispatch import SURFACE_REGISTRY
 
     class _StubSurface:
         name = "stub_expose"
@@ -133,46 +147,56 @@ def test_newly_registered_surface_name_is_accepted_without_verb_edits() -> None:
         def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:
             return None
 
-    try:
-        SURFACE_REGISTRY.register_surface(_StubSurface())
+    class R(a2kit.Router):
+        slug = "demo"
 
-        class R(a2kit.Router):
-            slug = "demo"
+        @a2kit.read(expose=("stub_expose",))  # type: ignore[arg-type]
+        async def t(self, *, k: str) -> dict[str, str]:
+            return {"k": k}
 
-            @a2kit.read(expose=("stub_expose",))  # type: ignore[arg-type]
-            async def t(self, *, k: str) -> dict[str, str]:
-                return {"k": k}
+        tools = (t,)
 
-            tools = (t,)
+    app = a2kit.App("demo").add_router(R())
+    # Build with the custom surface explicitly included alongside defaults.
+    from a2kit.packages.dispatch.surface import SurfaceRegistry
+    from a2kit.packages.http.api import ApiSurface
+    from a2kit.packages.mcp.surface import McpSurface
 
-        meta = _get_meta(R.t)
-        assert meta is not None
-        assert meta.extras.expose == ("stub_expose",)
-    finally:
-        SURFACE_REGISTRY._by_name.pop("stub_expose", None)
-        if "stub_expose" in _REGISTERED_SURFACE_NAMES:
-            _REGISTERED_SURFACE_NAMES.remove("stub_expose")
+    registry = SurfaceRegistry()
+    for s in (McpSurface(), ApiSurface(), _StubSurface()):
+        registry.register_surface(s)
+
+    runtime = build(app, surfaces=registry)
+    [desc] = runtime.tools()
+    assert desc.expose == ("stub_expose",)
+    # Meta still carries the captured value too.
+    meta = _get_meta(R.t)
+    assert meta is not None
+    assert meta.extras.expose == ("stub_expose",)
 
 
-def test_empty_registry_actionable_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Spec scenario: with no surfaces registered, validation raises
-    ``TypeError`` and the message points the author at the bundled
-    surface-mounting packages.
+def test_empty_surfaces_skips_validation() -> None:
+    """Per `bootstrap-surfaces-explicit`: when an EMPTY `SurfaceRegistry`
+    is passed explicitly (no surfaces composed at all), validation is
+    skipped — the author has opted out of the registered set, and there's
+    nothing to validate against.
     """
-    from a2kit import _surface_names
+    from a2kit.packages.dispatch.surface import SurfaceRegistry
 
-    monkeypatch.setattr(_surface_names, "_REGISTERED_SURFACE_NAMES", [])
+    class R(a2kit.Router):
+        slug = "demo"
 
-    with pytest.raises(TypeError, match="no surfaces registered"):
+        @a2kit.read(expose=("mcp",))
+        async def t(self, *, k: str) -> dict[str, str]:
+            return {"k": k}
 
-        class R(a2kit.Router):
-            slug = "demo"
+        tools = (t,)
 
-            @a2kit.read(expose=("mcp",))
-            async def t(self, *, k: str) -> dict[str, str]:
-                return {"k": k}
-
-            tools = (t,)
+    app = a2kit.App("demo").add_router(R())
+    empty_registry = SurfaceRegistry()
+    runtime = build(app, surfaces=empty_registry)
+    [desc] = runtime.tools()
+    assert desc.expose == ("mcp",)  # Captured unchanged; no surface to project on.
 
 
 def test_authorize_callable_lands_on_descriptor() -> None:

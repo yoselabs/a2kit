@@ -2,18 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from a2kit.packages.dispatch import SURFACE_REGISTRY
-from a2kit.packages.mcp.surface import McpSurface
-
 if TYPE_CHECKING:
     from a2kit.packages.mcp.server import build_mcp_server
 
 
-# Self-register the MCP Surface at front-door import. Guard with a
-# membership check so re-imports within one interpreter remain
-# idempotent (the registry rejects duplicates by `ValueError`).
-if "mcp" not in SURFACE_REGISTRY:
-    SURFACE_REGISTRY.register_surface(McpSurface())
+# NOTE: Surface registration is no longer performed at import time. Per
+# `bootstrap-surfaces-explicit`, surfaces are composed explicitly at
+# `runtime.build()` time from its `surfaces=` tuple (defaulting to the
+# bundled `McpSurface` + `ApiSurface` pair). Importing this package has
+# zero side effects on any registry.
 
 
 def __getattr__(name: str) -> Any:

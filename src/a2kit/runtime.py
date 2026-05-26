@@ -64,6 +64,7 @@ class AppRuntime:
         api_surface: Any = None,
         mcp_surface: Any = None,
         auth_registry: Any = None,
+        surfaces: Any = None,
     ) -> None:
         self.name = name
         self.config = config
@@ -86,6 +87,11 @@ class AppRuntime:
         # the source App has no auth configured — substrate builders use
         # this as the "skip middleware mount" signal (cold-start path).
         self.auth_registry = auth_registry
+        # Per-runtime surface registry composed from ``build(surfaces=...)``.
+        # Substrate adapters read transport-specific surface metadata
+        # (`runtime.surfaces.get("api")` / `.get("mcp")`) through this
+        # attribute instead of the module-level proxy.
+        self.surfaces = surfaces
         # Routers that entered via ``__aenter__`` during this runtime's
         # lifecycle. LIFO unwound on ``__aexit__``.
         self._entered_routers: dict[str, Router] = {}
@@ -221,7 +227,12 @@ class AppRuntime:
             await self._container.__aexit__(exc_type, exc, tb)
 
 
-def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRuntime:
+def build(
+    app: App | AppRuntime,
+    *,
+    select: list[str] | None = None,
+    surfaces: Any = None,
+) -> AppRuntime:
     """Snapshot a compose-phase ``App`` into a sealed ``AppRuntime``.
 
     The finisher seam. Idempotent on an ``AppRuntime``: passing one back
@@ -247,6 +258,14 @@ def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRunti
     if isinstance(app, AppRuntime):
         return app
 
+    # Per `bootstrap-surfaces-explicit`, the per-runtime surface registry
+    # is composed by the facade (`a2kit/__init__.py:compose_default_surfaces`)
+    # and passed in via `surfaces=`. Composing here would require importing
+    # L4/L5 modules from this L3 module, which the layer DAG forbids. When
+    # `surfaces=None` (programmatic callers that bypass the facade),
+    # `runtime.surfaces` stays None and `expose=` validation is skipped.
+    surface_registry: Any = surfaces
+
     runtime_container = app.container().snapshot()
     runtime_container.seal()
 
@@ -267,6 +286,15 @@ def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRunti
     descriptors = _apply_descriptor_selectors(descriptors, compiled_selectors)
     api_surface = _filter_api_surface(app._api, compiled_selectors)  # noqa: SLF001
     mcp_surface = _filter_mcp_surface(app._mcp, compiled_selectors)  # noqa: SLF001
+
+    # Validate every captured `expose=` against the composed surface set.
+    # Empty `expose=()` was rejected at decoration; here we catch the
+    # unknown-name case that decoration deliberately skipped (per
+    # `bootstrap-surfaces-explicit` — surface validation requires the
+    # composed registry, not import-time accumulation). Skipped when no
+    # registry is in scope (programmatic callers bypassing the facade).
+    if surface_registry is not None:
+        _validate_descriptor_expose(descriptors, surface_registry)
 
     health = HealthRegistry(enabled=app._health.enabled, checks=list(app._health.checks))  # noqa: SLF001 -- finisher snapshot
 
@@ -294,6 +322,7 @@ def build(app: App | AppRuntime, *, select: list[str] | None = None) -> AppRunti
         # ``App.auth(...)`` so substrate builders skip middleware mount
         # entirely (cold-start invariant: no auth imports for no-auth apps).
         auth_registry=app.auth_registry,
+        surfaces=surface_registry,
     )
 
     # Re-bind the synthetic `_meta` health router to the runtime so its
@@ -394,6 +423,36 @@ def _filter_mcp_surface(mcp: Any, selectors: tuple[Any, ...]) -> Any:
         if "mcp" in s.exclude:
             return None
     return mcp
+
+
+def _validate_descriptor_expose(descriptors: list[ToolDescriptor], surface_registry: Any) -> None:
+    """Validate every captured `expose=` against the composed surface set.
+
+    Per `bootstrap-surfaces-explicit`: surface name validation moves from
+    decoration time (where the registry may not yet be populated) to build
+    time (where `surfaces=` has been composed). Empty `expose=()` was
+    already rejected at decoration. The default `_DEFAULT_EXPOSE` sentinel
+    is also skipped (it stamps the bundled names regardless).
+    """
+    allowed = frozenset(surface_registry.names())
+    if not allowed:
+        return  # No surfaces composed; nothing to validate against.
+    bad_per_tool: list[tuple[str, list[str]]] = []
+    for desc in descriptors:
+        bad = [s for s in desc.expose if s not in allowed]
+        if bad:
+            bad_per_tool.append((desc.name, bad))
+    if not bad_per_tool:
+        return
+    registered = tuple(sorted(allowed))
+    lines = [f"  - {name}: unknown surface(s) {bad!r}" for name, bad in bad_per_tool]
+    msg = (
+        "runtime.build(): tool(s) declare expose= names not in the composed surface set.\n"
+        + "\n".join(lines)
+        + f"\nComposed surfaces: {registered!r}. "
+        "Pass surfaces=(...) to runtime.build() to register additional surfaces."
+    )
+    raise TypeError(msg)
 
 
 __all__ = ["AppRuntime", "build"]

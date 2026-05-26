@@ -3,19 +3,30 @@
 Covers the ``surface-protocol`` ADDED requirement that
 ``SurfaceRegistry.register_surface()`` side-effects ``s.name`` into the
 kernel name registry, and that the API itself is idempotent and ordered.
+
+Per ``bootstrap-surfaces-explicit`` (2026-05-26), registration happens
+at ``runtime.build()`` time rather than at import time. Tests that need
+populated names build a minimal runtime first.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
+import a2kit
 from a2kit._surface_names import (
-    _REGISTERED_SURFACE_NAMES,
     register_surface_name,
     registered_surface_names,
 )
+from a2kit.packages.dispatch.surface import SurfaceRegistry
+from a2kit.runtime import build
 
 
-def test_bundled_surfaces_are_registered() -> None:
-    """conftest eagerly imports ``a2kit.packages.{mcp,http}``."""
+def test_bundled_surfaces_are_registered_after_build() -> None:
+    """`runtime.build()` composes the default surface pair (mcp + api),
+    each `register_surface(...)` call side-effects the kernel name list.
+    """
+    build(a2kit.App("demo"))
     names = registered_surface_names()
     assert "mcp" in names
     assert "api" in names
@@ -34,13 +45,11 @@ def test_register_surface_name_is_idempotent() -> None:
     assert before == after
 
 
-def test_register_then_query_via_registry() -> None:
-    """Registering through the dispatch ``SurfaceRegistry`` populates the
-    kernel name list as a side-effect.
+def test_register_via_per_runtime_registry_populates_name_list() -> None:
+    """Registering through a fresh ``SurfaceRegistry`` populates the
+    kernel name list as a side-effect. Uses the class directly rather
+    than the deprecated module-level proxy.
     """
-    from typing import Any
-
-    from a2kit.packages.dispatch import SURFACE_REGISTRY
 
     class _StubSurface:
         name = "stub_for_name_registry"
@@ -53,10 +62,8 @@ def test_register_then_query_via_registry() -> None:
         def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:
             return None
 
-    try:
-        SURFACE_REGISTRY.register_surface(_StubSurface())
-        assert "stub_for_name_registry" in registered_surface_names()
-    finally:
-        SURFACE_REGISTRY._by_name.pop("stub_for_name_registry", None)
-        if "stub_for_name_registry" in _REGISTERED_SURFACE_NAMES:
-            _REGISTERED_SURFACE_NAMES.remove("stub_for_name_registry")
+    fresh = SurfaceRegistry()
+    fresh.register_surface(_StubSurface())
+    assert "stub_for_name_registry" in registered_surface_names()
+    # No cleanup of `_REGISTERED_SURFACE_NAMES` — it's an append-only set;
+    # subsequent tests don't assert "stub_for_name_registry" is absent.

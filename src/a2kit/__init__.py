@@ -62,6 +62,50 @@ def __dir__() -> list[str]:
     return sorted({*globals(), *_LAZY_ATTRS, *_LAZY_MODULES})
 
 
+def compose_default_surfaces() -> Any:
+    """Compose the bundled MCP + HTTP surfaces and bind as the active registry.
+
+    Per `bootstrap-surfaces-explicit` (2026-05-26): surfaces are no
+    longer self-registered as import side effects. The facade (this
+    function) composes the default surface set and binds it as the
+    process's active registry so the deprecated module-level
+    `SURFACE_REGISTRY` proxy + every `runtime.surfaces` reader sees a
+    populated registry.
+
+    Idempotent: if surfaces are already composed (e.g. on a second
+    `compose_default_surfaces()` call within the same process) the
+    existing registry is returned unchanged.
+
+    The facade is the only layer-exempt module allowed to import L5
+    surface packages from compose/finisher entry points without
+    violating `A2K-LAYER`.
+
+    Returns the active `SurfaceRegistry` for the caller to pass into
+    `runtime.build(app, surfaces=...)`.
+    """
+    from a2kit.packages.dispatch.surface import (
+        SurfaceRegistry,
+        bind_active_registry,
+        current_registry,
+    )
+
+    existing = current_registry()
+    if existing is not None:
+        return existing
+
+    # Lazy substrate-package imports stay inside this function — cold-start
+    # paths that never call `compose_default_surfaces()` (or `run()`) do
+    # not pull fastmcp / fastapi.
+    from a2kit.packages.http.api import ApiSurface
+    from a2kit.packages.mcp.surface import McpSurface
+
+    registry = SurfaceRegistry()
+    registry.register_surface(McpSurface())
+    registry.register_surface(ApiSurface())
+    bind_active_registry(registry)
+    return registry
+
+
 def run(app: App, argv: list[str] | None = None) -> Any:
     """Finisher: build the App's runtime and run its CLI.
 
@@ -69,11 +113,16 @@ def run(app: App, argv: list[str] | None = None) -> Any:
     the App internally (snapshotting the composition, validating the DI
     provider graph) before building and invoking the CLI — consumer code
     never calls a build step. See ADR 0019.
+
+    Composes the bundled surface set (see `compose_default_surfaces`)
+    and passes it to `build()` so `expose=` validation runs against the
+    composed registry per `bootstrap-surfaces-explicit`.
     """
     from a2kit.packages.cli import build_full_cli
     from a2kit.runtime import build
 
-    runtime = build(app)
+    surfaces = compose_default_surfaces()
+    runtime = build(app, surfaces=surfaces)
     cli = build_full_cli(runtime)
     return cli.main(args=argv, standalone_mode=True)
 
@@ -84,6 +133,7 @@ __all__ = [
     "HealthResult",
     "Router",
     "ToolContext",
+    "compose_default_surfaces",
     "list_",
     "read",
     "run",

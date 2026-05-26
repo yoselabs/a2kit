@@ -8,14 +8,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-# Eagerly load the bundled surface packages so their Surface instances
-# self-register with the dispatch registry (and the kernel name registry)
-# before any test imports a2kit and decorates a tool. With
-# `surface-set-from-registry` shipped, `@a2kit.read(expose=("mcp","api"))`
-# validates against the live registry; tests that decorate without first
-# importing these packages would hit an empty-registry error.
-import a2kit.packages.http  # noqa: F401, E402
-import a2kit.packages.mcp  # noqa: F401, E402
+# Per `bootstrap-surfaces-explicit` (2026-05-26), surfaces are no longer
+# self-registered as import side effects. Compose the default surface set
+# (mcp + api) once at conftest import so every test sees a populated
+# registry. Tests that exercise `runtime.build(app)` directly inherit the
+# bound registry via the deprecation-shim proxy; tests that exercise
+# `runtime.build(app, surfaces=registry)` pass it explicitly.
+import a2kit as _a2kit  # noqa: E402
+
+_a2kit.compose_default_surfaces()
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

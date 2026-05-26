@@ -24,18 +24,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from a2kit.packages.dispatch import SURFACE_REGISTRY
 from a2kit.packages.http.api import ApiSurface
 
 if TYPE_CHECKING:
     from a2kit.packages.http.build import build_http_app
 
 
-# Self-register the HTTP Surface at front-door import. Guard with a
-# membership check so re-imports in the same interpreter remain
-# idempotent (the registry rejects duplicates by `ValueError`).
-if "api" not in SURFACE_REGISTRY:
-    SURFACE_REGISTRY.register_surface(ApiSurface())
+# NOTE: Surface registration is no longer performed at import time. Per
+# `bootstrap-surfaces-explicit`, surfaces are composed explicitly at
+# `runtime.build()` time from its `surfaces=` tuple (defaulting to the
+# bundled `McpSurface` + `ApiSurface` pair). Importing this package has
+# zero side effects on any registry.
 
 
 def __getattr__(name: str) -> Any:

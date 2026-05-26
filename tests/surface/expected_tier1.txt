@@ -7,6 +7,7 @@ Router
 TYPE_CHECKING
 ToolContext
 annotations
+compose_default_surfaces
 list_
 read
 run

@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Breaking (internal API) — Surfaces are passive; composition is explicit
+
+Per `bootstrap-surfaces-explicit` (2026-05-26):
+
+- Importing `a2kit.packages.mcp` / `a2kit.packages.http` no longer
+  mutates any module-level registry. The self-registration blocks at
+  `mcp/__init__.py:15-16` and `http/__init__.py:37-38` are deleted.
+- `a2kit.compose_default_surfaces()` is the facade entry that composes
+  the bundled `McpSurface` + `ApiSurface` pair and binds them as the
+  active registry. `a2kit.run(app)` calls it automatically.
+- `runtime.build(app, surfaces=registry)` accepts an explicit
+  `SurfaceRegistry`. When omitted, validation is skipped (the legacy
+  decoration-time validation no longer covers it).
+- `expose=` surface-name validation moved from decoration time to
+  build time. The decorator captures `expose=` unchanged; build walks
+  every descriptor and raises `TypeError` listing the composed
+  surfaces when an unknown name is seen.
+- `SURFACE_REGISTRY` is a deprecation-shim proxy that routes through
+  the active registry. `SURFACE_REGISTRY.register_surface(...)` emits
+  `DeprecationWarning` pointing at `runtime.build(surfaces=...)`.
+- New lint-clean public symbol `a2kit.compose_default_surfaces` (tier 1).
+- New capability spec `serve-topology` ADDED; `surface-protocol`
+  MODIFIED with the "surfaces are passive" requirement.
+
+Consumer-visible test surface: if you test decoration-time `TypeError`
+for unknown surfaces, switch to asserting at `runtime.build(app,
+surfaces=...)` instead.
+
 ### Breaking (internal API) — Principal bridge consolidated
 
 The per-request Principal contextvar moved out of L0
