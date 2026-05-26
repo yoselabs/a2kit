@@ -144,7 +144,7 @@ def _needs_json_decode(ann: Any) -> bool:
     return inner not in (bool, int, float, str)
 
 
-def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router | None) -> Callable[..., None]:
+def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router | None) -> tuple[Callable[..., None], str]:
     """Synthesize a Typer-compatible callback for tool ``fn``.
 
     The returned callable carries a ``__signature__`` and ``__annotations__``
@@ -330,12 +330,11 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
     raises_block = _render_raises_help(desc.raises)
     if raises_block:
         long_help = (long_help or "") + "\n" + raises_block
-    callback.__signature__ = inspect.Signature(sig_params)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    callback.__signature__ = inspect.Signature(sig_params)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute] -- inspect protocol override (Typer reads this)
     callback.__annotations__ = annotations
     callback.__doc__ = long_help or None
     callback.__name__ = meta.tool_name if meta is not None else getattr(fn, "__name__", "tool")
-    callback._a2kit_short_help = short_help  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]  # noqa: SLF001
-    return callback
+    return callback, short_help
 
 
 def _register_router(typer_app: Any, router: Router, app: AppRuntime) -> None:
@@ -360,9 +359,9 @@ def _register_router(typer_app: Any, router: Router, app: AppRuntime) -> None:
             # All three tiers ("hidden", "cli", "all") mount on CLI.
             # Only "hidden" omits from --help listing.
             hidden = visibility == "hidden"
-        cb = _build_tool_callback(desc, app, router=router)
+        cb, short_help = _build_tool_callback(desc, app, router=router)
         tool_name = desc.name
-        short = getattr(cb, "_a2kit_short_help", "") or None
+        short = short_help or None
         sub.command(name=tool_name, help=cb.__doc__, short_help=short, hidden=hidden)(cb)
     typer_app.add_typer(sub)
 

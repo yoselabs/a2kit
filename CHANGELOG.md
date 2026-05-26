@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Refactor (internal) — CLI builder drops `_a2kit_short_help` callback side-channel
+
+- `_build_tool_callback` now returns `(callback, short_help)` instead
+  of stashing the short-help string on `callback._a2kit_short_help`.
+  Same shape as the `_render_state` side-channel removal in
+  `error-envelope-side-channel`: producer + sole consumer are in the
+  same module, so a tuple return is the natural carrier. Drops one
+  `ty: ignore[unresolved-attribute]` + one `noqa: SLF001`. The
+  remaining `callback.__signature__` assignment is the standard
+  `inspect` protocol hook Typer reads, not a side-channel.
+
 ### Feature — `A2K-SURFACE-REGISTRY` lint rule + MANIFESTs on built-in surfaces
 
 - New static-lint rule `A2K-SURFACE-REGISTRY`: a class subclassing
