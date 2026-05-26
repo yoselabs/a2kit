@@ -221,4 +221,14 @@ class ApiSurface(DecoratorSurface[ApiRoute]):
         return
 
 
-__all__ = ["ApiRoute", "ApiSurface", "HttpMethod"]
+def _api_surface_factory(_context: object) -> ApiSurface:
+    """Manifest factory for the built-in API surface. Always available."""
+    return ApiSurface()
+
+
+from a2kit.packages._plugin import PluginManifest  # noqa: E402 -- below class def
+
+MANIFEST = PluginManifest(name="api", protocol=ApiSurface, factory=_api_surface_factory)
+
+
+__all__ = ["MANIFEST", "ApiRoute", "ApiSurface", "HttpMethod"]

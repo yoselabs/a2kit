@@ -47,6 +47,7 @@ A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"
 A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
 A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
 A2K_SURFACE_EXPLICIT = "A2K-SURFACE-EXPLICIT"
+A2K_SURFACE_REGISTRY = "A2K-SURFACE-REGISTRY"  # Surface subclass without MANIFEST
 A2K_METADATA_PRIVATE = "A2K-METADATA-PRIVATE"
 A2K_SUBSTRATE_DEP = "A2K-SUBSTRATE-DEP"
 
@@ -73,6 +74,7 @@ ALL_RULES = (
     A2K_EXTRA_NAMESPACE,
     A2K_TEST_MIRROR,
     A2K_SURFACE_EXPLICIT,
+    A2K_SURFACE_REGISTRY,
     A2K_METADATA_PRIVATE,
     A2K_SUBSTRATE_DEP,
 )
@@ -167,6 +169,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.shape import rule_a2k002, rule_a2k003, rule_a2k011, rule_a2k013
     from a2kit.packages.lint.rules.substrate_dep import rule_substrate_dep
     from a2kit.packages.lint.rules.surface import rule_surface_explicit
+    from a2kit.packages.lint.rules.surface_registry import rule_surface_registry
 
     return (
         (A2K002, rule_a2k002),
@@ -188,6 +191,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_EXTRA_NAMESPACE, rule_extra_namespace),
         (A2K_TEST_MIRROR, rule_test_mirror),
         (A2K_SURFACE_EXPLICIT, rule_surface_explicit),
+        (A2K_SURFACE_REGISTRY, rule_surface_registry),
         (A2K_METADATA_PRIVATE, rule_metadata_private),
         (A2K_SUBSTRATE_DEP, rule_substrate_dep),
     )

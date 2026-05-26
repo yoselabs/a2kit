@@ -160,4 +160,14 @@ class McpSurface(DecoratorSurface[McpRegistration]):
         return
 
 
-__all__ = ["McpFeatureKind", "McpRegistration", "McpSurface"]
+def _mcp_surface_factory(_context: object) -> McpSurface:
+    """Manifest factory for the built-in MCP surface. Always available."""
+    return McpSurface()
+
+
+from a2kit.packages._plugin import PluginManifest  # noqa: E402 -- below class def
+
+MANIFEST = PluginManifest(name="mcp", protocol=McpSurface, factory=_mcp_surface_factory)
+
+
+__all__ = ["MANIFEST", "McpFeatureKind", "McpRegistration", "McpSurface"]

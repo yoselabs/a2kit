@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Feature — `A2K-SURFACE-REGISTRY` lint rule + MANIFESTs on built-in surfaces
+
+- New static-lint rule `A2K-SURFACE-REGISTRY`: a class subclassing
+  `DecoratorSurface[...]` MUST be accompanied by a module-level
+  `MANIFEST = PluginManifest(...)` constant. Without it, the surface
+  is invisible to `load_surface()` discovery.
+- `McpSurface` and `ApiSurface` each ship a `MANIFEST` constant
+  alongside the class — the built-in surfaces now satisfy the same
+  discovery contract `adopt-plugin-manifests` introduced for auth
+  providers.
+
 ### Breaking (internal) — Deprecation shims deleted; context↔ldd cycle broken
 
 Per the 2026-05-27 cleanup sweep:
