@@ -50,6 +50,7 @@ A2K_SURFACE_EXPLICIT = "A2K-SURFACE-EXPLICIT"
 A2K_SURFACE_REGISTRY = "A2K-SURFACE-REGISTRY"  # Surface subclass without MANIFEST
 A2K_METADATA_PRIVATE = "A2K-METADATA-PRIVATE"
 A2K_SUBSTRATE_DEP = "A2K-SUBSTRATE-DEP"
+A2K_NO_DICT_STR_ANY = "A2K-NO-DICT-STR-ANY"  # dict[str, Any] on internal dataclass field
 
 ALL_RULES = (
     A2K002,
@@ -77,6 +78,7 @@ ALL_RULES = (
     A2K_SURFACE_REGISTRY,
     A2K_METADATA_PRIVATE,
     A2K_SUBSTRATE_DEP,
+    A2K_NO_DICT_STR_ANY,
 )
 
 BUILTIN_CAPS = frozenset({"read", "write", "destructive", "expensive", "pii", "external"})
@@ -114,7 +116,12 @@ def parse_noqa(source: str) -> dict[int, set[str]]:
             continue
         rest = line[idx + len("# noqa") :].lstrip()
         if rest.startswith(":"):
-            codes = {c.strip() for c in rest[1:].split(",") if c.strip()}
+            payload = rest[1:]
+            # Strip optional `-- reason` suffix (e.g. `# noqa: A2K001 -- why`).
+            reason_idx = payload.find(" -- ")
+            if reason_idx != -1:
+                payload = payload[:reason_idx]
+            codes = {c.strip() for c in payload.split(",") if c.strip()}
             out[i] = codes
         else:
             out[i] = {"*"}
@@ -165,6 +172,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
     from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
     from a2kit.packages.lint.rules.metadata_private import rule_metadata_private
     from a2kit.packages.lint.rules.mirror import rule_test_mirror
+    from a2kit.packages.lint.rules.no_dict_str_any import rule_no_dict_str_any
     from a2kit.packages.lint.rules.purity import rule_extra_namespace
     from a2kit.packages.lint.rules.shape import rule_a2k002, rule_a2k003, rule_a2k011, rule_a2k013
     from a2kit.packages.lint.rules.substrate_dep import rule_substrate_dep
@@ -194,6 +202,7 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_SURFACE_REGISTRY, rule_surface_registry),
         (A2K_METADATA_PRIVATE, rule_metadata_private),
         (A2K_SUBSTRATE_DEP, rule_substrate_dep),
+        (A2K_NO_DICT_STR_ANY, rule_no_dict_str_any),
     )
 
 
@@ -271,6 +280,7 @@ __all__ = [
     "A2K_LAYER",
     "A2K_LDD_REPORT_TYPE",
     "A2K_LOCAL_RETURN_MODEL",
+    "A2K_NO_DICT_STR_ANY",
     "A2K_PKG_FRONT_DOOR",
     "A2K_PKG_INIT_IMPL",
     "A2K_PKG_INIT_IMPORT",

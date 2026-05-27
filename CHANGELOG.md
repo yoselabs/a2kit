@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Feature — `A2K-NO-DICT-STR-ANY` lint rule
+
+- New static-lint rule flags `dict[str, Any]` (and `Dict[str, Any]`)
+  annotations on fields of `@dataclass` / `@dataclass(frozen=True)` /
+  `pydantic.BaseModel` subclasses under `src/`. Goal is *deliberate*
+  `Any` use, not eradication: legitimate sites (wire envelopes,
+  third-party kwarg pass-throughs) acknowledge the looseness with
+  `# noqa: A2K-NO-DICT-STR-ANY -- <why>`. Out of scope: function
+  parameter annotations and `Mapping[str, Any]`.
+- `parse_noqa` gained a `-- reason` suffix grammar
+  (`# noqa: A2K001 -- why`). The reason after ` -- ` is ignored for
+  code matching but documents intent inline.
+
 ### Refactor (internal) — CLI builder drops `_a2kit_short_help` callback side-channel
 
 - `_build_tool_callback` now returns `(callback, short_help)` instead

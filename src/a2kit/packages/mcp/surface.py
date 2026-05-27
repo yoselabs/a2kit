@@ -49,7 +49,7 @@ class McpRegistration:
 
     kind: McpFeatureKind
     fn: Callable[..., Any]
-    fastmcp_kwargs: dict[str, Any]
+    fastmcp_kwargs: dict[str, Any]  # noqa: A2K-NO-DICT-STR-ANY -- forwarded verbatim to FastMCP; shape owned by upstream
     authorize: Callable[..., Any] | None = None
 
 

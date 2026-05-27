@@ -51,7 +51,7 @@ class ApiRoute:
     method: HttpMethod
     path: str
     fn: Callable[..., Any]
-    fastapi_kwargs: dict[str, Any]
+    fastapi_kwargs: dict[str, Any]  # noqa: A2K-NO-DICT-STR-ANY -- forwarded verbatim to FastAPI.add_api_route; shape owned by upstream
     authorize: Callable[..., Any] | None = None
 
 

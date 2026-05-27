@@ -26,7 +26,7 @@ class RenderedError:
     """Per-call rendered output for an in-flight ``AppError``."""
 
     prose: str
-    envelope: dict[str, Any]
+    envelope: dict[str, Any]  # noqa: A2K-NO-DICT-STR-ANY -- JSON error envelope is wire-format free-form by design
 
 
 # Per-call slot. The transport adapter opens the slot before invoking

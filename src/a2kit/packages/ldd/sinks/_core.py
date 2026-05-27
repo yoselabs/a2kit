@@ -28,7 +28,7 @@ class LddEmission:
 
     kind: Literal["event", "report", "log"]
     name: str
-    payload: dict[str, Any]
+    payload: dict[str, Any]  # noqa: A2K-NO-DICT-STR-ANY -- structured log payload is free-form by design (per-emission shape varies)
     elapsed_ms: int
     tool_name: str | None
     ctx: Any
