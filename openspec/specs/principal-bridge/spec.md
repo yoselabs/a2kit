@@ -8,23 +8,34 @@ pipeline. **Subsumed** by the unified
 `generalise-context-bridges`, 2026-05-27). All Principal flow now
 travels through the shared `a2kit.packages.context.request_scope`
 module — there is no dedicated `_principal_bridge` module.
-
 ## Requirements
-
 ### Requirement: Principal is published via `request_scope.publish(p)`
 
-Substrate authentication boundary code (`packages/auth/api_key`,
-`packages/mcp/principal_middleware`, `packages/http/build`) SHALL
-publish the request `Principal` via
-`a2kit.packages.context.request_scope.publish(p)` and SHALL reset
-via `request_scope.reset(token)` in a `finally` block.
+Substrate authentication boundary code (`packages/auth/api_key`, `packages/mcp/principal_middleware`, **and `packages/http/_principal_publish`**) SHALL publish the request `Principal` via `a2kit.packages.context.request_scope.publish(p)` and SHALL reset via `request_scope.reset(token)` in a `finally` block.
 
-#### Scenario: Middleware publishes and resets
+The HTTP path's Principal-publish seam SHALL live in a dedicated `packages/http/_principal_publish.py` module that runs after the auth-middleware stack. It SHALL read whatever the auth path produced (FastAPI Security guard return value, request state, or middleware-attached attribute) and publish through the single `request_scope.publish` call. The publish/reset pair SHALL bracket the downstream chain in a `try`/`finally`.
+
+The previous behaviour of scraping the Principal from per-call kwargs inside `_apply_authorize_gate` SHALL be removed; `_apply_authorize_gate` itself SHALL be deleted.
+
+#### Scenario: HTTP middleware publishes and resets
+
+- **GIVEN** an HTTP request whose auth path resolves a `Principal`
+- **WHEN** the new `_principal_publish` runs
+- **THEN** `request_scope.publish(p)` is called before the downstream chain
+- **AND** `request_scope.reset(token)` is called in a `finally` block
+- **AND** after the request completes, `request_scope.try_get(Principal)` returns absent for subsequent unrelated requests
+
+#### Scenario: MCP middleware publishes and resets (unchanged)
 
 - **GIVEN** a substrate middleware extracts a `Principal` from the request
 - **WHEN** the middleware calls `request_scope.publish(p)` and then invokes the downstream chain
 - **THEN** `request_scope.get(Principal)` inside the downstream resolves to `p`
 - **AND** after `request_scope.reset(token)` runs in the middleware's `finally` block, the lookup falls back to absent for subsequent unrelated requests
+
+#### Scenario: `_apply_authorize_gate` is absent
+
+- **WHEN** `grep -rn "_apply_authorize_gate\b" src/` runs
+- **THEN** the output is empty
 
 ### Requirement: Dispatch stages read Principal via `request_scope`
 
@@ -39,3 +50,4 @@ per-type Principal reader.
 - **WHEN** `DispatchHookStage._wrapped` opens a child container
 - **THEN** the stage passes `framework_seeds=request_scope.all_seeds()` to `call_scope`
 - **AND** the tool body's `principal: Principal` parameter resolves to the published value
+

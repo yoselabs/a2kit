@@ -2,16 +2,16 @@
 
 ### Requirement: Principal is published via `request_scope.publish(p)`
 
-Substrate authentication boundary code (`packages/auth/api_key`, `packages/mcp/principal_middleware`, **and `packages/http/_principal_middleware`**) SHALL publish the request `Principal` via `a2kit.packages.context.request_scope.publish(p)` and SHALL reset via `request_scope.reset(token)` in a `finally` block.
+Substrate authentication boundary code (`packages/auth/api_key`, `packages/mcp/principal_middleware`, **and `packages/http/_principal_publish`**) SHALL publish the request `Principal` via `a2kit.packages.context.request_scope.publish(p)` and SHALL reset via `request_scope.reset(token)` in a `finally` block.
 
-The HTTP path's Principal-publish seam SHALL live in a dedicated `packages/http/_principal_middleware.py` module that runs after the auth-middleware stack. It SHALL read whatever the auth path produced (FastAPI Security guard return value, request state, or middleware-attached attribute) and publish through the single `request_scope.publish` call. The publish/reset pair SHALL bracket the downstream chain in a `try`/`finally`.
+The HTTP path's Principal-publish seam SHALL live in a dedicated `packages/http/_principal_publish.py` module that runs after the auth-middleware stack. It SHALL read whatever the auth path produced (FastAPI Security guard return value, request state, or middleware-attached attribute) and publish through the single `request_scope.publish` call. The publish/reset pair SHALL bracket the downstream chain in a `try`/`finally`.
 
 The previous behaviour of scraping the Principal from per-call kwargs inside `_apply_authorize_gate` SHALL be removed; `_apply_authorize_gate` itself SHALL be deleted.
 
 #### Scenario: HTTP middleware publishes and resets
 
 - **GIVEN** an HTTP request whose auth path resolves a `Principal`
-- **WHEN** the new `_principal_middleware` runs
+- **WHEN** the new `_principal_publish` runs
 - **THEN** `request_scope.publish(p)` is called before the downstream chain
 - **AND** `request_scope.reset(token)` is called in a `finally` block
 - **AND** after the request completes, `request_scope.try_get(Principal)` returns absent for subsequent unrelated requests

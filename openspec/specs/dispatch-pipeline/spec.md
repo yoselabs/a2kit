@@ -23,9 +23,9 @@ ldd-state with ctx synthesis, timeout, dispatch-hook, router-lazy-enter
 
 ### Requirement: Both transports fold the same dispatch pipeline
 
-The CLI adapter and the MCP adapter MUST each build their per-tool
-dispatch chain by folding the single shared `DISPATCH_PIPELINE`. Neither
-adapter may carry its own copy of a transport-neutral dispatch concern.
+The CLI adapter, the MCP adapter, **and the HTTP adapter** MUST each build their per-tool dispatch chain by folding the single shared `DISPATCH_PIPELINE`. None of the adapters may carry its own copy of a transport-neutral dispatch concern.
+
+The HTTP adapter SHALL fold the pipeline inside `packages/http/build.py:build_http_app` per projection tool, immediately after `install_substrate_signature` produces the substrate-shaped wrapper. The pipeline SHALL run inside the per-request `Container.call_scope` context so `AuthorizeGateStage` resolves its dependencies through the same DI path as on CLI and MCP.
 
 #### Scenario: MCP adapter folds the shared pipeline
 
@@ -39,11 +39,19 @@ adapter may carry its own copy of a transport-neutral dispatch concern.
 - **THEN** it folds `DISPATCH_PIPELINE` and appends only the CLI
   error-render stage
 
+#### Scenario: HTTP adapter folds the shared pipeline
+
+- **WHEN** `http/build.py::build_http_app` installs a projection tool
+- **THEN** the per-tool wrapper folds `DISPATCH_PIPELINE` and appends only the HTTP error-render stage
+- **AND** the HTTP wrapper contains no per-route authorize-gate wrapper of its own
+- **AND** `AuthorizeGateStage` runs from the folded pipeline on every HTTP projection-tool call
+
 #### Scenario: no duplicated dispatch concern remains
 
-- **WHEN** `packages/cli` and `packages/mcp` are inspected
-- **THEN** neither defines a timeout, ldd-state, enricher,
-  dispatch-hook, or router-lazy-enter wrapper of its own
+- **WHEN** `packages/cli`, `packages/mcp`, and `packages/http` are inspected
+- **THEN** none defines a timeout, ldd-state, enricher,
+  dispatch-hook, router-lazy-enter, or authorize-gate wrapper of its own
+- **AND** `_apply_authorize_gate` is absent from `packages/http/build.py`
 
 ### Requirement: The dispatch pipeline is a folded sequence of typed stages
 
@@ -97,7 +105,6 @@ adapter — `ToolError(json)` for MCP, an exit-code mapping for the CLI.
 - **THEN** the MCP path yields a `ToolError` JSON envelope and the CLI
   path yields the mapped non-zero exit code, both from the one neutral
   capture stage
-
 
 ### Requirement: `AuthorizeGateStage` is part of `DISPATCH_PIPELINE`
 
@@ -156,3 +163,4 @@ The rename clarifies the tier split: `framework_seeds` is for framework-tier pub
 - **WHEN** the call runs
 - **THEN** Python raises `TypeError: got an unexpected keyword argument 'scoped_seeds'`
 - **AND** there is no remaining alias
+
