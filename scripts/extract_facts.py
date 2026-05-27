@@ -61,9 +61,13 @@ import ast
 import copy
 import hashlib
 import json
+import re
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -76,10 +80,15 @@ NOQA_PREFIX = "# noqa"
 NOQA_REASON_SEP = " -- "
 REGO_RULE_PREFIX = "REGO-"
 
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_UPPER_BOUND_RE = re.compile(r"(<=|<|~=)")
+_REQ_NAME_RE = re.compile(r"^[A-Za-z0-9_.\-]+")
+
+
 SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "required": ["functions", "modules", "suppressions"],
+    "required": ["functions", "modules", "suppressions", "workflows", "pyproject"],
     "properties": {
         "functions": {
             "type": "array",
@@ -134,6 +143,53 @@ SCHEMA: dict[str, Any] = {
                     "rule_id": {"type": "string"},
                     "reason": {"type": "string"},
                 },
+            },
+        },
+        "workflows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["file", "name", "permissions", "on", "jobs"],
+                "properties": {
+                    "file": {"type": "string"},
+                    "name": {"type": ["string", "null"]},
+                    "permissions": {"type": ["object", "string", "null"]},
+                    "on": {"type": ["array", "object", "string"]},
+                    "jobs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["name", "permissions", "steps"],
+                            "properties": {
+                                "name": {"type": "string"},
+                                "permissions": {"type": ["object", "string", "null"]},
+                                "steps": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": ["uses", "uses_ref", "has_pinned_sha", "vendor", "with_keys"],
+                                        "properties": {
+                                            "uses": {"type": ["string", "null"]},
+                                            "uses_ref": {"type": ["string", "null"]},
+                                            "has_pinned_sha": {"type": "boolean"},
+                                            "vendor": {"type": ["string", "null"]},
+                                            "with_keys": {"type": "array", "items": {"type": "string"}},
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "pyproject": {
+            "type": "object",
+            "required": ["dependencies", "optional_dependencies", "build_system_requires"],
+            "properties": {
+                "dependencies": {"type": "array"},
+                "optional_dependencies": {"type": "object"},
+                "build_system_requires": {"type": "array"},
             },
         },
     },
@@ -331,6 +387,117 @@ def extract_suppressions(source: str, filepath: str) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
+# Workflow facts (.github/workflows/*.yml)
+# --------------------------------------------------------------------------- #
+
+
+def _step_facts(step: dict[str, Any]) -> dict[str, Any]:
+    uses = step.get("uses")
+    if not isinstance(uses, str):
+        return {
+            "uses": None,
+            "uses_ref": None,
+            "has_pinned_sha": False,
+            "vendor": None,
+            "with_keys": sorted((step.get("with") or {}).keys()) if isinstance(step.get("with"), dict) else [],
+        }
+    name, _, ref = uses.partition("@")
+    vendor, _, _rest = name.partition("/")
+    ref = ref or ""
+    return {
+        "uses": uses,
+        "uses_ref": ref or None,
+        "has_pinned_sha": bool(_SHA_RE.match(ref)),
+        "vendor": vendor or None,
+        "with_keys": sorted((step.get("with") or {}).keys()) if isinstance(step.get("with"), dict) else [],
+    }
+
+
+def _job_facts(job_name: str, job: dict[str, Any]) -> dict[str, Any]:
+    steps_raw = job.get("steps") or []
+    steps = [_step_facts(s) for s in steps_raw if isinstance(s, dict)]
+    permissions = job.get("permissions")
+    return {"name": job_name, "permissions": permissions, "steps": steps}
+
+
+def _workflow_facts(path: Path, doc: dict[str, Any]) -> dict[str, Any]:
+    jobs_raw = doc.get("jobs") or {}
+    jobs = [_job_facts(str(name), job) for name, job in sorted(jobs_raw.items()) if isinstance(job, dict)]
+    return {
+        "file": str(path),
+        "name": doc.get("name") if isinstance(doc.get("name"), str) else None,
+        "permissions": doc.get("permissions"),
+        "on": doc.get("on") if doc.get("on") is not None else [],
+        "jobs": jobs,
+    }
+
+
+def extract_workflows(repo_root: Path) -> list[dict[str, Any]]:
+    wf_dir = repo_root / ".github" / "workflows"
+    if not wf_dir.is_dir():
+        return []
+    out: list[dict[str, Any]] = []
+    for path in sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml")):
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        out.append(_workflow_facts(path.relative_to(repo_root), doc))
+    out.sort(key=lambda d: d["file"])
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# pyproject facts
+# --------------------------------------------------------------------------- #
+
+
+def _parse_requirement(spec: str) -> dict[str, Any]:
+    """Parse a PEP 508 requirement (best-effort, name + raw spec + upper-bound flag).
+
+    Full PEP 508 parsing would require `packaging`; we extract just enough to
+    answer "does this carry an upper bound?". Markers / extras / URLs are
+    preserved in the raw `spec` field for human reading but not interpreted.
+    """
+    raw = spec.strip()
+    match = _REQ_NAME_RE.match(raw)
+    name = match.group(0) if match else raw
+    rest = raw[len(name) :]
+    # Strip extras like `[test]` from the version-spec scan
+    version_part = rest
+    if version_part.startswith("["):
+        end = version_part.find("]")
+        if end != -1:
+            version_part = version_part[end + 1 :]
+    # Strip env-markers (`; python_version >= "3.11"`); only the dep-spec carries upper bounds
+    if ";" in version_part:
+        version_part = version_part.split(";", 1)[0]
+    has_upper = bool(_UPPER_BOUND_RE.search(version_part))
+    return {"name": name, "spec": raw, "has_upper_bound": has_upper}
+
+
+def extract_pyproject(repo_root: Path) -> dict[str, Any]:
+    path = repo_root / "pyproject.toml"
+    empty = {"dependencies": [], "optional_dependencies": {}, "build_system_requires": []}
+    if not path.is_file():
+        return empty
+    try:
+        doc = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return empty
+    project = doc.get("project") or {}
+    deps = [_parse_requirement(s) for s in (project.get("dependencies") or []) if isinstance(s, str)]
+    opt: dict[str, list[dict[str, Any]]] = {}
+    for group, specs in (project.get("optional-dependencies") or {}).items():
+        if isinstance(specs, list):
+            opt[group] = [_parse_requirement(s) for s in specs if isinstance(s, str)]
+    bsr = [_parse_requirement(s) for s in ((doc.get("build-system") or {}).get("requires") or []) if isinstance(s, str)]
+    return {"dependencies": deps, "optional_dependencies": opt, "build_system_requires": bsr}
+
+
+# --------------------------------------------------------------------------- #
 # Walk + entrypoint
 # --------------------------------------------------------------------------- #
 
@@ -345,7 +512,7 @@ def walk_paths(paths: list[Path]) -> list[Path]:
     return out
 
 
-def extract(paths: list[Path]) -> dict[str, Any]:
+def extract(paths: list[Path], repo_root: Path | None = None) -> dict[str, Any]:
     files = walk_paths(paths)
     functions: list[dict[str, Any]] = []
     modules: list[dict[str, Any]] = []
@@ -373,7 +540,17 @@ def extract(paths: list[Path]) -> dict[str, Any]:
     modules.sort(key=lambda d: d["file"])
     suppressions.sort(key=lambda d: (d["file"], d["line"], d["rule_id"]))
 
-    return {"functions": functions, "modules": modules, "suppressions": suppressions}
+    root = repo_root if repo_root is not None else Path.cwd()
+    workflows = extract_workflows(root)
+    pyproject = extract_pyproject(root)
+
+    return {
+        "functions": functions,
+        "modules": modules,
+        "suppressions": suppressions,
+        "workflows": workflows,
+        "pyproject": pyproject,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -398,6 +575,11 @@ def main(argv: list[str] | None = None) -> int:
         default="-",
         help="Output path (default: - for stdout).",
     )
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="Repo root for workflow + pyproject collections (default: cwd).",
+    )
     args = parser.parse_args(argv)
 
     if args.schema:
@@ -406,8 +588,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     paths = [Path(p) for p in args.paths]
+    repo_root = Path(args.repo_root) if args.repo_root else None
     try:
-        facts = extract(paths)
+        facts = extract(paths, repo_root=repo_root)
     except NoqaError as e:
         print(f"extract_facts.py: error: {e}", file=sys.stderr)
         return 2

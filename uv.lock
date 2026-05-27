@@ -84,10 +84,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "a2effect", editable = "packages/a2effect" },
-    { name = "anyio", specifier = ">=4" },
-    { name = "click", specifier = ">=8" },
+    { name = "anyio", specifier = ">=4,<5" },
+    { name = "click", specifier = ">=8,<9" },
     { name = "cryptography", marker = "extra == 'examples-mcp-google-auth'", specifier = ">=42" },
-    { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "fastmcp", specifier = ">=3.2,<4" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.20" },
@@ -96,9 +96,9 @@ requires-dist = [
     { name = "pydantic-monty", marker = "extra == 'code-mode'", specifier = ">=0.0.17" },
     { name = "pydantic-settings", specifier = ">=2.14,<3" },
     { name = "syrupy", marker = "extra == 'testing'", specifier = ">=4" },
-    { name = "tomli-w", specifier = ">=1" },
+    { name = "tomli-w", specifier = ">=1,<2" },
     { name = "typer", specifier = ">=0.25,<1" },
-    { name = "uvicorn", specifier = ">=0.30" },
+    { name = "uvicorn", specifier = ">=0.30,<1" },
     { name = "vcrpy", marker = "extra == 'testing'", specifier = ">=6" },
 ]
 provides-extras = ["testing", "otel", "code-mode", "examples-mcp-google-auth"]

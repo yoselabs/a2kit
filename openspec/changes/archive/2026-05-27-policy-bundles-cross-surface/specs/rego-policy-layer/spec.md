@@ -1,9 +1,5 @@
-# Rego policy layer
+## MODIFIED Requirements
 
-## Purpose
-
-Architectural-invariant enforcement via Open Policy Agent (OPA) Rego policies, fed by a stable AST-fact extractor. Distinct from `a2kit lint static`: this layer polices cross-codebase and cross-surface invariants (not per-file authoring patterns). See ADR 0024, ADR 0026.
-## Requirements
 ### Requirement: `extract_facts.py` emits a stable curated-AST projection
 
 a2kit SHALL provide `scripts/extract_facts.py` that walks `src/**/*.py`, parses each module with the stdlib `ast`, and emits a single JSON document on stdout conforming to the documented schema (printable via `--schema`).
@@ -58,70 +54,6 @@ Extract SHALL be a pure function of the input tree: same tree → same JSON, byt
 - **WHEN** `extract_facts.py` runs
 - **THEN** the pyproject entry has those four deps with `has_upper_bound` values `true, false, false, true` respectively
 
-### Requirement: `body_dup.rego` flags cross-file body duplication, modulo allowlist
-
-`policies/body_dup.rego` SHALL emit a `deny` finding for every pair of functions `(i, j)` such that: `i.file != j.file` AND `i.ast_hash_normalized == j.ast_hash_normalized` AND `i.body_stmt_count >= 3` AND neither name appears in any `policies/allowlist.json` `body_dup` entry.
-
-#### Scenario: R6 (LDD formatter dup) fires before resolution
-
-- **GIVEN** the current `packages/ldd/wire.py:21` and `packages/context/stderr.py:337` (both implementing `_cap_text` / `_format_kv` shape)
-- **WHEN** `body_dup.rego` runs against extracted facts
-- **THEN** a `deny` finding names both locations with rule ID `REGO-BODY-DUP`
-
-#### Scenario: Body-dup respects the 3-statement floor
-
-- **GIVEN** two functions with identical 2-statement bodies in different files
-- **WHEN** `body_dup.rego` runs
-- **THEN** no `deny` is emitted (filtered by `body_stmt_count >= 3`)
-
-#### Scenario: Allowlist drops a known-acceptable convergent pair
-
-- **GIVEN** functions `_foo` in file A and `_foo` in file B with matching hash, AND `policies/allowlist.json` `body_dup` entry `{names: ["_foo"], reason: "intentional parallel impl, see ADR-NNNN"}`
-- **WHEN** `body_dup.rego` runs
-- **THEN** no `deny` is emitted for the pair
-
-### Requirement: `name_collision.rego` flags cross-file private-helper name reuse, modulo allowlist
-
-`policies/name_collision.rego` SHALL emit a `deny` finding for every `_`-prefixed (and not dunder, i.e., not starting with `__`) function name appearing in 2 or more distinct files, unless the name is in `policies/allowlist.json` `name_collision` entries.
-
-#### Scenario: R1 (`_call` duplication) fires before resolution
-
-- **GIVEN** `async def _call` at `packages/dispatch/envelope.py:69` and `packages/dispatch/stages.py:33`
-- **WHEN** `name_collision.rego` runs against extracted facts
-- **THEN** a `deny` finding names both locations with rule ID `REGO-NAME-COLLISION`
-
-#### Scenario: Dunder names are exempt
-
-- **GIVEN** `__getattr__` defined at module scope in 7 different files
-- **WHEN** `name_collision.rego` runs
-- **THEN** no `deny` is emitted (dunder names exempt by rule, not by allowlist)
-
-### Requirement: `noqa -- reason` suppression filters policy findings
-
-Every Rego policy SHALL filter its `deny` set against the `suppressions` fact set before emission. A function carrying `# noqa: <RULE-ID> -- <reason text>` SHALL be excluded from findings of that rule ID. The grammar matches the project convention landed in commit `83819db` (`feat(lint): A2K-NO-DICT-STR-ANY + noqa --reason grammar`): the literal separator is ` -- ` (space-dash-dash-space) followed by free-text reason; no `--reason` keyword, no quotes required. For REGO-* findings, a `# noqa: REGO-*` without a ` -- ` reason suffix SHALL be a hard structural error (stronger than existing A2K-* rules, where reasons are conventional). Rationale: Rego policies enforce architectural invariants; every suppression must be justified.
-
-#### Scenario: noqa with reason suppresses the finding
-
-- **GIVEN** a function carrying `# noqa: REGO-BODY-DUP -- intentional parallel impl, see ADR-NNNN` AND a sibling function with matching `ast_hash_normalized`
-- **WHEN** `body_dup.rego` runs
-- **THEN** no `deny` is emitted for the suppressed function
-
-#### Scenario: REGO noqa without reason is a hard error
-
-- **GIVEN** a function carrying `# noqa: REGO-BODY-DUP` (no ` -- ` reason)
-- **WHEN** `extract_facts.py` runs
-- **THEN** the extractor exits non-zero and names the offending file:line, citing the required grammar
-
-### Requirement: Allowlist entries require a reason
-
-`policies/allowlist.json` SHALL be a JSON object with per-policy sections, each section a list of `{names: [...], reason: "<non-empty>"}` entries. An entry without `reason`, or with empty `reason`, SHALL cause policy load to fail.
-
-#### Scenario: Allowlist without reason fails policy load
-
-- **GIVEN** `policies/allowlist.json` contains an entry `{"names": ["_foo"]}` (no reason)
-- **WHEN** `a2kit lint rego` runs
-- **THEN** the wrapper exits non-zero with a clear error naming the bad entry
-
 ### Requirement: `a2kit lint rego` integrates Rego findings into the lint pipeline
 
 `a2kit lint rego [paths...]` SHALL invoke `extract_facts.py`, pipe the JSON to `opa eval --bundle policies/ --input <facts.json> --format json 'data.a2kit.deny'`, parse findings, and emit them in the same finding shape as `a2kit lint static`. Any `deny` finding SHALL cause exit code 1. The subcommand SHALL be wired into `make lint` after `a2kit lint static` and after `actionlint`.
@@ -144,15 +76,7 @@ Every Rego policy SHALL filter its `deny` set against the `suppressions` fact se
 - **WHEN** `a2kit lint rego` runs
 - **THEN** exit code is 1 and the findings list includes one each of `REGO-BODY-DUP`, `REGO-GHA-PIN-SHA`, and `REGO-PYPROJECT-UPPER-BOUND`
 
-### Requirement: jscpd is removed; body_dup.rego is the regression gate
-
-`.jscpd.json`, `package.json`, `pnpm-lock.yaml`, and any `pnpm install` step from project bootstrap docs SHALL be deleted. Calibration on 2026-05-27 (`STRUCTURE_ISSUES.md`) demonstrated that body_dup.rego at the normalized-hash level catches a strict superset of what jscpd at any tuning catches, with no additional false positives.
-
-#### Scenario: jscpd files are absent post-change
-
-- **WHEN** the change lands
-- **THEN** `.jscpd.json`, `package.json`, `pnpm-lock.yaml` do not exist in the working tree
-- **AND** `rg pnpm` returns no matches in docs or Makefile
+## ADDED Requirements
 
 ### Requirement: `github_actions.rego` flags unpinned third-party action SHAs
 
@@ -239,4 +163,3 @@ The intent: third-party actions execute arbitrary code in CI; pinning to a 40-ch
 - **GIVEN** `dependencies = ["fastmcp"]` AND `policies/data.json` `a2kit.allowlist.pyproject_upper_bound` contains `{name: "fastmcp", reason: "pre-1.0; pin via uv.lock"}`
 - **WHEN** `pyproject.rego` runs
 - **THEN** no `REGO-PYPROJECT-UPPER-BOUND` `deny` is emitted for `fastmcp`
-

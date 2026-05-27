@@ -33,6 +33,17 @@
           "names": ["_is_basemodel"],
           "reason": "back-compat aliases for the canonical `is_basemodel` in packages/formatter/inference.py (R7 resolved). cli/builder.py and codemode/marshal.py import as `_is_basemodel` to preserve call-site readability — the underscore signals 'internal to this module', the implementation is shared"
         }
+      ],
+      "github_actions_vendor": [
+        {"vendor": "actions", "reason": "official GitHub actions; first-party vendor"},
+        {"vendor": "astral-sh", "reason": "uv / ruff vendor; pinned via setup-uv@v3 — pin-sha allowlisted separately if needed"}
+      ],
+      "github_actions_vendor_unpinned": [
+        {"vendor": "actions", "reason": "first-party GitHub actions; mutation risk accepted (vs. solo-project SHA-pin ceremony cost)"},
+        {"vendor": "astral-sh", "reason": "uv vendor; setup-uv@v3 tag is acceptable for solo-repo CI (BACKLOG: revisit if release pipeline materializes)"}
+      ],
+      "pyproject_upper_bound": [
+        {"name": "a2effect", "reason": "workspace member (uv.workspace = packages/*); resolved from the local checkout, not PyPI"}
       ]
     }
   }

@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Tooling — Cross-surface policy bundles (`actionlint` + Rego on workflows + pyproject)
+
+`make lint` now polices GitHub Actions workflow files and
+`pyproject.toml` runtime dependencies, on top of the existing Python
+AST policies (`adopt-rego-policy-layer`, 2026-05-27). Two additions:
+
+- **`actionlint`** adopted as a native binary, version-pinned in
+  Makefile (`ACTIONLINT_VERSION := 1.7.12`), validated by
+  `make actionlint-check`. Wired into `make lint` ahead of the Rego
+  layer (parser/correctness gate, fast-fail).
+- **`policies/github_actions.rego`** — three rules: REGO-GHA-PIN-SHA
+  (third-party `uses:` must be pinned to 40-char SHA),
+  REGO-GHA-PERMISSIONS (workflow must declare top-level
+  `permissions:`), REGO-GHA-VENDOR-ALLOW (vendor must be on
+  `policies/data.json` allowlist).
+- **`policies/pyproject.rego`** — REGO-PYPROJECT-UPPER-BOUND on
+  `[project.dependencies]` (`<X.Y` or `~=X.Y` required;
+  `optional-dependencies` and `[build-system]` exempt).
+
+`scripts/extract_facts.py` grows two top-level collections —
+`workflows` (with pre-computed `has_pinned_sha` + `vendor` per step)
+and `pyproject` (with pre-computed `has_upper_bound` per dep). New
+`--repo-root` flag scopes the YAML/TOML collectors (defaults to cwd).
+
+Repo cleanups landed in the same commit:
+
+- `.github/workflows/ci.yml` gains top-level `permissions: contents: read`.
+- `pyproject.toml` runtime deps `anyio`, `click`, `fastapi`, `tomli-w`,
+  `uvicorn` gain upper bounds.
+
+ADR 0026 records the cross-surface design (`actionlint` stays a binary;
+two policy files split per-surface; allowlists carry required
+`reason`). Cross-ref: `BACKLOG.md` entry `policy-bundles-cross-surface`
+drained.
+
 ### Refactor (internal) — HTTP folds `DISPATCH_PIPELINE` (substrate-pipeline-bridge contract)
 
 The HTTP adapter now folds the transport-neutral `DISPATCH_PIPELINE` per

@@ -8,7 +8,7 @@ from .conftest import extract, write_py
 def test_extract_emits_documented_top_level_keys(tmpsrc):
     write_py(tmpsrc, "foo.py", "def hello():\n    return 1\n")
     facts = extract([tmpsrc])
-    assert set(facts) == {"functions", "modules", "suppressions"}
+    assert set(facts) == {"functions", "modules", "suppressions", "workflows", "pyproject"}
 
 
 def test_function_records_have_required_fields(tmpsrc):

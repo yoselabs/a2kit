@@ -82,6 +82,15 @@ _ALLOWLIST: frozenset[str] = frozenset(
         #     that look like dotted import paths but are not ---
         "a2kit.ldd.sink_failed",  # logger name for the WARN-log on sink failures
         "a2kit.dur_ms",  # OTel span attribute name
+        # --- Rego data-namespace paths (policies/data.json keys, NOT Python
+        #     imports). The `rego-policy-layer` spec quotes them as
+        #     `a2kit.allowlist.<policy>` — they live in OPA's data tree, not
+        #     in the Python package surface. ---
+        "a2kit.allowlist.body_dup",
+        "a2kit.allowlist.name_collision",
+        "a2kit.allowlist.github_actions_vendor",
+        "a2kit.allowlist.github_actions_vendor_unpinned",
+        "a2kit.allowlist.pyproject_upper_bound",
     }
 )
 

@@ -51,7 +51,7 @@ def _check_environment() -> None:
 
 
 def _run_extract(paths: tuple[str, ...], out_path: Path) -> None:
-    cmd = [sys.executable, str(EXTRACT_SCRIPT), *paths, "-o", str(out_path)]
+    cmd = [sys.executable, str(EXTRACT_SCRIPT), "--repo-root", ".", *paths, "-o", str(out_path)]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603 -- args composed from sys.executable + repo-local paths, not user input
     if proc.returncode != 0:
         raise RegoWrapperError(f"extract_facts.py failed (exit {proc.returncode}):\n{proc.stderr}")
