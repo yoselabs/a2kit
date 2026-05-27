@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from a2kit._lazy_module import lazy_attr, lazy_dir
+
 if TYPE_CHECKING:
     from a2kit._context_protocol import ToolContext as ToolContext
     from a2kit.app import App
@@ -41,25 +43,9 @@ _REMOVED_IN_V033: dict[str, str] = {
 }
 
 
-def __getattr__(name: str) -> Any:
-    from importlib import import_module
-
-    mod_target = _LAZY_MODULES.get(name)
-    if mod_target is not None:
-        return import_module(mod_target)
-    target = _LAZY_ATTRS.get(name)
-    if target is None:
-        hint = _REMOVED_IN_V033.get(name)
-        if hint is not None:
-            raise AttributeError(hint)
-        raise AttributeError(f"module 'a2kit' has no attribute {name!r}")
-
-    mod, attr = target
-    return getattr(import_module(mod), attr)
-
-
-def __dir__() -> list[str]:
-    return sorted({*globals(), *_LAZY_ATTRS, *_LAZY_MODULES})
+__getattr__ = lazy_attr(__name__, _LAZY_ATTRS, modules=_LAZY_MODULES, removed=_REMOVED_IN_V033)
+__dir__ = lazy_dir(globals(), _LAZY_ATTRS, _LAZY_MODULES)
+del lazy_attr, lazy_dir
 
 
 def compose_default_surfaces() -> Any:

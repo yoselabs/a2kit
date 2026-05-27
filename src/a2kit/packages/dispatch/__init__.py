@@ -47,6 +47,7 @@ from a2kit.packages.dispatch.substrate import (  # noqa: A2K-PKG-INIT-PURITY
     SplitSignature,
     SubstrateSignatureError,
     _unwrap_annotation,
+    fastapi_dep_markers,
     fastapi_reserved,
     fastmcp_reserved,
     install_substrate_signature,
@@ -80,6 +81,7 @@ __all__ = [
     "_run_authorize_gate",  # noqa: A2K-PKG-INIT-PURITY
     "_unwrap_annotation",  # noqa: A2K-PKG-INIT-PURITY
     "close_render_state",
+    "fastapi_dep_markers",
     "fastapi_reserved",
     "fastmcp_reserved",
     "fold_pipeline",

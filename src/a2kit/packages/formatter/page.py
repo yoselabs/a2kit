@@ -45,15 +45,24 @@ def _item_columns(page: Page) -> list[str]:
     return []
 
 
+def assemble_page_envelope(envelope_no_items: dict[str, Any], rows: list[Any], columns: list[str]) -> str:
+    """Shared envelope serializer: take a page-shaped dict (with ``items`` already
+    excluded), the row list, and the resolved TSV columns; return the wire JSON
+    string with ``items`` replaced by a TSV blob and the ``_items_format``
+    discriminator set.
+    """
+    envelope: dict[str, Any] = dict(envelope_no_items)
+    envelope["items"] = encode_tsv(rows, columns=columns)
+    envelope["_items_format"] = "tsv"
+    return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
+
+
 def encode_page_tsv(page: Page) -> str:
     """Encode a ``Page[T]`` as a JSON envelope with an embedded TSV string for
     ``items`` and a ``_items_format = "tsv"`` discriminator.
     """
-    columns = _item_columns(page)
-    items_tsv = encode_tsv(list(page.items), columns=columns)
-
-    envelope: dict[str, Any] = page.model_dump(mode="json", exclude={"items"})
-    envelope["items"] = items_tsv
-    envelope["_items_format"] = "tsv"
-
-    return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
+    return assemble_page_envelope(
+        page.model_dump(mode="json", exclude={"items"}),
+        list(page.items),
+        _item_columns(page),
+    )

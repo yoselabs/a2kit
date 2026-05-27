@@ -141,6 +141,14 @@ _FASTAPI_RESERVED_SPECS: tuple[tuple[str, str], ...] = (
 
 _FASTMCP_RESERVED_SPECS: tuple[tuple[str, str], ...] = (("fastmcp", "Context"),)
 
+# Substrate-dep marker specs — annotations carrying these classes inside
+# `Annotated[T, marker]` route to the `substrate_dep` bucket. FastMCP has
+# no analog (its marker spec set is empty).
+_FASTAPI_DEP_MARKER_SPECS: tuple[tuple[str, str], ...] = (
+    ("fastapi.params", "Depends"),
+    ("fastapi.params", "Security"),
+)
+
 
 def _reserved_types(specs: tuple[tuple[str, str], ...]) -> frozenset[type]:
     """Resolve ``(module, name)`` specs into a frozenset of live types.
@@ -179,6 +187,16 @@ def fastmcp_reserved() -> frozenset[type]:
     Parallel to :func:`fastapi_reserved` for the FastMCP surface.
     """
     return _reserved_types(_FASTMCP_RESERVED_SPECS)
+
+
+def fastapi_dep_markers() -> frozenset[type]:
+    """Return the FastAPI substrate-dep marker classes (lazy, cold-start-safe).
+
+    The `Depends` / `Security` classes that, when present in
+    `Annotated[T, marker]` metadata, route the parameter to the
+    `substrate_dep` bucket. Empty until `fastapi.params` is imported.
+    """
+    return _reserved_types(_FASTAPI_DEP_MARKER_SPECS)
 
 
 def _force_reserved(specs: tuple[tuple[str, str], ...]) -> frozenset[type]:
@@ -556,12 +574,14 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "_FASTAPI_DEP_MARKER_SPECS",
     "_FASTAPI_RESERVED_SPECS",
     "_FASTMCP_RESERVED_SPECS",
     "SplitSignature",
     "SubstrateSignatureError",
     "_a2kit_scope",
     "_force_reserved",
+    "fastapi_dep_markers",
     "fastapi_reserved",
     "fastmcp_reserved",
     "install_substrate_signature",

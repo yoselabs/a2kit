@@ -28,13 +28,19 @@ if TYPE_CHECKING:
 
 
 #: Permitted attribute names on ``A2KitMeta.extras`` / ``A2KitMetaExtras(...)``.
+#: Mirror of the fields declared on ``a2kit.metadata.A2KitMetaExtras``. When
+#: a field is added to the model, add it here too — the test in
+#: ``tests/test_metadata_extras.py`` (or similar) catches drift.
 _TYPED_EXTRAS_FIELDS = frozenset(
     {
         "report_type",
         "report_schema",
         "router_slug",
-        "surfaces",
+        "visibility",
         "list_view",
+        "timeout_seconds",
+        "expose",
+        "authorize",
     }
 )
 

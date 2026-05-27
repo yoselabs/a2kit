@@ -21,11 +21,10 @@ built, it is assigned here so authors can call
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from a2kit.packages.dispatch import DecoratorSurface
+from a2kit.packages.dispatch import DecoratorSurface, fastmcp_reserved
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -51,20 +50,6 @@ class McpRegistration:
     fn: Callable[..., Any]
     fastmcp_kwargs: dict[str, Any]  # noqa: A2K-NO-DICT-STR-ANY -- forwarded verbatim to FastMCP; shape owned by upstream
     authorize: Callable[..., Any] | None = None
-
-
-def _resolve_mcp_reserved() -> frozenset[type]:
-    """Return the live reserved-types frozenset for the FastMCP surface.
-
-    Mirrors ``packages.dispatch.substrate._FASTMCP_RESERVED_SPECS`` so
-    the two sources stay in lockstep until ``remove-substrate-literal``
-    collapses the dispatch-side copy into the Surface attribute.
-    """
-    mod = sys.modules.get("fastmcp")
-    if mod is None:
-        return frozenset()
-    cls = getattr(mod, "Context", None)
-    return frozenset({cls}) if isinstance(cls, type) else frozenset()
 
 
 class McpSurface(DecoratorSurface[McpRegistration]):
@@ -99,7 +84,7 @@ class McpSurface(DecoratorSurface[McpRegistration]):
     # module load.
     @property
     def reserved_types(self) -> frozenset[type]:  # type: ignore[override]
-        return _resolve_mcp_reserved()
+        return fastmcp_reserved()
 
     def _decorator(self, kind: McpFeatureKind, **fastmcp_kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         if "expose" in fastmcp_kwargs:

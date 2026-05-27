@@ -25,10 +25,7 @@ from a2kit.packages.connections.exceptions import (
 C = TypeVar("C", bound=ConnectionConfig)
 
 
-def _validate_key(key: tuple[str, ...]) -> tuple[str, ...]:
-    from a2kit.packages.connections.config import _validate_key as _vk
-
-    return _vk(key)
+from a2kit.packages.connections._validation import validate_key as _validate_key  # noqa: E402 -- R8: canonical lives in _validation.py
 
 
 class ConnectionStore(Generic[C]):

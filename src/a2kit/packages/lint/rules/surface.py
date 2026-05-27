@@ -18,6 +18,8 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
+from a2kit.packages.lint.rules.detect import is_a2kit_verb_decorator as _is_a2kit_verb_decorator
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -38,25 +40,6 @@ _CREDENTIAL_NAME_SUBSTRINGS: tuple[str, ...] = (
     "issue_token",  # why: token mint
     "revoke_token",  # why: token revoke
 )
-
-_VERB_NAMES = frozenset({"read", "write", "list_"})
-
-
-def _is_a2kit_verb_decorator(dec: ast.expr) -> ast.Call | None:
-    """Return the decorator Call node if it's an ``@a2kit.<verb>(...)`` form, else None."""
-    if not isinstance(dec, ast.Call):
-        return None
-    target = dec.func
-    if (
-        isinstance(target, ast.Attribute)
-        and target.attr in _VERB_NAMES
-        and isinstance(target.value, ast.Name)
-        and target.value.id == "a2kit"
-    ):
-        return dec
-    if isinstance(target, ast.Name) and target.id in _VERB_NAMES:
-        return dec
-    return None
 
 
 def _has_visibility_kwarg(call: ast.Call) -> bool:

@@ -193,21 +193,21 @@ def _register_mcp_surface(server: FastMCP, runtime: Any) -> None:
     surface.fastmcp_server = server
 
 
-def _build_mcp_mount_lifespan(app: Any, user_lifespan: Any | None) -> Any:
-    """Build the MCP-mount ``lifespan(server)`` — transport-scoped only.
+def _build_mcp_lifespan(app: Any, user_lifespan: Any | None, *, own_app_lifecycle: bool) -> Any:
+    """Build the MCP server ``lifespan(server)``.
 
-    Sets ``server._a2kit_app = app`` as a back-reference for middleware
-    and nests any FastMCP-shaped ``user_lifespan(server)``. It does NOT
-    enter ``async with app:``: the App lifecycle is owned by whoever
-    mounts this server — the multiplex parent app
-    (:mod:`a2kit.packages.serve`), or :func:`_build_standalone_lifespan`
-    for the non-multiplexed (stdio) path. Entering the App per-mount
-    would couple shutdowns — the first surface to exit would drain the
-    shared DI container out from under the others.
+    Always installs ``server._a2kit_app = app`` as a back-reference and nests
+    any FastMCP-shaped ``user_lifespan(server)``. When ``own_app_lifecycle``
+    is ``True`` (non-multiplexed / stdio ``serve`` path) the lifespan also
+    enters ``async with app:``. When ``False`` (multiplex parent at
+    :mod:`a2kit.packages.serve` owns the single App lifecycle for the whole
+    process) the App context is NOT entered here — entering per-mount would
+    couple shutdowns and the first surface to exit would drain the shared DI
+    container out from under the others.
     """
 
     @asynccontextmanager
-    async def _lifespan(server: Any) -> Any:
+    async def _mount(server: Any) -> Any:
         server._a2kit_app = app
         if user_lifespan is None:
             yield None
@@ -215,24 +215,15 @@ def _build_mcp_mount_lifespan(app: Any, user_lifespan: Any | None) -> Any:
             async with user_lifespan(server) as user_state:
                 yield user_state
 
-    return _lifespan
-
-
-def _build_standalone_lifespan(app: Any, user_lifespan: Any | None) -> Any:
-    """Build the lifespan for a non-multiplexed MCP server that owns the App.
-
-    Wraps :func:`_build_mcp_mount_lifespan` in a single ``async with
-    app:``. Used for the stdio ``serve`` path, where there is no parent
-    application to own the App lifecycle.
-    """
-    mount_lifespan = _build_mcp_mount_lifespan(app, user_lifespan)
+    if not own_app_lifecycle:
+        return _mount
 
     @asynccontextmanager
-    async def _lifespan(server: Any) -> Any:
-        async with app, mount_lifespan(server) as state:
+    async def _standalone(server: Any) -> Any:
+        async with app, _mount(server) as state:
             yield state
 
-    return _lifespan
+    return _standalone
 
 
 def build_mcp_server(
@@ -287,10 +278,7 @@ def build_mcp_server(
     # multiplex parent passes `own_app_lifecycle=False` and owns the one
     # `async with runtime:` for the whole process; the mount lifespan then
     # carries only transport-scoped setup. See ADR multiplex-serve-topology.
-    if own_app_lifecycle:
-        fastmcp_kwargs["lifespan"] = _build_standalone_lifespan(runtime, user_lifespan)
-    else:
-        fastmcp_kwargs["lifespan"] = _build_mcp_mount_lifespan(runtime, user_lifespan)
+    fastmcp_kwargs["lifespan"] = _build_mcp_lifespan(runtime, user_lifespan, own_app_lifecycle=own_app_lifecycle)
     # `runtime.config.debug` (env `A2KIT_DEBUG=true`) adds a `traceback` field
     # to the wire-error envelope's JSON payload. The envelope itself (see
     # `_wrap_with_error_envelope`) is installed unconditionally and owns the

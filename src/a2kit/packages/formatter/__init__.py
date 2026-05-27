@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from .formats import FormatHint, FormatName
 from .hint import format_response
-from .inference import EncodingPlan, build_encoding_plan, infer_format_hint
+from .inference import EncodingPlan, build_encoding_plan, infer_format_hint, is_basemodel
 from .render import Consumer, Rendered, render, render_execute, render_plain
 from .response import Page, Response
 from .truncation import DEFAULT_MAX_CHARS, TRUNCATION_MARKER, truncate
@@ -28,6 +28,7 @@ __all__ = [
     "build_encoding_plan",
     "format_response",
     "infer_format_hint",
+    "is_basemodel",
     "render",
     "render_execute",
     "render_plain",

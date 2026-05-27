@@ -81,27 +81,7 @@ def _docstring_to_help(fn: Callable[..., Any]) -> tuple[str, str]:
     return short, long_help
 
 
-def _is_basemodel(ann: Any) -> type[BaseModel] | None:
-    """Return the BaseModel subclass if ``ann`` (or its inner Annotated/Optional) is one."""
-    import types
-    from typing import Union, get_args, get_origin
-
-    from pydantic import BaseModel
-
-    if isinstance(ann, type) and issubclass(ann, BaseModel):
-        return ann
-    if hasattr(ann, "__metadata__"):
-        inner = get_args(ann)[0]
-        return _is_basemodel(inner)
-    origin = get_origin(ann)
-    if origin is Union or origin is types.UnionType:
-        for a in get_args(ann):
-            if a is type(None):
-                continue
-            found = _is_basemodel(a)
-            if found is not None:
-                return found
-    return None
+from a2kit.packages.formatter import is_basemodel as _is_basemodel  # noqa: E402 -- R7: front-door import of canonical
 
 
 def _strip_optional(ann: Any) -> Any:

@@ -8,15 +8,16 @@ Round 8 Gotcha 1: `_raw: PrivateAttr` shadow preserves the original placeholder 
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 
 from pydantic import Field, PrivateAttr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from a2kit.packages.connections._validation import (
+    validate_key as _validate_key,
+)
 from a2kit.packages.connections.exceptions import (
-    InvalidConnectionKey,
     KeyArityMismatch,
     KeyFieldMissing,
 )
@@ -25,8 +26,6 @@ from a2kit.packages.connections.tokens import resolve_value
 ENV_CONFIG_HOME = "A2KIT_CONFIG_HOME"
 DEFAULT_CONFIG_SUBDIR = Path(".config") / "a2kit" / "connections"
 
-_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-
 
 class _DefaultKey(NamedTuple):
     name: str
@@ -34,20 +33,6 @@ class _DefaultKey(NamedTuple):
 
 def _is_namedtuple_class(obj: object) -> bool:
     return isinstance(obj, type) and issubclass(obj, tuple) and hasattr(obj, "_fields")
-
-
-def _validate_key_part(part: str) -> str:
-    if not _NAME_RE.match(part):
-        raise InvalidConnectionKey(part)
-    return part
-
-
-def _validate_key(key: tuple[str, ...]) -> tuple[str, ...]:
-    if not key:
-        raise InvalidConnectionKey("")
-    for part in key:
-        _validate_key_part(part)
-    return key
 
 
 def default_config_dir() -> Path:

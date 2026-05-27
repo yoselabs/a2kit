@@ -51,10 +51,14 @@ def test_surface_package_init_has_no_call_expressions(init_path: Path) -> None:
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
             call_sites.append(f"line {node.lineno}: top-level call expression")
         # Assignments that call a function on the RHS (e.g. `X = foo()`)
-        # are subtler; allow constant-only RHS but flag Call RHS.
+        # are subtler; allow constant-only RHS but flag Call RHS — UNLESS the
+        # LHS is the PEP 562 hook protocol (`__getattr__` / `__dir__`), in
+        # which case binding a returned function (e.g. `lazy_attr(...)`) is
+        # semantically equivalent to defining one inline.
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
-            # Allow `__all__ = [...]` and similar literal-list/tuple assigns;
-            # disallow function-call RHS at top level.
+            targets = {t.id for t in node.targets if isinstance(t, ast.Name)}
+            if targets <= {"__getattr__", "__dir__"} and targets:
+                continue
             call_sites.append(f"line {node.lineno}: top-level assignment with call on RHS")
     assert not call_sites, (
         f"{init_path.relative_to(_PACKAGES_DIR.parent.parent.parent)}: surface package has top-level side effects: {call_sites}"

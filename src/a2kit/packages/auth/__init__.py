@@ -17,8 +17,9 @@ each provider's submodule only when its name is requested.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from a2kit._lazy_module import lazy_attr
 from a2kit.packages.auth.registry import AppAuthRegistry
 from a2kit.packages.auth.spec import AuthSpec, AuthTarget
 
@@ -27,21 +28,16 @@ if TYPE_CHECKING:
     from a2kit.packages.auth.testing import make_principal
 
 
-def __getattr__(name: str) -> Any:
-    """PEP 562 lazy loader for the bundled wrappers + test seam."""
-    if name in ("APIKeyAuth", "ApiKey", "build_api_key_middleware"):
-        from a2kit.packages.auth import api_key
+_LAZY_ATTRS: dict[str, tuple[str, str]] = {
+    "APIKeyAuth": ("a2kit.packages.auth.api_key", "APIKeyAuth"),
+    "ApiKey": ("a2kit.packages.auth.api_key", "ApiKey"),
+    "build_api_key_middleware": ("a2kit.packages.auth.api_key", "build_api_key_middleware"),
+    "make_principal": ("a2kit.packages.auth.testing", "make_principal"),
+    "discover_api_key_providers": ("a2kit.packages.auth.discovery", "discover_api_key_providers"),
+}
 
-        return getattr(api_key, name)
-    if name == "make_principal":
-        from a2kit.packages.auth import testing
-
-        return testing.make_principal
-    if name == "discover_api_key_providers":
-        from a2kit.packages.auth import discovery
-
-        return discovery.discover_api_key_providers
-    raise AttributeError(f"module 'a2kit.packages.auth' has no attribute {name!r}")
+__getattr__ = lazy_attr(__name__, _LAZY_ATTRS)
+del lazy_attr
 
 
 __all__ = [

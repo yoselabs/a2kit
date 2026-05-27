@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from a2kit._lazy_module import lazy_attr
 
 if TYPE_CHECKING:
     from a2kit.packages.mcp.server import build_mcp_server
@@ -13,12 +15,12 @@ if TYPE_CHECKING:
 # zero side effects on any registry.
 
 
-def __getattr__(name: str) -> Any:
-    if name == "build_mcp_server":
-        from a2kit.packages.mcp.server import build_mcp_server
+_LAZY_ATTRS: dict[str, tuple[str, str]] = {
+    "build_mcp_server": ("a2kit.packages.mcp.server", "build_mcp_server"),
+}
 
-        return build_mcp_server
-    raise AttributeError(f"module 'a2kit.packages.mcp' has no attribute {name!r}")
+__getattr__ = lazy_attr(__name__, _LAZY_ATTRS)
+del lazy_attr
 
 
 __all__ = ["build_mcp_server"]

@@ -62,6 +62,8 @@ _KERNEL_MODULES = frozenset(
         "_list_helpers",
         "_lifecycle_helpers",
         "_field_introspect",
+        "_ldd_wire",
+        "_lazy_module",
         "config",
     }
 )
@@ -99,6 +101,16 @@ FOUNDATIONAL_CORE_MODULES = frozenset(
     {
         "a2kit.exceptions",
         "a2kit._context_protocol",
+        # LDD wire-format primitives shared by `packages/ldd/wire.py` (the
+        # canonical emitter) and `packages/context/stderr.py` (the CLI
+        # stub). Both at L0; the foundational placement avoids closing
+        # the existing `ldd.ambient → context.request_scope` cycle.
+        "a2kit._ldd_wire",
+        # Reusable PEP 562 lazy-loader helper. Every package front door that
+        # exposes a lazy surface (top-level `a2kit`, `packages/otel`, etc.)
+        # imports `lazy_attr` from here; the helper sits below every layer
+        # so those imports don't read as upward edges.
+        "a2kit._lazy_module",
     }
 )
 

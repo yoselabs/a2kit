@@ -39,8 +39,42 @@ _DUMP_SCALAR_TYPES: tuple[type, ...] = (
 )
 
 
-def _is_basemodel(tp: Any) -> bool:
-    return isinstance(tp, type) and issubclass(tp, BaseModel)
+def is_basemodel(ann: Any) -> type[BaseModel] | None:
+    """Return the BaseModel subclass if ``ann`` (or its inner Annotated/Optional/Union) is one.
+
+    Canonical shape for R7 from the structural audit. Subsumes three
+    previous local copies (this module, cli/builder, codemode/marshal).
+    Truthy-friendly: callers that only want a bool can use
+    ``if is_basemodel(x):``. Callers that want the class itself
+    (e.g. to call ``model_validate`` on it) can use the returned type.
+
+    Unwraps ``Annotated[T, ...]``, ``Optional[T]``, and ``Union[T1, T2, ...]``
+    recursively. Returns ``None`` for plain ``dict``, scalars, or types
+    that aren't BaseModel after unwrapping.
+    """
+    import types as _types
+    from typing import Union, get_args, get_origin
+
+    if isinstance(ann, type) and issubclass(ann, BaseModel):
+        return ann
+    if hasattr(ann, "__metadata__"):
+        inner = get_args(ann)[0]
+        return is_basemodel(inner)
+    origin = get_origin(ann)
+    if origin is Union or origin is _types.UnionType:
+        for a in get_args(ann):
+            if a is type(None):
+                continue
+            found = is_basemodel(a)
+            if found is not None:
+                return found
+    return None
+
+
+# Backward-compat alias used by call sites that only need a truthy check.
+# The canonical name is ``is_basemodel`` (returns type | None). Truthy use
+# is fine: ``if _is_basemodel(x):`` reads the same way it did before.
+_is_basemodel = is_basemodel
 
 
 def _is_dump_scalar(annotation: Any) -> bool:  # noqa: PLR0911

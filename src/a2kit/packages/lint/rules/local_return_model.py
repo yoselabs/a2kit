@@ -15,7 +15,7 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
-from a2kit.packages.lint.rules.ldd import _is_a2kit_verb_decorator
+from a2kit.packages.lint.rules.detect import is_a2kit_tool_decorator as _is_a2kit_verb_decorator
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -23,17 +23,7 @@ if TYPE_CHECKING:
     from a2kit.packages.lint.static import LintMessage
 
 
-def _is_basemodel_base(base: ast.expr) -> bool:
-    """Return True if ``base`` looks like ``BaseModel`` or ``pydantic.BaseModel``."""
-    if isinstance(base, ast.Name):
-        return base.id == "BaseModel"
-    if isinstance(base, ast.Attribute):
-        return base.attr == "BaseModel"
-    # Generic carrier: ``BaseModel, Generic[T]`` is fine; ``Page(BaseModel, Generic[T])``
-    # also fine. Subscripted bases like ``Page[T]`` are not common as a base of a model class.
-    if isinstance(base, ast.Subscript):
-        return _is_basemodel_base(base.value)
-    return False
+from a2kit.packages.lint.rules._ast_helpers import is_basemodel_base as _is_basemodel_base
 
 
 def _is_basemodel_classdef(cls: ast.ClassDef) -> bool:

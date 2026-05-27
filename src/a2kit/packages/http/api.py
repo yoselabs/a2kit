@@ -22,11 +22,10 @@ once it has been built, so authors can call ``add_middleware``,
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from a2kit.packages.dispatch import DecoratorSurface
+from a2kit.packages.dispatch import DecoratorSurface, fastapi_dep_markers, fastapi_reserved
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -55,48 +54,6 @@ class ApiRoute:
     authorize: Callable[..., Any] | None = None
 
 
-def _resolve_api_reserved() -> frozenset[type]:
-    """Live frozenset of FastAPI-reserved types, lazy-resolved by module.
-
-    Mirrors ``packages.dispatch.substrate._FASTAPI_RESERVED_SPECS``. Only
-    contributes types from modules already in ``sys.modules`` — if a
-    substrate dependency is not yet imported, none of its types can
-    appear in any annotation either, so omission is correct and free.
-    """
-    specs = (
-        ("starlette.requests", "Request"),
-        ("starlette.responses", "Response"),
-        ("fastapi", "BackgroundTasks"),
-        ("starlette.websockets", "WebSocket"),
-    )
-    out: set[type] = set()
-    for mod_path, attr in specs:
-        mod = sys.modules.get(mod_path)
-        if mod is None:
-            continue
-        cls = getattr(mod, attr, None)
-        if isinstance(cls, type):
-            out.add(cls)
-    return frozenset(out)
-
-
-def _resolve_api_substrate_dep_markers() -> frozenset[type]:
-    """Live frozenset of FastAPI substrate-dep marker classes.
-
-    Mirrors ``packages.dispatch.substrate``'s marker resolution. Lazy
-    by ``sys.modules`` lookup; empty until fastapi is imported.
-    """
-    mod = sys.modules.get("fastapi.params")
-    if mod is None:
-        return frozenset()
-    out: set[type] = set()
-    for attr in ("Depends", "Security"):
-        cls = getattr(mod, attr, None)
-        if isinstance(cls, type):
-            out.add(cls)
-    return frozenset(out)
-
-
 class ApiSurface(DecoratorSurface[ApiRoute]):
     """The ``@app.api.<method>`` decorator family bound to one ``App``.
 
@@ -121,11 +78,11 @@ class ApiSurface(DecoratorSurface[ApiRoute]):
 
     @property
     def reserved_types(self) -> frozenset[type]:  # type: ignore[override]
-        return _resolve_api_reserved()
+        return fastapi_reserved()
 
     @property
     def substrate_dep_markers(self) -> frozenset[type]:  # type: ignore[override]
-        return _resolve_api_substrate_dep_markers()
+        return fastapi_dep_markers()
 
     @property
     def routes(self) -> tuple[ApiRoute, ...]:

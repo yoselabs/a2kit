@@ -1,9 +1,33 @@
-.PHONY: test lint format check examples example-smoke bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check component-map markdown-lint eval eval-smoke surface-snapshot
+.PHONY: test lint format check examples example-smoke bootstrap typecheck coverage-diff a2kit-lint a2kit-check mutate mutate-fast mutate-show mutate-html mutate-baseline adr-index adr-check component-map markdown-lint eval eval-smoke surface-snapshot opa-check
+
+# OPA (Open Policy Agent) version pin — `make opa-check` enforces this
+# at lint time so the policy bundle is evaluated against a known engine.
+# Bump deliberately; document why in the ADR for the change.
+OPA_VERSION := 1.16.2
 
 bootstrap:
 	uv sync --all-extras --dev
 	uv run pre-commit install --install-hooks
 	uv run pre-commit install --hook-type pre-push
+	@$(MAKE) opa-check || { \
+		echo ""; \
+		echo "OPA $(OPA_VERSION) is required for 'make lint' (rego policies)."; \
+		echo "Install: brew install opa  (macOS)"; \
+		echo "         curl -L -o /usr/local/bin/opa https://openpolicyagent.org/downloads/v$(OPA_VERSION)/opa_linux_amd64_static && chmod +x /usr/local/bin/opa  (Linux)"; \
+		echo ""; \
+		exit 1; \
+	}
+
+# Verify OPA is installed and matches OPA_VERSION. Soft on minor drift?
+# No — pinned exactly so policy semantics are reproducible.
+opa-check:
+	@command -v opa >/dev/null 2>&1 || { echo "ERROR: opa not on PATH"; exit 1; }
+	@INSTALLED=$$(opa version | awk '/^Version:/ {print $$2}'); \
+	if [ "$$INSTALLED" != "$(OPA_VERSION)" ]; then \
+		echo "ERROR: OPA version mismatch — pinned $(OPA_VERSION), installed $$INSTALLED"; \
+		echo "Bump OPA_VERSION in Makefile after intentional upgrade (update ADR + re-validate policies)."; \
+		exit 1; \
+	fi
 
 test:
 	uv run pytest
@@ -21,6 +45,8 @@ lint:
 	uv run ty check tests/
 	uv run ty check examples/
 	uv run a2kit lint static src/ tests/ examples/
+	@$(MAKE) opa-check
+	uv run a2kit lint rego src/
 	uv run pytest tests/test_readme_symbol_drift.py --no-cov -q
 	uv run pytest tests/test_spec_symbol_drift.py --no-cov -q
 

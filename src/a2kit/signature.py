@@ -8,35 +8,23 @@ sentinel for the framework to inspect.
 from __future__ import annotations
 
 import inspect
-import logging
 from typing import TYPE_CHECKING, Any
-from typing import get_type_hints as _stdlib_get_type_hints
+
+# R2 (audit) — canonical resolve_hints lives in packages/di/_hints.py
+# (the DI package is kept self-contained for standalone-shipping; see
+# `di-scoped-lifecycle` design D9). signature.py at L2 imports L0
+# cleanly via the package front door — no cycle, no layer violation.
+from a2kit.packages.di import resolve_hints
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-_log = logging.getLogger(__name__)
-_WARN_ONCE: set[str] = set()
-
-
-def resolve_hints(fn: Callable[..., Any]) -> dict[str, Any]:
-    """Return type hints for ``fn`` or ``{}`` on any resolution failure.
-
-    Single fallback policy for the five sites in core that previously rolled
-    their own try/except. ``id(fn)``-based caching was tried and abandoned —
-    Python recycles function ids across nested test scopes, producing stale
-    cache hits. We rely on ``get_type_hints`` being fast enough at the warm
-    path. On failure, logs a single WARN per fn name (deduped via
-    ``__qualname__``) and returns ``{}``.
-    """
-    try:
-        return _stdlib_get_type_hints(fn)
-    except Exception as exc:
-        name = getattr(fn, "__qualname__", getattr(fn, "__name__", "<callable>"))
-        if name not in _WARN_ONCE:
-            _WARN_ONCE.add(name)
-            _log.warning("resolve_hints failed for %s: %s", name, exc)
-        return {}
+__all__ = [
+    "find_context_param",
+    "resolve_hints",
+    "user_input_params",
+    "wire_input_params",
+]
 
 
 def _is_tool_context(ann: Any) -> bool:

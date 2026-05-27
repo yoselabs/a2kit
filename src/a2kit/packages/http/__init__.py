@@ -22,8 +22,9 @@ deferred ``fastapi``-importing ``build`` module load on demand only.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from a2kit._lazy_module import lazy_attr
 from a2kit.packages.http.api import ApiSurface
 
 if TYPE_CHECKING:
@@ -37,14 +38,12 @@ if TYPE_CHECKING:
 # zero side effects on any registry.
 
 
-def __getattr__(name: str) -> Any:
-    """Lazy attribute access — load fastapi-touching modules on demand."""
-    if name == "build_http_app":
-        from a2kit.packages.http.build import build_http_app
+_LAZY_ATTRS: dict[str, tuple[str, str]] = {
+    "build_http_app": ("a2kit.packages.http.build", "build_http_app"),
+}
 
-        return build_http_app
-    msg = f"module 'a2kit.packages.http' has no attribute {name!r}"
-    raise AttributeError(msg)
+__getattr__ = lazy_attr(__name__, _LAZY_ATTRS)
+del lazy_attr
 
 
 __all__ = ["ApiSurface", "build_http_app"]

@@ -18,6 +18,7 @@ import anyio
 
 from a2kit.ldd import ldd_state_for_call
 from a2kit.packages.context import StderrToolContext, request_scope
+from a2kit.packages.dispatch._invoke import _call
 from a2kit.packages.dispatch.spec import (
     SYNTHESIZED_CTX_PARAM_NAME,
     CapturedError,
@@ -28,14 +29,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from a2kit.packages.dispatch.spec import ToolBuildSpec
-
-
-async def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """Invoke ``fn`` and await the result if it is awaitable."""
-    result = fn(*args, **kwargs)
-    if inspect.isawaitable(result):
-        result = await result
-    return result
 
 
 class TimeoutStage:

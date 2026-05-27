@@ -168,14 +168,14 @@ def test_lint_runtime_check_message_format_concise() -> None:
     assert msg.format_concise() == "foo: A2KR999 bad"
 
 
-def test_lint_runtime_list_tool_names_returns_empty_for_naive_server() -> None:
+def test_lint_runtimelist_tool_names_returns_empty_for_naive_server() -> None:
     """Server without `_tool_manager` → empty list."""
-    from a2kit.packages.lint.runtime import _list_tool_names
+    from a2kit.packages.lint.runtime import list_tool_names
 
     class _Naive:
         pass
 
-    assert _list_tool_names(_Naive()) == []
+    assert list_tool_names(_Naive()) == []
 
 
 # --------------------------- otel module (lazy install) --------------------------- #

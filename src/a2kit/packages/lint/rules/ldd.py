@@ -16,24 +16,12 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
-from a2kit.packages.lint.rules.detect import is_a2kit_tool_decorator
+from a2kit.packages.lint.rules.detect import is_a2kit_tool_decorator, is_a2kit_verb_decorator
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from a2kit.packages.lint.static import LintMessage
-
-_VERB_NAMES = {"read", "write", "list_"}
-
-
-def _is_a2kit_verb_decorator(dec: ast.expr) -> bool:
-    if is_a2kit_tool_decorator(dec):
-        return True
-    call = dec if isinstance(dec, ast.Call) else None
-    target = call.func if call else dec
-    if isinstance(target, ast.Attribute):
-        return target.attr in _VERB_NAMES and isinstance(target.value, ast.Name) and target.value.id == "a2kit"
-    return False
 
 
 def _reports_kwarg(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.keyword | None:
@@ -41,7 +29,7 @@ def _reports_kwarg(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.keyword | 
     for d in fn.decorator_list:
         if not isinstance(d, ast.Call):
             continue
-        if not _is_a2kit_verb_decorator(d):
+        if is_a2kit_verb_decorator(d) is None:
             continue
         for kw in d.keywords:
             if kw.arg == "reports":
@@ -81,7 +69,7 @@ def _module_scope_names(tree: ast.Module) -> set[str]:  # noqa: C901
 
 
 def _has_a2kit_verb_decorator(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return any(_is_a2kit_verb_decorator(d) for d in fn.decorator_list)
+    return any(is_a2kit_tool_decorator(d) for d in fn.decorator_list)
 
 
 def _yield_missing_reports_kwarg(

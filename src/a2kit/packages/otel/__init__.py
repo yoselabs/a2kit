@@ -24,7 +24,9 @@ if the optional deps are missing.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from a2kit._lazy_module import lazy_attr, lazy_dir
 
 if TYPE_CHECKING:
     from a2kit.packages.otel.middleware import OTelMiddleware
@@ -38,18 +40,9 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
 }
 
 
-def __getattr__(name: str) -> Any:
-    target = _LAZY_ATTRS.get(name)
-    if target is None:
-        raise AttributeError(f"module 'a2kit.packages.otel' has no attribute {name!r}")
-    from importlib import import_module
-
-    mod, attr = target
-    return getattr(import_module(mod), attr)
-
-
-def __dir__() -> list[str]:
-    return sorted({*globals(), *_LAZY_ATTRS})
+__getattr__ = lazy_attr(__name__, _LAZY_ATTRS)
+__dir__ = lazy_dir(globals(), _LAZY_ATTRS)
+del lazy_attr, lazy_dir
 
 
 __all__ = ["OTelMiddleware", "get_meter", "get_tracer", "install"]

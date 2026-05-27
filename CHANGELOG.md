@@ -2,6 +2,152 @@
 
 ## Unreleased
 
+### Refactor (internal) — HTTP folds `DISPATCH_PIPELINE` (substrate-pipeline-bridge contract)
+
+The HTTP adapter now folds the transport-neutral `DISPATCH_PIPELINE` per
+projection tool and per `@app.api.<method>` route, the same way the CLI
+and MCP adapters already did (ADR 0019). The hand-rolled
+`_apply_authorize_gate` deletes; `AuthorizeGateStage` from the pipeline
+runs uniformly across every substrate. A new
+`packages/http/_error_render_stage.py` (`HttpErrorRenderStage`) reads
+the rendered envelope from the `_render_state` side channel populated
+by `ErrorEnvelopeStage` and returns a `JSONResponse` — symmetric to
+`packages/mcp/_wrappers.py::McpErrorRenderStage` and
+`packages/cli/runtime.py::CliErrorRenderStage`.
+`_install_typed_error_handlers` shrinks to a defensive fallback for
+`AppError` paths that bypass the pipeline (rare) and non-AppError
+exceptions (quarantine → `UnexpectedDefect`). The substrate-side
+canonical `http_status_for(exc)` helper moves from `build.py` into
+`_error_render_stage.py`; build.py no longer carries its own
+`_KIND_HTTP_STATUS` table.
+
+Closes audit smells **S11** (HTTP missing typed-render-stage pattern)
+and **S13** (`AuthorizeGateStage` duplicated on HTTP path).
+
+The contract between substrate adapters and the pipeline is documented
+as **two named ContextVars**: `request_scope` (inbound typed seeds —
+today `Principal`; tomorrow possibly `RequestId`, `Tenant`) and
+`_render_state` (outbound rendered envelopes). The contract has its own
+capability spec (`openspec/specs/substrate-pipeline-bridge/spec.md`),
+reference doc (`docs/dev/substrate-pipeline-bridge.md`), and ADR
+(0025). A capability test suite under
+`tests/capabilities/substrate_pipeline_bridge/` asserts every
+registered substrate honours both sides of the bridge; a future
+substrate added without wiring the seams fails CI.
+
+**Behavioural delta: zero.** A pre-refactor wire-snapshot suite
+(`tests/packages/http/test_http_error_envelope_snapshot.py`, 8 cases
+covering every `AppError` subclass currently emitted) asserts byte-
+equivalence of every HTTP error response; all 8 hold after the
+refactor. An `authorize=` callable resolving Container-known
+dependencies behaved identically on HTTP and MCP before and after (both
+routed through the same `_run_authorize_gate(authorize, container)`
+helper); the parity test
+`tests/packages/http/test_authorize_di_parity.py` pins this.
+
+S7 (DecoratorSurface extracted too shallow) was originally bundled
+into scope and dropped as unrelated to the bridge work — different
+concern (decorator-factory ergonomics), revisit independently.
+
+### Refactor (internal) — `A2KitMetaExtras` field allowlist sync
+
+The `A2K-EXTRA-NAMESPACE` lint rule's `_TYPED_EXTRAS_FIELDS` allowlist
+gained `visibility`, `timeout_seconds`, `expose`, `authorize` — all
+declared on `a2kit.metadata.A2KitMetaExtras` but missing from the
+rule's mirror. Pre-existing drift surfaced by the new HTTP synthetic-
+meta construction site.
+
+### Feature — Open Policy Agent (Rego) as architectural-policy substrate
+
+New second lint tier, distinct from `a2kit lint static`: `a2kit lint
+rego` runs OPA-based policies over AST facts extracted from `src/`.
+Lands two starter policies:
+
+- `REGO-BODY-DUP` — cross-file function body duplication using a
+  normalized AST hash (identifier + literal names stubbed). Catches
+  the wire-format-drift class of bug (R6) and same-shape-different-name
+  collisions (R1) that token-based clone detectors miss.
+- `REGO-NAME-COLLISION` — cross-file `_`-prefixed (non-dunder)
+  function name reuse outside the per-policy allowlist.
+
+Policies live in `policies/*.rego` with `policies/data.json` holding
+the allowlist (each entry requires a non-empty `reason`). Suppression
+grammar: `# noqa: REGO-* -- <reason>` (separator ` -- `, free-text
+reason after; REGO-* rules require the reason — stricter than
+A2K-*). `scripts/extract_facts.py` is the fact substrate (curated AST
+projection, deterministic JSON output). OPA pinned in `Makefile` via
+`OPA_VERSION` + `make opa-check`. See ADR 0024 + `docs/dev/rego-toolchain.md`.
+
+Worked-example fixes in the same change:
+
+- **R6** — LDD wire-format duplication across `packages/ldd/wire.py`
+  and `packages/context/stderr.py` collapses to canonical
+  `a2kit._ldd_wire` foundational module (new entry in
+  `FOUNDATIONAL_CORE_MODULES`).
+- **R1** — `async def _call` × 2 in `packages/dispatch/` collapses to
+  `packages/dispatch/_invoke.py`.
+- **R2** — `resolve_hints` lifted to canonical in
+  `packages/di/_hints.py`; `a2kit.signature` imports through the
+  package front door.
+- **R7** — three `_is_basemodel` runtime variants collapse to
+  canonical `is_basemodel(ann) -> type[BaseModel] | None` in
+  `packages/formatter/inference.py`; cli/codemode import through the
+  formatter front door.
+- **R8** — `_validate_key` lifted to canonical
+  `packages/connections/_validation.py`; config/store import directly.
+- **R9** — verb-decorator detectors collapse to
+  `detect.is_a2kit_verb_decorator`; AST `_is_basemodel_base` lifts to
+  new `packages/lint/rules/_ast_helpers.py`.
+
+Remaining `policies/data.json` allowlist is 7 entries (1 body_dup,
+6 name_collision), all genuine intentional convergences with
+explanatory `reason` fields — no "scheduled for follow-up" debt.
+
+### Refactor (internal) — Structural-audit residue drain
+
+Drains the remaining mechanical duplications from the 2026-05-27 audit
+that the Rego layer doesn't trip (either out of scan scope or
+shape-not-body duplication). All purely internal:
+
+- **R3** — `_edit_distance` lifted to `packages/lint/_distance.py`;
+  `scripts/find_similar.py` imports it.
+- **R4** — `_list_tool_names` promoted to public `list_tool_names` in
+  `packages/lint/runtime.py`; script imports the canonical one.
+- **R5** — `_import_target` lifted to `packages/lint/_import.py`;
+  the Click variant in `packages/lint/cli.py` wraps it for
+  `BadParameter`.
+- **R10** — five hand-rolled lazy `__getattr__` loaders
+  (`a2kit/__init__.py`, `packages/otel|http|mcp|auth/__init__.py`)
+  consolidate onto `a2kit._lazy_module.lazy_attr` / `lazy_dir` (new
+  foundational module). The remaining two audit hits at
+  `packages/cli/context.py` + `packages/dispatch/substrate.py` are
+  migration-hint tombstones — a separate pattern, not folded in here.
+- **R11** — `_build_mcp_mount_lifespan` + `_build_standalone_lifespan`
+  collapse to `_build_mcp_lifespan(*, own_app_lifecycle)` in
+  `packages/mcp/server.py`.
+- **R12** — `encode_page_tsv` (typed) and `encode_page_tsv_dict`
+  (after-FastMCP) share `assemble_page_envelope`; both entry points
+  retained — they differ in column-source semantics (model_fields vs
+  row-derived).
+- **R13** — `ApiSurface` + `McpSurface` drop 3 inline
+  lazy-import-then-frozenset helpers and call the canonical
+  `fastapi_reserved` / `fastmcp_reserved` / new `fastapi_dep_markers`
+  from `a2kit.packages.dispatch` (the helpers were already exposed; the
+  surfaces just hadn't consumed them). New `_FASTAPI_DEP_MARKER_SPECS`
+  in `dispatch/substrate.py` mirrors the markers spec.
+
+Capability test `test_surfaces_are_passive` updated to allow
+`__getattr__ = lazy_attr(...)` / `__dir__ = lazy_dir(...)` assignment-
+with-Call (PEP 562 hook binding is semantically equivalent to inline
+`def`). No runtime behaviour change.
+
+### Removed — jscpd
+
+`.jscpd.json`, `package.json`, `pnpm-lock.yaml`, and the entire Node
+toolchain are deleted. Calibration on 2026-05-27 showed `body_dup.rego`
+at the normalized-AST-hash level catches a strict superset of what
+jscpd catches at any tuning, with no false positives.
+
 ### Feature — `A2K-NO-DICT-STR-ANY` lint rule
 
 - New static-lint rule flags `dict[str, Any]` (and `Dict[str, Any]`)

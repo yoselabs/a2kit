@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel
 
 from .inference import EncodingPlan, build_encoding_plan
-from .page import encode_page_tsv
+from .page import assemble_page_envelope, encode_page_tsv
 from .response import Page
 from .tsv import encode_tsv
 
@@ -103,14 +103,13 @@ def encode_page_tsv_dict(payload: dict[str, Any]) -> str:
 
     The dict-input counterpart of :func:`a2kit.packages.formatter.page.encode_page_tsv`
     — used by the MCP format-routing middleware, which sees the result only
-    after FastMCP has converted it to plain JSON.
+    after FastMCP has converted it to plain JSON. Columns are row-derived
+    (the generic-T model class is gone by this point).
     """
     items = payload.get("items")
     rows = list(items) if isinstance(items, (list, tuple)) else []
-    envelope = {k: v for k, v in payload.items() if k != "items"}
-    envelope["items"] = encode_tsv(rows, columns=_derive_columns(rows))
-    envelope["_items_format"] = "tsv"
-    return _encode_json(envelope)
+    envelope_no_items = {k: v for k, v in payload.items() if k != "items"}
+    return assemble_page_envelope(envelope_no_items, rows, _derive_columns(rows))
 
 
 def render_plain(payload: Any, plan: EncodingPlan) -> str:

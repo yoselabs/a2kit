@@ -13,8 +13,9 @@ without re-running the formatter per transport.
 from __future__ import annotations
 
 import functools
-import inspect
 from typing import TYPE_CHECKING, Any
+
+from a2kit.packages.dispatch._invoke import _call
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -64,13 +65,6 @@ def format_error_prose(exc: Any) -> str:
     if exc.hint:
         return f"{head}\n\nHint: {exc.hint}"
     return head
-
-
-async def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    result = fn(*args, **kwargs)
-    if inspect.isawaitable(result):
-        result = await result
-    return result
 
 
 class ErrorEnvelopeStage:

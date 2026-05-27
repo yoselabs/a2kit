@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from a2kit.packages.lint._distance import edit_distance
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -35,7 +37,8 @@ class CheckMessage:
         return f"{self.target}: {self.rule} {self.message}"
 
 
-def _list_tool_names(server: Any) -> list[str]:
+def list_tool_names(server: Any) -> list[str]:
+    """Return registered tool names from a FastMCP-style server (duck-typed)."""
     try:
         tools = server._tool_manager.list_tools()  # noqa: SLF001
     except AttributeError:
@@ -50,7 +53,7 @@ def check_snapshot_presence(server: Any, config: dict[str, Any]) -> Iterable[Che
     if snap_dir is None:
         return
     snap = Path(snap_dir)
-    for name in _list_tool_names(server):
+    for name in list_tool_names(server):
         if not (snap / f"{name}.json").exists():
             yield CheckMessage(
                 rule=A2KR001,
@@ -66,7 +69,7 @@ def check_per_tool_budget(server: Any, config: dict[str, Any]) -> Iterable[Check
     if snap_dir is None or not budgets:
         return
     snap = Path(snap_dir)
-    for name in _list_tool_names(server):
+    for name in list_tool_names(server):
         budget = budgets.get(name)
         if budget is None:
             continue
@@ -100,30 +103,15 @@ def check_total_budget(server: Any, config: dict[str, Any]) -> Iterable[CheckMes
         )
 
 
-def _edit_distance(a: str, b: str) -> int:
-    if a == b:
-        return 0
-    if abs(len(a) - len(b)) > 2:
-        return 3
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a, start=1):
-        curr = [i] + [0] * len(b)
-        for j, cb in enumerate(b, start=1):
-            cost = 0 if ca == cb else 1
-            curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
-        prev = curr
-    return prev[-1]
-
-
 def check_similar_tool_names(server: Any, config: dict[str, Any]) -> Iterable[CheckMessage]:
     """A2KR004 — tool names with edit-distance < 2 confuse agents."""
-    names = _list_tool_names(server)
+    names = list_tool_names(server)
     seen: set[tuple[str, str]] = set()
     for i, a in enumerate(names):
         for b in names[i + 1 :]:
             if (a, b) in seen or (b, a) in seen:
                 continue
-            if _edit_distance(a, b) < 2:
+            if edit_distance(a, b) < 2:
                 seen.add((a, b))
                 yield CheckMessage(
                     rule=A2KR004,
@@ -169,5 +157,6 @@ __all__ = [
     "check_similar_tool_names",
     "check_snapshot_presence",
     "check_total_budget",
+    "list_tool_names",
     "run_runtime_checks",
 ]

@@ -23,6 +23,7 @@ NO ``from a2kit.*`` imports outside ``a2kit.packages.di``. See
 from __future__ import annotations
 
 from a2kit.packages.di._helpers import lazy_inner_type
+from a2kit.packages.di._hints import resolve_hints
 from a2kit.packages.di._lazy import Lazy
 
 # GRANDFATHERED: `_a2kit_request_scope` is the FastAPI per-request ContextVar
@@ -46,4 +47,5 @@ __all__ = [
     "UnresolvableType",
     "_a2kit_request_scope",  # noqa: A2K-PKG-INIT-PURITY
     "lazy_inner_type",
+    "resolve_hints",
 ]

@@ -22,7 +22,6 @@ only loaded when the ``serve --transport=http`` path imports
 
 from __future__ import annotations
 
-import functools as _functools
 import inspect
 from typing import TYPE_CHECKING, Annotated
 from typing import Any as _Any
@@ -33,10 +32,12 @@ from fastapi import Body, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from a2kit.packages.dispatch import (
-    _run_authorize_gate,
+    ToolBuildSpec,
+    fold_pipeline,
     install_substrate_signature,
     split_signature,
 )
+from a2kit.packages.http._error_render_stage import HttpErrorRenderStage
 
 if TYPE_CHECKING:
     from a2kit.packages.http.api import ApiSurface
@@ -78,12 +79,19 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     # Projection tools as POST /api/<name>. Filter by `"api" in expose`
     # so tools explicitly opted out (e.g. `@app.read(expose=("mcp",))`)
     # do not surface on the FastAPI sub-app.
+    api_surface_obj = runtime.surfaces.get("api")
     for desc in runtime.tools():
         if "api" not in desc.expose:
             continue
-        wrapped = install_substrate_signature(desc.fn, runtime.surfaces.get("api"), container)
-        wrapped = _apply_authorize_gate(wrapped, desc.authorize, container)
-        _force_body_binding_for_wire_params(wrapped, desc.fn, container, runtime.surfaces.get("api"))
+        wrapped = _wrap_with_pipeline(
+            fn=desc.fn,
+            meta=desc._meta,  # noqa: SLF001 -- mirrors mcp/server.py:_build_one_tool
+            authorize=desc.authorize,
+            runtime=runtime,
+            container=container,
+            surface=api_surface_obj,
+        )
+        _force_body_binding_for_wire_params(wrapped, desc.fn, container, api_surface_obj)
         app.add_api_route(
             path=f"/{desc.name}",
             endpoint=wrapped,
@@ -94,8 +102,14 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     # Author-written @app.api.<method>(path) routes.
     if api_surface is not None:
         for route in api_surface.routes:
-            wrapped = install_substrate_signature(route.fn, runtime.surfaces.get("api"), container)
-            wrapped = _apply_authorize_gate(wrapped, route.authorize, container)
+            wrapped = _wrap_with_pipeline(
+                fn=route.fn,
+                meta=_synthetic_meta_for_api_route(route.fn, route.authorize),
+                authorize=route.authorize,
+                runtime=runtime,
+                container=container,
+                surface=api_surface_obj,
+            )
             app.add_api_route(
                 path=route.path,
                 endpoint=wrapped,
@@ -105,6 +119,92 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
         api_surface.fastapi_app = app
 
     return app
+
+
+def _synthetic_meta_for_api_route(fn: _Any, authorize: _Any) -> _Any:
+    """Build a minimal ``A2KitMeta`` for an ``@app.api.<method>`` route.
+
+    Projection tools carry their authorize on ``desc.meta.extras.authorize``
+    — ``AuthorizeGateStage`` reads it from there. Author-written
+    ``@app.api.*`` routes capture authorize on ``route.authorize`` instead,
+    so the pipeline can't find it. This helper synthesises an
+    ``A2KitMeta`` whose ``extras.authorize`` matches the route's, so the
+    same gate code path covers both kinds of registration. Other meta
+    fields (``tool_name``, ``tags``, etc.) are filled with safe defaults
+    — the stages that read them either self-skip or don't apply on the
+    HTTP route path.
+    """
+    from a2kit.metadata import A2KitMeta, A2KitMetaExtras
+
+    return A2KitMeta(
+        tool_name=getattr(fn, "__name__", "<api_route>"),
+        verb="read",  # type: ignore[arg-type] -- placeholder; verb is not consulted on @app.api.* paths
+        tags=frozenset(),
+        extras=A2KitMetaExtras(authorize=authorize),
+    )
+
+
+def _wrap_with_pipeline(
+    *,
+    fn: _Any,
+    meta: _Any,
+    authorize: _Any,
+    runtime: _Any,
+    container: _Any,
+    surface: _Any,
+) -> _Any:
+    """Wrap ``fn`` for FastAPI route registration: pipeline + error render, inside substrate signature.
+
+    Wrap order, innermost-first:
+
+    1. ``HttpErrorRenderStage`` (innermost-of-the-pipeline-outer-block) —
+       opens the ``_render_state`` side channel around the call; reads it
+       on the way out to render ``CapturedError`` -> ``JSONResponse``.
+    2. ``fold_pipeline(fn, spec)`` — transport-neutral stages:
+       ``TimeoutStage``, ``EnricherStage``, ``ErrorEnvelopeStage`` (writes
+       to ``_render_state``), ``RouterLazyEnterStage``,
+       ``DispatchHookStage``, ``AuthorizeGateStage``, ``LddStateStage``,
+       ``ErrorCaptureStage``. ``AuthorizeGateStage`` reads ``Principal``
+       from ``request_scope`` — which is published by ``install_substrate_signature``
+       (step 3) BEFORE this chain runs.
+    3. ``install_substrate_signature(chained, surface, container)`` outermost
+       — substrate-facing wrapper. FastAPI introspects its
+       ``__signature__`` (wire + reserved params only). The wrapper:
+       (a) splits substrate kwargs, (b) publishes ``Principal`` from the
+       reserved bucket to ``request_scope``, (c) opens its own
+       ``call_scope`` to resolve DI for wire kwargs, (d) calls ``chained``
+       with merged kwargs.
+
+    Ordering rationale: Principal publication (step 3b) MUST happen before
+    ``AuthorizeGateStage`` (in step 2) reads from ``request_scope``. The
+    only way to guarantee that without rewriting ``install_substrate_signature``
+    is to nest the pipeline INSIDE the substrate wrapper (this order).
+    ``DispatchHookStage`` in the pipeline ALSO opens a ``call_scope`` —
+    nested under the substrate wrapper's. Both inherit ``framework_seeds``
+    from ``request_scope.all_seeds()``; SCOPED instances are shared via
+    the request-scope-published Container. The extra scope open is a
+    known minor inefficiency, tracked separately (ADR-0020 / S5: "two
+    parallel signature installers" deferred).
+
+    Pre-refactor (2026-05-27, S13) this function did NOT fold the pipeline
+    — `AuthorizeGateStage`'s logic ran from a hand-rolled
+    `_apply_authorize_gate` per route. Now the gate, error envelope, and
+    every other dispatch concern flow through the same single pipeline.
+    """
+    spec = ToolBuildSpec(
+        app=runtime,
+        router=None,
+        meta=meta,
+        reports_enabled=False,
+        events_enabled=False,
+        sinks=(),
+    )
+    chained = fold_pipeline(fn, spec=spec)
+    chained = HttpErrorRenderStage().wrap(chained, spec)
+    # `install_substrate_signature` inspects chained's signature; chained
+    # carries `fn`'s signature via `functools.wraps`, so the split is
+    # identical to `install_substrate_signature(fn, ...)` would have been.
+    return install_substrate_signature(chained, surface, container)
 
 
 def _install_auth_middlewares(app: FastAPI, runtime: AppRuntime) -> None:
@@ -148,40 +248,40 @@ class _BareAsgiMiddleware:
         await self._app(scope, receive, send)
 
 
-#: HTTP status code map from AppError kind. Per-class `http_status`
-#: ClassVar overrides this. From `error-envelope-rendering`.
-_KIND_HTTP_STATUS: dict[str, int] = {
-    "input": 400,
-    "auth": 401,
-    "policy": 403,
-    "infra": 503,
-    "bug": 500,
-}
-
-
-def _http_status_for(exc: AppError) -> int:
-    override = type(exc).http_status
-    if override is not None:
-        return override
-    return _KIND_HTTP_STATUS.get(exc.base_kind, 500)
-
-
 def _install_typed_error_handlers(app: FastAPI) -> None:
-    """Install AppError + catch-all handlers emitting the typed envelope.
+    """Install fallback exception handlers for AppErrors that bypass the pipeline.
 
-    - AppError → status from kind map (with per-class override) +
-      ``{"error": <envelope dict>}`` body.
-    - Anything else → `quarantine` to `UnexpectedDefect`, then same shape.
+    The primary path is now ``HttpErrorRenderStage`` (per ``dispatch-pipeline-parity-on-http``):
+    every projection-tool and ``@app.api.*`` route folds the pipeline,
+    and ``HttpErrorRenderStage`` reads ``RenderedError`` from the
+    ``_render_state`` side channel populated by ``ErrorEnvelopeStage``,
+    returning a ``JSONResponse`` directly.
 
-    Replaces the prior `_install_authorization_denied_handler`:
-    `AuthorizationDenied` is itself an AppError now and flows through
-    this handler with no special-casing.
+    These handlers cover three remaining paths:
+
+    1. ``AppError`` raised by code OUTSIDE a folded per-tool wrap (e.g.
+       in custom middleware, or in an ``@app.api.*`` route's body before
+       FastAPI hands off to the wrapper). The pipeline never ran, so
+       ``_render_state`` is empty. Defensive — re-derives the envelope
+       via ``exc.to_envelope_dict()`` and computes status via the
+       canonical ``http_status_for`` helper.
+    2. ``HttpErrorRenderStage``'s own defensive-fallback re-raise (when
+       ``get_rendered_error`` returns ``None`` despite the wrap — should
+       never fire in production).
+    3. Non-``AppError`` exceptions: quarantined to ``UnexpectedDefect``
+       and rendered via the same handler path.
+
+    The ``kind -> status`` mapping itself lives once in
+    ``packages.http._error_render_stage.http_status_for`` — the
+    substrate-side canonical helper. This module imports it; there is
+    no duplicate map here.
     """
+    from a2kit.packages.http._error_render_stage import http_status_for
 
     @app.exception_handler(AppError)
     async def _typed_error(_request: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
-            status_code=_http_status_for(exc),
+            status_code=http_status_for(exc),
             content={"error": exc.to_envelope_dict()},
         )
 
@@ -189,43 +289,9 @@ def _install_typed_error_handlers(app: FastAPI) -> None:
     async def _quarantine(_request: Request, exc: Exception) -> JSONResponse:
         wrapped = quarantine(exc)
         return JSONResponse(
-            status_code=_http_status_for(wrapped),
+            status_code=http_status_for(wrapped),
             content={"error": wrapped.to_envelope_dict()},
         )
-
-
-def _apply_authorize_gate(wrapped: _Any, authorize: _Any, container: _Any) -> _Any:
-    """Wrap `wrapped` so its `authorize=` callable runs before the body.
-
-    No-op when `authorize` is None. A FastAPI ``Security`` guard's
-    returned ``Principal`` lands in route kwargs; this wrapper scans for
-    it, publishes via the dispatch bridge, then delegates to
-    ``_run_authorize_gate``. Preserves ``__signature__`` /
-    ``__annotations__`` so FastAPI's introspection still sees the
-    substrate-installed surface params.
-    """
-    if authorize is None:
-        return wrapped
-
-    from a2kit.packages.context import Principal as _Principal
-    from a2kit.packages.context import request_scope
-
-    @_functools.wraps(wrapped)
-    async def _gated(**kwargs: _Any) -> _Any:
-        principal = next((v for v in kwargs.values() if isinstance(v, _Principal)), None)
-        token = request_scope.publish(principal) if principal is not None else None
-        try:
-            await _run_authorize_gate(authorize, container)
-            return await wrapped(**kwargs)
-        finally:
-            if token is not None:
-                request_scope.reset(token)
-
-    sig = getattr(wrapped, "__signature__", None)
-    if sig is not None:
-        setattr(_gated, "__signature__", sig)  # noqa: B010 -- ty: setattr keeps both type-checkers quiet
-    _gated.__annotations__ = dict(getattr(wrapped, "__annotations__", {}))
-    return _gated
 
 
 def _install_request_scope_middleware(app: FastAPI, container: _Any) -> None:

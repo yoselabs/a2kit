@@ -12,13 +12,14 @@ No fastmcp, no a2kit runtime concepts.
 
 from __future__ import annotations
 
-import importlib
 import sys
 from pathlib import Path
 from typing import Any
 
 import click
 
+from a2kit.packages.lint._import import import_target
+from a2kit.packages.lint.rego import rego_cmd
 from a2kit.packages.lint.runtime import run_runtime_checks
 from a2kit.packages.lint.static import run_static_rules
 
@@ -35,11 +36,11 @@ def _expand_paths(inputs: tuple[str, ...]) -> list[Path]:
 
 
 def _import_target(spec: str) -> Any:
-    if ":" not in spec:
-        raise click.BadParameter(f"--import requires module:attr, got {spec!r}")
-    mod, attr = spec.split(":", 1)
-    module = importlib.import_module(mod)
-    return getattr(module, attr)
+    """Click-flavoured wrapper around ``import_target`` — re-raises as ``BadParameter``."""
+    try:
+        return import_target(spec)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
 
 
 @click.group(name="lint", help="Static + runtime lint for a2kit MCP servers.")
@@ -93,6 +94,9 @@ def runtime_cmd(
         click.echo(f.format_concise())
     if findings:
         sys.exit(1)
+
+
+main.add_command(rego_cmd)
 
 
 if __name__ == "__main__":

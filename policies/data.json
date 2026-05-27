@@ -1,0 +1,39 @@
+{
+  "a2kit": {
+    "allowlist": {
+      "_comment": "Allowlist for a2kit Rego policies. Each entry needs a non-empty 'reason'. See docs/dev/rego-toolchain.md.",
+      "body_dup": [
+        {
+          "names": ["_cli_exit_for", "http_status_for"],
+          "reason": "coincidental shape: both implement 'exception kind → transport-specific code, with class-attribute override', but kind maps + override attribute + default value all differ by transport. Extracting a shared helper would save ~2 LOC per site at the cost of a premature abstraction (only 2 transports today, no anticipated 3rd). `http_status_for` was renamed from `_http_status_for` and promoted to public (substrate-side) in `dispatch-pipeline-parity-on-http` (2026-05-27) when it moved from `packages/http/build.py` into `packages/http/_error_render_stage.py`. Revisit if a REST/gRPC adapter lands."
+        }
+      ],
+      "name_collision": [
+        {
+          "names": ["_wrapped"],
+          "reason": "functools.wraps-style closure inside decorator factories; convergent name is the Python idiom"
+        },
+        {
+          "names": ["_decorator", "_wrap"],
+          "reason": "decorator-factory inner names; one per substrate-front-door package (http/api.py, mcp/surface.py) — S7 (DecoratorSurface lift) tracked separately"
+        },
+        {
+          "names": ["_resolver"],
+          "reason": "App and AppRuntime each hold a resolver handle; ADR-0019 accepts the mirrored read-side surface"
+        },
+        {
+          "names": ["_root"],
+          "reason": "click-group root commands; convergent name across cli/builder.py and di/container.py (latter is unrelated DI concept)"
+        },
+        {
+          "names": ["_emit"],
+          "reason": "stderr-context and null-context share emit signature by Protocol contract; intentional"
+        },
+        {
+          "names": ["_is_basemodel"],
+          "reason": "back-compat aliases for the canonical `is_basemodel` in packages/formatter/inference.py (R7 resolved). cli/builder.py and codemode/marshal.py import as `_is_basemodel` to preserve call-site readability — the underscore signals 'internal to this module', the implementation is shared"
+        }
+      ]
+    }
+  }
+}

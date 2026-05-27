@@ -29,6 +29,33 @@ def is_a2kit_tool_decorator(dec: ast.expr) -> bool:
     return False
 
 
+def is_a2kit_verb_decorator(dec: ast.expr) -> ast.Call | None:
+    """Return the ``ast.Call`` if ``dec`` is ``@a2kit.<verb>(...)``, else ``None``.
+
+    The Call-returning shape that R9 (audit) collapses three local
+    detectors into. Distinct from :func:`is_a2kit_tool_decorator` (which
+    also matches the bare ``@a2kit.read`` form without parens and
+    returns ``bool``) — this variant requires the parenthesized form
+    because callers want to inspect kwargs / args on the Call node.
+
+    Callers that only need a yes/no answer can truthy-check the result;
+    callers that need to inspect the Call can use the returned node.
+    """
+    if not isinstance(dec, ast.Call):
+        return None
+    target = dec.func
+    if (
+        isinstance(target, ast.Attribute)
+        and target.attr in _A2KIT_VERB_DECORATOR_NAMES
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "a2kit"
+    ):
+        return dec
+    if isinstance(target, ast.Name) and target.id in _A2KIT_VERB_DECORATOR_NAMES:
+        return dec
+    return None
+
+
 def is_server_tool_decorator(dec: ast.expr) -> bool:
     call = dec if isinstance(dec, ast.Call) else None
     target = call.func if call else dec
@@ -61,6 +88,7 @@ def iter_string_literals(node: ast.expr) -> Iterable[ast.Constant]:
 __all__ = [
     "collect_import_sources",
     "is_a2kit_tool_decorator",
+    "is_a2kit_verb_decorator",
     "is_server_tool_decorator",
     "is_tool_function",
     "iter_string_literals",

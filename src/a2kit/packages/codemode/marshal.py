@@ -7,8 +7,6 @@ import re
 import types
 from typing import Any, Union, get_args, get_origin
 
-from pydantic import BaseModel
-
 # Mirror types are stable per pydantic model — cache globally so the same
 # model always yields the same dataclass (stubs and runtime stay in lockstep).
 _MIRROR_CACHE: dict[type, type] = {}
@@ -23,8 +21,7 @@ def _sanitize(name: str) -> str:
     return cleaned or "Mirror"
 
 
-def _is_basemodel(tp: Any) -> bool:
-    return isinstance(tp, type) and issubclass(tp, BaseModel)
+from a2kit.packages.formatter import is_basemodel as _is_basemodel  # noqa: E402 -- R7: front-door import of canonical
 
 
 def dataclass_mirror(model: type) -> type:
@@ -62,11 +59,12 @@ def marshal_result(value: Any, annotation: Any) -> Any:  # noqa: PLR0911 -- one 
     if value is None:
         return None
 
-    if _is_basemodel(annotation):
+    cls = _is_basemodel(annotation)
+    if cls is not None:
         if not isinstance(value, dict):
             return value
-        mirror = dataclass_mirror(annotation)
-        kwargs = {fname: marshal_result(value.get(fname), mf.annotation) for fname, mf in annotation.model_fields.items()}
+        mirror = dataclass_mirror(cls)
+        kwargs = {fname: marshal_result(value.get(fname), mf.annotation) for fname, mf in cls.model_fields.items()}
         return mirror(**kwargs)
 
     origin = get_origin(annotation)
@@ -96,11 +94,12 @@ def collect_models(annotation: Any, acc: list[type]) -> None:
     """
     if annotation is None:
         return
-    if _is_basemodel(annotation):
-        for mf in annotation.model_fields.values():
+    cls = _is_basemodel(annotation)
+    if cls is not None:
+        for mf in cls.model_fields.values():
             collect_models(mf.annotation, acc)
-        if annotation not in acc:
-            acc.append(annotation)
+        if cls not in acc:
+            acc.append(cls)
         return
     for arg in get_args(annotation):
         collect_models(arg, acc)

@@ -41,13 +41,7 @@ def _is_dataclass_decorator(dec: ast.expr) -> bool:
     return False
 
 
-def _is_basemodel_base(base: ast.expr) -> bool:
-    """``BaseModel`` in any import shape."""
-    if isinstance(base, ast.Name):
-        return base.id == "BaseModel"
-    if isinstance(base, ast.Attribute):
-        return base.attr == "BaseModel"
-    return False
+from a2kit.packages.lint.rules._ast_helpers import is_basemodel_base as _is_basemodel_base  # noqa: E402 -- shared helper (R9)
 
 
 def _annotation_has_dict_str_any(node: ast.expr) -> bool:
