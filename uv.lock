@@ -27,7 +27,7 @@ provides-extras = ["testing"]
 
 [[package]]
 name = "a2kit"
-version = "0.39.3"
+version = "0.40.0"
 source = { editable = "." }
 dependencies = [
     { name = "a2effect" },

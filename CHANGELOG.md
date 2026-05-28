@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.40.0 — 2026-05-28
+
 ### Features — a2web-handoff-prep (ergonomic substrate fixes)
 
 Three small additive features driven by a2web's accumulated v0.40-v0.41
