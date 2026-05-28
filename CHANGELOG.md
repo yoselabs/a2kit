@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-## 0.41.0 — 2026-05-28
+## 0.41.1 — 2026-05-28
+
+(`v0.41.0` tag was placed on the v0.40.1 commit by mistake earlier the
+same day; this is the actual release of the lint-bundle work.)
 
 ### Changed — Rego lint bundle moves inside `a2kit.packages.lint`
 
