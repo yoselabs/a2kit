@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 0.40.1 — 2026-05-28
+
+### Changed — `prune_empty` marker → `PruneEmpty` base class (breaking, same-day)
+
+a2web validation surfaced a cascade gap: the v0.40.0 `prune_empty()`
+`ConfigDict` marker only fired from `dump_model_for_wire` on top-level
+models, so empty fields on nested children (e.g. `AskExtraction` inside
+`AskResponse`) were never pruned. Switched to a pydantic-native base
+class — pydantic uses each model's own `@model_serializer` for nested
+fields, so cascade is automatic.
+
+Migration: replace
+`class M(BaseModel): model_config = ConfigDict(**prune_empty())`
+with `class M(PruneEmpty): ...`. Removed exports:
+`prune_empty`, `model_wants_prune`, `PRUNE_EMPTY_KEY`. Added export:
+`PruneEmpty` (top-level `a2kit.packages.formatter.PruneEmpty`).
+
+`dump_model_for_wire(model)` is now a thin `model.model_dump(mode="json")`
+wrapper, kept as the substrate seam for future wire-shaping.
+
+Pydantic-native alternative noted: classes whose only "empty" values are
+`None` can use `model_dump(exclude_none=True)` directly — no a2kit
+dependency needed. `PruneEmpty` is the substrate convenience for the
+broader `None`/`""`/`[]`/`{}` semantic.
+
 ## 0.40.0 — 2026-05-28
 
 ### Features — a2web-handoff-prep (ergonomic substrate fixes)

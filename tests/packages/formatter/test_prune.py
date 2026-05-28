@@ -1,29 +1,23 @@
 """Mirror test for ``a2kit.packages.formatter.prune`` — pure-function unit tests.
 
-End-to-end + scenario coverage lives in
+End-to-end + cascade coverage lives in
 ``tests/capabilities/type_driven_format_routing/test_prune_empty.py``.
 This file mirrors the source module per ``A2K-TEST-MIRROR`` and covers
-the private helpers directly.
+the private helpers + ``PruneEmpty`` base class directly.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from a2kit.packages.formatter.prune import (
-    PRUNE_EMPTY_KEY,
+    PruneEmpty,
     _is_empty,
     dump_model_for_wire,
-    model_wants_prune,
     prune_dict,
-    prune_empty,
 )
-
-
-def test_prune_empty_returns_marker_dict() -> None:
-    assert prune_empty() == {PRUNE_EMPTY_KEY: True}
 
 
 def test_is_empty_matrix() -> None:
@@ -44,34 +38,37 @@ def test_prune_dict_drops_empties() -> None:
     assert prune_dict(payload) == {"a": "x", "e": 0}
 
 
-def test_model_wants_prune_true_when_marked() -> None:
+def test_prune_empty_base_drops_on_model_dump() -> None:
+    class M(PruneEmpty):
+        a: str
+        b: str | None = None
+        c: list[str] = []
+
+    assert M(a="x").model_dump() == {"a": "x"}
+
+
+def test_plain_basemodel_unaffected() -> None:
     class M(BaseModel):
-        model_config = ConfigDict(**prune_empty())
-        x: int
+        a: str
+        b: str | None = None
 
-    assert model_wants_prune(M(x=1)) is True
-    assert model_wants_prune(M) is True
-
-
-def test_model_wants_prune_false_by_default() -> None:
-    class M(BaseModel):
-        x: int
-
-    assert model_wants_prune(M(x=1)) is False
+    assert M(a="x").model_dump() == {"a": "x", "b": None}
 
 
-def test_dump_model_for_wire_prunes_when_marked() -> None:
-    class M(BaseModel):
-        model_config = ConfigDict(**prune_empty())
+def test_dump_model_for_wire_uses_native_serializer() -> None:
+    class M(PruneEmpty):
         a: str
         b: str | None = None
 
     assert dump_model_for_wire(M(a="x")) == {"a": "x"}
 
 
-def test_dump_model_for_wire_preserves_when_unmarked() -> None:
-    class M(BaseModel):
-        a: str
-        b: str | None = None
+def test_prune_empty_cascades_into_nested() -> None:
+    class Inner(PruneEmpty):
+        name: str
+        note: str | None = None
 
-    assert dump_model_for_wire(M(a="x")) == {"a": "x", "b": None}
+    class Outer(BaseModel):
+        inner: Inner
+
+    assert Outer(inner=Inner(name="n", note=None)).model_dump() == {"inner": {"name": "n"}}
