@@ -35,6 +35,18 @@ def register_serve(typer_app: Any, app: AppRuntime) -> None:
                 help="Drop the structuredContent channel for non-conformant MCP clients.",
             ),
         ] = False,
+        tools: Annotated[
+            str | None,
+            typer.Option(
+                "--tools",
+                help=(
+                    "Comma-separated tool name subset to expose on the MCP "
+                    "surface (e.g. --tools=ask,refresh). Intersects with the "
+                    "A2KIT_TOOLS env var when both are set. Cannot re-enable "
+                    "hidden tools."
+                ),
+            ),
+        ] = None,
     ) -> None:
         """Run as an MCP server (stdio or HTTP)."""
         from a2kit.packages.mcp import build_mcp_server
@@ -44,6 +56,7 @@ def register_serve(typer_app: Any, app: AppRuntime) -> None:
             code_mode=not code_mode_off,
             code_mode_allow_destructive=code_mode_allow_destructive,
             compact=compact,
+            tool_selection=tools,
         )
         if transport == "stdio":
             server.run(transport="stdio")

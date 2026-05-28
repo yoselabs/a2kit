@@ -317,8 +317,20 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
     return callback, short_help
 
 
-def _register_router(typer_app: Any, router: Router, app: AppRuntime) -> None:
-    """Add a sub-Typer for ``router`` to ``typer_app``."""
+def _register_router(
+    typer_app: Any,
+    router: Router,
+    app: AppRuntime,
+    *,
+    tool_selection: frozenset[str] | None = None,
+) -> None:
+    """Add a sub-Typer for ``router`` to ``typer_app``.
+
+    ``tool_selection`` (when not None) drops any tool whose name is not in
+    the selector — the A2KIT_TOOLS env var's enforcement seam on the CLI
+    surface. Hidden tools have already been excluded from the selector's
+    validation set (see `build_full_cli`).
+    """
     import typer
 
     sub = typer.Typer(
@@ -331,6 +343,8 @@ def _register_router(typer_app: Any, router: Router, app: AppRuntime) -> None:
     for fn in router.bound_tools():
         desc = descs_by_fn.get(fn)
         if desc is None:
+            continue
+        if tool_selection is not None and desc.name not in tool_selection:
             continue
         meta = desc._meta  # noqa: SLF001 -- ToolDescriptor projection seam (privatize-tool-metadata)
         hidden = False
@@ -569,8 +583,23 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
         store["no_reports"] = no_reports
         store["no_events"] = no_events
 
+    # Runtime tool selection at CLI build time. Reads A2KIT_TOOLS env var;
+    # when set, filters which tools register as Click subcommands. Hidden
+    # tools (`visibility="hidden"`) are excluded from the selector's
+    # available set, so the selector cannot re-enable them.
+    from a2kit.packages.runtime_tools import resolve_selector, validate_selector
+
+    _selector = resolve_selector()
+    if _selector is not None:
+        _available_cli = frozenset(
+            d.name
+            for d in app.tools()
+            if d._meta is None or (d._meta.extras.visibility or "all") != "hidden"  # noqa: SLF001 -- ToolDescriptor projection seam
+        )
+        validate_selector(_selector, available=_available_cli)
+
     for router in routers:
-        _register_router(main, router, app)
+        _register_router(main, router, app, tool_selection=_selector)
 
     _register_schema(main, app)
     _register_list_tools(main, app)

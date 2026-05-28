@@ -233,6 +233,7 @@ def build_mcp_server(
     code_mode_allow_destructive: bool = False,
     compact: bool = False,
     own_app_lifecycle: bool = True,
+    tool_selection: str | None = None,
     **fastmcp_kwargs: Any,
 ) -> FastMCP:
     """Build a FastMCP server from an ``a2kit.App``.
@@ -300,6 +301,19 @@ def build_mcp_server(
     encoding_plans: dict[str, Any] = {}
     return_types: dict[str, Any] = {}
 
+    # Resolve runtime tool selection (A2KIT_TOOLS env + serve --tools=).
+    # A None selector means "no selector active — expose all visible tools."
+    # The selector is a SUBSET filter: hidden tools are dropped from the
+    # available set before validation, so the selector cannot re-enable them.
+    from a2kit.packages.runtime_tools import resolve_selector, validate_selector
+
+    _selector = resolve_selector(cli_arg=tool_selection)
+    if _selector is not None:
+        _available_mcp = frozenset(
+            d.name for d in runtime.tools() if "mcp" in d.expose and (d._meta is None or (d._meta.extras.visibility or "all") != "hidden")
+        )
+        validate_selector(_selector, available=_available_mcp)
+
     for desc in runtime.tools():
         # Honour per-tool expose: a projection tool registered as
         # `@a2kit.read(expose=("api",))` does NOT appear on the FastMCP
@@ -307,6 +321,10 @@ def build_mcp_server(
         # `_read_internal` which stamps default `expose=("mcp","api")`,
         # so it continues to land here.
         if "mcp" not in desc.expose:
+            continue
+        # Runtime tool selection: drop tools not in the (validated) selector.
+        # Hidden tools were already excluded from `_available_mcp` above.
+        if _selector is not None and desc.name not in _selector:
             continue
         tool = _build_one_tool(
             runtime,

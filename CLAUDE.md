@@ -27,14 +27,20 @@ context-loading order is:
 1. `AGENTS.md` (tool-agnostic conventions — loaded automatically).
 2. `CLAUDE.md` (this file — Claude-specific overlay; auto-memory
    reminders).
-3. `docs/adr/INDEX.md` (decision log entry point; ~hundreds of tokens,
+3. **`CONSTITUTION.md`** (the rules above the rules; substrate/product
+   governance for the a2 ecosystem — read before any non-trivial
+   change). Currently Phase A: agents apply, human confirms each
+   Constitution-touching change. Articles VIII's mechanical
+   enforcement layer is `[pending]`.
+4. `docs/adr/INDEX.md` (decision log entry point; ~hundreds of tokens,
    covers every recorded ADR with status + tags + Y-statement).
-4. Specific ADR bodies as needed (follow links from INDEX).
-5. `BACKLOG.md` if planning new work.
+5. Specific ADR bodies as needed (follow links from INDEX).
+6. `BACKLOG.md` if planning new work.
 
 This split keeps Claude's instruction budget under the empirical
 ~150-instruction soft cap. The bulk of project-specific guidance is
-in AGENTS.md (shared); the auto-memory specifics stay here.
+in AGENTS.md (shared); the auto-memory specifics stay here;
+Constitution governs cross-cutting placement decisions.
 
 ## Related memories (in user's MEMORY.md)
 

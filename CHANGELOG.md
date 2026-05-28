@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Features — a2web-handoff-prep (ergonomic substrate fixes)
+
+Three small additive features driven by a2web's accumulated v0.40-v0.41
+wish list. Each lets consumers delete workaround code; none breaks the
+existing surface. Constitution Article VI (Magic Budget) check: 2 new
+consumer-facing concepts. PASS.
+
+- **`a2kit.formatter.prune_empty()` marker** — opt-in pruning of empty
+  fields (`None` / `""` / `[]` / `{}`) from the JSON wire payload. Set
+  via `model_config = ConfigDict(**prune_empty())` on a return type.
+  Zero-valued types (`0`, `False`, `Decimal(0)`) are KEPT — they carry
+  information. JSON schema is unchanged (pruning is wire-only).
+  Removes a2web's per-model `_prune_wire` workaround (~90 LOC).
+- **Runtime tool selection** — `A2KIT_TOOLS=<comma-list>` env var +
+  `serve --tools=<comma-list>` CLI flag. Filters the descriptor set
+  before MCP server registration and CLI subcommand registration.
+  When both are set, the intersection wins. Cannot re-enable tools
+  filtered out at compile time by `visibility="hidden"`. Unknown
+  names fail closed with a clear error listing valid names. Removes
+  a2web's `ask_only` flag + constructor-time router-tools rebuild.
+- **`a2kit.Lazy` + `a2kit.LddEmission` top-level re-exports** — both
+  graduate from `a2kit.packages.di.Lazy` / `a2kit.packages.ldd.LddEmission`
+  to the top-level surface. The internal paths still work
+  (back-compat). `a2kit.packages.*` is now documented as private
+  scaffolding (stdlib `_thread` convention).
+
+Substrate refusal applied (Constitution Article V): the v0.41
+`a2kit.desc()` sugar wish is **refused** — Article VI's "pydantic is
+sacred" clause forbids shorthand that hides a `pydantic.Field`. The
+8-12 lines of `Annotated[T, pydantic.Field(description=...)]` ceremony
+is the price of staying pythonic.
+
+a2web's downstream cleanup (deleting `_prune_wire`, `ask_only`) ships
+separately in a2web's next change.
+
 ### Tooling — Cross-surface policy bundles (`actionlint` + Rego on workflows + pyproject)
 
 `make lint` now polices GitHub Actions workflow files and

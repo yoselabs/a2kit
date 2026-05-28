@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from .inference import EncodingPlan, build_encoding_plan
 from .page import assemble_page_envelope, encode_page_tsv
+from .prune import dump_model_for_wire
 from .response import Page
 from .tsv import encode_tsv
 
@@ -26,10 +27,11 @@ _UNSET: Any = object()
 def _json_default(obj: Any) -> Any:
     """``json.dumps`` fallback — single-pass encoding straight from typed
     objects. A ``BaseModel`` is dumped via pydantic's own ``model_dump``
-    (one internal pass); anything else degrades to ``str``.
+    (one internal pass) plus the prune-empty marker if opted in; anything
+    else degrades to ``str``.
     """
     if isinstance(obj, BaseModel):
-        return obj.model_dump(mode="json")
+        return dump_model_for_wire(obj)
     return str(obj)
 
 
@@ -50,7 +52,7 @@ def _to_plain(value: Any) -> Any:
     scalars and arbitrary objects pass through.
     """
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+        return dump_model_for_wire(value)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return dataclasses.asdict(value)
     if isinstance(value, dict):
@@ -82,7 +84,7 @@ def encode_envelope(value: Any, tsv_fields: tuple[str, ...]) -> str:
     discriminator alongside it, mirroring the page-tsv shape one level up.
     """
     if isinstance(value, BaseModel):
-        envelope: dict[str, Any] = value.model_dump(mode="json")
+        envelope: dict[str, Any] = dump_model_for_wire(value)
     elif isinstance(value, dict):
         envelope = dict(value)
     else:
