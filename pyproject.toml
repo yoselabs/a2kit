@@ -1,6 +1,6 @@
 [project]
 name = "a2kit"
-version = "0.40.1"
+version = "0.41.0"
 description = "Fat tool decorator on top of FastMCP — protocol-agnostic core, opt-in plugin packages."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]
@@ -164,6 +164,7 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
     "B017", "S603", "S104", "A002", "A004", "E501",
 ]
 "scripts/**" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201", "ANN202", "RUF059"]
+"src/a2kit/packages/lint/_bundle/extract_facts.py" = ["T201", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201", "ANN202", "RUF059"]
 "evals/**" = ["T201", "S101", "BLE001", "C901", "PLR0912", "PLR0915", "ANN001", "ANN201", "ANN202", "S603", "S607"]
 "bench/**" = ["T201", "BLE001", "S603", "ANN001", "ANN201", "PLR0915"]
 "examples/**" = [

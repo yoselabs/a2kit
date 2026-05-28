@@ -17,8 +17,9 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-EXTRACT_SCRIPT = REPO_ROOT / "scripts" / "extract_facts.py"
-POLICIES_DIR = REPO_ROOT / "policies"
+_BUNDLE = REPO_ROOT / "src" / "a2kit" / "packages" / "lint" / "_bundle"
+EXTRACT_SCRIPT = _BUNDLE / "extract_facts.py"
+POLICIES_DIR = _BUNDLE / "policies"
 
 
 @pytest.fixture()

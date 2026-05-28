@@ -105,6 +105,11 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # plumbing), and tests/packages/mcp/test_wire_structured_output.py
         # (the wire branch the first knob drives).
         "src/a2kit/config.py",
+        # why: bundled CLI script (a2kit/packages/lint/_bundle/extract_facts.py)
+        # invoked as a subprocess by the rego wrapper; behavior covered by
+        # tests/capabilities/rego_policy_layer/ integration tests that run
+        # the full extract → opa pipeline against synthetic fixtures.
+        "src/a2kit/packages/lint/_bundle/extract_facts.py",
     }
 )
 

@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 0.41.0 — 2026-05-28
+
+### Changed — Rego lint bundle moves inside `a2kit.packages.lint`
+
+The Rego policy bundle (5 `.rego` files) + the AST fact extractor
+(`extract_facts.py`) ship INSIDE the package at
+`a2kit/packages/lint/_bundle/`. `a2kit lint rego` defaults to the
+packaged bundle — consumers no longer vendor ~1000 LOC of policy
+infrastructure to use it. The per-project `policies/data.json`
+(allowlist with reasons) is the only file a consumer ships;
+`run_rego_policies` auto-discovers it from CWD.
+
+Migration: delete `policies/*.rego` and `scripts/extract_facts.py` from
+your repo. Keep `policies/data.json`. Continue invoking
+`uv run a2kit lint rego src/ pyproject.toml`.
+
+`--policies-dir`, `--extract-script`, and `--data` flags override the
+defaults when a consumer needs to fork the bundle or point at a
+non-standard allowlist.
+
+Implementation detail: OPA's `--bundle` + `--data` flag combo strips
+the data namespace when both are present, so the wrapper merges
+packaged policies + project data.json into a single temp bundle dir
+before invoking opa eval. Verified manually 2026-05-28.
+
 ## 0.40.1 — 2026-05-28
 
 ### Changed — `prune_empty` marker → `PruneEmpty` base class (breaking, same-day)

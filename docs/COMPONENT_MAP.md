@@ -21,7 +21,7 @@ the lint's own view of the graph.
 | `formatter` | 0 | 10 | 6 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
 | `ldd` | 0 | 11 | 3 | 1 | `context` |
-| `lint` | 0 | 26 | 0 | 0 | — |
+| `lint` | 0 | 27 | 0 | 0 | — |
 | `select` | 0 | 2 | 2 | 0 | — |
 | `kernel` | 1 | 9 | 5 | 1 | `ldd` |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
