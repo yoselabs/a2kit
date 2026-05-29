@@ -46,6 +46,7 @@
 - [ ] 5.2 New `DISPATCH_PIPELINE` stage: auto-capture args+result+timing+principal at the boundary, keyed by `call_id`.
 - [ ] 5.3 `journal_attach(**fields)` consumer-enrichment primitive: merge fields into the active-`call_id` record (ADR 0022 consumer-owned payload).
 - [ ] 5.4 Derive `domain` from the URL arg where present (a2web's case); leave null otherwise.
+- [ ] 5.5 Mint `call_id` as a standalone request-scope primitive readable by any stage even when the journal is off (shared spine for future gate stages, e.g. a2ledger). Settle the thin-record-vs-rich-contract placement (design.md OPEN) when building the record schema; default lean is thin record + open `extra` bag.
 
 ## 6. Config
 

@@ -1,14 +1,21 @@
 ## ADDED Requirements
 
-### Requirement: Per-call correlation id
+### Requirement: Per-call correlation id is a request-scope primitive
 Every tool dispatch SHALL mint a unique `call_id` published on the
-request scope, available to all handlers and to consumer-enrichment
-calls for the lifetime of the call. Concurrent dispatches SHALL receive
-distinct ids.
+request scope as a standalone primitive — available to ANY dispatch
+stage and to enrichment calls for the lifetime of the call, independent
+of whether the journal handler is enabled. Concurrent dispatches SHALL
+receive distinct ids. (Rationale: a gate stage such as a future policy
+ledger needs `call_id` correlation even with the journal off; `call_id`
+is the shared spine, not a journal-internal detail.)
 
 #### Scenario: concurrent calls get distinct ids
 - **WHEN** two tools dispatch concurrently
 - **THEN** each call's emissions and journal record carry a distinct `call_id`
+
+#### Scenario: call_id exists even when the journal is disabled
+- **WHEN** a tool dispatches with the journal handler off
+- **THEN** a `call_id` is still minted on the request scope and readable by other stages
 
 ### Requirement: Durable call journal handler
 The framework SHALL ship a journal handler that persists call records at
@@ -36,13 +43,19 @@ without requiring the tool author to emit anything.
 - **WHEN** a tool that makes no emission calls completes under an enabled journal
 - **THEN** a journal record exists with its args, result, timing, and principal
 
-### Requirement: Consumer record enrichment
-A consumer SHALL be able to attach additional fields (including large
-bodies) to the active call's journal record via a `journal_attach`
-primitive, merged under the active `call_id`. Intermediate values not
-visible at the dispatch boundary (e.g. raw HTML, extracted markdown) are
-the consumer's responsibility to attach.
+### Requirement: Call-record enrichment is a general primitive
+Any code running within a dispatch SHALL be able to attach additional
+fields to the active call's record via a `journal_attach`-style primitive,
+merged under the active `call_id`. The primitive is NOT consumer-specific:
+a consumer attaches domain payloads (e.g. raw HTML, extracted markdown);
+a future policy-ledger gate attaches its verdict and evidence under the
+same seam. Fields land in the record's open `extra` bag so core stays
+ignorant of any enricher's domain vocabulary.
 
 #### Scenario: consumer attaches bodies to its own record
 - **WHEN** a tool calls `journal_attach(raw_html=..., extracted_md=...)` during dispatch
-- **THEN** those fields are merged into the journal record under the current `call_id`
+- **THEN** those fields are merged into the call record under the current `call_id`
+
+#### Scenario: a second enricher merges without clobbering the first
+- **WHEN** two enrichers attach disjoint fields under the same `call_id`
+- **THEN** the record carries the union of both contributions

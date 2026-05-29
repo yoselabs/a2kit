@@ -173,6 +173,44 @@ presentation a consumer-owned concern. a2web may add a structlog handler
 in its own composition root if it wants a pretty dev console; a2kit core
 neither forces the dep nor eats the import.
 
+## The call record is a shared spine (journal + future gates)
+
+The `DISPATCH_PIPELINE` is an ordered tuple of self-skipping stages
+(`AuthorizeGateStage` is the shipped precedent for a stage that can
+*refuse* the body). Two distinct future riders sit on this boundary, and
+they are **two stages, one record**:
+
+```
+   verb        stage                  failure mode          owner
+   ────────    ──────────────────     ─────────────────     ────────────
+   observe     JournalStage (this)    swallow (never break)  a2kit core
+   gate        policy-ledger (P131)   refuse (that's the     a2ledger pkg
+                                        point)
+```
+
+A single fused "call observer" hook was rejected: it would have to be
+both swallow-on-failure (journal) and refuse-on-failure (ledger) at once
+— contradictory, and it couples a safety-critical "never break the tool"
+path to a deliberately-blocking one. Different verbs, different failure
+modes, different owners → different stages.
+
+What they SHARE is the `call_id`-keyed record: the journal writes
+args/result/timing/principal; a future ledger gate writes its
+verdict/evidence under the *same* `call_id` via the same enrichment
+primitive (exactly like a2web attaching `raw_html`). a2ledger's evidence
+model (ADR 0004: `codebase_marker | llm_evidence | hybrid`) becomes
+`extra`-bag fields on this record, not a core concept.
+
+> **OPEN (placement, governance call — defer to implementation):** does
+> core own a **thin record** (`call_id` + args/result/timing/principal +
+> open `extra` bag) with enrichers defining their own typed fields inside
+> `extra`, OR a **richer typed record contract** that a2ledger conforms
+> to? Lean: **thin record + open bag** — keeps a2kit core ignorant of
+> a2ledger's domain vocabulary (evidence/stamps/receipts are P131's, not
+> a2kit's) while still giving both features the shared `call_id` spine.
+> This is a CONSTITUTION substrate/product placement decision; settle it
+> when the journal record schema is implemented, not before.
+
 ## Author surface after the change
 
 ```python
