@@ -48,23 +48,36 @@
 - [ ] 5.4 Derive `domain` from the URL arg where present (a2web's case); leave null otherwise.
 - [ ] 5.5 Mint `call_id` as a standalone request-scope primitive readable by any stage even when the journal is off (shared spine for future gate stages, e.g. a2ledger). Settle the thin-record-vs-rich-contract placement (design.md OPEN) when building the record schema; default lean is thin record + open `extra` bag.
 
+## 5b. Rename — retire "LDD", split trace/journal (no backward-compat alias)
+
+- [ ] 5b.1 Rename package `packages/ldd/` → `packages/trace/`; public module `a2kit.ldd` → `a2kit.trace` (emission: `event`/`log`/`info`/`debug`/`warning`/`error`). NO `a2kit.ldd` alias, NO shim.
+- [ ] 5b.2 New public module `a2kit.journal` (durable record: `attach(**fields)` + `CallRecord`). The dispatch-boundary auto-capture (§5.2) and `journal_attach` (§5.3) live under this name; rename `journal_attach` → `journal.attach`.
+- [ ] 5b.3 `_LddState` → `_CallScope` `{call_id, ctx, start_monotonic, record}` (per-runtime fields removed per §2/§3); `ldd_state_for_call` → `bind_call_scope` (dispatcher SPI; update CLI/MCP/test callers).
+- [ ] 5b.4 `LddConfig` → `TraceConfig`; env `A2KIT_LDD__*` → `A2KIT_TRACE__*`; `app.ldd` → `app.trace` + new `app.journal`.
+- [ ] 5b.5 Wire keys: keep `a2kit_*` prefix (kind/name/payload/elapsed_ms) but re-baseline the byte-equality tests; no `ldd` token in any payload.
+- [ ] 5b.6 Tier-2 snapshot gate: replace `tests/surface/expected_tier_ldd.txt` with `expected_tier_trace.txt` + `expected_tier_journal.txt`; update `TIER2_MODULES` in `tests/surface/test_tier2_surfaces.py`.
+- [ ] 5b.7 Capability spec dirs/names: `ldd-emission-surface` → `trace-emission-surface`, `ldd-call-journal` → `call-journal`, `ldd-operator-sinks` → `trace-handlers`, `ldd-level-threshold` → folded into stdlib levels (retire as bespoke spec).
+- [ ] 5b.8 a2web lockstep: migrate 26 `a2kit.ldd.event(...)` → `a2kit.trace.event(...)`; add `a2kit.journal.attach(...)` enrichment; CHANGELOG migration table.
+
 ## 6. Config
 
-- [ ] 6.1 Extend `LddConfig`: `journal_sink: Literal["off","on"] = "off"`, `journal_dir: str`, body-inlining threshold for content-addressing. Env under `A2KIT_LDD__`.
+- [ ] 6.1 `TraceConfig` (renamed from `LddConfig`): add `journal_sink: Literal["off","on"] = "off"`, `journal_dir: str`, body-inlining threshold for content-addressing. Env under `A2KIT_TRACE__`.
 - [ ] 6.2 App boot registers the journal handler when enabled, alongside existing handlers; document registration order.
 
 ## 7. Docs + decision records
 
 - [ ] 7.1 Land ADR 0027 (refound-ldd-on-stdlib-logging) — incl. the structlog rejection with both rationales (cold-start + code-size-illusion) and the resolved 0.1 branch. Run `make adr-index`.
-- [ ] 7.2 Spec deltas: `ldd-emission-surface` (new), `ldd-call-journal` (new), `ldd-operator-sinks` (modified), `ldd-level-threshold` (modified).
-- [ ] 7.3 `CHANGELOG.md` `[Unreleased]` — BREAKING: `report`/`@reports`/`EventRegistry` removed; `event()` preserved; journal added.
-- [ ] 7.4 Update `docs/patterns/` LDD prose to the stdlib-logging framing.
-- [ ] 7.5 `BACKLOG.md` — tick the "LDD reshape (Path A)" entry as executed; add the a2web follow-up (adopt `event()` unchanged, add `journal_attach`, delete hand-rolled `fetch_result.json` writers).
+- [ ] 7.2 Spec deltas under the renamed capabilities: `trace-emission-surface` (new), `call-journal` (new), `trace-handlers` (modified from `ldd-operator-sinks`); retire `ldd-level-threshold` (folded into stdlib levels). The change-dir spec folders are renamed to match before archive.
+- [ ] 7.3 `CHANGELOG.md` `[Unreleased]` — BREAKING: `a2kit.ldd` → `a2kit.trace` + new `a2kit.journal`; `LddConfig`→`TraceConfig`; `A2KIT_LDD__*`→`A2KIT_TRACE__*`; `report`/`@reports`/`EventRegistry` removed. Migration table maps every old name → new (no aliases).
+- [ ] 7.4 Update `docs/patterns/` + every docstring (incl. `packages/ldd/__init__.py:1` "Logging / Data / Diagnostics") to the trace/journal framing; zero "LDD" left in src prose.
+- [ ] 7.5 `BACKLOG.md` — tick the "LDD reshape (Path A)" entry as executed; add the a2web follow-up (migrate to `a2kit.trace.event`, add `a2kit.journal.attach`, delete hand-rolled `fetch_result.json` writers).
+- [ ] 7.6 ADR 0004 amendment note: the tier-2 surface `a2kit.ldd` is replaced by `a2kit.trace` + `a2kit.journal` (snapshot regen, recorded by this change). ADR 0027 supersedes the reshape change's "keep ldd for stability" concession.
 
 ## 8. Verification
 
 - [ ] 8.1 `openspec validate --changes --strict` green.
 - [ ] 8.2 `make test` green.
 - [ ] 8.3 Cold-start guard: `import a2kit` still does not import `fastapi`/`fastmcp` AND does not import structlog; emission path adds no measurable import cost over stdlib `logging`.
-- [ ] 8.4 With `A2KIT_LDD__JOURNAL_SINK=on`, an a2web-style call writes a jsonl row + blob sidecars; a DuckDB query filters by `domain` without touching sidecars.
-- [ ] 8.5 a2web's 26 `event()` sites compile and pass unchanged against the new surface.
+- [ ] 8.4 With `A2KIT_TRACE__JOURNAL_SINK=on`, an a2web-style call writes a jsonl row + blob sidecars; a DuckDB query filters by `domain` without touching sidecars.
+- [ ] 8.5 a2web migrates to `a2kit.trace.event(...)` + `a2kit.journal.attach(...)` and passes against the new surface.
+- [ ] 8.6 No-redundancy guard: `grep -ri "\bldd\b" src/` returns zero hits outside historical ADR/CHANGELOG entries; no `a2kit.ldd` import path resolves.

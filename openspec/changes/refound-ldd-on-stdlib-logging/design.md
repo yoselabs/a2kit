@@ -173,6 +173,96 @@ presentation a consumer-owned concern. a2web may add a structlog handler
 in its own composition root if it wants a pretty dev console; a2kit core
 neither forces the dep nor eats the import.
 
+## Naming: "LDD" retired, surface sorted into DELETE / RENAME / SPLIT
+
+"LDD" (Logging / Data / Diagnostics) named a bespoke channel this change
+deletes. With no backward-compat redundancy, the name goes with it — no
+`ldd = trace` alias, no shim, no kept-for-stability path. The whole
+surface sorts three ways:
+
+```
+   DELETE (stdlib logging replaces — renaming dead code = redundancy)
+   ──────────────────────────────────────────────────────────────────
+   report / @reports / EventRegistry   → gone (zero callers)
+   LddEmission                         → stdlib logging.LogRecord
+   LddSink                             → stdlib logging.Handler
+   LDD_LEVEL_RANK / levels.py          → stdlib logging levels
+   format_ldd_line / TEXT_CAP          → a logging.Formatter
+   A2K-LDD-REPORT-TYPE lint rule       → gone (report deleted)
+   _LddState per-runtime fields        → stdlib logger/filter/handlers
+
+   RENAME (genuine survivors — clean break, no alias)
+   ──────────────────────────────────────────────────────────────────
+   a2kit.ldd            → a2kit.trace        (emission namespace)
+   packages/ldd/        → packages/trace/
+   LddConfig            → TraceConfig
+   A2KIT_LDD__*         → A2KIT_TRACE__*
+   ldd_state_for_call   → bind_call_scope    (dispatcher SPI)
+   _LddState            → _CallScope         (per-call context)
+   specs ldd-*          → trace-* / call-journal
+
+   SPLIT (un-conflate the two public faces fused under "LDD")
+   ──────────────────────────────────────────────────────────────────
+   a2kit.trace     — LIVE emission   (event/log/info/debug/warning/error)
+   a2kit.journal   — DURABLE record  (attach(**fields) + CallRecord)
+   _CallScope      — per-call context (internal)
+```
+
+Why split `trace` from `journal`: the session established the live-vs-
+durable axis as the core distinction (ephemeral wire stream vs persisted
+analyzable record). Two namespaces make that axis visible at the call
+site — `a2kit.trace.event(...)` is fire-and-forget; `a2kit.journal.
+attach(...)` persists. Folding them back into one namespace would re-
+conflate exactly what we separated.
+
+Why `journal` not `ledger`: accounting metaphor. A **journal** is the
+chronological as-it-happened record (a2kit core, the observe stage); a
+**ledger** is where posted/categorized entries land (the future
+a2ledger policy gate, the gate stage). Same `call_id` spine; the names
+reinforce "two stages, one record."
+
+`trace` collision caveat: it overlaps in prose with the `trace` log
+*level* and OTel *tracing* (the otel handler). Code does not clash (OTel
+rides a Handler). Mitigation: no `trace()` level-shorthand; levels stay
+stdlib values inside `a2kit.trace`.
+
+## _LddState dissolves into a thin per-call `_CallScope`
+
+Field-by-field, `_LddState` splits along the per-call / per-runtime line —
+and the per-runtime half is exactly what stdlib logging provides natively,
+so it evaporates:
+
+```
+   _LddState field    per-call?    fate
+   ────────────────   ─────────    ─────────────────────────────────
+   ctx                PER-CALL     SURVIVES — the awaited wire endpoint
+   start_monotonic    PER-CALL     SURVIVES — basis for elapsed_ms
+   (call_id)          PER-CALL     ADDED    — journal correlation
+   (record)           PER-CALL     ADDED    — journal accumulation (rides here,
+                                              per the shared-spine decision)
+   ────────────────────────────────────────────────────────────────
+   events_enabled     per-runtime  DIES  → stdlib logger level
+   reports_enabled    per-runtime  DIES  → report() deleted
+   report_type        per-runtime  DIES  → @reports deleted
+   tool_name          per-runtime  MOVES → injected on LogRecord by a Filter
+   sinks              per-runtime  DIES  → logging.Handlers
+   level_threshold    per-runtime  DIES  → stdlib logger level
+```
+
+The root problem with `_LddState` was conflation: it mixed *per-call
+identity* (who am I, where's my wire, when did I start) with *per-runtime
+config* (levels, sinks, flags) — and the config half duplicated stdlib
+logging. After the refound, only the per-call identity is left, and it's
+a legitimately-needed contextvar object (the async wire path needs `ctx`
+without threading it through every signature; the journal needs `call_id`).
+
+So `_LddState` → **`_CallScope`**: `{call_id, ctx, start_monotonic,
+record}`. The per-runtime fields move to stdlib logging (a `Filter`
+injects `call_id` / `tool_name` / `elapsed_ms` onto each `LogRecord`; the
+logger's level owns the threshold; handlers own fan-out). This is *less*
+bespoke code, and the new name describes what it is — the per-call scope,
+sibling to `request_scope`.
+
 ## The call record is a shared spine (journal + future gates)
 
 The `DISPATCH_PIPELINE` is an ordered tuple of self-skipping stages
@@ -214,16 +304,17 @@ model (ADR 0004: `codebase_marker | llm_evidence | hybrid`) becomes
 ## Author surface after the change
 
 ```python
-# structured event (the 26-site a2web surface — unchanged spelling)
-await a2kit.ldd.event(TierEnded(step="extract", verdict=ok, dur_ms=300))
+# LIVE emission — a2kit.trace (the 26-site a2web surface, renamed from a2kit.ldd)
+await a2kit.trace.event(TierEnded(step="extract", verdict=ok, dur_ms=300))
+await a2kit.trace.info("cache warm", host="x.com")
 
-# loose channel (kept, thin over stdlib)
-await a2kit.ldd.info("cache warm", host="x.com")
-
-# journal: framework auto-captures args+result+timing+principal+call_id.
-# consumer enriches its own record (a2web):
-await a2kit.ldd.journal_attach(raw_html=html, extracted_md=md, strategy="trafilatura")
+# DURABLE record — a2kit.journal. Framework auto-captures
+# args+result+timing+principal+call_id at the dispatch boundary;
+# the consumer enriches its own record (a2web):
+await a2kit.journal.attach(raw_html=html, extracted_md=md, strategy="trafilatura")
 ```
 
-No `report`. No `EventRegistry`. Destinations are config wired per mode
-at app-build, not API — the journal is a handler you switch on.
+No `report`. No `EventRegistry`. No `a2kit.ldd`. The live/durable split is
+visible at the call site: `a2kit.trace.*` is fire-and-forget; `a2kit.
+journal.attach(...)` persists. Destinations are config wired per mode at
+app-build, not API — the journal is a handler you switch on.

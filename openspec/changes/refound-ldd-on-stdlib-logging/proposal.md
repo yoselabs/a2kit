@@ -135,12 +135,62 @@ the unused verbs; add the durable journal.
 - Coordinated breaking release across a2web / a2atlassian / a2db (solo
   repos, lockstep per `feedback_no_prs`).
 
+## Full rename — "LDD" is retired (no backward-compat redundancy)
+
+The prior reshape change kept the `ldd` name "for surface stability" — a
+*cost-motivated* deferral. Cost is no longer a constraint, and a clean
+codebase carries no redundant aliases, so the deferral is reversed and
+the rename rides THIS change (the refound already rewrites every one of
+these files; renaming later would be a second breaking release —
+exactly the churn we are avoiding). **No `ldd = log` aliases, no
+deprecation shims, no kept-for-stability paths.** "LDD" (Logging / Data /
+Diagnostics) named a bespoke channel that this change deletes; the name
+goes with it.
+
+The surface sorts into three buckets:
+
+- **DELETE** (the refound replaces these with stdlib logging — renaming
+  dead machinery would itself be redundancy): `report` / `@reports` /
+  `EventRegistry`, `LddEmission` (→ stdlib `LogRecord`), `LddSink`
+  (→ stdlib `logging.Handler`), `LDD_LEVEL_RANK` / `levels.py`
+  (→ stdlib levels), `format_ldd_line` / `TEXT_CAP` (→ a `Formatter`),
+  the `A2K-LDD-REPORT-TYPE` lint rule, and `_LddState`'s per-runtime
+  fields (→ stdlib logger / filter / handlers).
+- **RENAME** (genuine survivors, clean break): `a2kit.ldd` →
+  **`a2kit.trace`** (emission); `packages/ldd/` → `packages/trace/`;
+  `LddConfig` → `TraceConfig`; `A2KIT_LDD__*` → `A2KIT_TRACE__*`;
+  `ldd_state_for_call` → `bind_call_scope` (dispatcher SPI); `_LddState`
+  → `_CallScope`; capability specs `ldd-*` → `trace-*` / `call-journal`.
+  Wire keys move `a2kit_*` (kind/name/payload/elapsed_ms) — re-baselined,
+  not aliased.
+- **SPLIT** (un-conflate the two public faces the audit found fused under
+  "LDD"): emission and the durable record become two namespaces —
+  **`a2kit.trace`** (live emission: `event` / `log` / `info` / `debug` /
+  `warning` / `error`) and **`a2kit.journal`** (durable record:
+  `attach(**fields)` + `CallRecord`). The per-call context (`_CallScope`)
+  stays internal.
+
+Naming note: `trace` collides in prose with the `trace` log *level* and
+with OTel *tracing* (the `otel` handler). This is a prose collision, not
+a code clash (OTel rides a `Handler`, not the namespace). Mitigation: no
+`trace()` level-shorthand (none exists today); the level vocabulary stays
+inside `a2kit.trace` as stdlib levels.
+
+The `journal` / `ledger` split is deliberate: a **journal** is the
+chronological record (a2kit core, the observe stage); a **ledger** is
+where posted entries land (the future a2ledger policy gate). They share
+the `call_id` spine — the accounting metaphor reinforces the "two stages,
+one record" decision (see design.md).
+
+Tier-2 snapshot gate: `expected_tier_ldd.txt` is **replaced** by
+`expected_tier_trace.txt` + `expected_tier_journal.txt` (not aliased).
+ADR 0004's tier-gate requires the snapshot regen + this change as the
+recorded ADR. a2web's `a2kit.ldd.event(...)` sites migrate to
+`a2kit.trace.event(...)` in lockstep.
+
 ## Non-goals
 
 - **Not** adopting structlog in core (rejected; see ADR + design).
-- **Not** renaming the public `a2kit.ldd` import path or the `ldd`
-  package — surface stability; the prose rebrand ("emission channel")
-  from the prior change stands.
 - **Not** building a query UI for the journal — jsonl + DuckDB-over-it
   is the analysis path (matches the existing health-pipeline pattern);
   ad-hoc for now.

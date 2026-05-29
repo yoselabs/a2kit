@@ -1,3 +1,8 @@
+<!-- Archive note: this delta MODIFIES the canonical capability currently
+named `ldd-operator-sinks`. At archive time the canonical capability is
+RENAMED `ldd-operator-sinks` → `trace-handlers` (no alias kept); these
+modified requirements land under the new name. -->
+
 ## MODIFIED Requirements
 
 ### Requirement: Built-in operator sinks

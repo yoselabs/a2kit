@@ -43,6 +43,27 @@ of every tool call — accepting a BREAKING removal of `report` /
 sub-problem (the async MCP-wire boundary) that concentrates into a single
 handler.
 
+We **also retire the "LDD" name with no backward-compat redundancy**
+(superseding the reshape change's cost-motivated "keep `ldd` for surface
+stability" concession — cost is no longer the deciding constraint, and a
+clean surface carries no aliases). The name is replaced, not aliased, and
+the rename rides this change because the refound already rewrites these
+files (renaming later would be a second breaking release). The surface
+sorts into DELETE (dead bespoke machinery the refound replaces), RENAME
+(`a2kit.ldd` → `a2kit.trace`, `LddConfig` → `TraceConfig`, `A2KIT_LDD__*`
+→ `A2KIT_TRACE__*`, `ldd_state_for_call` → `bind_call_scope`, `_LddState`
+→ `_CallScope`), and SPLIT — the two public faces that "LDD" conflated
+become **`a2kit.trace`** (live emission) and **`a2kit.journal`** (durable
+record), the live/durable axis made visible at the call site. The
+per-call context (`_CallScope`) stays internal. `_LddState` dissolves:
+its per-runtime fields (levels, sinks, flags) move to stdlib logging; only
+the per-call identity (`call_id`, `ctx`, `start_monotonic`, journal
+`record`) remains. Tier-2 gate `expected_tier_ldd.txt` is replaced by
+`expected_tier_trace.txt` + `expected_tier_journal.txt` (ADR 0004 amends).
+The `journal`/`ledger` naming is deliberate: journal = chronological
+record (a2kit core, observe stage); ledger = posted entries (future
+a2ledger, gate stage); shared `call_id` spine.
+
 ## The problem
 
 `levels.py` states it plainly: *"Rank spacing of 10 mirrors stdlib
