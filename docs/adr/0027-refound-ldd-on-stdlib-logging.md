@@ -21,23 +21,48 @@ BACKLOG.
 
 **Amended 2026-05-29 (post-brainstorm):** a four-agent brainstorm
 sharpened the headline from "refound on stdlib logging" to **"split
-LOGGING from RECORDING."** The two are distinct machines: `a2kit.trace`
-(commentary, genuinely stdlib logging, levels=severity, live wire) and
-`a2kit.journal` (durable call-I/O — a transport-neutral DISPATCH-PIPELINE
-STAGE writing a structured `CallRecord`, NOT a logging handler). Framing
-the journal as "just another logging handler" was retired: it was the
-seed of the kind-by-logger-name hack, the don't-double-output rule, and a
-per-transport drift risk — all of which dissolve once the journal is a
-neutral stage, not a handler. Further amendments: the `CallRecord` is
-**span-shaped** (`trace_id`/`span_id`/`parent_span_id`, OTel *data model*
-without the *SDK*) so nested tool calls and opt-in OTLP export are
-non-breaking; per-call isolation under concurrent `asyncio.gather` was
-**verified** (copy-on-write `request_scope` + per-task `copy_context`),
-so the eval/parallel-run use-case is safe; the "byte-identical across
-transports" invariant is **relaxed** to "identical captured fields" with
-explicit error/streaming/thread edges; `event()` the verb is **dropped**
-but instance-as-payload survives under the level methods
+LOGGING from RECORDING."** The two are distinct machines: the live
+emission surface (commentary, genuinely stdlib logging, levels=severity,
+live wire) and `a2kit.journal` (durable call-I/O — a transport-neutral
+DISPATCH-PIPELINE STAGE writing a structured `CallRecord`, NOT a logging
+handler). Framing the journal as "just another logging handler" was
+retired: it was the seed of the kind-by-logger-name hack, the
+don't-double-output rule, and a per-transport drift risk — all of which
+dissolve once the journal is a neutral stage, not a handler. Further
+amendments: the `CallRecord` is **span-shaped**
+(`trace_id`/`span_id`/`parent_span_id`, OTel *data model* without the
+*SDK*) so nested tool calls and opt-in OTLP export are non-breaking;
+per-call isolation under concurrent `asyncio.gather` was **verified**
+(copy-on-write `request_scope` + per-task `copy_context`), so the
+eval/parallel-run use-case is safe; the "byte-identical across transports"
+invariant is **relaxed** to "identical captured fields" with explicit
+error/streaming/thread edges; `event()` the verb is **dropped** but
+instance-as-payload survives under the level methods
 (`info(TierEnded(...))`) — preserving a2web's typed-emit ergonomics.
+
+**Amended 2026-05-30 (naming + enrichment lock, two-subagent brainstorm):**
+the live surface is named **`a2kit.log`**, NOT `a2kit.trace`. With the
+record now span-shaped, `trace_id`/`span_id` already name the *durable*
+span spine; calling the *live* surface `a2kit.trace` would double-book
+"trace" across both halves of the live-vs-durable axis the split exists to
+expose. `log` says what the surface literally is (stdlib logging), frees
+"trace" to mean only the span concept, and matches the owner's lean
+(`a2kit.logging` stays rejected — shadows the stdlib module). Cascades:
+`LddConfig`→**`LogConfig`**, `A2KIT_LDD__*`→**`A2KIT_LOG__*`**,
+`packages/ldd/`→**`packages/log/`**, specs `log-emission-surface` /
+`log-handlers`; `_CallScope`/`bind_call_scope` stay neutral. AND the
+consumer-enrichment seam is a **typed** primitive
+**`a2kit.journal.record(Payload)`**, NOT the earlier untyped
+`journal.attach(**fields)`: it reuses the same typed-instance grammar as
+`log.info(instance)` (type-checked, payload-kinds namespace cleanly, sync
+— signalling it is not logging), with an explicit
+`record(payload, call_id=...)` form for out-of-dispatch enrichment (eval
+harness). This honours the owner's objection to an untyped imperative
+`attach` grab-bag by unifying the *grammar* across log/journal without
+unifying the *destination*. The Summary/`What we decided`/`Consequences`
+prose below predates these two amendments — where they conflict, the
+amendments win (`a2kit.log` not `a2kit.trace`; `journal.record(Payload)`
+not `attach`; no `event()` verb).
 
 ## Summary
 
@@ -50,9 +75,10 @@ that the BACKLOG pre-registered as the trigger to execute "Path A"
 a2web call logging: ask, returned value, raw HTML, extracted MD,
 filterable by domain), we decided to **re-found the emission surface on
 Python's stdlib `logging` (one record → many handlers, each with its own
-formatter and filter), delete the dead verbs, keep `event()` as thin
-sugar, add a durable call-journal handler with dispatch-boundary
-auto-capture and a consumer-enrichment seam, and reject structlog for
+formatter and filter), delete the dead verbs (incl. `event()` — see the
+2026-05-30 amendment; instance-as-payload rides the level methods), add a
+durable call-journal stage with dispatch-boundary auto-capture and a typed
+consumer-enrichment seam, and reject structlog for
 core**, and against (a) keeping the bespoke four-verb channel, (b)
 adopting structlog, and (c) deferring the journal further, to achieve a
 smaller owned-code surface (deletes ~800 LOC plumbing + ~147 LOC lint
@@ -70,16 +96,16 @@ clean surface carries no aliases). The name is replaced, not aliased, and
 the rename rides this change because the refound already rewrites these
 files (renaming later would be a second breaking release). The surface
 sorts into DELETE (dead bespoke machinery the refound replaces), RENAME
-(`a2kit.ldd` → `a2kit.trace`, `LddConfig` → `TraceConfig`, `A2KIT_LDD__*`
-→ `A2KIT_TRACE__*`, `ldd_state_for_call` → `bind_call_scope`, `_LddState`
+(`a2kit.ldd` → `a2kit.log`, `LddConfig` → `LogConfig`, `A2KIT_LDD__*`
+→ `A2KIT_LOG__*`, `ldd_state_for_call` → `bind_call_scope`, `_LddState`
 → `_CallScope`), and SPLIT — the two public faces that "LDD" conflated
-become **`a2kit.trace`** (live emission) and **`a2kit.journal`** (durable
+become **`a2kit.log`** (live emission) and **`a2kit.journal`** (durable
 record), the live/durable axis made visible at the call site. The
 per-call context (`_CallScope`) stays internal. `_LddState` dissolves:
 its per-runtime fields (levels, sinks, flags) move to stdlib logging; only
 the per-call identity (`call_id`, `ctx`, `start_monotonic`, journal
 `record`) remains. Tier-2 gate `expected_tier_ldd.txt` is replaced by
-`expected_tier_trace.txt` + `expected_tier_journal.txt` (ADR 0004 amends).
+`expected_tier_log.txt` + `expected_tier_journal.txt` (ADR 0004 amends).
 The `journal`/`ledger` naming is deliberate: journal = chronological
 record (a2kit core, observe stage); ledger = posted entries (future
 a2ledger, gate stage); shared `call_id` spine.
@@ -116,13 +142,16 @@ later analysis — has no home. a2web hand-writes `fetch_result.json` /
 2. **Delete dead surface.** `report()`, `@reports`, `report_type`,
    `ReportTypeNotDeclared/Mismatch`, `EventRegistry`, `emit_typed`, the
    progress path, and the bulk of `lint/rules/ldd.py`.
-3. **Keep `event()`** as ~20 LOC of sugar over a logger call with the
-   payload in `extra=` — the entire 26-site a2web surface, unchanged.
-4. **Add the call journal.** A `call_id` per dispatch; a durable handler
+3. **Instance-as-payload on the level methods** (superseding the original
+   "keep `event()`" — see the 2026-05-30 amendment). `a2kit.log.info(...)`
+   takes a message OR a typed instance (payload in `extra=`), ~20 LOC of
+   sugar; the 26-site a2web surface migrates `event(x)` → `info(x)`, no
+   separate `event()` verb.
+4. **Add the call journal.** A `call_id` per dispatch; a durable stage
    writing jsonl rows + content-addressed blob sidecars (so domain
    filtering stays a columnar scan); a `DISPATCH_PIPELINE` stage that
-   auto-captures args/result/timing/principal at the boundary; a
-   `journal_attach` primitive for consumer-owned blobs (raw HTML,
+   auto-captures args/result/timing/principal at the boundary; a typed
+   `journal.record(Payload)` primitive for consumer-owned blobs (raw HTML,
    extracted MD) the boundary cannot see.
 
 ## Why not structlog (recorded to prevent relitigation, per ADR 0005)
@@ -184,6 +213,7 @@ strictly less bespoke machinery than today.
   `EventRegistry` (no external callers — census-confirmed); a coordinated
   lockstep release across the solo consumer repos; the async-wire
   boundary remains a real (if localized) bespoke piece under B2.
-- **Follow-up (a2web, separate change)**: adopt `event()` unchanged; add
-  `journal_attach` for `raw_html`/`extracted_md`; retire the hand-rolled
-  `fetch_result.json` writers in favour of the journal.
+- **Follow-up (a2web, separate change)**: migrate `event(x)` →
+  `a2kit.log.info(x)`; add `a2kit.journal.record(FetchArtifacts(...))` for
+  `raw_html`/`extracted_md`; retire the hand-rolled `fetch_result.json`
+  writers in favour of the journal.

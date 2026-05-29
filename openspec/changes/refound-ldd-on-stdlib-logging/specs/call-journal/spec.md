@@ -85,7 +85,7 @@ MCP / HTTP / in-process) the call arrived through.
 Auto-capture SHALL cover only the tool's own input/output (args, result,
 timing, principal). Harness- or consumer-computed metadata that is NOT a
 tool argument or return value (e.g. eval cost, cache-hit, model name) is
-NOT auto-captured; the consumer attaches it via enrichment under the same
+NOT auto-captured; the consumer enriches the record with it under the same
 `call_id`. (Scopes the "subsumes hand-written result dumps" claim: the
 journal replaces the I/O dump, not the scoring layer.)
 
@@ -93,19 +93,30 @@ journal replaces the I/O dump, not the scoring layer.)
 - **WHEN** an eval harness computes `cost_usd` / `cache_hit` outside the tool call
 - **THEN** those land in the record only if the harness enriches the record under the `call_id`; the auto-capture stage does not invent them
 
-### Requirement: Call-record enrichment is a general primitive
-Any code running within a dispatch SHALL be able to attach additional
-fields to the active call's record via a `journal_attach`-style primitive,
-merged under the active `call_id`. The primitive is NOT consumer-specific:
-a consumer attaches domain payloads (e.g. raw HTML, extracted markdown);
-a future policy-ledger gate attaches its verdict and evidence under the
-same seam. Fields land in the record's open `extra` bag so core stays
-ignorant of any enricher's domain vocabulary.
+### Requirement: Call-record enrichment is a typed primitive
+Any code running within a dispatch SHALL be able to enrich the active
+call's record by passing a TYPED payload instance to `journal.record(...)`,
+merged under the active `call_id`. The payload uses the SAME typed-instance
+grammar as the log level methods (`log.info(instance)`) — not an untyped
+`**fields` bag — so it type-checks and two distinct payload kinds namespace
+cleanly without key collision. The primitive is sync (it mutates the
+active per-call record, not a logging pipe). It is NOT consumer-specific:
+a consumer records domain payloads (e.g. raw HTML, extracted markdown); a
+future policy-ledger gate records its verdict and evidence under the same
+seam. Payloads land in the record's open `extra` bag (keyed by payload
+kind) so core stays ignorant of any enricher's domain vocabulary. An
+explicit `journal.record(payload, call_id=...)` form SHALL exist for code
+running OUTSIDE a dispatch (e.g. a post-hoc eval harness with no active
+call scope).
 
-#### Scenario: consumer attaches bodies to its own record
-- **WHEN** a tool calls `journal_attach(raw_html=..., extracted_md=...)` during dispatch
-- **THEN** those fields are merged into the call record under the current `call_id`
+#### Scenario: consumer records a typed payload onto its own record
+- **WHEN** a tool calls `journal.record(FetchArtifacts(raw_html=..., extracted_md=...))` during dispatch
+- **THEN** the payload's fields are merged into the call record under the current `call_id`, keyed by payload kind
 
 #### Scenario: a second enricher merges without clobbering the first
-- **WHEN** two enrichers attach disjoint fields under the same `call_id`
+- **WHEN** two enrichers record disjoint payload kinds under the same `call_id`
 - **THEN** the record carries the union of both contributions
+
+#### Scenario: out-of-dispatch enrichment uses an explicit call_id
+- **WHEN** an eval harness calls `journal.record(EvalScore(...), call_id=cid)` with no active call scope
+- **THEN** the payload is merged into the record identified by `cid`

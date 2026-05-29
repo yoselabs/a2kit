@@ -81,8 +81,10 @@ the unused verbs; add the durable journal.
     a new stage in `DISPATCH_PIPELINE` (per ADR 0025 the pipeline is a
     foldable stack; this is a new stage, not new machinery).
   - **Consumer enrichment** (ADR 0022 — consumer owns its payload):
-    a2web opts in to attach `raw_html`, `extracted_md`, `strategy` to
-    its own journal record under the same `call_id`. The framework
+    a2web opts in via `a2kit.journal.record(FetchArtifacts(...))` to add
+    `raw_html`, `extracted_md`, `strategy` to its own journal record under
+    the same `call_id` — a TYPED payload, same grammar as
+    `log.info(instance)`, not an untyped kwargs bag. The framework
     captures the boundary; the consumer adds the domain-rich blobs.
 - **Reject structlog for core** — recorded as a first-class decision so
   it is not relitigated (ADR 0005 drift prevention). Rationale: ~80ms+
@@ -96,28 +98,31 @@ the unused verbs; add the durable journal.
 ## Capabilities
 
 ### New Capabilities
-- `ldd-emission-surface` — the refounded author surface: one `event()`
-  primitive + loose log shorthands, built on stdlib `logging`; the
-  removed-verb contract (`report`/`EventRegistry` gone).
-- `ldd-call-journal` — `call_id` correlation, the durable journal
-  handler (jsonl + blob sidecars), dispatch-boundary auto-capture, and
-  the consumer-enrichment seam.
+- `log-emission-surface` — the refounded author surface: stdlib level
+  methods (`info`/`debug`/`warning`/`error`), each accepting a message OR
+  a typed instance, built on stdlib `logging`; the removed-verb contract
+  (`report`/`EventRegistry`/`event()` gone).
+- `call-journal` — `call_id` correlation, the durable journal store
+  (jsonl + blob sidecars), dispatch-boundary auto-capture, and the typed
+  consumer-enrichment seam (`journal.record(Payload)`).
 
 ### Modified Capabilities
-- `ldd-operator-sinks` — sinks are re-expressed as stdlib
-  `logging.Handler`s; the failure-isolation contract is preserved; the
-  journal is a built-in handler alongside otel/live/stderr.
-- `ldd-level-threshold` — the single gate becomes a stdlib logging
-  level + filter; semantics (one gate, both channels) unchanged.
+- `log-handlers` — sinks are re-expressed as stdlib `logging.Handler`s;
+  the failure-isolation contract is preserved. (The journal is NOT a
+  handler — it is a transport-neutral dispatch stage; see design.md.)
+- `ldd-level-threshold` — RETIRED as a bespoke capability: the single
+  gate folds into the stdlib logging level + filter (one gate, both
+  channels) — no longer a capability a2kit owns.
 
 ## Impact
 
 - **BREAKING** for any consumer importing `report` / `@reports` /
-  `EventRegistry` from `a2kit.ldd` — census says only the framework's
-  own tests do. a2web's 26 `event()` sites are source-compatible (the
-  `event()` sugar is preserved).
-- Affected code: `packages/ldd/emission.py` (gutted to the `event()`
-  sugar + stdlib bridge), `packages/ldd/ambient.py` (becomes a filter +
+  `EventRegistry` / `event` from `a2kit.ldd` — census says only the
+  framework's own tests do. a2web's 26 `event(instance)` sites migrate
+  to `a2kit.log.info(instance)` (the typed payload now rides the level
+  method; mechanical one-line rewrite each).
+- Affected code: `packages/ldd/emission.py` (gutted to the level-method
+  wrappers + stdlib bridge), `packages/ldd/ambient.py` (becomes a filter +
   `call_id` mint), `levels.py` / `wire.py` (fold into a formatter),
   `sinks/*` (become handlers), `packages/lint/rules/ldd.py` (mostly
   deleted), new `sinks/journal.py`, new dispatch stage.
@@ -157,24 +162,28 @@ The surface sorts into three buckets:
   the `A2K-LDD-REPORT-TYPE` lint rule, and `_LddState`'s per-runtime
   fields (→ stdlib logger / filter / handlers).
 - **RENAME** (genuine survivors, clean break): `a2kit.ldd` →
-  **`a2kit.trace`** (emission); `packages/ldd/` → `packages/trace/`;
-  `LddConfig` → `TraceConfig`; `A2KIT_LDD__*` → `A2KIT_TRACE__*`;
+  **`a2kit.log`** (emission); `packages/ldd/` → `packages/log/`;
+  `LddConfig` → `LogConfig`; `A2KIT_LDD__*` → `A2KIT_LOG__*`;
   `ldd_state_for_call` → `bind_call_scope` (dispatcher SPI); `_LddState`
-  → `_CallScope`; capability specs `ldd-*` → `trace-*` / `call-journal`.
+  → `_CallScope`; capability specs `ldd-*` → `log-*` / `call-journal`.
   Wire keys move `a2kit_*` (kind/name/payload/elapsed_ms) — re-baselined,
   not aliased.
 - **SPLIT** (un-conflate the two public faces the audit found fused under
   "LDD"): emission and the durable record become two namespaces —
-  **`a2kit.trace`** (live emission: `event` / `log` / `info` / `debug` /
-  `warning` / `error`) and **`a2kit.journal`** (durable record:
-  `attach(**fields)` + `CallRecord`). The per-call context (`_CallScope`)
-  stays internal.
+  **`a2kit.log`** (live emission: `info` / `debug` / `warning` / `error`,
+  each taking a message OR a typed instance) and **`a2kit.journal`**
+  (durable record: `record(Payload)` + `CallRecord`). The per-call
+  context (`_CallScope`) stays internal.
 
-Naming note: `trace` collides in prose with the `trace` log *level* and
-with OTel *tracing* (the `otel` handler). This is a prose collision, not
-a code clash (OTel rides a `Handler`, not the namespace). Mitigation: no
-`trace()` level-shorthand (none exists today); the level vocabulary stays
-inside `a2kit.trace` as stdlib levels.
+Why `log` not `trace` for the live surface: the `CallRecord` is
+span-shaped, so `trace_id` / `span_id` already name the *durable* span
+spine; naming the *live* surface `a2kit.trace` would double-book "trace"
+across both halves of the live-vs-durable axis the split exists to expose.
+`log` names what the surface literally is (genuinely stdlib logging),
+frees "trace" to mean only the span concept, and matches the owner's lean.
+`a2kit.logging` stays rejected (shadows the stdlib module). The only
+surviving "trace" tokens are the span fields and the optional `trace`
+level alias — both deliberate.
 
 The `journal` / `ledger` split is deliberate: a **journal** is the
 chronological record (a2kit core, the observe stage); a **ledger** is
@@ -183,10 +192,10 @@ the `call_id` spine — the accounting metaphor reinforces the "two stages,
 one record" decision (see design.md).
 
 Tier-2 snapshot gate: `expected_tier_ldd.txt` is **replaced** by
-`expected_tier_trace.txt` + `expected_tier_journal.txt` (not aliased).
+`expected_tier_log.txt` + `expected_tier_journal.txt` (not aliased).
 ADR 0004's tier-gate requires the snapshot regen + this change as the
 recorded ADR. a2web's `a2kit.ldd.event(...)` sites migrate to
-`a2kit.trace.event(...)` in lockstep.
+`a2kit.log.info(...)` (typed instance rides the level method) in lockstep.
 
 ## Non-goals
 

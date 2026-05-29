@@ -198,11 +198,12 @@ vs full-fidelity."
   `principal` for every tool, with no author cooperation. A
   framework-level interceptor is the *only* layer that can do this
   uniformly — and it is exactly the opposite of LDD's "author narrates"
-  grain, which is why it belongs in a stage, not in `event()`.
+  grain, which is why it belongs in a stage, not in a `log` call.
 - **Consumer enrichment** (ADR 0022 — consumer owns its payload): the
   boundary interceptor cannot see `raw_html` / `extracted_md` —
   intermediate values that never cross the dispatch boundary. a2web opts
-  in to attach them to its own record under the same `call_id`. Clean
+  in to `journal.record(...)` them onto its own record under the same
+  `call_id`. Clean
   split: framework gets correlation + persistence for free; consumer
   adds the domain-rich blobs.
 
@@ -301,27 +302,36 @@ surface sorts three ways:
 
    RENAME (genuine survivors — clean break, no alias)
    ──────────────────────────────────────────────────────────────────
-   a2kit.ldd            → a2kit.trace        (emission namespace)
-   packages/ldd/        → packages/trace/
-   LddConfig            → TraceConfig
-   A2KIT_LDD__*         → A2KIT_TRACE__*
+   a2kit.ldd            → a2kit.log         (emission namespace)
+   packages/ldd/        → packages/log/
+   LddConfig            → LogConfig
+   A2KIT_LDD__*         → A2KIT_LOG__*
    ldd_state_for_call   → bind_call_scope    (dispatcher SPI)
    _LddState            → _CallScope         (per-call context)
-   specs ldd-*          → trace-* / call-journal
+   specs ldd-*          → log-* / call-journal
 
    SPLIT (un-conflate the two public faces fused under "LDD")
    ──────────────────────────────────────────────────────────────────
-   a2kit.trace     — LIVE emission   (event/log/info/debug/warning/error)
-   a2kit.journal   — DURABLE record  (attach(**fields) + CallRecord)
+   a2kit.log       — LIVE emission   (info/debug/warning/error; msg OR instance)
+   a2kit.journal   — DURABLE record  (record(Payload) + CallRecord)
    _CallScope      — per-call context (internal)
 ```
 
-Why split `trace` from `journal`: the session established the live-vs-
+Why split `log` from `journal`: the session established the live-vs-
 durable axis as the core distinction (ephemeral wire stream vs persisted
 analyzable record). Two namespaces make that axis visible at the call
-site — `a2kit.trace.event(...)` is fire-and-forget; `a2kit.journal.
-attach(...)` persists. Folding them back into one namespace would re-
+site — `a2kit.log.info(...)` is fire-and-forget; `a2kit.journal.
+record(...)` persists. Folding them back into one namespace would re-
 conflate exactly what we separated.
+
+Why `log` not `trace` for the live surface: the record is now span-shaped
+(`trace_id` / `span_id`), so "trace" already names the *durable* span
+spine. Naming the *live* surface `a2kit.trace` would double-book the one
+word across both halves of the very axis we just split. `log` says what
+the surface literally is (genuinely stdlib logging), frees "trace" to mean
+only the span concept, and matches the project owner's stated lean. Three
+words, three concepts: **log** (live narration) / **trace_id** (span spine)
+/ **journal** (the store).
 
 Why `journal` not `ledger`: accounting metaphor. A **journal** is the
 chronological as-it-happened record (a2kit core, the observe stage); a
@@ -329,10 +339,12 @@ chronological as-it-happened record (a2kit core, the observe stage); a
 a2ledger policy gate, the gate stage). Same `call_id` spine; the names
 reinforce "two stages, one record."
 
-`trace` collision caveat: it overlaps in prose with the `trace` log
-*level* and OTel *tracing* (the otel handler). Code does not clash (OTel
-rides a Handler). Mitigation: no `trace()` level-shorthand; levels stay
-stdlib values inside `a2kit.trace`.
+"trace" usage after this choice: the only surviving "trace" tokens are
+the span fields (`trace_id` / `span_id` / `parent_span_id` on `CallRecord`)
+and the optional `trace` *level* alias in `levels.py` — both deliberate
+and non-overlapping with the `a2kit.log` namespace. The earlier
+`a2kit.trace`-namespace collision caveat is moot now the surface is
+`a2kit.log`.
 
 ## _LddState dissolves into a thin per-call `_CallScope`
 
@@ -395,7 +407,7 @@ modes, different owners → different stages.
 What they SHARE is the `call_id`-keyed record: the journal writes
 args/result/timing/principal; a future ledger gate writes its
 verdict/evidence under the *same* `call_id` via the same enrichment
-primitive (exactly like a2web attaching `raw_html`). a2ledger's evidence
+primitive (exactly like a2web recording `raw_html`). a2ledger's evidence
 model (ADR 0004: `codebase_marker | llm_evidence | hybrid`) becomes
 `extra`-bag fields on this record, not a core concept.
 
@@ -412,17 +424,26 @@ model (ADR 0004: `codebase_marker | llm_evidence | hybrid`) becomes
 ## Author surface after the change
 
 ```python
-# LIVE emission — a2kit.trace (the 26-site a2web surface, renamed from a2kit.ldd)
-await a2kit.trace.event(TierEnded(step="extract", verdict=ok, dur_ms=300))
-await a2kit.trace.info("cache warm", host="x.com")
+# LIVE emission — a2kit.log (the 26-site a2web surface, renamed from a2kit.ldd)
+# A level method takes a message+fields OR a typed instance (no event() verb).
+await a2kit.log.info(TierEnded(step="extract", verdict=ok, dur_ms=300))
+await a2kit.log.info("cache warm", host="x.com")
 
 # DURABLE record — a2kit.journal. Framework auto-captures
 # args+result+timing+principal+call_id at the dispatch boundary;
-# the consumer enriches its own record (a2web):
-await a2kit.journal.attach(raw_html=html, extracted_md=md, strategy="trafilatura")
+# the consumer enriches its own record (a2web) with a TYPED payload —
+# same grammar as log.info(instance), different destination + lifetime:
+a2kit.journal.record(FetchArtifacts(raw_html=html, extracted_md=md, strategy="trafilatura"))
+
+# out-of-dispatch enrichment (eval harness; no active call scope) takes call_id:
+a2kit.journal.record(EvalScore(cost_usd=x, cache_hit=h), call_id=cid)
 ```
 
-No `report`. No `EventRegistry`. No `a2kit.ldd`. The live/durable split is
-visible at the call site: `a2kit.trace.*` is fire-and-forget; `a2kit.
-journal.attach(...)` persists. Destinations are config wired per mode at
-app-build, not API — the journal is a handler you switch on.
+No `report`. No `EventRegistry`. No `event()` verb. No `a2kit.ldd`. The
+live/durable split is visible at the call site: `a2kit.log.*` is
+fire-and-forget commentary (async, severity-ranked, streamed); `a2kit.
+journal.record(...)` persists a typed payload (sync, full-fidelity,
+content-addressed). One typed-payload grammar, two destinations.
+`record()` is sync — it mutates the active `_CallScope.record`, signalling
+it is *not* logging. Live destinations are config-wired per mode at
+app-build; the journal is a dispatch stage you switch on.
