@@ -25,6 +25,114 @@ callers — is the typed shape that the journal *wants to persist*; it was
 a half-built journal primitive that never got a durable destination. So
 building the journal and finishing the LDD reshape are the same move.
 
+## Decisive reframe (2026-05-29 brainstorm): split LOGGING from RECORDING
+
+A four-agent brainstorm (red-team / prior-art / consumer / alternatives)
+converged independently on one correction: **this is two systems, not one
+"logging" system with a journal handler bolted on.** The earlier "one
+record → many handlers, the journal is just another handler" framing
+(below) is RETIRED — it was the seed of every wart we hit. The two
+machines:
+
+```
+   a2kit.log  — TRACE (commentary, live, ephemeral)
+   ─────────────────────────────────────────────────
+   genuinely stdlib logging. author narrates. levels mean severity.
+   → wire handler (async-inline ctx.log, streams to agent, INFO+)
+   → stderr handler (operator, DEBUG+)
+   foreign libs (httpx) excluded by NOT being under a2kit.*
+   THIS is where stdlib logging + per-handler levels earn their keep.
+
+   a2kit  journal — RECORD (call I/O, durable, queryable)
+   ─────────────────────────────────────────────────
+   NOT logging. a transport-neutral DISPATCH-PIPELINE STAGE writes a
+   structured CallRecord. No Logger, no level, no formatter. Auto-
+   captured at the boundary (before the formatter — raw return value).
+   Consumer enriches the record (not by logging). Queried by DuckDB.
+```
+
+Why the split is *more* faithful to the project's own principles, not
+less:
+
+- **"Same side-effects regardless of interface"** (the stated invariant):
+  the journal being a NEUTRAL DISPATCH STAGE makes the record identical
+  *by construction*. A journal-as-handler would be config-wired per
+  transport and could drift — the exact thing the invariant forbids. The
+  split strengthens it.
+- **The warts dissolve.** Each was a symptom of over-unification:
+  - kind-by-logger-name (`a2kit.call` vs `a2kit`) — only needed to tell
+    call-io from commentary *inside one logging pipe*. Separate systems →
+    the hack is unnecessary (call-io is a record, not a log line).
+  - the "don't emit data where already visible" routing rule — only
+    needed to de-dup two kinds sharing one pipe. Separate pipes → no rule.
+  - "byte-identical across handlers" fragility — the record is owned by
+    one neutral stage, not reconstructed by N handlers.
+  - the namespace-squat question (where does a2web log to be journaled?)
+    — moot: the journal captures at the dispatch boundary, it does not
+    subscribe to a consumer's logger.
+
+The ADR headline becomes **"split logging from recording"** — stdlib
+`logging` for ephemeral commentary, a dispatch-stage record store for
+durable call-I/O. (The "## The unifying mechanism" section below is kept
+for history but superseded by this one.)
+
+### CallRecord is span-shaped (OTel data model, NOT the OTel SDK)
+
+Two agents converged: shape the record like an OTel span *now*, without
+importing the SDK (the SDK's cold-start cost is rejected on the same
+ADR-0020 grounds as structlog). The record carries `trace_id` /
+`span_id` / `parent_span_id` alongside `call_id`. Costs ~nothing today
+and buys three things the flat-`call_id` design lacks:
+
+- **call NESTING** — a tool that dispatches another tool. The current
+  design never addressed it; flat `call_id` can't express parent/child.
+  `parent_span_id` makes it a non-breaking field, not a future migration.
+- the existing `otel_sink` becomes a *real* exporter for opt-in consumers.
+- "migrate to OTel" becomes a config flag, not a rewrite.
+
+### Verified: per-call isolation holds (eval use-case safe)
+
+The red-team flagged a possible FATAL concurrency bug (parallel calls
+cross-contaminating `call_id`). **Falsified empirically** against
+`packages/context/request_scope.py`: `publish` is copy-on-write
+(`dict(current)` then `_scope.set`), and asyncio Tasks run in a
+`copy_context()` snapshot — so `gather`-interleaved calls stay isolated
+(A→A, B→B, C→C) and child tasks correctly inherit the parent's `call_id`.
+This is the mechanism `feedback_parallel_runs` (A/B eval runs need run_id
+isolation) depends on; it works.
+
+Caveat to record in the spec: contextvars do NOT cross a raw
+`threading.Thread` / `ProcessPoolExecutor` boundary (standard Python
+limitation). A tool offloading to a thread must capture+rebind or pass
+`call_id` explicitly. Not an a2kit bug; a documented edge.
+
+### "byte-identical" relaxed; fetch_result.json claim scoped down
+
+- The invariant is **"identical CAPTURED FIELDS across interfaces,"** not
+  byte-identical wire output. The capture stage snapshots the raw return
+  *value* (pre-formatter) + args + principal + timing. Error cases
+  (no return value → captured as typed error), streaming/generator
+  returns (captured as the materialized value or a marker), and
+  transport-injected ids are defined explicitly in the spec rather than
+  assumed away.
+- The journal subsumes **call-I/O capture**, NOT the eval-scoring layer.
+  The consumer agent found a2web's `fetch_result.json` carries
+  harness-computed metadata (`cost_usd`, `cache_hit`, `extraction_model`)
+  that is NOT a tool arg/return — it is synthesized by the eval harness.
+  That stays consumer enrichment (logged into the record by `call_id`),
+  not auto-capture. Honest scope: journal replaces the I/O dump, not the
+  scoring metadata.
+
+### event(instance) STAYS (reverses an earlier lean)
+
+The consumer agent found a2web has 28 sites passing typed dataclasses
+(`TierEnded(step=..., verdict=...)`). Forcing `info("msg", **kwargs)`
+loses construction-time type-checking, IDE autocomplete, and adds
+boilerplate at every site — a usability cliff. So `a2kit.log.info`
+accepts `info(instance | msg, **fields)`: the instance IS the structured
+payload. No separate `event()` verb (that name dies), but instance-
+logging as the shape survives under `info`/`debug`/etc.
+
 ## The unifying mechanism: one record → many handlers
 
 This is stdlib `logging`'s architecture, and it collapses every stated

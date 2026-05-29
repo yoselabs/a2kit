@@ -9,15 +9,18 @@
 
 ## 1. BDD specs (write tests first — per `feedback_bdd_first`)
 
-- [ ] 1.1 `tests/capabilities/ldd_emission_surface/test_event_sugar_over_logging.py` — `event(TypedDataclass)` produces one stdlib `LogRecord` carrying the dumped payload in `extra`; enum values unwrapped.
-- [ ] 1.2 `tests/capabilities/ldd_emission_surface/test_report_removed.py` — importing `report` / `reports` / `EventRegistry` from `a2kit.ldd` raises `ImportError` (removed-surface contract).
-- [ ] 1.3 `tests/capabilities/ldd_emission_surface/test_loose_log_shorthands.py` — `info/debug/warning/error` route through the stdlib logger at the right level with fields.
-- [ ] 1.4 `tests/capabilities/ldd_call_journal/test_call_id_per_dispatch.py` — each dispatch mints a unique `call_id` on the request scope; concurrent calls don't collide.
-- [ ] 1.5 `tests/capabilities/ldd_call_journal/test_auto_capture_boundary.py` — the dispatch stage records args+result+timing+principal for a tool that emits nothing itself.
-- [ ] 1.6 `tests/capabilities/ldd_call_journal/test_journal_jsonl_and_blob_sidecar.py` — a large body is content-addressed to a sidecar; the jsonl row carries the hash, not the body; row round-trips `json.loads`.
-- [ ] 1.7 `tests/capabilities/ldd_call_journal/test_consumer_enrichment_same_call_id.py` — `journal_attach(...)` adds fields to the record under the active `call_id`.
-- [ ] 1.8 `tests/capabilities/ldd_call_journal/test_domain_filter_scan.py` — given N journal rows across domains, a domain filter selects the right subset without reading blob sidecars.
-- [ ] 1.9 `tests/capabilities/ldd_emission_surface/test_wire_streams_inline.py` — an `event()` mid-tool-body produces a wire log notification BEFORE the tool returns (assert via an in-process ctx stub that records emit timestamps relative to tool completion). Guards the no-regression-of-streaming invariant.
+- [ ] 1.1 `tests/capabilities/trace_emission_surface/test_level_method_accepts_instance.py` — `info(TypedDataclass)` produces one stdlib `LogRecord` carrying the dumped payload in `extra`; enum values unwrapped. (instance-as-payload under the level method; no `event()` verb.)
+- [ ] 1.2 `tests/capabilities/trace_emission_surface/test_removed_surface.py` — importing `report` / `reports` / `EventRegistry` / `event` from `a2kit.trace` (or old `a2kit.ldd`) raises `ImportError`.
+- [ ] 1.3 `tests/capabilities/trace_emission_surface/test_level_methods.py` — `info/debug/warning/error` route through the stdlib logger at the right level with fields.
+- [ ] 1.4 `tests/capabilities/call_journal/test_call_id_per_dispatch.py` — each dispatch mints a unique `call_id`; concurrent `gather`-interleaved calls stay isolated (A→A, B→B); a child task inherits the parent `call_id`. (Guards the verified-isolation property `feedback_parallel_runs` depends on.)
+- [ ] 1.5 `tests/capabilities/call_journal/test_auto_capture_boundary.py` — the neutral dispatch stage records args+result+timing+principal for a tool that emits nothing; result is the RAW pre-formatter value.
+- [ ] 1.6 `tests/capabilities/call_journal/test_journal_jsonl_and_blob_sidecar.py` — a large body is content-addressed to a sidecar; the jsonl row carries the hash; row round-trips `json.loads`.
+- [ ] 1.7 `tests/capabilities/call_journal/test_enrichment_same_call_id.py` — `a2kit.journal.attach(...)` adds fields under the active `call_id`; two enrichers merge without clobber.
+- [ ] 1.8 `tests/capabilities/call_journal/test_domain_filter_scan.py` — a domain filter selects rows without reading blob sidecars.
+- [ ] 1.9 `tests/capabilities/trace_emission_surface/test_wire_streams_inline.py` — `info(...)` mid-tool-body produces a wire notification BEFORE the tool returns. Guards no-regression-of-streaming.
+- [ ] 1.10 `tests/capabilities/call_journal/test_identical_fields_across_interfaces.py` — same call via CLI and via MCP yields identical captured fields (the relaxed invariant).
+- [ ] 1.11 `tests/capabilities/call_journal/test_span_shape_and_nesting.py` — record carries `trace_id`/`span_id`/`parent_span_id`; a nested tool call sets `parent_span_id` to the outer `span_id`.
+- [ ] 1.12 `tests/capabilities/call_journal/test_error_and_streaming_capture.py` — an erroring tool captures the typed error in the result position; a generator return captures the materialized value, never a bare generator object.
 
 ## 2. Re-found emission on stdlib logging
 
@@ -47,6 +50,9 @@
 - [ ] 5.3 `journal_attach(**fields)` consumer-enrichment primitive: merge fields into the active-`call_id` record (ADR 0022 consumer-owned payload).
 - [ ] 5.4 Derive `domain` from the URL arg where present (a2web's case); leave null otherwise.
 - [ ] 5.5 Mint `call_id` as a standalone request-scope primitive readable by any stage even when the journal is off (shared spine for future gate stages, e.g. a2ledger). Settle the thin-record-vs-rich-contract placement (design.md OPEN) when building the record schema; default lean is thin record + open `extra` bag.
+- [ ] 5.6 `CallRecord` is span-shaped: `trace_id` / `span_id` / `parent_span_id` alongside `call_id`, NO OTel SDK import. `parent_span_id` set from the enclosing call's `span_id` for nested dispatch. Shape convertible to OTLP so `otel` handler can export it.
+- [ ] 5.7 The journal is a transport-NEUTRAL `DISPATCH_PIPELINE` stage, NOT a `logging.Handler`. Capture the RAW return value before the formatter. Define error (typed-error in result position) and streaming (materialized value, never bare generator) capture.
+- [ ] 5.8 Auto-capture is call-I/O ONLY (args/result/timing/principal). Harness/consumer metadata (cost, cache-hit, model) is enrichment under `call_id`, not auto-capture. Document the contextvar-does-not-cross-thread edge.
 
 ## 5b. Rename — retire "LDD", split trace/journal (no backward-compat alias)
 

@@ -27,21 +27,28 @@ long-running call surfaces its emissions as they happen.
 - **WHEN** a tool emits an event partway through a long-running body
 - **THEN** the wire log notification is delivered at emit time, before the tool's return value is produced
 
-### Requirement: Single structured event primitive
-The author surface SHALL expose `event(payload | "name", **fields)` as
-the one structured-emission primitive, carrying the payload on the
-stdlib record's `extra`. Typed payloads (pydantic / dataclass) SHALL be
-dumped to a JSON-safe dict with enum values unwrapped. Loose
-`info` / `debug` / `warning` / `error` shorthands SHALL route through the
-same logger at the named level.
+### Requirement: Level methods accept a message OR a typed instance
+The author surface SHALL expose `info` / `debug` / `warning` / `error`
+(and `log(level, …)`) as the emission methods, each accepting EITHER a
+string message OR a typed instance (pydantic / dataclass) as the first
+positional, plus `**fields`. A typed instance is the structured payload:
+it is dumped to a JSON-safe dict (enum values unwrapped) and carried on
+the stdlib record's `extra`. There is NO separate `event()` verb — the
+instance-as-payload shape (a2web's 28-site idiom) survives under the
+level methods, preserving construction-time type-checking and IDE
+autocomplete.
 
-#### Scenario: typed event carries dumped payload
-- **WHEN** `event(TierEnded(step="extract", dur_ms=300))` is called
-- **THEN** one record is emitted carrying the dumped payload, enum fields unwrapped to their values
+#### Scenario: a level method accepts a typed instance
+- **WHEN** `info(TierEnded(step="extract", dur_ms=300))` is called
+- **THEN** one INFO record is emitted carrying the dumped instance, enum fields unwrapped to their values
 
-#### Scenario: loose shorthand routes at level
+#### Scenario: a level method accepts a message + fields
 - **WHEN** `warning("cookies stale", host="x.com")` is called
-- **THEN** one record at WARNING level is emitted with the fields attached
+- **THEN** one WARNING record is emitted with the fields attached
+
+#### Scenario: no event() verb exists
+- **WHEN** code attempts to import or call `event` from the emission surface
+- **THEN** it fails — the structured shape lives under the level methods, not a dedicated verb
 
 ## REMOVED Requirements
 
@@ -49,11 +56,12 @@ same logger at the named level.
 **Reason**: zero callers (census 2026-05-27); validated payload types
 even when disabled to serve test determinism (production API carrying a
 test concern). The durable, typed shape it implied is delivered by
-`ldd-call-journal` instead.
+`call-journal` instead.
 **Migration**: none required — no consumer imports `report` / `@reports`.
 The journal record is the durable typed shape going forward.
 
 ### Requirement: EventRegistry typed-event registry
 **Reason**: zero callers; the progress-callback path (`emit_typed` →
 `report_progress`) is unused (a2web `report_progress` count: 0).
-**Migration**: emit via `event(instance)` directly; no registration step.
+**Migration**: emit the instance via a level method directly —
+`info(instance)` / `debug(instance)`; no registration step, no `event()` verb.

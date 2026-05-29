@@ -19,6 +19,26 @@ shape — prior LDD design lived only in change records
 (`reshape-ldd-operator-wire-fanout`, archived 2026-05-27) and the
 BACKLOG.
 
+**Amended 2026-05-29 (post-brainstorm):** a four-agent brainstorm
+sharpened the headline from "refound on stdlib logging" to **"split
+LOGGING from RECORDING."** The two are distinct machines: `a2kit.trace`
+(commentary, genuinely stdlib logging, levels=severity, live wire) and
+`a2kit.journal` (durable call-I/O — a transport-neutral DISPATCH-PIPELINE
+STAGE writing a structured `CallRecord`, NOT a logging handler). Framing
+the journal as "just another logging handler" was retired: it was the
+seed of the kind-by-logger-name hack, the don't-double-output rule, and a
+per-transport drift risk — all of which dissolve once the journal is a
+neutral stage, not a handler. Further amendments: the `CallRecord` is
+**span-shaped** (`trace_id`/`span_id`/`parent_span_id`, OTel *data model*
+without the *SDK*) so nested tool calls and opt-in OTLP export are
+non-breaking; per-call isolation under concurrent `asyncio.gather` was
+**verified** (copy-on-write `request_scope` + per-task `copy_context`),
+so the eval/parallel-run use-case is safe; the "byte-identical across
+transports" invariant is **relaxed** to "identical captured fields" with
+explicit error/streaming/thread edges; `event()` the verb is **dropped**
+but instance-as-payload survives under the level methods
+(`info(TierEnded(...))`) — preserving a2web's typed-emit ergonomics.
+
 ## Summary
 
 In the context of LDD — a bespoke realtime emission channel that
