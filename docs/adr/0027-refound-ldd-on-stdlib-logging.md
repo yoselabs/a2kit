@@ -5,11 +5,11 @@ date: 2026-05-29
 last_reviewed: 2026-05-29
 supersedes: []
 superseded_by: null
-tags: [ldd, logging, observability, architecture, surface, journal, dependency]
+tags: [ldd, logging, observability, architecture, surface, call-log, access-log, dependency]
 deciders: [Denis Tomilin]
 ---
 
-# ADR 0027: Refound LDD on stdlib logging; add a durable call journal; reject structlog for core
+# ADR 0027: Refound LDD on stdlib logging; add a durable call access-log; reject structlog for core
 
 ## Status
 
@@ -40,29 +40,52 @@ error/streaming/thread edges; `event()` the verb is **dropped** but
 instance-as-payload survives under the level methods
 (`info(TierEnded(...))`) — preserving a2web's typed-emit ergonomics.
 
-**Amended 2026-05-30 (naming + enrichment lock, two-subagent brainstorm):**
-the live surface is named **`a2kit.log`**, NOT `a2kit.trace`. With the
-record now span-shaped, `trace_id`/`span_id` already name the *durable*
-span spine; calling the *live* surface `a2kit.trace` would double-book
-"trace" across both halves of the live-vs-durable axis the split exists to
-expose. `log` says what the surface literally is (stdlib logging), frees
-"trace" to mean only the span concept, and matches the owner's lean
-(`a2kit.logging` stays rejected — shadows the stdlib module). Cascades:
-`LddConfig`→**`LogConfig`**, `A2KIT_LDD__*`→**`A2KIT_LOG__*`**,
-`packages/ldd/`→**`packages/log/`**, specs `log-emission-surface` /
-`log-handlers`; `_CallScope`/`bind_call_scope` stay neutral. AND the
-consumer-enrichment seam is a **typed** primitive
-**`a2kit.journal.record(Payload)`**, NOT the earlier untyped
-`journal.attach(**fields)`: it reuses the same typed-instance grammar as
-`log.info(instance)` (type-checked, payload-kinds namespace cleanly, sync
-— signalling it is not logging), with an explicit
-`record(payload, call_id=...)` form for out-of-dispatch enrichment (eval
-harness). This honours the owner's objection to an untyped imperative
-`attach` grab-bag by unifying the *grammar* across log/journal without
-unifying the *destination*. The Summary/`What we decided`/`Consequences`
-prose below predates these two amendments — where they conflict, the
-amendments win (`a2kit.log` not `a2kit.trace`; `journal.record(Payload)`
-not `attach`; no `event()` verb).
+**Amended 2026-05-30 (naming + access-log collapse — FINAL surface).**
+Two refinements landed this date and this block is canonical where the
+older prose below conflicts.
+
+1. **Name.** The surface is **`a2kit.log`**, NOT `a2kit.trace`. With the
+   record span-shaped, `trace_id`/`span_id` already name the *durable*
+   span spine; `a2kit.trace` would double-book "trace". `log` says what
+   the surface literally is (stdlib logging); `a2kit.logging` stays
+   rejected (shadows the stdlib module). Cascades:
+   `LddConfig`→**`LogConfig`**, `A2KIT_LDD__*`→**`A2KIT_LOG__*`**,
+   `packages/ldd/`→**`packages/log/`**, specs `log-emission-surface` /
+   `log-handlers` / `call-log`; `_CallScope`/`bind_call_scope` stay
+   neutral.
+
+2. **No second concept — the durable record is an ACCESS LOG.** An
+   intermediate draft split emission and recording into two public
+   namespaces (`a2kit.log` + `a2kit.journal`, with a typed
+   `journal.record(Payload)` enrichment verb). That is **dropped.** The
+   durable record is one structured record per tool call, auto-emitted by
+   the dispatch-boundary stage on a dedicated internal logger
+   **`a2kit.calls`** (`propagate=False`, only the call-log file handler
+   attached) — the exact pattern a web server uses for `access.log`. So:
+   **there is no `a2kit.journal` public namespace and no `record()` verb.**
+   The sole author concept is `a2kit.log` + stdlib levels. Routing is two
+   stdlib axes: **severity** (`debug` is file-only because the wire/stderr
+   are `INFO+`) for the author's own bulky logs, and **logger topology**
+   (the dedicated non-streaming `a2kit.calls`) for the always-on
+   auto-records — so call records and bulky bodies are *structurally
+   incapable* of streaming to the agent or stdout (the redundancy the
+   owner flagged: the agent already has the return value). Enrichment of
+   values the boundary can't see (`raw_html`/`extracted_md`) is just
+   `a2kit.log.debug("html", html=h)`, correlated to the auto-record by
+   `call_id`; a full call is reconstructed by grouping on `call_id`
+   (access-log ⨝ app-log) — no merged-record API. The durable file is
+   JSONL (DuckDB-queryable), opt-in (`A2KIT_LOG__CALL_LOG`), big bodies
+   content-addressed to sidecars. The transport-neutral dispatch stage
+   still PRODUCES the record (so it is identical across interfaces by
+   construction — the invariant the split chased); logging only decides
+   where it is written.
+
+The Summary / `What we decided` / `Consequences` prose below predates
+these amendments and still says `a2kit.journal` / `journal.record` /
+`expected_tier_journal.txt` / "keep `event()`" — where it conflicts, THIS
+block wins: `a2kit.log` only, no journal namespace, no `record()`/`event()`
+verb, tier gate `expected_tier_log.txt` only, enrichment = `debug`
+logging correlated by `call_id`.
 
 ## Summary
 

@@ -5,15 +5,21 @@ modified requirements land under the new name. -->
 
 ## MODIFIED Requirements
 
-### Requirement: Built-in operator sinks
-The framework SHALL ship built-in operator sinks expressed as stdlib
-`logging.Handler`s — stderr (pretty and JSON), OpenTelemetry, and live
-progress — registerable via configuration without consumer code.
-Re-expressing sinks as handlers SHALL preserve their existing observable
-behaviour. The durable call journal is NOT in this set: it is a
-transport-neutral dispatch-pipeline stage, not a logging handler (see the
-`call-journal` capability) — a deliberate split so the captured record is
-identical across transports by construction.
+### Requirement: Built-in handlers and their loggers
+The framework SHALL ship built-in handlers expressed as stdlib
+`logging.Handler`s, attached to two distinct loggers:
+
+- On the `a2kit` logger (author commentary): stderr (pretty and JSON),
+  OpenTelemetry, and live progress, plus the async MCP wire path.
+- On the dedicated `a2kit.calls` logger (the call access-log): ONLY the
+  call-log file handler (see the `call-log` capability). The record itself
+  is produced by a transport-neutral dispatch stage, so it is identical
+  across transports by construction; the handler only writes it.
+
+The wire/stderr handlers SHALL NOT be attached to `a2kit.calls`, and
+`a2kit.calls` SHALL set `propagate=False` — so call records cannot stream
+to the agent or print to stdout. Re-expressing the operator sinks as
+handlers SHALL preserve their existing observable behaviour.
 
 #### Scenario: stderr pretty handler emits one line per emission
 - **WHEN** `LogConfig.stderr_sink` is `"pretty"` and a tool emits a log record
@@ -22,6 +28,19 @@ identical across transports by construction.
 #### Scenario: OTel handler emits one span per *Ended payload
 - **WHEN** the OTel SDK is present and a tool logs a `*Ended` payload instance
 - **THEN** one span is created with the payload as attributes
+
+### Requirement: Per-handler levels separate streamed from file-only
+The streaming handlers (MCP wire, stderr) SHALL default to `INFO+` and the
+call-log file handler SHALL default to `DEBUG+`, each configurable
+independently (`WIRE_LEVEL`, `CALL_LOG_LEVEL`). Consequently a `debug`
+record is captured durably (file) without streaming to the agent or
+operator terminal. Severity (the level) therefore controls visibility for
+the author's own logs; the dedicated-logger topology (above) controls it
+for the always-on call records.
+
+#### Scenario: a debug record is file-only by level
+- **WHEN** a tool logs at `debug` with the wire/stderr at `INFO+` and the call-log at `DEBUG+`
+- **THEN** the record is written to the call-log file but not to the wire or stderr
 
 ### Requirement: Operator sink failure isolation
 A failing handler SHALL NOT abort the wire path, other handlers, or the

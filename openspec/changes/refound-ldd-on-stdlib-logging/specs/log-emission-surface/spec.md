@@ -29,9 +29,10 @@ long-running call surfaces its emissions as they happen.
 
 ### Requirement: Level methods accept a message OR a typed instance
 The author surface SHALL expose `info` / `debug` / `warning` / `error`
-(and `log(level, …)`) as the emission methods, each accepting EITHER a
-string message OR a typed instance (pydantic / dataclass) as the first
-positional, plus `**fields`. A typed instance is the structured payload:
+as the emission methods, each accepting EITHER a string message OR a
+typed instance (pydantic / dataclass) as the first positional, plus
+`**fields`. There is NO generic loose `log(...)` verb on the public
+surface (severity is chosen by which level method is called). A typed instance is the structured payload:
 it is dumped to a JSON-safe dict (enum values unwrapped) and carried on
 the stdlib record's `extra`. There is NO separate `event()` verb — the
 instance-as-payload shape (a2web's 28-site idiom) survives under the
@@ -55,10 +56,10 @@ autocomplete.
 ### Requirement: report() typed-report primitive
 **Reason**: zero callers (census 2026-05-27); validated payload types
 even when disabled to serve test determinism (production API carrying a
-test concern). The durable, typed shape it implied is delivered by
-`call-journal` instead.
+test concern). The durable shape it implied is delivered by the
+`call-log` (auto-capture + `debug` enrichment) instead.
 **Migration**: none required — no consumer imports `report` / `@reports`.
-The journal record is the durable typed shape going forward.
+The call-log record is the durable shape going forward.
 
 ### Requirement: EventRegistry typed-event registry
 **Reason**: zero callers; the progress-callback path (`emit_typed` →
