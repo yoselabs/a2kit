@@ -520,6 +520,67 @@ Two-pass audit:
    each hypothesis traced by ripgrep against working tree. Falsified two
    prior findings (F1, F2) and confirmed 17 new redundancies (R1-R17).
 
+## 11. Composition / coupling audit (2026-05-29)
+
+4-agent parallel audit (coupling-hotspot / missing-pattern / recent-deltas /
+layering-seam axes) on the post-v0.41 surface. Lens: composition + layering +
+tight-coupling, NOT duplication (§1-§6 covered that). The recent wave (config
+engine, surfaces-passive, request_scope unification, plugin manifests, Rego,
+HTTP-folds-pipeline) introduced **little new debt** — it mostly CLOSED prior
+smells (S11/S13) and applied sound patterns. The real coupling is OLDER and
+deeper. Cross-confirmed findings (≥2 agents), ranked:
+
+### C1. `ToolBuildSpec` carries the concrete `AppRuntime` — OPEN — HIGH (3-agent confirmed)
+**Where**: `dispatch/spec.py:ToolBuildSpec.app`; read across `dispatch/stages.py`
+(`spec.app._resolver`, `spec.app._ensure_router_entered()`, `spec.app.config.ldd`,
+`spec.app.has_default_dispatch_hook()` — `# noqa: SLF001` seams).
+**Claim**: the transport-NEUTRAL dispatch pipeline (the crown-jewel abstraction,
+ADR 0019/0025) depends on the runtime-LAYER concrete type via PRIVATE attributes.
+Blocks unit-testing stages in isolation; blocks an alternative runtime. A
+`Resolver` Protocol already exists at `packages/di/resolver.py` but the stages
+bypass it for `app._resolver`. This is the ROOT of several symptoms (the
+App/AppRuntime mirror surface P2, the `_resolver` back-door).
+**Resolution shape**: Dependency Inversion — shrink `ToolBuildSpec` to carry the
+narrow Protocols each stage declares (`Resolver`, a `RouterLifecycle` seam),
+not the whole `AppRuntime`. The Protocol is drawn; the stages just don't use it.
+**Note**: collides with `refound-ldd-on-stdlib-logging` (which rewrites
+`LddStateStage` + how config flows in). Sequencing: do C1's `LddConfig`-injection
+slice WITH the refound (same code, avoids rewriting the stage twice).
+
+### C2. The `Surface` Protocol is half-built — OPEN — MED (2-agent confirmed)
+**Where**: `dispatch/surface.py:Surface` owns marker types + reserved-type
+allowlists, but NOT the per-tool wrapping sequence. Each transport re-implements:
+error-render (`cli/runtime.py:CliErrorRenderStage`, `mcp/_wrappers.py:McpErrorRenderStage`,
+`http/_error_render_stage.py:HttpErrorRenderStage` — ~90% same shape), tool-wrap
+(fold_pipeline + render-stage + sig-install, 3 hand-codings), tool-filter
+(expose+visibility loop — and **HTTP DRIFTED**: `http/build.py:83` filters `expose`
+but skips the `visibility != hidden` check the other two do — latent bug).
+**Resolution shape**: Template Method / Strategy — `Surface` mandates
+`error_render_stage()` + the canonical wrap sequence; "every transport appends
+exactly one render stage, folds in canonical order" becomes type-enforced, not
+convention. Natural sequel to ADR 0025.
+
+### C3. `build()` stores list references then mutates post-construction — OPEN — MED (latent bug)
+**Where**: `runtime.py` — `build()` passes `routers`/`descriptors` lists to
+`AppRuntime.__init__` BY REFERENCE, then (for the `_meta` health router)
+`routers.append(...)` / `descriptors.extend(...)` AFTER construction, mutating
+the lists the sealed runtime holds. Violates the sealed-runtime immutability
+ADR 0019 promises.
+**Resolution shape**: build the full descriptor/router set BEFORE constructing
+`AppRuntime`; pass `list(...)` copies; no post-init mutation. Small, real,
+fixable independently.
+
+### C4. Container compose→seal→call is an implicit state machine — DEFERRED (was S6)
+**Where**: `di/container.py` `_sealed` flag + contextvar phases.
+**Status**: prior audit (S6) deferred "no live footgun." C3 IS arguably that
+footgun surfacing. Revisit alongside C1/C3 if the seam is touched; otherwise
+ADR-0019-accepted.
+
+**Methodology note**: this audit was SCOPED by the user to inform the
+ldd/logging work first; C1's `LddConfig`-injection slice is folded into
+`refound-ldd-on-stdlib-logging`. C1 (full), C2, C3 are recorded here as
+falsifiable findings, NOT yet proposed — pick up post-refound.
+
 ## 10. Maintenance
 
 Append entries; do not edit accepted ADRs in place. When an entry moves
