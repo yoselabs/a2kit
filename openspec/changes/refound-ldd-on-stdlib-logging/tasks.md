@@ -13,6 +13,33 @@
       verb. Enrichment is `debug` logging correlated by `call_id`.
       Recorded in `design.md` + ADR 0027. Drives §1.7, §5, §5b.
 
+## Code map (verified 2026-06-03 — paths the tasks below target)
+
+The package lives under `src/a2kit/`, NOT root `packages/` (root `packages/`
+holds only `a2effect`). Concrete targets:
+
+- `src/a2kit/packages/ldd/` — `ambient.py` (`_LddState`, `_require_ambient_state`),
+  `emission.py` (`debug`/`info`/`warning`/`error`/`event`/`log`/`report`),
+  `levels.py` (`LddLevel`, `LDD_LEVEL_RANK`), `wire.py` (re-exports `_ldd_wire`),
+  `sinks/` (`stderr_pretty`/`stderr_json`/`otel`/`live`/`_core`), `__init__.py`.
+- `src/a2kit/ldd.py` — **public alias module** (`a2kit.ldd`); renames to `src/a2kit/log.py`.
+- `src/a2kit/_ldd_wire.py` — `TEXT_CAP`/`format_ldd_line` (runtime layer, hoisted
+  above the package on purpose to dodge the layer cycle). Renames to `_log_wire.py`.
+- `src/a2kit/_ldd_bootstrap.py` — `register_builtin_ldd_sinks(app_ldd, ldd_config)`;
+  **the file §6.2 edits** to also register the `a2kit.calls` logger. Renames to `_log_bootstrap.py`.
+- `src/a2kit/config.py:66` — `class LddConfig` (in-file rename → `LogConfig`, §6.1).
+- `src/a2kit/packages/dispatch/stages.py` — `LddStateStage` (line ~221, the dispatch
+  site that mints state, §2.5); the new `CallLogStage` (§5.1) joins this module.
+- `src/a2kit/packages/lint/rules/ldd.py` — the lint rule to prune (§3.3).
+- Callers of `ldd_state_for_call` to update (§5b.3): `dispatch/stages.py`,
+  `packages/testing/fixtures.py`, `exceptions.py` (docstring refs `_LddState`).
+- Test files/dirs the rename (§5b) must move: `tests/ldd/`, `tests/packages/ldd/`,
+  `tests/capabilities/ldd_operator_sinks/` (→ `log_handlers/`), `tests/test_ldd.py`,
+  `tests/test__ldd_wire.py`, `tests/test__ldd_bootstrap.py`, `tests/config/test_ldd_config.py`,
+  `tests/capabilities/request_scope/test_ldd_state_via_scope.py`,
+  `tests/capabilities/thin_core_surface/test_lazy_ldd_emission_top_level.py`.
+  Surface snapshot: `tests/surface/expected_tier_ldd.txt` (§5b.6).
+
 ## 1. BDD specs (write tests first — per `feedback_bdd_first`)
 
 - [ ] 1.1 `tests/capabilities/log_emission_surface/test_level_method_accepts_instance.py` — `info(TypedDataclass)` produces one stdlib `LogRecord` carrying the dumped payload in `extra`; enum values unwrapped. (instance-as-payload under the level method; no `event()` verb.)
@@ -36,13 +63,13 @@
 - [ ] 2.2 Fold `levels.py` ranks → stdlib logging levels; keep the `trace` *level* alias mapping.
 - [ ] 2.3 Fold `wire.py` / `TEXT_CAP` / `format_ldd_line` → a `logging.Formatter` (the condensed `[ +s.mmm LEVEL] msg key=val` line; byte-stable) for the LLM-facing handlers.
 - [ ] 2.4 Reduce `emission.py` to the level-method wrappers (`debug`/`info`/`warning`/`error`), each accepting a message+fields OR a typed instance (instance → logger call with `extra=payload`). NO `event()` verb, NO loose `log()` verb.
-- [ ] 2.5 Mint `call_id` per dispatch in the dispatch site (alongside the existing LDD state setup).
+- [ ] 2.5 Mint `call_id` per dispatch in the dispatch site (`LddStateStage`, `src/a2kit/packages/dispatch/stages.py`), alongside the existing LDD state setup.
 
 ## 3. Delete dead surface
 
 - [ ] 3.1 Remove `report()`, `@reports(T)`, `report_type` on state, `ReportTypeNotDeclared`, `ReportTypeMismatch`.
 - [ ] 3.2 Remove `EventRegistry`, `events.register`, `emit_typed`, the progress-callback path, and `_AppLdd` report members.
-- [ ] 3.3 Delete the now-orphaned parts of `packages/lint/rules/ldd.py`; keep only any rule that still polices a live invariant (likely none).
+- [ ] 3.3 Delete the now-orphaned parts of `src/a2kit/packages/lint/rules/ldd.py`; keep only any rule that still polices a live invariant (likely none).
 - [ ] 3.4 Confirm the layer-cycle workarounds (`_ldd_wire` below L0, `ambient → request_scope # noqa: A2K-LAYER`) can be removed; remove them if the stdlib refounding dissolves the cycle.
 
 ## 4. Sinks → handlers (incl. per-handler levels + the wire async boundary, branch from 0.1)
@@ -64,7 +91,7 @@
 
 ## 5b. Rename — retire "LDD", one surface `a2kit.log` (no backward-compat alias)
 
-- [ ] 5b.1 Rename package `packages/ldd/` → `packages/log/`; public module `a2kit.ldd` → `a2kit.log` (THE author surface: `debug`/`info`/`warning`/`error`, each taking a message OR a typed instance). NO `a2kit.ldd` alias, NO shim, NO `event()`/`log()` verb.
+- [ ] 5b.1 Rename package `src/a2kit/packages/ldd/` → `src/a2kit/packages/log/`; public alias module `src/a2kit/ldd.py` → `src/a2kit/log.py`; runtime helpers `src/a2kit/_ldd_wire.py` → `_log_wire.py` and `src/a2kit/_ldd_bootstrap.py` → `_log_bootstrap.py`. `a2kit.ldd` → `a2kit.log` (THE author surface: `debug`/`info`/`warning`/`error`, each taking a message OR a typed instance). NO `a2kit.ldd` alias, NO shim, NO `event()`/`log()` verb.
 - [ ] 5b.2 NO `a2kit.journal` public module. The call-log is internal: the `a2kit.calls` logger (§5.2), `CallLogStage` (§5.1), and the file handler (§5.3). The author never imports it; it is configured, not called.
 - [ ] 5b.3 `_LddState` → `_CallScope` `{call_id, ctx, start_monotonic, record}` (per-runtime fields removed per §2/§3); `ldd_state_for_call` → `bind_call_scope` (dispatcher SPI; update CLI/MCP/test callers). `_CallScope` stays neutral — NOT `_LogScope` (it is the shared spine for both the app log and the access record).
 - [ ] 5b.4 `LddConfig` → `LogConfig`; env `A2KIT_LDD__*` → `A2KIT_LOG__*`; `app.ldd` → `app.log`. No `app.journal`.
@@ -76,14 +103,14 @@
 ## 6. Config
 
 - [ ] 6.1 `LogConfig` (renamed from `LddConfig`): add `call_log: Literal["off","on"] | str = "off"` (a str is a path), `call_log_level: Literal["DEBUG","INFO"] = "DEBUG"`, `wire_level: str = "INFO"`, `call_log_dir: str`, body-inlining threshold for content-addressing. Env under `A2KIT_LOG__`.
-- [ ] 6.2 App boot wires the `a2kit` logger (stderr/wire/live handlers, INFO+) and — when `call_log` is on — the `a2kit.calls` logger (`propagate=False`) + the call-log file handler (DEBUG+/INFO+ per `call_log_level`); document registration order and the `propagate=False` invariant.
+- [ ] 6.2 App boot (`src/a2kit/_ldd_bootstrap.py` → `_log_bootstrap.py`, `register_builtin_ldd_sinks`) wires the `a2kit` logger (stderr/wire/live handlers, INFO+) and — when `call_log` is on — the `a2kit.calls` logger (`propagate=False`) + the call-log file handler (DEBUG+/INFO+ per `call_log_level`); document registration order and the `propagate=False` invariant.
 
 ## 7. Docs + decision records
 
 - [ ] 7.1 Land ADR 0027 (refound-ldd-on-stdlib-logging) — incl. the structlog rejection (cold-start + code-size-illusion), the resolved 0.1 wire branch, and the 0.2 access-log concept decision. Run `make adr-index`.
 - [ ] 7.2 Spec deltas under the renamed capabilities: `log-emission-surface` (new), `call-log` (new), `log-handlers` (modified from `ldd-operator-sinks`); retire `ldd-level-threshold` (folded into stdlib levels). The change-dir spec folders are renamed to match before archive.
 - [ ] 7.3 `CHANGELOG.md` `[Unreleased]` — BREAKING: `a2kit.ldd` → `a2kit.log` (no `a2kit.journal`); `LddConfig`→`LogConfig`; `A2KIT_LDD__*`→`A2KIT_LOG__*`; `report`/`@reports`/`EventRegistry`/`event` removed. Migration table maps every old name → new (no aliases).
-- [ ] 7.4 Update `docs/patterns/` + every docstring (incl. `packages/ldd/__init__.py:1` "Logging / Data / Diagnostics") to the log + call-access-log framing; zero "LDD" left in src prose.
+- [ ] 7.4 Update `docs/patterns/` + every docstring (incl. `src/a2kit/packages/ldd/__init__.py:1` "Logging / Data / Diagnostics") to the log + call-access-log framing; zero "LDD" left in src prose.
 - [ ] 7.5 `BACKLOG.md` — tick the "LDD reshape (Path A)" entry as executed; add the a2web follow-up (migrate to `a2kit.log.info`, log bodies at `debug`, turn on the call-log, delete hand-rolled `fetch_result.json` writers).
 - [ ] 7.6 ADR 0004 amendment note: the tier-2 surface `a2kit.ldd` is replaced by `a2kit.log` (snapshot regen, recorded by this change). ADR 0027 supersedes the reshape change's "keep ldd for stability" concession.
 
