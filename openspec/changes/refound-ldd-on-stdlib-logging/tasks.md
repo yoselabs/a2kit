@@ -107,18 +107,18 @@ holds only `a2effect`). Concrete targets:
 
 ## 7. Docs + decision records
 
-- [ ] 7.1 Land ADR 0027 (refound-ldd-on-stdlib-logging) — incl. the structlog rejection (cold-start + code-size-illusion), the resolved 0.1 wire branch, and the 0.2 access-log concept decision. Run `make adr-index`.
-- [ ] 7.2 Spec deltas under the renamed capabilities: `log-emission-surface` (new), `call-log` (new), `log-handlers` (modified from `ldd-operator-sinks`); retire `ldd-level-threshold` (folded into stdlib levels). The change-dir spec folders are renamed to match before archive.
-- [ ] 7.3 `CHANGELOG.md` `[Unreleased]` — BREAKING: `a2kit.ldd` → `a2kit.log` (no `a2kit.journal`); `LddConfig`→`LogConfig`; `A2KIT_LDD__*`→`A2KIT_LOG__*`; `report`/`@reports`/`EventRegistry`/`event` removed. Migration table maps every old name → new (no aliases).
-- [ ] 7.4 Update `docs/patterns/` + every docstring (incl. `src/a2kit/packages/ldd/__init__.py:1` "Logging / Data / Diagnostics") to the log + call-access-log framing; zero "LDD" left in src prose.
-- [ ] 7.5 `BACKLOG.md` — tick the "LDD reshape (Path A)" entry as executed; add the a2web follow-up (migrate to `a2kit.log.info`, log bodies at `debug`, turn on the call-log, delete hand-rolled `fetch_result.json` writers).
-- [ ] 7.6 ADR 0004 amendment note: the tier-2 surface `a2kit.ldd` is replaced by `a2kit.log` (snapshot regen, recorded by this change). ADR 0027 supersedes the reshape change's "keep ldd for stability" concession.
+- [x] 7.1 Land ADR 0027 (refound-ldd-on-stdlib-logging) — incl. the structlog rejection (cold-start + code-size-illusion), the resolved 0.1 wire branch, and the 0.2 access-log concept decision. Run `make adr-index`.
+- [x] 7.2 Spec deltas under the renamed capabilities: `log-emission-surface` (new), `call-log` (new), `log-handlers` (modified from `ldd-operator-sinks`); retire `ldd-level-threshold` (folded into stdlib levels). The change-dir spec folders are renamed to match before archive.
+- [x] 7.3 `CHANGELOG.md` `[Unreleased]` — BREAKING: `a2kit.ldd` → `a2kit.log` (no `a2kit.journal`); `LddConfig`→`LogConfig`; `A2KIT_LDD__*`→`A2KIT_LOG__*`; `report`/`@reports`/`EventRegistry`/`event` removed. Migration table maps every old name → new (no aliases).
+- [x] 7.4 Update `docs/patterns/` + every docstring (incl. `src/a2kit/packages/ldd/__init__.py:1` "Logging / Data / Diagnostics") to the log + call-access-log framing; zero "LDD" left in src prose.
+- [x] 7.5 `BACKLOG.md` — tick the "LDD reshape (Path A)" entry as executed; add the a2web follow-up (migrate to `a2kit.log.info`, log bodies at `debug`, turn on the call-log, delete hand-rolled `fetch_result.json` writers).
+- [x] 7.6 ADR 0004 amendment note: the tier-2 surface `a2kit.ldd` is replaced by `a2kit.log` (snapshot regen, recorded by this change). ADR 0027 supersedes the reshape change's "keep ldd for stability" concession.
 
 ## 8. Verification
 
-- [ ] 8.1 `openspec validate --changes --strict` green.
-- [ ] 8.2 `make test` green.
-- [ ] 8.3 Cold-start guard: `import a2kit` still does not import `fastapi`/`fastmcp` AND does not import structlog; emission path adds no measurable import cost over stdlib `logging`.
-- [ ] 8.4 With `A2KIT_LOG__CALL_LOG=on`, an a2web-style call writes a jsonl row + blob sidecars; a DuckDB query filters by `domain` without touching sidecars; the same call produces NOTHING extra on the wire/stdout (topology guarantee).
+- [x] 8.1 `openspec validate --changes --strict` green.
+- [x] 8.2 `make test` green.
+- [x] 8.3 Cold-start guard: `import a2kit` still does not import `fastapi`/`fastmcp` AND does not import structlog; emission path adds no measurable import cost over stdlib `logging`.
+- [x] 8.4 With `A2KIT_LOG__CALL_LOG=on`, an a2web-style call writes a jsonl row + blob sidecars; a DuckDB query filters by `domain` without touching sidecars; the same call produces NOTHING extra on the wire/stdout (topology guarantee).
 - [ ] 8.5 a2web migrates to `a2kit.log.info(...)` + `a2kit.log.debug(body)` + `CALL_LOG=on` and passes against the new surface.
-- [ ] 8.6 No-redundancy guard: `grep -ri "\bldd\b" src/` returns zero hits outside historical ADR/CHANGELOG entries; no `a2kit.ldd` and no `a2kit.journal` import path resolves.
+- [x] 8.6 No-redundancy guard: `grep -ri "\bldd\b" src/` returns zero hits outside historical ADR/CHANGELOG entries; no `a2kit.ldd` and no `a2kit.journal` import path resolves.
