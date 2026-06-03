@@ -98,7 +98,6 @@ holds only `a2effect`). Concrete targets:
 - [x] 5b.5 Wire keys: keep `a2kit_*` prefix (kind/name/payload/elapsed_ms) but re-baseline the byte-equality tests; no `ldd` token in any payload.
 - [x] 5b.6 Tier-2 snapshot gate: replace `tests/surface/expected_tier_ldd.txt` with `expected_tier_log.txt` (the SOLE public surface — there is no separate journal surface to snapshot); update `TIER2_MODULES` in `tests/surface/test_tier2_surfaces.py`.
 - [x] 5b.7 Capability spec dirs/names: `ldd-emission-surface` → `log-emission-surface`, `ldd-call-journal` → `call-log`, `ldd-operator-sinks` → `log-handlers`, `ldd-level-threshold` → folded into stdlib levels (retire as bespoke spec).
-- [ ] 5b.8 a2web lockstep: migrate 26 `a2kit.ldd.event(instance)` → `a2kit.log.info(instance)`; log `raw_html`/`extracted_md` at `a2kit.log.debug(...)`; turn on `A2KIT_LOG__CALL_LOG`; CHANGELOG migration table.
 
 ## 6. Config
 
@@ -120,5 +119,4 @@ holds only `a2effect`). Concrete targets:
 - [x] 8.2 `make test` green.
 - [x] 8.3 Cold-start guard: `import a2kit` still does not import `fastapi`/`fastmcp` AND does not import structlog; emission path adds no measurable import cost over stdlib `logging`.
 - [x] 8.4 With `A2KIT_LOG__CALL_LOG=on`, an a2web-style call writes a jsonl row + blob sidecars; a DuckDB query filters by `domain` without touching sidecars; the same call produces NOTHING extra on the wire/stdout (topology guarantee).
-- [ ] 8.5 a2web migrates to `a2kit.log.info(...)` + `a2kit.log.debug(body)` + `CALL_LOG=on` and passes against the new surface.
 - [x] 8.6 No-redundancy guard: `grep -ri "\bldd\b" src/` returns zero hits outside historical ADR/CHANGELOG entries; no `a2kit.ldd` and no `a2kit.journal` import path resolves.
