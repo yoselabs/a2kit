@@ -41,7 +41,7 @@ Concrete `ToolContext` implementations MUST be defined in the
 `a2kit.packages.context` package (`StderrToolContext` and any sibling
 implementations). That package MUST NOT import any transport package
 (`cli`, `mcp`, `codemode`). Its only `a2kit.packages.*` dependency is a
-lazy import of `a2kit.packages.ldd` (the `format_ldd_line` wire-format
+lazy import of `a2kit.packages.log` (the `format_ldd_line` wire-format
 primitive, inside `_emit`), so a bare `import a2kit.packages.context`
 pulls no other a2kit package.
 

@@ -31,7 +31,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from a2kit.packages.ldd import LddLevel  # noqa: TC001 -- pydantic needs the runtime type for Literal validation, not just typing.
+from a2kit.packages.log import LogLevel  # noqa: TC001 -- pydantic needs the runtime type for Literal validation, not just typing.
 
 
 class McpConfig(BaseModel):
@@ -63,67 +63,97 @@ class CliConfig(BaseModel):
     """CLI-surface configuration (consumer-owned). Empty stub — knobs land per follow-up changes."""
 
 
-class LddConfig(BaseModel):
-    """LDD (logging / diagnostics) configuration (consumer-owned)."""
+class LogConfig(BaseModel):
+    """Logging configuration (consumer-owned). Env namespace ``A2KIT_LOG__``."""
 
     enabled: bool = Field(
         default=True,
         description=(
-            "Hard kill-switch for LDD emission (events + reports). "
-            "Env: A2KIT_LDD__ENABLED=false to suppress every emission regardless "
-            "of level. Orthogonal to `level`: enabled=False overrides any level. "
-            "Replaces the v0.x `A2KIT_LDD=off` legacy env (which collides with "
-            "the new `A2KIT_LDD__*` namespace)."
+            "Hard kill-switch for a2kit.log emission. "
+            "Env: A2KIT_LOG__ENABLED=false to suppress every emission regardless "
+            "of level. Orthogonal to `level`: enabled=False overrides any level."
         ),
     )
-    level: LddLevel = Field(
+    level: LogLevel = Field(
         default="info",
         description=(
-            "LDD level threshold. Emissions below this rank are dropped before any "
-            "sink, ctx.log, or stderr write. "
-            "Set via env: A2KIT_LDD__LEVEL=debug. "
-            "Default 'info' silences `debug()` calls; flip to 'debug' or 'trace' "
-            "to observe them. See ADR 0022 for the consumer-beats-code rule."
+            "Base level for the `a2kit` logger. Records below this rank are "
+            "dropped before any handler. Set via env: A2KIT_LOG__LEVEL=debug. "
+            "Default 'info' keeps `debug()` off the streaming handlers; the "
+            "call-log file handler has its own DEBUG+ level. See ADR 0022."
+        ),
+    )
+    wire_level: LogLevel = Field(
+        default="info",
+        description=(
+            "Per-handler level for the streaming handlers (MCP wire + stderr). "
+            "Default 'info' so `debug` is kept on disk, not streamed to the "
+            "agent. Env: A2KIT_LOG__WIRE_LEVEL=debug."
         ),
     )
     stderr_sink: Literal["none", "pretty", "json"] = Field(
         default="none",
         description=(
-            "Built-in stderr operator sink. `none` (default) preserves the "
-            "v0.x behaviour. `pretty` writes one human-readable line per "
-            "emission. `json` writes one JSON record per line. "
-            "Env: A2KIT_LDD__STDERR_SINK=pretty."
+            "Built-in stderr handler. `none` (default) preserves the v0.x "
+            "behaviour. `pretty` writes one human-readable line per record; "
+            "`json` writes one JSON record per line. "
+            "Env: A2KIT_LOG__STDERR_SINK=pretty."
         ),
     )
     otel_sink: Literal["auto", "on", "off"] = Field(
         default="auto",
         description=(
-            "Built-in OTel operator sink. `auto` (default) registers the "
-            "sink iff the `opentelemetry` SDK is importable AND at least "
-            "one `OTEL_EXPORTER_*` env var is set. `on` always registers; "
-            "`off` never. Spans are emitted per `*Ended` event; the sink "
-            "silently drains when the SDK is missing."
+            "Built-in OTel handler. `auto` (default) registers iff the "
+            "`opentelemetry` SDK is importable AND at least one "
+            "`OTEL_EXPORTER_*` env var is set. `on` always; `off` never. "
+            "Spans are emitted per `*Ended` payload; drains silently with no SDK."
         ),
     )
     live_sink: Literal["off", "on"] = Field(
         default="off",
         description=(
-            "Built-in live operator sink for long-running multi-event tasks. "
-            "Default `off` (the sink is noisy). When `on`, one stdout line "
-            "per `*Started`/`*Ended` event under an asyncio.Lock + a "
-            "heartbeat line every `live_heartbeat_seconds` while events are "
-            "in flight."
+            "Built-in live stdout handler for long-running multi-event tasks. "
+            "Default `off` (noisy). When `on`, one stdout line per "
+            "`*Started`/`*Ended` payload + a heartbeat every "
+            "`live_heartbeat_seconds` while work is in flight."
         ),
     )
     live_heartbeat_seconds: float = Field(
         default=30.0,
-        description="Heartbeat period for the live operator sink (seconds). 0 disables the heartbeat.",
+        description="Heartbeat period for the live handler (seconds). 0 disables the heartbeat.",
     )
     live_event_prefixes: tuple[str, ...] = Field(
         default=("",),
         description=(
-            "Event-name prefix filter for the live sink. Default `('',)` matches every event; pass e.g. `('Cell',)` to scope to a family."
+            "Name-prefix filter for the live handler. Default `('',)` matches every record; pass e.g. `('Cell',)` to scope to a family."
         ),
+    )
+    call_log: str = Field(
+        default="off",
+        description=(
+            "The durable call access-log (per-call args/result/timing/principal "
+            "auto-captured at the dispatch boundary, written as queryable JSONL "
+            "on the dedicated non-streaming `a2kit.calls` logger). `off` "
+            "(default) self-skips the boundary stage and writes nothing; `on` "
+            "enables it under `call_log_dir`; any other value is a directory "
+            "path. Env: A2KIT_LOG__CALL_LOG=on."
+        ),
+    )
+    call_log_level: Literal["DEBUG", "INFO"] = Field(
+        default="DEBUG",
+        description=(
+            "Level for the call-log file handler. DEBUG (default) also captures "
+            "the author's `debug` enrichment rows; INFO captures only info+. "
+            "Env: A2KIT_LOG__CALL_LOG_LEVEL=INFO."
+        ),
+    )
+    call_log_dir: str = Field(
+        default=".a2kit/calls",
+        description="Directory for the call-log JSONL + content-addressed body sidecars when `call_log` is `on`.",
+    )
+    call_log_inline_threshold: int = Field(
+        default=4096,
+        description="Strings longer than this (chars) are content-addressed to `bodies/<hash>` sidecars, not inlined in the row.",
     )
 
 
@@ -146,7 +176,7 @@ class A2kitConfig(BaseSettings):
     mcp: McpConfig = McpConfig()
     http: HttpConfig = HttpConfig()
     cli: CliConfig = CliConfig()
-    ldd: LddConfig = LddConfig()
+    log: LogConfig = LogConfig()
 
     model_config = SettingsConfigDict(
         env_prefix="A2KIT_",
@@ -171,4 +201,4 @@ class A2kitConfig(BaseSettings):
         return env_settings, dotenv_settings, init_settings, file_secret_settings
 
 
-__all__ = ["A2kitConfig", "CliConfig", "HttpConfig", "LddConfig", "McpConfig"]
+__all__ = ["A2kitConfig", "CliConfig", "HttpConfig", "LogConfig", "McpConfig"]

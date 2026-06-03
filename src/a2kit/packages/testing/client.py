@@ -2,11 +2,11 @@
 
 Drives an in-memory ``fastmcp.Client(transport=build_mcp_server(app))``
 so every tool dispatch goes through the production MCP wrapper chain
-(dispatch-hook signature rewrite, ambient LDD state binding,
+(dispatch-hook signature rewrite, call-scope binding,
 fastmcp.Context injection, ``mcp-structured-wire-error-envelope``
 error path). Captured emissions (events, reports, logs, progress) are
 surfaced via client-side ``log_handler`` / ``progress_handler``
-notifications, fanned out by the ``a2kit_kind`` marker the LDD wire
+notifications, fanned out by the ``a2kit_kind`` marker the log wire
 format carries.
 
 Replaces the previous ``_CapturingContext(StderrToolContext)`` design,
@@ -194,7 +194,7 @@ class TestClient:
 
     @staticmethod
     def _normalize_level(level_raw: Any) -> str:
-        """Map FastMCP MCP log levels to the LDD wire-shorthand the
+        """Map FastMCP MCP log levels to the log wire-shorthand the
         legacy capture surfaced (``INFO`` / ``WARN`` / ``ERROR`` /
         ``DEBUG``)."""
         s = str(level_raw).lower()

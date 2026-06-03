@@ -43,7 +43,7 @@ def test_core_subunits_are_ordered_kernel_below_authoring_below_runtime() -> Non
 
 def test_authoring_above_kernel_packages_and_below_transports() -> None:
     authoring = LAYER_MANIFEST["authoring"]
-    for kernel_pkg in ("di", "formatter", "ldd", "health", "lint"):
+    for kernel_pkg in ("di", "formatter", "log", "health", "lint"):
         assert LAYER_MANIFEST[kernel_pkg] < authoring, f"{kernel_pkg} should be below authoring"
     for transport in ("cli", "mcp", "codemode", "otel"):
         assert LAYER_MANIFEST[transport] > authoring, f"{transport} should be above authoring"

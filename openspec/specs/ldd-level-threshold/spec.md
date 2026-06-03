@@ -40,7 +40,7 @@ Each level value SHALL map to a fixed numeric rank: `trace=10, debug=20, info=30
 
 #### Scenario: rank mapping is fixed
 
-- **WHEN** code reads `a2kit.packages.ldd.LDD_LEVEL_RANK`
+- **WHEN** code reads `a2kit.packages.log.levels.LOG_LEVEL_NUMBER`
 - **THEN** the mapping is exactly `{"trace": 10, "debug": 20, "info": 30, "warning": 40, "error": 50}`
 
 #### Scenario: ranks order levels low-to-high

@@ -91,8 +91,5 @@ class TestAuthorizeGateStageSelfSkips:
             app=build(a2kit.App("authz-skip")),
             router=None,
             meta=None,
-            reports_enabled=False,
-            events_enabled=False,
-            sinks=(),
         )
         assert stage.wrap(_body, spec) is _body

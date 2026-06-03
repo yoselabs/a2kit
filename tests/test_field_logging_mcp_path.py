@@ -30,7 +30,7 @@ def _build_app() -> a2kit.App:
     The instance form is exercised here as well as the string form so the
     test pins both call shapes against the real MCP wire.
     """
-    from a2kit.packages import ldd
+    from a2kit import log
 
     @dataclass
     class ImportStarted:
@@ -42,12 +42,12 @@ def _build_app() -> a2kit.App:
 
         @a2kit.read()
         async def emit_string(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-            await ldd.info("starting", batch=2, file="/x.csv")  # type: ignore[attr-defined]
+            await log.info("starting", batch=2, file="/x.csv")
             return {"ok": 1}
 
         @a2kit.read()
         async def emit_instance(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-            await ldd.info(ImportStarted(file="/x.csv", batch=2))  # type: ignore[attr-defined]
+            await log.info(ImportStarted(file="/x.csv", batch=2))
             return {"ok": 1}
 
         tools = (

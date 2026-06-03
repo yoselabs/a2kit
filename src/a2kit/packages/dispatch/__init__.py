@@ -1,7 +1,7 @@
 """Transport-neutral per-tool dispatch pipeline — shared by the CLI and MCP adapters.
 
 The five transport-neutral dispatch concerns (timeout, enrichers,
-router-lazy-enter, dispatch-hook + DI, LDD ambient) plus neutral
+router-lazy-enter, dispatch-hook + DI, call scope) plus neutral
 error-capture live here as :class:`DispatchStage` objects. Both the CLI
 and MCP adapters fold the single :data:`DISPATCH_PIPELINE`; each then
 appends its own per-transport error-RENDER stage. This package MUST NOT
@@ -32,10 +32,11 @@ from a2kit.packages.dispatch.spec import (
 # use; remove from __all__ when a refactor makes the symbol fully internal.
 from a2kit.packages.dispatch.stages import (  # noqa: A2K-PKG-INIT-PURITY
     AuthorizeGateStage,
+    CallLogStage,
+    CallScopeStage,
     DispatchHookStage,
     EnricherStage,
     ErrorCaptureStage,
-    LddStateStage,
     RouterLazyEnterStage,
     TimeoutStage,
     _run_authorize_gate,
@@ -63,13 +64,14 @@ __all__ = [
     "DISPATCH_PIPELINE",
     "SYNTHESIZED_CTX_PARAM_NAME",
     "AuthorizeGateStage",
+    "CallLogStage",
+    "CallScopeStage",
     "CapturedError",
     "DecoratorSurface",
     "DispatchHookStage",
     "DispatchStage",
     "EnricherStage",
     "ErrorCaptureStage",
-    "LddStateStage",
     "RenderedError",
     "RouterLazyEnterStage",
     "SplitSignature",

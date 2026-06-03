@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-import a2kit
+import a2kit.log
 from a2kit.testing import ambient_for_tests_autouse  # noqa: F401 -- autouse activation
 
 
@@ -49,7 +49,7 @@ async def test_no_signature_declaration_still_binds_ambient() -> None:
     parameter. With ``ambient_for_tests_autouse`` imported at module
     scope, the call completes; without it, this would raise
     ``AmbientContextMissing``."""
-    await a2kit.ldd.event("evt", k=1)
+    await a2kit.log.info("evt", k=1)
 
 
 @pytest.mark.asyncio
@@ -58,5 +58,5 @@ async def test_autouse_variant_emits_no_wire_side_effects_under_defaults() -> No
     ``events_enabled=False``, so emissions complete silently. Proves the
     autouse variant shares behavior with the bare fixture and only
     differs in registration."""
-    await a2kit.ldd.event("evt", k=1)
-    await a2kit.ldd.event("another", payload="data")
+    await a2kit.log.info("evt", k=1)
+    await a2kit.log.info("another", payload="data")

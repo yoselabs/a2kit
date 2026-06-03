@@ -126,7 +126,7 @@ async def _invoke_tool_in_process(
     """Fold the dispatch pipeline onto ``fn``, invoke it, format the result.
 
     Folds the transport-neutral ``DISPATCH_PIPELINE`` (timeout, enrichers,
-    router-lazy-enter, dispatch-hook + DI, LDD ambient, error-capture) and
+    router-lazy-enter, dispatch-hook + DI, call scope, error-capture) and
     appends the CLI error-render stage. ``ctx`` is synthesized into the
     declared ctx kwarg the same way FastMCP injects it on the MCP side, so
     the shared stages handle ctx identically on both transports.

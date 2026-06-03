@@ -7,7 +7,7 @@ package a2kit
 # scripts/extract_facts.py docstring for the strategy). Catches
 # duplications that name-based detection misses (R1: `_call`/`_call`
 # identical body) AND name-divergent duplications that token-based
-# clone detectors miss (R6: `_format_ldd_line`/`format_ldd_line`,
+# clone detectors miss (R6: `_format_line`/`format_condensed_line`,
 # same body shape, different names).
 #
 # Filter: body_stmt_count >= 3 (recursive count, includes nested

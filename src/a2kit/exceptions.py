@@ -25,42 +25,21 @@ class InvalidToolReturnTypeError(A2KitError, TypeError):
         super().__init__(message if message is not None else default)
 
 
-class ReportTypeNotDeclared(A2KitError, RuntimeError):
-    def __init__(self, tool_name: str | None = None) -> None:
-        self.tool_name = tool_name
-        suffix = f" {tool_name!r}" if tool_name else ""
-        super().__init__(
-            f"Tool{suffix} called `ctx.report(...)` but no `report=ReportT` "
-            f"kwarg was declared on the verb decorator. Add "
-            f"`@a2kit.read(report=YourReportModel)` or use `ctx.event(...)` "
-            f"for free-form narration."
-        )
-
-
-class ReportTypeMismatch(A2KitError, TypeError):
-    def __init__(self, expected: type, got: type, tool_name: str | None = None) -> None:
-        self.expected = expected
-        self.got = got
-        self.tool_name = tool_name
-        suffix = f" (tool {tool_name!r})" if tool_name else ""
-        super().__init__(f"`ctx.report(...)` payload is a {got.__name__!r}; declared `report=` is {expected.__name__!r}{suffix}.")
-
-
 class AmbientContextMissing(A2KitError, RuntimeError):
-    """Raised when an LDD primitive cannot find a usable ambient ``ctx``.
+    """Raised when an a2kit.log emission cannot find a usable ambient ``ctx``.
 
     Two failure modes share this class (v0.33 splits the message):
 
-    - **Mode A — no active dispatch.** No ``_LddState`` is published on
-      the request-scope bridge. Happens when LDD primitives are called
+    - **Mode A — no active dispatch.** No ``_CallScope`` is published on
+      the request-scope bridge. Happens when emission primitives are called
       from module-import-time code, lifecycle hooks, or any pre-dispatch
       context. The raised instance chains from
       :class:`a2kit.packages.dispatch.request_scope.RequestScopeMissing`
       via ``__cause__``.
-    - **Mode B — dispatch active, tool missing ``ctx`` parameter.** The
-      LDD state IS published (the dispatcher entered a scope), but the
-      running tool's signature does not declare ``ctx: a2kit.ToolContext``,
-      so ``state.ctx is None``.
+    - **Mode B — dispatch active, tool missing ``ctx`` parameter.** A call
+      scope IS published (the dispatcher entered a scope), but the running
+      tool's signature does not declare ``ctx: a2kit.ToolContext``, so
+      ``scope.ctx is None``.
 
     The message identifies which mode fired and points at the actionable
     fix at the call site. Post ``generalise-context-bridges`` this class
@@ -79,11 +58,11 @@ class AmbientContextMissing(A2KitError, RuntimeError):
                 f"{fn_name} called from a tool body that did not declare "
                 "`ctx: a2kit.ToolContext` as a parameter. Add the parameter "
                 "to the tool signature (the dispatcher will bind it ambient), "
-                "or remove the LDD call."
+                "or remove the emission call."
             )
         else:
             super().__init__(
-                f"{fn_name} called outside an active tool dispatch. LDD "
+                f"{fn_name} called outside an active tool dispatch. The emission "
                 "primitives only work inside a tool body (or any code "
                 "reached from one). Move the call into a tool, use the "
                 "test harness's ldd_state_for_call(ctx=...) context manager, "

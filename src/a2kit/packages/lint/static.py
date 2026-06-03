@@ -42,7 +42,6 @@ A2K_PKG_INIT_IMPL = "A2K-PKG-INIT-IMPL"  # implementation defined in a package _
 A2K_PKG_INIT_PURITY = "A2K-PKG-INIT-PURITY"  # package __init__ does not re-export `_`-prefixed names
 A2K_LAYER = "A2K-LAYER"  # import-graph layer DAG (manifest in packages/lint/layers.py)
 A2K_PKG_FRONT_DOOR = "A2K-PKG-FRONT-DOOR"  # cross-package imports target the package __init__
-A2K_LDD_REPORT_TYPE = "A2K-LDD-REPORT-TYPE"
 A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"
 A2K_EXTRA_NAMESPACE = "A2K-EXTRA-NAMESPACE"
 A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
@@ -70,7 +69,6 @@ ALL_RULES = (
     A2K_PKG_INIT_PURITY,
     A2K_LAYER,
     A2K_PKG_FRONT_DOOR,
-    A2K_LDD_REPORT_TYPE,
     A2K_LOCAL_RETURN_MODEL,
     A2K_EXTRA_NAMESPACE,
     A2K_TEST_MIRROR,
@@ -168,7 +166,6 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         rule_pkg_init_import,
         rule_pkg_init_purity,
     )
-    from a2kit.packages.lint.rules.ldd import rule_ldd_report_type
     from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
     from a2kit.packages.lint.rules.metadata_private import rule_metadata_private
     from a2kit.packages.lint.rules.mirror import rule_test_mirror
@@ -194,7 +191,6 @@ def _build_rules_table() -> tuple[tuple[str, _RuleFn], ...]:
         (A2K_PKG_INIT_IMPL, rule_pkg_init_impl),
         (A2K_PKG_INIT_PURITY, rule_pkg_init_purity),
         (A2K_PKG_FRONT_DOOR, rule_pkg_front_door),
-        (A2K_LDD_REPORT_TYPE, rule_ldd_report_type),
         (A2K_LOCAL_RETURN_MODEL, rule_local_return_model),
         (A2K_EXTRA_NAMESPACE, rule_extra_namespace),
         (A2K_TEST_MIRROR, rule_test_mirror),
@@ -278,7 +274,6 @@ __all__ = [
     "A2K_EXTRA_NAMESPACE",
     "A2K_IMPORT_DISCIPLINE",
     "A2K_LAYER",
-    "A2K_LDD_REPORT_TYPE",
     "A2K_LOCAL_RETURN_MODEL",
     "A2K_NO_DICT_STR_ANY",
     "A2K_PKG_FRONT_DOOR",

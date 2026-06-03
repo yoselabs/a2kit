@@ -7,7 +7,7 @@ directly and hand the App to a finisher:
     app = a2kit.App("test")
     app.add_router(TasksRouter(fake_get_store))
 
-`ambient_for_tests` establishes an LDD ambient so tests that call
+`ambient_for_tests` establishes an call scope so tests that call
 orchestrator / phase functions directly (bypassing
 ``TestClient.invoke``) don't trip :class:`AmbientContextMissing`.
 `ambient_for_tests_autouse` is the pre-decorated autouse peer for
@@ -49,13 +49,14 @@ def _app_impl() -> a2kit.App:
 
 
 def _ambient_for_tests_impl() -> Iterator[None]:
-    """Wrap a test in an LDD ambient with events + reports disabled.
+    """Wrap a test in a call scope so ``a2kit.log.*`` correlates by call_id.
 
     Tests that call orchestrator or phase functions directly (bypassing
-    :func:`a2kit.testing.client`) would otherwise raise
-    :class:`AmbientContextMissing` on the first ``a2kit.ldd.event(...)``
-    call. This fixture establishes the ambient with a no-op
-    :func:`a2kit.testing.null_context` so the call completes silently.
+    :func:`a2kit.testing.client`) run outside a dispatch, so emissions carry
+    no ``call_id`` and no ``ctx`` for the wire. This fixture binds a
+    :func:`a2kit.packages.log.scope.bind_call_scope` with a no-op
+    :func:`a2kit.testing.null_context` so those code paths behave as if
+    dispatched.
 
     Opt-in by design. Two adoption shapes are supported:
 
@@ -68,20 +69,11 @@ def _ambient_for_tests_impl() -> Iterator[None]:
 
           # consumer's conftest.py
           from a2kit.testing import ambient_for_tests_autouse  # noqa: F401
-
-    Both flavors share defaults: ``events_enabled=False``,
-    ``reports_enabled=False``, ``ctx=null_context()``. Consumers needing
-    a different shape wrap :func:`a2kit.ldd.ldd_state_for_call`
-    themselves — this fixture is the 95% case, not a kitchen sink.
     """
-    from a2kit.ldd import ldd_state_for_call
+    from a2kit.packages.log import bind_call_scope
     from a2kit.packages.testing.null_context import null_context
 
-    with ldd_state_for_call(
-        ctx=null_context(),
-        events_enabled=False,
-        reports_enabled=False,
-    ):
+    with bind_call_scope(ctx=null_context()):
         yield
 
 

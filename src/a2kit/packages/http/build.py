@@ -163,7 +163,7 @@ def _wrap_with_pipeline(
     2. ``fold_pipeline(fn, spec)`` — transport-neutral stages:
        ``TimeoutStage``, ``EnricherStage``, ``ErrorEnvelopeStage`` (writes
        to ``_render_state``), ``RouterLazyEnterStage``,
-       ``DispatchHookStage``, ``AuthorizeGateStage``, ``LddStateStage``,
+       ``DispatchHookStage``, ``AuthorizeGateStage``, ``CallScopeStage``,
        ``ErrorCaptureStage``. ``AuthorizeGateStage`` reads ``Principal``
        from ``request_scope`` — which is published by ``install_substrate_signature``
        (step 3) BEFORE this chain runs.
@@ -195,9 +195,6 @@ def _wrap_with_pipeline(
         app=runtime,
         router=None,
         meta=meta,
-        reports_enabled=False,
-        events_enabled=False,
-        sinks=(),
     )
     chained = fold_pipeline(fn, spec=spec)
     chained = HttpErrorRenderStage().wrap(chained, spec)

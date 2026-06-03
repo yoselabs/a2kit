@@ -29,6 +29,8 @@ import asyncio
 from pydantic import BaseModel
 
 import a2kit
+import a2kit.log
+from a2kit.config import A2kitConfig, LogConfig
 
 
 class StepStarted(BaseModel):
@@ -55,11 +57,7 @@ class StepCompleted(BaseModel):
     elapsed_ms: int
 
 
-app = a2kit.App("typed-events-demo")
-# Register only the events that also need progress callbacks. StepStarted
-# doesn't need progress — it emits via the free function path below.
-app.ldd.events.register(StepProgressed, progress=lambda e: (e.step, e.total))
-app.ldd.events.register(StepCompleted, progress=lambda e: (e.step, e.total))
+app = a2kit.App("typed-events-demo", config=A2kitConfig(log=LogConfig(stderr_sink="pretty")))
 
 
 class JobsRouter(a2kit.Router):
@@ -67,14 +65,18 @@ class JobsRouter(a2kit.Router):
 
     @a2kit.read()
     async def run(self, *, ctx: a2kit.ToolContext, steps: int = 3) -> dict[str, int]:
-        """Run ``steps`` fake work units, emitting typed events along the way."""
+        """Run ``steps`` fake work units, emitting typed records along the way.
+
+        A typed instance rides the level method directly — ``info(instance)``
+        dumps it to a structured payload (the ``event()`` verb is retired).
+        For MCP progress bars, call ``ctx.report_progress(...)`` alongside.
+        """
         for i in range(1, steps + 1):
-            # Free-function typed emit (no registry needed).
-            await a2kit.ldd.event(StepStarted(step=i, total=steps, label=f"step-{i}"))
-            # Registered events that also report progress use the registry.
-            await app.ldd.events.emit_typed(StepProgressed(step=i, total=steps))
+            await a2kit.log.info(StepStarted(step=i, total=steps, label=f"step-{i}"))
+            await a2kit.log.info(StepProgressed(step=i, total=steps))
+            await ctx.report_progress(i, steps)
             await asyncio.sleep(0)
-            await app.ldd.events.emit_typed(StepCompleted(step=i, total=steps, elapsed_ms=1))
+            await a2kit.log.info(StepCompleted(step=i, total=steps, elapsed_ms=1))
         return {"steps": steps}
 
     tools = (run,)

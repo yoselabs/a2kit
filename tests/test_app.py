@@ -218,49 +218,25 @@ def test_no_override_surface_on_container() -> None:
         assert not hasattr(container, removed)
 
 
-# --------------------------- LDD kill-switch ------------------------------- #
+# --------------------------- log kill-switch ------------------------------- #
 
 
-def test_ldd_defaults_enabled() -> None:
+def test_log_enabled_by_default() -> None:
     app = a2kit.App("p")
-    assert app.ldd_reports is True
-    assert app.ldd_events is True
+    assert app.config.log.enabled is True
 
 
-def test_set_ldd_disables_reports() -> None:
-    app = a2kit.App("p").set_ldd(reports=False)
-    assert app.ldd_reports is False
-    assert app.ldd_events is True
+def test_env_var_off_disables_emission(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A2KIT_LOG__ENABLED=false sets the a2kit logger to a drop-everything level."""
+    import logging
 
-
-def test_set_ldd_disables_events() -> None:
-    app = a2kit.App("p").set_ldd(events=False)
-    assert app.ldd_events is False
-    assert app.ldd_reports is True
-
-
-def test_set_ldd_chainable() -> None:
+    monkeypatch.setenv("A2KIT_LOG__ENABLED", "false")
     app = a2kit.App("p")
-    assert app.set_ldd(reports=False) is app
-
-
-def test_set_ldd_none_keeps_existing() -> None:
-    app = a2kit.App("p").set_ldd(reports=False, events=False)
-    app.set_ldd(reports=True)  # only flips reports
-    assert app.ldd_reports is True
-    assert app.ldd_events is False
-
-
-def test_env_var_off_disables_both(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A2KIT_LDD__ENABLED=false suppresses both channels at startup."""
-    monkeypatch.setenv("A2KIT_LDD__ENABLED", "false")
-    app = a2kit.App("p")
-    assert app.ldd_reports is False
-    assert app.ldd_events is False
+    assert app.config.log.enabled is False
+    assert logging.getLogger("a2kit").level > logging.CRITICAL
 
 
 def test_env_var_unset_default_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("A2KIT_LDD__ENABLED", raising=False)
+    monkeypatch.delenv("A2KIT_LOG__ENABLED", raising=False)
     app = a2kit.App("p")
-    assert app.ldd_reports is True
-    assert app.ldd_events is True
+    assert app.config.log.enabled is True

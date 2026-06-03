@@ -1,14 +1,10 @@
 """``StderrToolContext`` emits ``[ +s.mmm LEVEL] msg key=val`` lines to stderr.
 
 Wire format: relative elapsed timestamps from context construction, formatted
-as ``+s.mmm`` with three-decimal-place seconds. ``ctx.report`` validates
-payload against the declared ``report_type`` even when reports are disabled.
-
-After ``fastmcp-context-passthrough``: ``event`` and ``report`` are no longer
-methods on the stub — they live as free functions in :mod:`a2kit.ldd` and read
-per-call state via a contextvar set by the dispatch site. The stub's logging
-methods (``info``/``warning``/``error``/``debug``/``log``) are async to match
-``fastmcp.Context``'s public surface.
+as ``+s.mmm`` with three-decimal-place seconds. The stub's logging methods
+(``info``/``warning``/``error``/``debug``/``log``) are async to match
+``fastmcp.Context``'s public surface. Framework emission lives on
+``a2kit.log.*`` (routed through stdlib handlers, not the ctx stub).
 """
 
 from __future__ import annotations
@@ -21,10 +17,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
 
-from a2kit.exceptions import ReportTypeMismatch, ReportTypeNotDeclared
-from a2kit.ldd import event, ldd_state_for_call, report
 from a2kit.packages.context import MCPOnlyError, StderrToolContext
 
 
@@ -34,17 +27,6 @@ def _capture_stderr_async(awaitable_factory: Callable[[], Awaitable[Any]]) -> st
     sys.stderr = buf
     try:
         asyncio.run(awaitable_factory())  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
-    finally:
-        sys.stderr = saved
-    return buf.getvalue()
-
-
-def _capture_stderr_sync(callable_: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
-    buf = io.StringIO()
-    saved = sys.stderr
-    sys.stderr = buf
-    try:
-        callable_(*args, **kwargs)
     finally:
         sys.stderr = saved
     return buf.getvalue()
@@ -79,25 +61,6 @@ def test_error_with_extra_repr_quotes_strings_only() -> None:
     assert "name='db'" in out
 
 
-def test_ldd_kwarg_form_renders_through_stub() -> None:
-    """``a2kit.ldd.warning("msg", k=v)`` is the canonical fielded form;
-    on the CLI stub it lands through ``_emit`` and renders identically to the
-    old widened ``ctx.warning("msg", k=v)`` shape."""
-    from a2kit.ldd import warning as ldd_warning
-
-    ctx = StderrToolContext()
-
-    async def go() -> None:
-        with ldd_state_for_call(ctx=ctx):
-            await ldd_warning("stuck", retry=3, where="foo")
-
-    out = _capture_stderr_async(go)
-    assert "WARN" in out
-    assert "stuck" in out
-    assert "retry=3" in out
-    assert "where='foo'" in out
-
-
 def test_debug_emits_debug_level() -> None:
     ctx = StderrToolContext()
     out = _capture_stderr_async(lambda: ctx.debug("internal"))
@@ -119,109 +82,6 @@ def test_log_routes_to_emit() -> None:
     assert "WARN" in out
     assert "structured" in out
     assert "logger='x'" in out
-
-
-# --- LDD events (free function, contextvar-scoped) --- #
-
-
-def test_event_emits_named_payload_via_free_function() -> None:
-    ctx = StderrToolContext()
-
-    def go() -> None:
-        with ldd_state_for_call(ctx=ctx):
-            asyncio.run(event("api.fetched", count=30, source="primary"))
-
-    out = _capture_stderr_sync(go)
-    assert "event" in out
-    assert "api.fetched" in out
-    assert "count=30" in out
-    assert "source='primary'" in out
-
-
-def test_event_empty_payload_emits_name_only() -> None:
-    ctx = StderrToolContext()
-
-    def go() -> None:
-        with ldd_state_for_call(ctx=ctx):
-            asyncio.run(event("phase.started"))
-
-    out = _capture_stderr_sync(go)
-    assert "phase.started" in out
-
-
-def test_event_disabled_emits_nothing() -> None:
-    ctx = StderrToolContext()
-
-    def go() -> None:
-        with ldd_state_for_call(ctx=ctx, events_enabled=False):
-            asyncio.run(event("ignored"))
-
-    out = _capture_stderr_sync(go)
-    assert out == ""
-
-
-# --- LDD reports --- #
-
-
-class BatchReport(BaseModel):
-    batch: int
-    accepted: int
-    rejected: int
-
-
-def test_report_happy_path() -> None:
-    ctx = StderrToolContext()
-
-    def go() -> None:
-        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t"):
-            asyncio.run(report(BatchReport(batch=4, accepted=12, rejected=0)))
-
-    out = _capture_stderr_sync(go)
-    assert "report" in out
-    assert "BatchReport" in out
-    assert "batch=4" in out
-    assert "accepted=12" in out
-
-
-def test_report_without_declared_type_raises() -> None:
-    ctx = StderrToolContext()
-
-    def go() -> None:
-        with ldd_state_for_call(ctx=ctx, tool_name="t"):
-            asyncio.run(report({"any": "dict"}))
-
-    with pytest.raises(ReportTypeNotDeclared):
-        go()
-
-
-def test_report_type_mismatch_raises() -> None:
-    ctx = StderrToolContext()
-
-    def go() -> None:
-        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t"):
-            asyncio.run(report({"not": "a model"}))
-
-    with pytest.raises(ReportTypeMismatch):
-        go()
-
-
-def test_report_disabled_still_validates() -> None:
-    """Disabled emission STILL validates types — keeps tests deterministic."""
-    ctx = StderrToolContext()
-
-    def emit_ok() -> None:
-        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t", reports_enabled=False):
-            asyncio.run(report(BatchReport(batch=1, accepted=1, rejected=0)))
-
-    out = _capture_stderr_sync(emit_ok)
-    assert out == ""
-
-    def emit_bad() -> None:
-        with ldd_state_for_call(ctx=ctx, report_type=BatchReport, tool_name="t", reports_enabled=False):
-            asyncio.run(report({"wrong": "shape"}))
-
-    with pytest.raises(ReportTypeMismatch):
-        emit_bad()
 
 
 def test_elapsed_timestamp_increments() -> None:

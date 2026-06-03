@@ -146,7 +146,7 @@ The synthetic `_meta.health` tool exists only on Apps that have at least one `@a
 
 ### Requirement: LDD primitives require an active tool dispatch
 
-LDD primitives (`a2kit.ldd.event` / `report` / `log` / `debug` / `info` / `warning` / `error` and `EventRegistry.emit_typed`) SHALL be callable from any code path reached during an active tool dispatch — that is, while the dispatcher's ambient `ldd_state_for_call` scope is in effect for the current task. This includes:
+LDD primitives (`a2kit.log.info` / `report` / `log` / `debug` / `info` / `warning` / `error` and `EventRegistry.emit_typed`) SHALL be callable from any code path reached during an active tool dispatch — that is, while the dispatcher's ambient `ldd_state_for_call` scope is in effect for the current task. This includes:
 
 - the tool body itself (whether or not it declares `ctx`),
 - helper functions and coroutines it calls directly or indirectly,
@@ -159,20 +159,20 @@ The `OPERATIONAL_CONTRACTS.md` document SHALL include an explicit clause stating
 
 #### Scenario: tool body usage is legal regardless of ctx declaration
 
-- **GIVEN** two tools, one declaring `ctx: a2kit.ToolContext` and one not, both calling `await a2kit.ldd.event("x", k=1)` in their bodies
+- **GIVEN** two tools, one declaring `ctx: a2kit.ToolContext` and one not, both calling `await a2kit.log.info("x", k=1)` in their bodies
 - **WHEN** each tool runs under any transport
 - **THEN** both events are delivered to sinks and no exception is raised
 - **AND** the wire emission (MCP log notification or CLI stderr line) fires for both
 
 #### Scenario: pre-dispatch usage still raises
 
-- **GIVEN** imperative startup code calling `await a2kit.ldd.info("booting")` before any tool dispatch (outside any `ldd_state_for_call` scope)
+- **GIVEN** imperative startup code calling `await a2kit.log.info("booting")` before any tool dispatch (outside any `ldd_state_for_call` scope)
 - **WHEN** that code runs
 - **THEN** it surfaces `AmbientContextMissing` (Mode A)
 
 #### Scenario: lazy app-scope factory during dispatch is legal
 
-- **GIVEN** an async app-scope factory registered via `app.provide(Pool, async_factory)` where `async_factory` body calls `await a2kit.ldd.info("pool initializing")`
+- **GIVEN** an async app-scope factory registered via `app.provide(Pool, async_factory)` where `async_factory` body calls `await a2kit.log.info("pool initializing")`
 - **AND** the resource has not yet been instantiated when a tool dispatch begins
 - **WHEN** the tool resolves `Pool` for the first time during its dispatch, causing `async_factory` to run inside the dispatch's ambient ctx scope
 - **THEN** the LDD primitive in the factory body SHALL succeed and emit the event normally
@@ -203,14 +203,14 @@ primitive succeeds.
 
 #### Scenario: Mode A — pre-dispatch call still raises
 
-- **GIVEN** code at module top level calling `a2kit.ldd.event("x", k=1)`
+- **GIVEN** code at module top level calling `a2kit.log.info("x", k=1)`
 - **WHEN** the module is imported
 - **THEN** `AmbientContextMissing` is raised
 - **AND** the message contains "called outside an active tool dispatch"
 
 #### Scenario: Tool without ctx param inside dispatch — no raise
 
-- **GIVEN** a tool `async def fetch(*, url: str) -> dict: await a2kit.ldd.event("fetch", url=url); return {}`
+- **GIVEN** a tool `async def fetch(*, url: str) -> dict: await a2kit.log.info("fetch", url=url); return {}`
 - **WHEN** the tool runs under any transport (MCP, CLI, TestClient)
 - **THEN** `AmbientContextMissing` is NOT raised
 - **AND** the event is captured by all configured sinks

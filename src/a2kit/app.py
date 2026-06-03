@@ -128,11 +128,11 @@ class App:
         from a2kit.config import A2kitConfig as _A2kitConfig
         from a2kit.config import CliConfig as _CliConfig
         from a2kit.config import HttpConfig as _HttpConfig
-        from a2kit.config import LddConfig as _LddConfig
+        from a2kit.config import LogConfig as _LogConfig
         from a2kit.config import McpConfig as _McpConfig
 
         self._container.provide(_A2kitConfig, lambda: self.config)
-        self._container.provide(_LddConfig, lambda: self.config.ldd)
+        self._container.provide(_LogConfig, lambda: self.config.log)
         self._container.provide(_McpConfig, lambda: self.config.mcp)
         self._container.provide(_HttpConfig, lambda: self.config.http)
         self._container.provide(_CliConfig, lambda: self.config.cli)
@@ -141,25 +141,14 @@ class App:
         # wire-side conversion only; DI runs after the hook inside
         # ``Container.dispatch`` on the hook's output.
         self._dispatch_hook: Callable[..., Any] = _default_dispatch_hook
-        # LDD kill-switch — consumer-owned via A2kitConfig.ldd.enabled
-        # (env A2KIT_LDD__ENABLED=false). ``set_ldd(...)`` and CLI flags
-        # override per-invocation. Replaces the v0.x bare A2KIT_LDD=off
-        # which collided with the new A2KIT_LDD__* namespace.
-        ldd_enabled = bool(self.config.ldd.enabled)
-        self._ldd_reports = ldd_enabled
-        self._ldd_events = ldd_enabled
-        # Typed event registry. Lazy import keeps the cold-start path off
-        # `a2kit.packages.ldd` for apps that never touch typed events.
-        from a2kit.packages.ldd import _AppLdd
+        # Wire the `a2kit` + `a2kit.calls` loggers from config (handlers,
+        # the call-scope filter, the opt-in call-log). Kill-switch lives in
+        # `LogConfig.enabled` (env A2KIT_LOG__ENABLED=false).
+        from a2kit._log_bootstrap import configure_logging
+        from a2kit.packages.log.app_log import _AppLog  # noqa: A2K-PKG-FRONT-DOOR -- private app namespace
 
-        self.ldd = _AppLdd()
-
-        # Built-in operator sinks per `reshape-ldd-operator-wire-fanout`.
-        # Registered BEFORE any user-added sink so the documented order is
-        # `[built-ins...] + [user-added in registration order]`.
-        from a2kit._ldd_bootstrap import register_builtin_ldd_sinks
-
-        register_builtin_ldd_sinks(self.ldd, self.config.ldd)
+        configure_logging(self.config.log)
+        self.log = _AppLog()
 
         # Health probe — auto-installed on the first ``health_check`` call.
         from a2kit.packages.health import HealthRegistry
@@ -411,15 +400,6 @@ class App:
         """True when no consumer package installed a custom dispatch hook."""
         return self._dispatch_hook is _default_dispatch_hook
 
-    # --- LDD kill-switch ------------------------------------------------ #
-
-    def set_ldd(self, *, reports: bool | None = None, events: bool | None = None) -> App:
-        if reports is not None:
-            self._ldd_reports = reports
-        if events is not None:
-            self._ldd_events = events
-        return self
-
     # --- substrate-native decorator surfaces ---------------------------- #
 
     @property
@@ -483,14 +463,6 @@ class App:
         case preserves the no-auth cold-start path.
         """
         return self._auth_registry
-
-    @property
-    def ldd_reports(self) -> bool:
-        return self._ldd_reports
-
-    @property
-    def ldd_events(self) -> bool:
-        return self._ldd_events
 
     # --- Router / tool aggregation -------------------------------------- #
 

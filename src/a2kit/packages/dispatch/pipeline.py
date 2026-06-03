@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, Any
 from a2kit.packages.dispatch.envelope import ErrorEnvelopeStage
 from a2kit.packages.dispatch.stages import (
     AuthorizeGateStage,
+    CallLogStage,
+    CallScopeStage,
     DispatchHookStage,
     EnricherStage,
     ErrorCaptureStage,
-    LddStateStage,
     RouterLazyEnterStage,
     TimeoutStage,
 )
@@ -24,14 +25,16 @@ if TYPE_CHECKING:
 #: body wraps it so, from the body outward: the timeout cancel scope
 #: covers only the bare body; the router's enrichers translate its
 #: exceptions; the router enters lazily on first touch; the dispatch
-#: hook + per-call DI scope resolve kwargs; the LDD ambient (with ctx)
-#: is bound; tool-body exceptions are captured into a neutral
-#: ``CapturedError``.
+#: hook + per-call DI scope resolve kwargs; the call scope (ctx + minted
+#: call_id) is bound; the call-log captures the access record; tool-body
+#: exceptions are captured into a neutral ``CapturedError``.
 #:
-#: Order rationale: timeout is innermost so DI resolution and LDD setup
-#: are not charged against the budget; error-capture is outermost so it
-#: sees every other stage's exceptions. Each transport adapter folds
-#: this exact tuple, then appends its own error-RENDER stage.
+#: Order rationale: timeout is innermost so DI resolution and scope setup
+#: are not charged against the budget; ``CallScopeStage`` is outer of
+#: ``CallLogStage`` so the call-log sees the minted ``call_id`` and the wire
+#: args (pre-DI); error-capture is outermost so it sees every other stage's
+#: exceptions. Each transport adapter folds this exact tuple, then appends
+#: its own error-RENDER stage.
 DISPATCH_PIPELINE: tuple[DispatchStage, ...] = (
     TimeoutStage(),
     EnricherStage(),
@@ -39,7 +42,8 @@ DISPATCH_PIPELINE: tuple[DispatchStage, ...] = (
     RouterLazyEnterStage(),
     DispatchHookStage(),
     AuthorizeGateStage(),
-    LddStateStage(),
+    CallLogStage(),
+    CallScopeStage(),
     ErrorCaptureStage(),
 )
 

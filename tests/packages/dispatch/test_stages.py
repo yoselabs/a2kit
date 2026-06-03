@@ -20,7 +20,7 @@ from a2kit.packages.dispatch import (
     DispatchHookStage,
     EnricherStage,
     ErrorCaptureStage,
-    LddStateStage,
+    CallScopeStage,
     RouterLazyEnterStage,
     TimeoutStage,
     ToolBuildSpec,
@@ -182,11 +182,11 @@ def test_dispatch_hook_self_skips_on_identity_hook_with_no_injectables() -> None
     assert stage.wrap(_stub, _spec(a2kit.App("t"))) is _stub
 
 
-# --- LddStateStage ------------------------------------------------------- #
+# --- CallScopeStage ------------------------------------------------------ #
 
 
-def test_ldd_state_stage_never_self_skips_and_runs_the_body() -> None:
-    stage = LddStateStage()
+def test_call_scope_stage_never_self_skips_and_runs_the_body() -> None:
+    stage = CallScopeStage()
     wrapped = stage.wrap(_stub, _spec(a2kit.App("t")))
     assert wrapped is not _stub
     assert asyncio.run(wrapped()) == {"ok": True}

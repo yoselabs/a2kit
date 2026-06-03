@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from a2kit.app import App
     from a2kit.exceptions import A2KitError
     from a2kit.packages.di import Lazy
-    from a2kit.packages.ldd import LddEmission
     from a2kit.routers import Router
     from a2kit.tool import list_, read, write
 
@@ -19,9 +18,9 @@ if TYPE_CHECKING:
 # subclasses, and sink-author types live in their owning modules and are
 # importable from there directly.
 #
-# Lazy[T] and LddEmission live here because they're touched at the tool
-# seam (Lazy) and by sink authors (LddEmission); a2kit.packages.* is
-# documented as private scaffolding — top-level is the canonical path.
+# Lazy[T] lives here because it's touched at the tool seam;
+# a2kit.packages.* is documented as private scaffolding — top-level is the
+# canonical path.
 _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "App": ("a2kit.app", "App"),
     "Router": ("a2kit.routers", "Router"),
@@ -33,7 +32,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "HealthResult": ("a2kit.packages.health", "HealthResult"),
     "Principal": ("a2kit.packages.context", "Principal"),
     "Lazy": ("a2kit.packages.di", "Lazy"),
-    "LddEmission": ("a2kit.packages.ldd", "LddEmission"),
 }
 
 _LAZY_MODULES: dict[str, str] = {
@@ -126,7 +124,6 @@ __all__ = [
     "App",
     "HealthResult",
     "Lazy",
-    "LddEmission",
     "Router",
     "ToolContext",
     "compose_default_surfaces",

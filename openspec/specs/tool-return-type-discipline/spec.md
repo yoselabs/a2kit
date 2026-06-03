@@ -53,7 +53,7 @@ The static lint package SHALL ship a rule with code `A2K-LOCAL-RETURN-MODEL` tha
 
 ### Requirement: Lint rule registered in static rule set
 
-The rule SHALL be wired into `src/a2kit/packages/lint/static.py` in the same registration list used by the existing rules (e.g. `A2K-LDD-REPORT-TYPE`), with constant `A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"` exported via the package's `__all__`.
+The rule SHALL be wired into `src/a2kit/packages/lint/static.py` in the same registration list used by the existing rules (e.g. `A2K-IMPORT-DISCIPLINE`), with constant `A2K_LOCAL_RETURN_MODEL = "A2K-LOCAL-RETURN-MODEL"` exported via the package's `__all__`.
 
 #### Scenario: Rule is invoked by the linter
 

@@ -39,7 +39,7 @@ symbols and pointing at ADR 0004.
 
 ### Requirement: Tier 2 public surfaces are snapshot-tested
 
-The snapshot suite SHALL include one parametrised case per Tier-2 domain module (`a2kit.testing`, `a2kit.ldd`, `a2kit.schema`, and any future `a2kit.<domain>`). Each case MUST compare `dir(module)` filtered to public names against a per-module expectation file at `tests/surface/expected_tier_<domain>.txt` and fail on drift.
+The snapshot suite SHALL include one parametrised case per Tier-2 domain module (`a2kit.testing`, `a2kit.log`, `a2kit.schema`, and any future `a2kit.<domain>`). Each case MUST compare `dir(module)` filtered to public names against a per-module expectation file at `tests/surface/expected_tier_<domain>.txt` and fail on drift.
 
 #### Scenario: a2kit.testing snapshot matches
 

@@ -133,7 +133,7 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
     and (when applicable) ``--connection`` are added.
 
     The callback handles: schema dump, JSON body decode, format routing,
-    LDD enable/disable, enricher chain, and exception → exit-code mapping.
+    log enable/disable, enricher chain, and exception → exit-code mapping.
     """
     import typer
 
@@ -267,22 +267,10 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
         if needs_connection and kwargs.get("connection") is not None:
             call_kwargs["connection"] = kwargs["connection"]
 
-        root_ctx = _click.get_current_context().find_root()
-        store = root_ctx.obj if isinstance(root_ctx.obj, dict) else {}
-        no_reports = bool(store.get("no_reports", False))
-        no_events = bool(store.get("no_events", False))
-        reports_enabled = app.ldd_reports and not no_reports
-        events_enabled = app.ldd_events and not no_events
-
-        # Per-invocation spec — `reports_enabled` / `events_enabled` fold in
-        # the `--no-reports` / `--no-events` flags read above.
         spec = ToolBuildSpec(
             app=app,
             router=router,
             meta=meta,
-            reports_enabled=reports_enabled,
-            events_enabled=events_enabled,
-            sinks=app.ldd.sinks,
         )
         try:
             if json_mode:
@@ -547,9 +535,8 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
       - ``code`` (LAZY — sandbox runtime imported only inside the callback)
       - ``health`` (only when the runtime carries an enabled health registry)
 
-    Top-level flags ``--no-reports`` / ``--no-events`` disable LDD channels
-    for the invocation; they override ``App.set_ldd(...)`` and
-    ``A2KIT_LDD__ENABLED``.
+    Emission is controlled by ``A2KIT_LOG__*`` config (logger level + the
+    per-handler streaming level); there are no per-invocation log flags.
     """
     import typer
 
@@ -572,16 +559,9 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
     )
 
     @main.callback(invoke_without_command=True)
-    def _root(
-        ctx: typer.Context,
-        no_reports: Annotated[bool, typer.Option("--no-reports", help="Disable ctx.report emission.")] = False,
-        no_events: Annotated[bool, typer.Option("--no-events", help="Disable ctx.event emission.")] = False,
-    ) -> None:
-        # Stash on ctx.obj so tool callbacks read from a stable contract,
-        # not from typer-callback-name-shaped ctx.params keys.
-        store = ctx.ensure_object(dict)
-        store["no_reports"] = no_reports
-        store["no_events"] = no_events
+    def _root(ctx: typer.Context) -> None:
+        # Reserve ctx.obj as a dict for downstream callbacks (stable contract).
+        ctx.ensure_object(dict)
 
     # Runtime tool selection at CLI build time. Reads A2KIT_TOOLS env var;
     # when set, filters which tools register as Click subcommands. Hidden

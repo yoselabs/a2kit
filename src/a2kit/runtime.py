@@ -36,7 +36,7 @@ class AppRuntime:
 
     Produced only by :func:`build`. Holds a fresh validated DI container
     and the App's composed surface (routers, tool descriptors, CLI
-    extras, MCP middleware, dispatch hook, LDD config, health registry),
+    extras, MCP middleware, dispatch hook, log config, health registry),
     all frozen at build time. ``AppRuntime`` is the async context
     manager: ``async with runtime:`` enters the lifecycle; app-scope
     resources enter lazily on first ``Container.get(T)`` and unwind in
@@ -57,9 +57,6 @@ class AppRuntime:
         mcp_middlewares: list[Any],
         container: Container,
         dispatch_hook: Callable[..., Any],
-        ldd_reports: bool,
-        ldd_events: bool,
-        ldd: Any,
         health: HealthRegistry,
         api_surface: Any = None,
         mcp_surface: Any = None,
@@ -74,9 +71,6 @@ class AppRuntime:
         self._mcp_middlewares = mcp_middlewares
         self._container = container
         self._dispatch_hook = dispatch_hook
-        self._ldd_reports = ldd_reports
-        self._ldd_events = ldd_events
-        self.ldd = ldd
         self._health = health
         # Substrate-native decorator surfaces collected by the source
         # ``App``. ``None`` when the author never touched ``App.api`` /
@@ -145,16 +139,6 @@ class AppRuntime:
     def has_default_dispatch_hook(self) -> bool:
         """True when no consumer package installed a custom dispatch hook."""
         return self._dispatch_hook is _default_dispatch_hook
-
-    # --- LDD kill-switch ----------------------------------------------- #
-
-    @property
-    def ldd_reports(self) -> bool:
-        return self._ldd_reports
-
-    @property
-    def ldd_events(self) -> bool:
-        return self._ldd_events
 
     # --- lazy router entry --------------------------------------------- #
 
@@ -250,7 +234,7 @@ def build(
        app-scope-depends-on-per-call violation raises ``TypeError``
        before any ``AppRuntime`` is produced.
     3. Carries the App's composed surface (routers, descriptors, CLI
-       extras, MCP middleware, dispatch hook, LDD config) into the
+       extras, MCP middleware, dispatch hook, log config) into the
        runtime. When the App registered a health probe, the synthetic
        ``_meta`` router is re-bound to the runtime so the health tool
        resolves checks through the runtime's container.
@@ -313,9 +297,6 @@ def build(
         mcp_middlewares=app.mcp_middlewares(),
         container=runtime_container,
         dispatch_hook=app.dispatch_hook(),
-        ldd_reports=app.ldd_reports,
-        ldd_events=app.ldd_events,
-        ldd=app.ldd,
         health=health,
         # Carry substrate decorator surfaces only if they were touched —
         # `app._api` / `app._mcp` stay None until the first attribute
@@ -345,6 +326,12 @@ def build(
         # it so the post-init meta descriptors are reachable via descriptor_for.
         runtime._descriptor_by_name.update({d.name: d for d in meta_descs})  # noqa: SLF001
 
+    # Re-apply this app's logging config as it goes live (CLI/MCP build). The
+    # `a2kit` logger is process-global, so the app being run must win over any
+    # other App constructed earlier in the same process (test isolation).
+    from a2kit._log_bootstrap import configure_logging
+
+    configure_logging(runtime.config.log)
     return runtime
 
 
