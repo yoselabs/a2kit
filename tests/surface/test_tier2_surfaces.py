@@ -20,7 +20,7 @@ from tests.surface._snapshot import assert_snapshot
 #: which is the gate the snapshot suite enforces.
 TIER2_MODULES: dict[str, str] = {
     "a2kit.testing": "expected_tier_testing.txt",
-    "a2kit.ldd": "expected_tier_ldd.txt",
+    "a2kit.log": "expected_tier_log.txt",
     "a2kit.schema": "expected_tier_schema.txt",
 }
 

@@ -21,7 +21,8 @@ def test_package_reexports_the_public_surface() -> None:
         "EnricherStage",
         "RouterLazyEnterStage",
         "DispatchHookStage",
-        "LddStateStage",
+        "CallScopeStage",
+        "CallLogStage",
         "ErrorCaptureStage",
     ):
         assert hasattr(dispatch, name), f"missing export: {name}"
