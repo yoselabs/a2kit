@@ -16,41 +16,41 @@ the lint's own view of the graph.
 
 | Unit | Layer | Files | Fan-in | Fan-out | Depends on |
 |------|-------|-------|--------|---------|------------|
-| `context` | 0 | 4 | 8 | 0 | — |
+| `context` | 0 | 4 | 8 | 1 | `log` |
 | `di` | 0 | 11 | 6 | 0 | — |
 | `formatter` | 0 | 10 | 6 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
-| `ldd` | 0 | 11 | 3 | 1 | `context` |
-| `lint` | 0 | 27 | 0 | 0 | — |
+| `lint` | 0 | 26 | 0 | 0 | — |
+| `log` | 0 | 8 | 5 | 1 | `context` |
 | `select` | 0 | 2 | 2 | 0 | — |
-| `kernel` | 1 | 9 | 5 | 1 | `ldd` |
+| `kernel` | 1 | 8 | 5 | 1 | `log` |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
-| `runtime` | 3 | 4 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select` |
+| `runtime` | 3 | 4 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `log`, `select` |
 | `connections` | 4 | 10 | 0 | 3 | `authoring`, `di`, `runtime` |
-| `dispatch` | 4 | 9 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `ldd`, `runtime` |
+| `dispatch` | 4 | 9 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `log`, `runtime` |
 | `auth` | 5 | 8 | 1 | 1 | `context` |
 | `cli` | 5 | 6 | 0 | 7 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `http` | 5 | 5 | 0 | 7 | `auth`, `context`, `di`, `dispatch`, `health`, `kernel`, `runtime` |
 | `mcp` | 5 | 9 | 2 | 8 | `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select` |
 | `otel` | 5 | 3 | 0 | 0 | — |
-| `testing` | 6 | 7 | 0 | 5 | `authoring`, `context`, `formatter`, `mcp`, `runtime` |
+| `testing` | 6 | 7 | 0 | 6 | `authoring`, `context`, `formatter`, `log`, `mcp`, `runtime` |
 
 ## Layer-ordered DAG
 
 ### Layer 0
 
-- `context` → no cross-unit dependencies
+- `context` → `log`
 - `di` → no cross-unit dependencies
 - `formatter` → no cross-unit dependencies
 - `health` → `di`
-- `ldd` → `context`
 - `lint` → no cross-unit dependencies
+- `log` → `context`
 - `select` → no cross-unit dependencies
 
 ### Layer 1
 
-- `kernel` → `ldd`
+- `kernel` → `log`
 
 ### Layer 2
 
@@ -58,12 +58,12 @@ the lint's own view of the graph.
 
 ### Layer 3
 
-- `runtime` → `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `ldd`, `select`
+- `runtime` → `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `log`, `select`
 
 ### Layer 4
 
 - `connections` → `authoring`, `di`, `runtime`
-- `dispatch` → `authoring`, `context`, `di`, `kernel`, `ldd`, `runtime`
+- `dispatch` → `authoring`, `context`, `di`, `kernel`, `log`, `runtime`
 
 ### Layer 5
 
@@ -76,4 +76,4 @@ the lint's own view of the graph.
 
 ### Layer 6
 
-- `testing` → `authoring`, `context`, `formatter`, `mcp`, `runtime`
+- `testing` → `authoring`, `context`, `formatter`, `log`, `mcp`, `runtime`

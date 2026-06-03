@@ -71,28 +71,29 @@ change.
 - **AND** the Tier-2 expectation adds the name
 - **AND** both diffs appear in the commit
 
-### Requirement: `Lazy` and `LddEmission` are top-level a2kit re-exports
+### Requirement: `Lazy` is a top-level a2kit re-export
 
-`a2kit.Lazy` and `a2kit.LddEmission` SHALL exist as top-level
-re-exports of `a2kit.packages.di.Lazy` and
-`a2kit.packages.ldd.LddEmission` respectively.
+`a2kit.Lazy` SHALL exist as a top-level re-export of
+`a2kit.packages.di.Lazy`.
 
-Both top-level paths SHALL be the canonical import targets going
-forward. The existing `a2kit.packages.di.Lazy` and
-`a2kit.packages.ldd.LddEmission` paths SHALL continue to work
-(no removal — they remain as the implementation site, re-exported by
-the top-level).
+The top-level path SHALL be the canonical import target going forward.
+The existing `a2kit.packages.di.Lazy` path SHALL continue to work (no
+removal — it remains the implementation site, re-exported by the
+top-level).
 
-The top-level `a2kit/__init__.py` SHALL include both symbols in its
-`__all__` so they appear in `dir(a2kit)` alongside `App`, `Router`,
-`ToolContext`, `HealthResult`.
+The top-level `a2kit/__init__.py` SHALL include `Lazy` in its `__all__`
+so it appears in `dir(a2kit)` alongside `App`, `Router`, `ToolContext`,
+`HealthResult`.
+
+(The former `LddEmission` top-level re-export was removed with the LDD
+surface — sink authors now implement stdlib `logging.Handler` directly;
+there is no a2kit emission payload type.)
 
 #### Scenario: Top-level import works
 
-- **WHEN** `from a2kit import Lazy, LddEmission` runs
-- **THEN** both imports succeed
+- **WHEN** `from a2kit import Lazy` runs
+- **THEN** the import succeeds
 - **AND** `Lazy is a2kit.packages.di.Lazy`
-- **AND** `LddEmission is a2kit.packages.ldd.LddEmission`
 
 #### Scenario: Legacy import paths still work
 
@@ -103,7 +104,7 @@ The top-level `a2kit/__init__.py` SHALL include both symbols in its
 #### Scenario: Symbols appear in `dir(a2kit)`
 
 - **WHEN** `dir(a2kit)` is inspected
-- **THEN** `"Lazy"` and `"LddEmission"` appear in the result
+- **THEN** `"Lazy"` appears in the result
 - **AND** `"App"`, `"Router"`, `"ToolContext"`, `"HealthResult"` also
   appear (no regression on existing top-level symbols)
 

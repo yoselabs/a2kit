@@ -67,7 +67,7 @@ _ALLOWLIST: frozenset[str] = frozenset(
         #     descriptions (not real surface, not drift) ---
         "App.method",  # illustrative metavariable in docs-code-parity
         "Router.attribute",  # illustrative metavariable in docs-code-parity
-        "a2kit.ldd.foo",  # illustrative metavariable in docs-code-parity
+        "a2kit.log.foo",  # illustrative metavariable in docs-code-parity
         "app.method",  # illustrative metavariable in docs-code-parity
         # --- a2effect-foundation lint rules: spec-declared, runtime
         #     implementation deferred to a2lint-extraction follow-up. The

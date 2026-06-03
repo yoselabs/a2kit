@@ -24,7 +24,7 @@ After the level threshold accepts an emission, the LDD primitive SHALL dispatch 
 - **GIVEN** operator sinks A, B, C registered in that order, where B always raises `RuntimeError`
 - **WHEN** a tool emits an event
 - **THEN** A and C both receive the emission
-- **AND** the exception from B is logged at WARN under `a2kit.ldd.sink_failed` with sink name + emission name
+- **AND** the exception from B is logged at WARN on the "a2kit.log.sink_failed" logger with handler name + record name
 - **AND** no exception propagates to the producer
 
 #### Scenario: Failing wire sink does not abort operator fan-out
@@ -34,13 +34,13 @@ After the level threshold accepts an emission, the LDD primitive SHALL dispatch 
 - **THEN** every registered operator sink receives the emission
 - **AND** the wire failure is logged at WARN
 
-### Requirement: Four built-in operator sinks ship under `a2kit.packages.ldd.sinks`
+### Requirement: Four built-in operator sinks ship under `a2kit.packages.log.handlers`
 
 The package SHALL expose `stderr_pretty_sink`, `stderr_json_sink`, `otel_sink`, and `live_sink` as importable async callables. Each SHALL be a pure async consumer that drains every emission even when its backend is unavailable.
 
 #### Scenario: Sinks are importable from the documented surface
 
-- **WHEN** code does `from a2kit.packages.ldd.sinks import stderr_pretty_sink, stderr_json_sink, otel_sink, live_sink`
+- **WHEN** code does `from a2kit.packages.log.handlers import stderr_pretty_sink, stderr_json_sink, otel_sink, live_sink`
 - **THEN** all four imports succeed
 
 #### Scenario: stderr_pretty writes one line per emission

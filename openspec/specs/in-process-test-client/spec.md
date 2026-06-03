@@ -44,17 +44,17 @@ The test client SHALL capture every event, progress update, log call, and report
 
 #### Scenario: log capture as dicts
 
-- **WHEN** a tool calls `await a2kit.ldd.info("starting", batch=1)`
+- **WHEN** a tool calls `await a2kit.log.info("starting", batch=1)`
 - **THEN** `client.logs[-1]` is a dict with `level` (uppercase shorthand like `"INFO"`), `msg`, `fields` (`{"batch": 1}`), and `elapsed_ms` keys
 
 #### Scenario: typed reports captured as dicts
 
-- **WHEN** a tool calls `await a2kit.ldd.report(BatchReport(batch=1, accepted=5))`
+- **WHEN** a tool calls `await a2kit.log.info(BatchReport(batch=1, accepted=5))`
 - **THEN** `client.reports[-1]` is a dict with `type` (the class name), `body` (`model_dump()` payload), and `elapsed_ms` keys
 
 #### Scenario: wire payload prefixes a2kit-internal keys to dodge LogRecord collisions
 
-- **GIVEN** an `a2kit.ldd.event("evt", payload={"k": 1})` call on the MCP transport
+- **GIVEN** an `a2kit.log.info("evt", payload={"k": 1})` call on the MCP transport
 - **WHEN** the server-side ctx.log call passes through FastMCP's `_log_to_server_and_client` (which calls `to_client_logger.log(..., extra=...)`)
 - **THEN** the `extra` dict contains `a2kit_kind`, `a2kit_name`, `a2kit_payload`, `a2kit_elapsed_ms` — none of which collide with Python `LogRecord` reserved attributes
 - **AND** the client-side `log_handler` un-prefixes these back to the public capture shape (`{"name", "payload", "elapsed_ms"}`)
@@ -391,7 +391,7 @@ framework SHALL NOT expose parametric variants of
 
 - **GIVEN** a pytest test function declaring `ambient_for_tests`
   in its signature
-- **WHEN** the test body calls `await a2kit.ldd.event("evt", k=1)`
+- **WHEN** the test body calls `await a2kit.log.info("evt", k=1)`
 - **THEN** the call completes without raising
   `AmbientContextMissing`
 
@@ -399,15 +399,15 @@ framework SHALL NOT expose parametric variants of
 
 - **GIVEN** a pytest test function that does NOT depend on
   `ambient_for_tests` and is not under an autouse re-export
-- **WHEN** the test body calls `await a2kit.ldd.event("evt", k=1)`
+- **WHEN** the test body calls `await a2kit.log.info("evt", k=1)`
 - **THEN** the call raises `AmbientContextMissing` with the v0.33
   hint message
 
 #### Scenario: default flags suppress event/report emission
 
 - **GIVEN** a test using `ambient_for_tests`
-- **WHEN** the test body calls `await a2kit.ldd.event("evt")` and
-  `await a2kit.ldd.report(SomeReport(...))`
+- **WHEN** the test body calls `await a2kit.log.info("evt")` and
+  `await a2kit.log.info(SomeReport(...))`
 - **THEN** neither emission produces a wire-side effect (no sinks
   fire), consistent with `events_enabled=False` and
   `reports_enabled=False`
@@ -447,7 +447,7 @@ consumers import the bare `ambient_for_tests`.
 - **GIVEN** a consumer's `conftest.py` containing only
   `from a2kit.testing import ambient_for_tests_autouse`
 - **WHEN** a pytest test in that project calls
-  `await a2kit.ldd.event("evt", k=1)` without declaring any fixture
+  `await a2kit.log.info("evt", k=1)` without declaring any fixture
   in its signature
 - **THEN** the call completes without raising `AmbientContextMissing`
 
@@ -464,15 +464,15 @@ consumers import the bare `ambient_for_tests`.
 - **GIVEN** a project that imports only the bare
   `ambient_for_tests` fixture (no autouse re-export)
 - **WHEN** a pytest test that does NOT declare `ambient_for_tests`
-  in its signature calls `await a2kit.ldd.event("evt", k=1)`
+  in its signature calls `await a2kit.log.info("evt", k=1)`
 - **THEN** the call raises `AmbientContextMissing` with the v0.33
   hint message, exactly as before this change
 
 #### Scenario: both flavors share default flag values
 
 - **GIVEN** a test running under `ambient_for_tests_autouse`
-- **WHEN** the test body calls `await a2kit.ldd.event("evt")` and
-  `await a2kit.ldd.report(SomeReport(...))`
+- **WHEN** the test body calls `await a2kit.log.info("evt")` and
+  `await a2kit.log.info(SomeReport(...))`
 - **THEN** neither emission produces a wire-side effect (no sinks
   fire), matching the bare fixture's
   `events_enabled=False` / `reports_enabled=False` defaults

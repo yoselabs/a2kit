@@ -124,7 +124,6 @@ __all__ = [
     "App",
     "HealthResult",
     "Lazy",
-    "LddEmission",
     "Router",
     "ToolContext",
     "compose_default_surfaces",

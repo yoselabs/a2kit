@@ -16,7 +16,7 @@ The test SHALL fail the `make lint` target on any drift between README and runti
 **Patterns the test SHALL resolve:**
 
 - `a2kit.X` and `@a2kit.X` — must `hasattr(a2kit, "X")` on import. Examples: `a2kit.App`, `a2kit.Router`, `@a2kit.read`, `a2kit.ToolContext`, `a2kit.HealthResult`.
-- `a2kit.<submodule>.Y` and `@a2kit.<submodule>.Y` — must resolve via `importlib.import_module("a2kit.<submodule>")` followed by `hasattr(mod, "Y")`. Examples: `a2kit.ldd.event`, `a2kit.testing.client`.
+- `a2kit.<submodule>.Y` and `@a2kit.<submodule>.Y` — must resolve via `importlib.import_module("a2kit.<submodule>")` followed by `hasattr(mod, "Y")`. Examples: `a2kit.log.info`, `a2kit.testing.client`.
 - `App.method` and `app.method` — must `hasattr(a2kit.App, "method")`. Examples: `App.add_router`, `app.provide`, `app.tools`. A name that names a DI-registration verb other than the live one is not a valid claim — the live registration method is `app.provide`.
 - `Router.attribute` — must `hasattr(a2kit.Router, "attribute")`. Examples: `Router.slug`, `Router.tools`, `Router.providers`. An attribute that does not exist on the live `Router` is not a valid claim.
 - `@app.X` — must `hasattr(a2kit.App, "X")`. Examples: `@app.health_check`.
@@ -39,7 +39,7 @@ The test SHALL fail the `make lint` target on any drift between README and runti
 
 #### Scenario: Drift on submodule symbol is caught
 
-- **GIVEN** `README.md` claims `a2kit.ldd.foo` but `a2kit.ldd` does not export `foo`
+- **GIVEN** `README.md` claims `a2kit.log.foo` but `a2kit.log` does not export `foo`
 - **WHEN** the test runs
 - **THEN** it fails with a message naming the symbol and the missing resolution
 
@@ -66,7 +66,7 @@ The release pass SHALL, for `README.md`, ensure that:
 - The `list_` trailing-underscore convention is documented.
 - The default connection-store path is documented.
 
-Beyond the README pass, the parity standard SHALL hold for the other human-readable docs. Specifically, no human-readable doc SHALL reference, in prose, a markdown table, a fenced example, or an ADR body, any API removed from the live surface. The class of removed APIs covered includes the symbols dropped across v0.33–v0.39: the old bare verb decorator, the capability-tag types now superseded by plain strings, the `App(name, health_tool=True)` constructor form, the old decorator-form lifecycle hooks and the old DI-registration verb together with the private singleton-cache attribute, the dropped TOON encoder and its format hint, the method-form LDD primitives now provided as `a2kit.ldd` free functions, and the singular verb-kwarg form whose live spelling is `reports=` (plural). ADR frontmatter `status` SHALL reflect reality: an ADR whose decision has shipped SHALL carry `status: accepted`, not `status: proposed`.
+Beyond the README pass, the parity standard SHALL hold for the other human-readable docs. Specifically, no human-readable doc SHALL reference, in prose, a markdown table, a fenced example, or an ADR body, any API removed from the live surface. The class of removed APIs covered includes the symbols dropped across v0.33–v0.39: the old bare verb decorator, the capability-tag types now superseded by plain strings, the `App(name, health_tool=True)` constructor form, the old decorator-form lifecycle hooks and the old DI-registration verb together with the private singleton-cache attribute, the dropped TOON encoder and its format hint, the method-form LDD primitives now provided as `a2kit.log` free functions, and the singular verb-kwarg form whose live spelling is `reports=` (plural). ADR frontmatter `status` SHALL reflect reality: an ADR whose decision has shipped SHALL carry `status: accepted`, not `status: proposed`.
 
 #### Scenario: No phantom symbols in README
 

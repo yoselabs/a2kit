@@ -68,7 +68,7 @@ to the `ctx` parameter. The stub SHALL expose every public method of
   where `k=v` pairs come from `extra` (plus a synthesised `logger=...`
   pair when `logger_name` is provided). The stub SHALL NOT accept
   arbitrary `**fields` kwargs; the kwargs form is reserved for
-  `a2kit.ldd.log` (see below).
+  `a2kit.log.info` (see below).
 - `report_progress(progress, total=None, message=None)` — emit a
   stderr line `[ +s.mmm progress] current=N total=M`.
 - `elicit(message, response_type=None, *, response_title=None, response_description=None)` —
@@ -106,7 +106,7 @@ to the `ctx` parameter. The stub SHALL expose every public method of
 - **GIVEN** a tool calling `await ctx.info("hi", foo=1)`
 - **WHEN** the tool runs via CLI **or** MCP
 - **THEN** the call raises `TypeError`. The tool is expected to use
-  `await a2kit.ldd.info(ctx, "hi", foo=1)` instead.
+  `await a2kit.log.info(ctx, "hi", foo=1)` instead.
 
 ### Requirement: ctx parameter excluded from input schema
 
@@ -142,14 +142,14 @@ The exclusion SHALL apply only to the user-facing input surface. The **internal*
 
 ### Requirement: LDD event and report primitives are protocol-neutral functions
 
-The library SHALL expose `a2kit.ldd.event(ctx, ...)`,
-`a2kit.ldd.report(ctx, ...)`, and `a2kit.ldd.log(ctx, level, msg_or_instance, **fields)`
+The library SHALL expose `a2kit.log.info(ctx, ...)`,
+`a2kit.log.info(ctx, ...)`, and `a2kit.log.info(ctx, level, msg_or_instance, **fields)`
 as free functions that accept any `fastmcp.Context`-shaped object. The
 three SHALL share a single dispatch shape (identity-check against the
 live ctx type and route to either `ctx.log(extra=...)` on MCP or
 `StderrToolContext._emit(...)` on CLI).
 
-`a2kit.ldd.log` SHALL accept two call forms, matching `event`'s
+`a2kit.log.info` SHALL accept two call forms, matching `event`'s
 shape verbatim:
 
 - **String form**: `log(ctx, "info", "msg", k=v, ...)`. Third
@@ -161,7 +161,7 @@ shape verbatim:
   (dataclass), or `vars(instance)` (fallback). `Enum` values
   are unwrapped to `.value`.
 
-Convenience aliases `a2kit.ldd.info`, `warning`, `error`, `debug`
+Convenience aliases `a2kit.log.info`, `warning`, `error`, `debug`
 forward to `log` with the appropriate level literal and accept the
 same two forms.
 
@@ -170,14 +170,14 @@ The library SHALL NOT add `event`, `report`, or `log` methods to the
 CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
 `log` SHALL share the events flag's kill-switch.
 
-#### Scenario: a2kit.ldd.info delivers a structured message on MCP
+#### Scenario: a2kit.log.info delivers a structured message on MCP
 
-- **GIVEN** a tool calling `await a2kit.ldd.info(ctx, "starting", batch=2)`
+- **GIVEN** a tool calling `await a2kit.log.info(ctx, "starting", batch=2)`
 - **WHEN** the tool runs under `<app> serve` via `fastmcp.Client`
 - **THEN** the client receives a `notifications/message` whose
   `level="info"`, `message="starting"`, `extra={"batch": 2, "elapsed_ms": ...}`
 
-#### Scenario: a2kit.ldd.info renders the same line on CLI
+#### Scenario: a2kit.log.info renders the same line on CLI
 
 - **GIVEN** the same tool
 - **WHEN** the tool runs via `<app> tasks t`
@@ -185,7 +185,7 @@ CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
 
 #### Scenario: Both transports agree on payload contents
 
-- **GIVEN** identical `a2kit.ldd.info(ctx, "x", n=42)` calls under
+- **GIVEN** identical `a2kit.log.info(ctx, "x", n=42)` calls under
   MCP and CLI
 - **THEN** the structured `extra` payload (or its CLI `key=value`
   rendering) carries the same fields with the same values, except
@@ -194,7 +194,7 @@ CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
 #### Scenario: Instance form derives message and fields
 
 - **GIVEN** `@dataclass class ImportStarted: file: str; batch: int`
-- **WHEN** `await a2kit.ldd.info(ctx, ImportStarted(file="/x.csv", batch=2))` is called
+- **WHEN** `await a2kit.log.info(ctx, ImportStarted(file="/x.csv", batch=2))` is called
 - **THEN** the delivered payload has `message="ImportStarted"` and
   `extra={"file": "/x.csv", "batch": 2, "elapsed_ms": ...}` on MCP,
   rendering as `[ +s.mmm INFO    ] ImportStarted file=/x.csv batch=2` on CLI
@@ -202,59 +202,53 @@ CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
 #### Scenario: Instance form and string form produce identical wire payload
 
 - **GIVEN** `MyDC(x=1, y=2)` as a dataclass
-- **WHEN** `a2kit.ldd.info(ctx, MyDC(x=1, y=2))` and
-  `a2kit.ldd.info(ctx, "MyDC", x=1, y=2)` are called
+- **WHEN** `a2kit.log.info(ctx, MyDC(x=1, y=2))` and
+  `a2kit.log.info(ctx, "MyDC", x=1, y=2)` are called
 - **THEN** the delivered `extra` (MCP) or rendered key=value pairs
   (CLI) are identical key-for-key, except `elapsed_ms`
 
 #### Scenario: msg is capped at 60 chars before transport
 
-- **WHEN** `a2kit.ldd.info(ctx, "<200-char string>", k=1)` is called on either transport
+- **WHEN** `a2kit.log.info(ctx, "<200-char string>", k=1)` is called on either transport
 - **THEN** the delivered `message` (MCP) or rendered text (CLI) is
   exactly 60 characters with the final character `…`
 
-### Requirement: LDD wire-format invariants are owned by `a2kit.ldd`
+### Requirement: LDD wire-format invariants are owned by `a2kit.log`
 
-Every event delivered via `a2kit.ldd.event(ctx, name, **kw)` SHALL carry an `elapsed_ms` integer in its structured payload, computed as `int((monotonic() - app_start_monotonic) * 1000)` where `app_start_monotonic` is captured at first emit (or at App `__aenter__` when the lifecycle ran). The CLI rendering SHALL prefix every line with `+s.mmm` relative time using zero-padded three-decimal milliseconds. The human-readable text portion of any LDD line SHALL be capped at 60 characters with `…` elision when truncated. The CLI stub `send_log_message` rendering and the MCP `notifications/message` payload (carrying the same `level`, `logger`, `data`) SHALL agree on the structured `data` field's contents key-for-key — transports may differ on framing only, never on the structured payload.
+Every event delivered via `a2kit.log.info(ctx, name, **kw)` SHALL carry an `elapsed_ms` integer in its structured payload, computed as `int((monotonic() - app_start_monotonic) * 1000)` where `app_start_monotonic` is captured at first emit (or at App `__aenter__` when the lifecycle ran). The CLI rendering SHALL prefix every line with `+s.mmm` relative time using zero-padded three-decimal milliseconds. The human-readable text portion of any LDD line SHALL be capped at 60 characters with `…` elision when truncated. The CLI stub `send_log_message` rendering and the MCP `notifications/message` payload (carrying the same `level`, `logger`, `data`) SHALL agree on the structured `data` field's contents key-for-key — transports may differ on framing only, never on the structured payload.
 
 #### Scenario: elapsed_ms increases monotonically
 
-- **WHEN** two `a2kit.ldd.event` calls happen 50 ms apart in the same process
+- **WHEN** two `a2kit.log.info` calls happen 50 ms apart in the same process
 - **THEN** the second emission's `elapsed_ms` is greater than the first's by approximately 50 (within OS scheduler tolerance)
 
 #### Scenario: text capped at 60 chars
 
-- **WHEN** `a2kit.ldd.info(ctx, "<200-char string>", k=1)` is called
+- **WHEN** `a2kit.log.info(ctx, "<200-char string>", k=1)` is called
 - **THEN** the delivered/rendered text portion is exactly 60 characters with the final character `…`
 
-### Requirement: Typed event registry on `app.ldd.events`
+### Requirement: Typed instances ride the level methods
 
-The `App` class SHALL expose `app.ldd.events: EventRegistry`. The registry SHALL provide `register(model: type[BaseModel], *, progress: Callable[[BaseModel], float] | None = None) -> None` and `async emit_typed(event: BaseModel) -> None`. `emit_typed` SHALL NOT take a `ctx` argument; it resolves the live context from the ambient `_LddState`. `emit_typed` SHALL serialize `event` via `event.model_dump(mode="json")`, call the underlying `a2kit.ldd.event(event.__class__.__name__, **dumped)`, and — if a `progress` callback is registered for `event.__class__` — additionally call `ctx.report_progress(progress(event), 1.0)` on the ambient context. Re-registration is last-write-wins. One progress callback per event class; consumers compose at the callback level if they need composite progress.
+The typed-payload ergonomic SHALL survive on the level methods: a level
+method accepts EITHER a string message OR a typed instance as its first
+positional. `a2kit.log.info(instance)` dumps the instance via
+`model_dump(mode="json")` (or `dataclasses.asdict`, with enum values
+unwrapped) and carries it on the record's structured payload; the message
+defaults to the type name. The former `EventRegistry` +
+`emit_typed` + progress-callback path is removed — for MCP progress bars a
+tool calls `ctx.report_progress(...)` directly alongside the log call.
 
-#### Scenario: Register and emit typed event
+#### Scenario: Typed instance emits via the level method
 
-- **GIVEN** `app.ldd.events.register(TierEnded, progress=lambda e: 0.5)` registered
-- **AND** an active dispatch with live `ctx`
-- **WHEN** `await app.ldd.events.emit_typed(TierEnded(step="raw", verdict="ok"))` is called
-- **THEN** `a2kit.ldd.event("TierEnded", step="raw", verdict="ok")` runs first using the ambient ctx
-- **AND** `ctx.report_progress(0.5, 1.0)` runs immediately after on the same ambient ctx
-
-#### Scenario: Unregistered model emits without progress
-
-- **GIVEN** no registration for `OtherEvent`
-- **WHEN** `await app.ldd.events.emit_typed(OtherEvent(...))` is called inside a dispatch
-- **THEN** the underlying `event` is invoked but no progress call is made
-
-#### Scenario: Re-registration is last-write-wins
-
-- **WHEN** `register(TierEnded, progress=fn_a)` is followed by `register(TierEnded, progress=fn_b)`
-- **THEN** subsequent `emit_typed` for `TierEnded` uses `fn_b`
+- **GIVEN** an active dispatch with live `ctx`
+- **WHEN** `await a2kit.log.info(TierEnded(step="raw", verdict="ok"))` is called
+- **THEN** one INFO record is emitted carrying `{step: "raw", verdict: "ok"}` with message `"TierEnded"`
 
 #### Scenario: model_dump uses JSON mode
 
-- **GIVEN** an event model whose fields include a `datetime` value
-- **WHEN** `emit_typed` is called inside a dispatch
-- **THEN** the underlying `event` call receives the datetime serialized as an ISO-8601 string (the `model_dump(mode="json")` coercion)
+- **GIVEN** an instance whose fields include a `datetime` value
+- **WHEN** `a2kit.log.info(instance)` is called inside a dispatch
+- **THEN** the record's payload carries the datetime serialized as an ISO-8601 string (the `model_dump(mode="json")` coercion)
 
 ### Requirement: Ambient context binding via dispatch contextvar
 
@@ -266,84 +260,78 @@ The three dispatch sites SHALL pass `ctx` into `ldd_state_for_call` **only when 
 - CLI runtime (`_invoke_tool_in_process` in `a2kit.packages.cli.runtime`) opens `ldd_state_for_call` only when `ctx_param_name` is truthy and passes the `StderrToolContext` instance bound on the call kwargs. The CLI runtime SHALL NOT synthesize a `StderrToolContext` for tools that did not declare `ctx`.
 - In-process test client (`TestClient.invoke` in `a2kit.packages.testing.client`) opens `ldd_state_for_call` only when `meta.context_param_name` is truthy and passes the `_CapturingContext` bound on the call kwargs. The test client SHALL NOT synthesize a capturing context for tools that did not declare `ctx`.
 
-A tool that calls any LDD primitive (`a2kit.ldd.event`, `a2kit.ldd.log`, `a2kit.ldd.info`, etc.) but did NOT declare `ctx: a2kit.ToolContext` SHALL therefore raise `AmbientContextMissing` uniformly across MCP, CLI, and TestClient — there is no transport on which the missing-ctx case silently succeeds.
+A tool that calls any LDD primitive (`a2kit.log.info`, `a2kit.log.info`, `a2kit.log.info`, etc.) but did NOT declare `ctx: a2kit.ToolContext` SHALL therefore raise `AmbientContextMissing` uniformly across MCP, CLI, and TestClient — there is no transport on which the missing-ctx case silently succeeds.
 
 `contextvars.ContextVar.set` / `.reset` token semantics SHALL be honored — every entry into `ldd_state_for_call` is paired with an exit that resets to the prior state. Nested dispatch (e.g. tool A invokes tool B via the test client) SHALL be supported by the token stack with no additional locking.
 
 #### Scenario: MCP dispatch binds the live fastmcp.Context
 
-- **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext) -> None: await a2kit.ldd.event("x", k=1)`
+- **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext) -> None: await a2kit.log.info("x", k=1)`
 - **WHEN** the tool runs under `<app> serve` and FastMCP injects `ctx`
 - **THEN** the MCP client receives the `notifications/message` for `"x"` carrying `k=1`
 - **AND** the `event` call did not pass `ctx` and did not raise
 
 #### Scenario: CLI dispatch binds the StderrToolContext
 
-- **GIVEN** a tool calling `await a2kit.ldd.info("msg", k=1)` with no `ctx` argument
+- **GIVEN** a tool calling `await a2kit.log.info("msg", k=1)` with no `ctx` argument
 - **WHEN** the tool runs via `<app> tasks t`
 - **THEN** stderr contains a line matching `[ +\d+\.\d+ INFO    ] msg k=1`
 
 #### Scenario: TestClient dispatch binds the test stub
 
-- **GIVEN** a tool calling `await a2kit.ldd.event("x", k=1)` and the in-process `TestClient`
+- **GIVEN** a tool calling `await a2kit.log.info("x", k=1)` and the in-process `TestClient`
 - **WHEN** `await client.call_tool("t", {})` is awaited
 - **THEN** the captured emission carries `name="x"` and `k=1` with the test stub as the bound ctx
 
 #### Scenario: Concurrent gather sees the same ambient ctx
 
-- **GIVEN** a tool body that runs `await asyncio.gather(sub_a(), sub_b())` where both sub-coroutines call `a2kit.ldd.event(...)`
+- **GIVEN** a tool body that runs `await asyncio.gather(sub_a(), sub_b())` where both sub-coroutines call `a2kit.log.info(...)`
 - **WHEN** the tool runs under MCP
 - **THEN** both emissions resolve to the same ambient `ctx` (the dispatcher's injected `fastmcp.Context`) and neither raises
 
 #### Scenario: Nested dispatch shadows then restores ambient ctx
 
-- **GIVEN** tool A whose body invokes tool B via the in-process test client, where both A and B call `a2kit.ldd.event(...)`
+- **GIVEN** tool A whose body invokes tool B via the in-process test client, where both A and B call `a2kit.log.info(...)`
 - **WHEN** A runs and B is dispatched mid-way
 - **THEN** events emitted from inside B resolve to B's dispatch ctx
 - **AND** events emitted from A after B returns resolve again to A's dispatch ctx
 
 #### Scenario: CLI dispatch on a no-ctx tool does not synthesize StderrToolContext
 
-- **GIVEN** a tool `async def t() -> None: await a2kit.ldd.event("x", k=1)` that did NOT declare `ctx`
+- **GIVEN** a tool `async def t() -> None: await a2kit.log.info("x", k=1)` that did NOT declare `ctx`
 - **WHEN** the tool runs via `<app> tasks t`
-- **THEN** the LDD call raises `AmbientContextMissing` with a message naming `a2kit.ldd.event`
+- **THEN** the LDD call raises `AmbientContextMissing` with a message naming `a2kit.log.info`
 - **AND** the CLI runtime did not synthesize a `StderrToolContext` for the call
 
 #### Scenario: TestClient dispatch on a no-ctx tool does not synthesize a capturing context
 
-- **GIVEN** a tool `async def t() -> None: await a2kit.ldd.event("x", k=1)` that did NOT declare `ctx`
+- **GIVEN** a tool `async def t() -> None: await a2kit.log.info("x", k=1)` that did NOT declare `ctx`
 - **WHEN** a test runs `await client.invoke("t")`
-- **THEN** the LDD call raises `AmbientContextMissing` with a message naming `a2kit.ldd.event`
+- **THEN** the LDD call raises `AmbientContextMissing` with a message naming `a2kit.log.info`
 - **AND** `client.events` remains empty (no synthesized capturing-context binding)
 
 ### Requirement: LDD primitives raise when called outside a dispatch
 
-If any of `a2kit.ldd.event`, `a2kit.ldd.report`, `a2kit.ldd.log`, `a2kit.ldd.debug`, `a2kit.ldd.info`, `a2kit.ldd.warning`, `a2kit.ldd.error`, or `EventRegistry.emit_typed` is invoked while `_LDD_STATE.get()` is `None` (i.e. no active `ldd_state_for_call` scope on the current `contextvars.Context`), the call SHALL raise `AmbientContextMissing` (a subclass of `RuntimeError`). The exception message SHALL name the **invoked function** and SHALL indicate that the primitive must be called from inside a tool body. Shorthand primitives (`debug`, `info`, `warning`, `error`) that delegate internally to `log` SHALL still surface their own name in the message. The library SHALL NOT silently no-op and SHALL NOT synthesize a fallback context.
+If any of `a2kit.log.info`, `a2kit.log.info`, `a2kit.log.info`, `a2kit.log.debug`, `a2kit.log.info`, `a2kit.log.warning`, `a2kit.log.error`, or `EventRegistry.emit_typed` is invoked while `_LDD_STATE.get()` is `None` (i.e. no active `ldd_state_for_call` scope on the current `contextvars.Context`), the call SHALL raise `AmbientContextMissing` (a subclass of `RuntimeError`). The exception message SHALL name the **invoked function** and SHALL indicate that the primitive must be called from inside a tool body. Shorthand primitives (`debug`, `info`, `warning`, `error`) that delegate internally to `log` SHALL still surface their own name in the message. The library SHALL NOT silently no-op and SHALL NOT synthesize a fallback context.
 
 #### Scenario: Calling event outside a dispatch raises
 
-- **GIVEN** a module-level coroutine that calls `await a2kit.ldd.event("x", k=1)` without first entering `ldd_state_for_call`
+- **GIVEN** a module-level coroutine that calls `await a2kit.log.info("x", k=1)` without first entering `ldd_state_for_call`
 - **WHEN** the coroutine is awaited
 - **THEN** `AmbientContextMissing` is raised
-- **AND** the message contains `"a2kit.ldd.event"` and references the tool-body dispatch contract
+- **AND** the message contains `"a2kit.log.info"` and references the tool-body dispatch contract
 
 #### Scenario: Calling log outside any dispatch scope raises
 
-- **GIVEN** a coroutine that calls `await a2kit.ldd.info("starting")` outside any `ldd_state_for_call` scope (for example from imperative startup code run before `async with app:`)
-- **WHEN** the coroutine is awaited
-- **THEN** `AmbientContextMissing` is raised
-
-#### Scenario: emit_typed raises outside a dispatch
-
-- **GIVEN** a coroutine that calls `await app.ldd.events.emit_typed(TierEnded(...))` outside any dispatch
+- **GIVEN** a coroutine that calls `await a2kit.log.info("starting")` outside any `ldd_state_for_call` scope (for example from imperative startup code run before `async with app:`)
 - **WHEN** the coroutine is awaited
 - **THEN** `AmbientContextMissing` is raised
 
 #### Scenario: Shorthand info names itself in the error message
 
-- **GIVEN** a module-level coroutine that calls `await a2kit.ldd.info("x", k=1)` without first entering `ldd_state_for_call`
+- **GIVEN** a module-level coroutine that calls `await a2kit.log.info("x", k=1)` without first entering `ldd_state_for_call`
 - **WHEN** the coroutine is awaited
-- **THEN** `AmbientContextMissing` is raised whose message names `"a2kit.ldd.info"` (its own name, not `"a2kit.ldd.log"`)
+- **THEN** `AmbientContextMissing` is raised whose message names `"a2kit.log.info"` (its own name, not `"a2kit.log.info"`)
 
 ### Requirement: Decoration-time invariant — rewritten MCP signature contains ctx
 
@@ -405,9 +393,9 @@ A test suite SHALL pin the contract that a tool's behavior is identical across t
 - **WHEN** invoked on each transport
 - **THEN** both transports surface an error of the same Python exception class (`TypeError`)
 
-### Requirement: Field-bearing logging lives on `a2kit.ldd.*`, not on `ctx.*`
+### Requirement: Field-bearing logging lives on `a2kit.log.*`, not on `ctx.*`
 
-The library SHALL document `a2kit.ldd.info` (and siblings) as the
+The library SHALL document `a2kit.log.info` (and siblings) as the
 canonical structured-narrative logging primitive. The library SHALL
 treat `ctx.info(msg, **fields)` (with kwargs other than `logger_name`
 / `extra`) as an antipattern and reject it at runtime via fastmcp's
@@ -417,7 +405,7 @@ narrow signature.
 
 - **WHEN** the ANTIPATTERNS.md is inspected
 - **THEN** an entry exists titled "Kwargs on `ctx.info/warning/error/debug`"
-  with the recommended replacement `a2kit.ldd.info(ctx, ...)` and a
+  with the recommended replacement `a2kit.log.info(ctx, ...)` and a
   pointer to this requirement.
 
 <!--
@@ -427,7 +415,7 @@ narrow signature.
   an asserted behaviour in prior tests). No REMOVED clause is emitted.
 
   Migration carried over:
-  `s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.ldd.\1(ctx, "\2", \3)/`
+  `s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.log.\1(ctx, "\2", \3)/`
   catches the documented call shapes. `ctx.info("plain string")` and
   `ctx.info("msg", extra={...})` continue to work — they were always
   fastmcp-compatible.
@@ -502,7 +490,7 @@ This requirement establishes the invariant: **inside any framework dispatch, the
 
 #### Scenario: MCP transport — tool without ctx param emits LDD
 
-- **GIVEN** a tool `async def fetch(*, url: str) -> dict: await a2kit.ldd.event("fetch", url=url); return {}` registered on a Router
+- **GIVEN** a tool `async def fetch(*, url: str) -> dict: await a2kit.log.info("fetch", url=url); return {}` registered on a Router
 - **WHEN** a real `fastmcp.Client(transport=...)` invokes `fetch(url="https://example/")`
 - **THEN** the invocation completes without raising `AmbientContextMissing`
 - **AND** the captured event surfaces on the test client's `events` list with name `"fetch"` and payload `{"url": "https://example/"}`
