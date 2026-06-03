@@ -17,7 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 import a2kit
-from a2kit.ldd import error, event, info, report, warning
+from a2kit.log import error, info, warning
 
 
 class ImportStarted(BaseModel):
@@ -137,22 +137,22 @@ class TasksRouter(a2kit.Router):
     ) -> dict[str, int]:
         """LDD with the four channels at once.
 
-        - ``await event(name, ...)`` for narrative milestones
+        - ``await info(name, ...)`` for narrative milestones
           (``import.started``, ``import.complete``).
-        - ``await report(BatchReport(...))`` for typed mid-flight result chunks.
+        - ``await info(BatchReport(...))`` for typed mid-flight result chunks.
         - ``await info(...)`` for free-form fielded telemetry.
         - ``ctx.report_progress(i, total)`` for numeric progress.
         """
         # Typed instance form — name = type name, payload from model_dump.
-        await event(ImportStarted(file=file, batch_size=batch_size))
+        await info(ImportStarted(file=file, batch_size=batch_size))
         rows = _load_csv(file)
         await info("loaded rows", count=len(rows))
         for i in range(0, len(rows), batch_size):
             batch = rows[i : i + batch_size]
             await ctx.report_progress(i, len(rows))
             await _persist(batch)
-            await report(BatchReport(batch=i // batch_size, accepted=len(batch), rejected=0))
-        await event(ImportComplete(imported=len(rows)))
+            await info(BatchReport(batch=i // batch_size, accepted=len(batch), rejected=0))
+        await info(ImportComplete(imported=len(rows)))
         return {
             "imported": len(rows),
             "batches": (len(rows) + batch_size - 1) // batch_size if rows else 0,

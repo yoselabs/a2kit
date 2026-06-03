@@ -326,6 +326,12 @@ def build(
         # it so the post-init meta descriptors are reachable via descriptor_for.
         runtime._descriptor_by_name.update({d.name: d for d in meta_descs})  # noqa: SLF001
 
+    # Re-apply this app's logging config as it goes live (CLI/MCP build). The
+    # `a2kit` logger is process-global, so the app being run must win over any
+    # other App constructed earlier in the same process (test isolation).
+    from a2kit._log_bootstrap import configure_logging
+
+    configure_logging(runtime.config.log)
     return runtime
 
 

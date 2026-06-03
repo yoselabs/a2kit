@@ -81,39 +81,12 @@ def test_import_csv_with_reports_emits_event_and_report_lines(tmp_path: Path) ->
     )
     assert result.exit_code == 0, result.output
     err = result.stderr
-    # Narrative events fire at start + end.
-    assert "event   ]" in err
-    assert "ImportStarted" in err
+    # Typed instances ride info() now (event()/report() are retired): the
+    # class name is the message and fields dump onto the line, all at INFO.
+    assert "INFO    ] ImportStarted" in err
     assert "ImportComplete" in err
-    # Reports fire per-batch with the BatchReport class name.
-    assert "report  ]" in err
     assert "BatchReport" in err
     assert "batch=0" in err
-
-
-def test_no_reports_flag_silences_reports_but_not_events(tmp_path: Path) -> None:
-    csv = _write_csv(tmp_path)
-    cli = build_full_cli(app)
-    result = CliRunner().invoke(
-        cli,
-        [
-            "--no-reports",
-            "tasks",
-            "import_csv_with_reports",
-            "--file",
-            str(csv),
-            "--batch-size",
-            "2",
-            "--format",
-            "json",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    err = result.stderr
-    # Events still fire.
-    assert "ImportStarted" in err
-    # Reports do not.
-    assert "BatchReport" not in err
 
 
 def test_quick_status_has_no_log_lines(tmp_path: Path) -> None:

@@ -13,7 +13,7 @@ import asyncio
 import uuid
 
 import a2kit
-from a2kit.ldd import event, info, report
+from a2kit.log import info
 
 from .models import BatchReport, Project, Task
 from .store import TrackerStore
@@ -115,7 +115,7 @@ class TasksRouter(a2kit.Router):
         batch_size: int = 5,
     ) -> dict[str, int]:
         """Import a batch of tasks; demonstrates all four LDD channels."""
-        await event("import.started", project_id=project_id, n=len(titles))
+        await info("import.started", project_id=project_id, n=len(titles))
         projects, tasks = store.load_state()
         if not any(p.id == project_id for p in projects):
             raise KeyError(project_id)
@@ -136,7 +136,7 @@ class TasksRouter(a2kit.Router):
                 batch_accepted += 1
             accepted += batch_accepted
             rejected += batch_rejected
-            await report(
+            await info(
                 BatchReport(
                     batch=i // batch_size,
                     accepted=batch_accepted,
@@ -147,7 +147,7 @@ class TasksRouter(a2kit.Router):
             await asyncio.sleep(0)
 
         store.replace(projects, tasks)
-        await event("import.complete", accepted=accepted, rejected=rejected)
+        await info("import.complete", accepted=accepted, rejected=rejected)
         return {"accepted": accepted, "rejected": rejected}
 
     tools = (
