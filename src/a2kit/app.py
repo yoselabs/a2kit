@@ -145,7 +145,7 @@ class App:
         # the call-scope filter, the opt-in call-log). Kill-switch lives in
         # `LogConfig.enabled` (env A2KIT_LOG__ENABLED=false).
         from a2kit._log_bootstrap import configure_logging
-        from a2kit.packages.log.app_log import _AppLog
+        from a2kit.packages.log.app_log import _AppLog  # noqa: A2K-PKG-FRONT-DOOR -- private app namespace
 
         configure_logging(self.config.log)
         self.log = _AppLog()

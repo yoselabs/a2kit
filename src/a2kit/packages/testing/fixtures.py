@@ -70,7 +70,7 @@ def _ambient_for_tests_impl() -> Iterator[None]:
           # consumer's conftest.py
           from a2kit.testing import ambient_for_tests_autouse  # noqa: F401
     """
-    from a2kit.packages.log.scope import bind_call_scope
+    from a2kit.packages.log import bind_call_scope
     from a2kit.packages.testing.null_context import null_context
 
     with bind_call_scope(ctx=null_context()):

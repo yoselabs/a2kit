@@ -16,14 +16,14 @@ the lint's own view of the graph.
 
 | Unit | Layer | Files | Fan-in | Fan-out | Depends on |
 |------|-------|-------|--------|---------|------------|
-| `context` | 0 | 4 | 8 | 1 | `log` |
+| `context` | 0 | 4 | 8 | 0 | — |
 | `di` | 0 | 11 | 6 | 0 | — |
 | `formatter` | 0 | 10 | 6 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
 | `lint` | 0 | 26 | 0 | 0 | — |
-| `log` | 0 | 8 | 5 | 1 | `context` |
+| `log` | 0 | 8 | 4 | 1 | `context` |
 | `select` | 0 | 2 | 2 | 0 | — |
-| `kernel` | 1 | 8 | 5 | 1 | `log` |
+| `kernel` | 1 | 9 | 5 | 1 | `log` |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
 | `runtime` | 3 | 4 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `log`, `select` |
 | `connections` | 4 | 10 | 0 | 3 | `authoring`, `di`, `runtime` |
@@ -40,7 +40,7 @@ the lint's own view of the graph.
 
 ### Layer 0
 
-- `context` → `log`
+- `context` → no cross-unit dependencies
 - `di` → no cross-unit dependencies
 - `formatter` → no cross-unit dependencies
 - `health` → `di`

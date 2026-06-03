@@ -47,7 +47,7 @@ def set_wire_level(levelno: int) -> None:
     _WIRE_LEVEL = levelno
 
 
-def _resolve(__msg_or_instance: Any, fields: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def _resolve(msg_or_instance: Any, fields: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """Resolve ``(msg, fields)`` for either a string message or a typed instance.
 
     A string first-positional is the message; ``fields`` are the kwargs. A
@@ -56,10 +56,10 @@ def _resolve(__msg_or_instance: Any, fields: dict[str, Any]) -> tuple[str, dict[
     ``model_dump`` / ``dataclasses.asdict`` / ``vars`` with ``Enum`` values
     unwrapped to ``.value``; extra kwargs merge in after the instance fields.
     """
-    if isinstance(__msg_or_instance, str):
-        return __msg_or_instance, fields
+    if isinstance(msg_or_instance, str):
+        return msg_or_instance, fields
 
-    instance = __msg_or_instance
+    instance = msg_or_instance
     if hasattr(instance, "model_dump"):
         payload = instance.model_dump(mode="json")
     elif dataclasses.is_dataclass(instance) and not isinstance(instance, type):
@@ -74,7 +74,7 @@ def _resolve(__msg_or_instance: Any, fields: dict[str, Any]) -> tuple[str, dict[
     return type(instance).__name__, payload
 
 
-async def _emit(levelno: int, __msg_or_instance: Any, fields: dict[str, Any]) -> None:
+async def _emit(levelno: int, msg_or_instance: Any, fields: dict[str, Any]) -> None:
     """Emit one record on the ``a2kit`` logger, then stream it on the wire.
 
     Two channels: (1) the sync stdlib handlers (stderr / otel / live / call-log
@@ -83,7 +83,7 @@ async def _emit(levelno: int, __msg_or_instance: Any, fields: dict[str, Any]) ->
     deferred behind a sync handler. The wire fires only for a real fastmcp
     Context; the CLI/stderr path is owned by the stdlib handlers.
     """
-    msg, resolved = _resolve(__msg_or_instance, fields)
+    msg, resolved = _resolve(msg_or_instance, fields)
     _LOGGER.log(levelno, msg, extra={"a2kit_fields": resolved})
 
     scope = _active_scope()

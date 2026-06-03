@@ -42,12 +42,12 @@ def _build_app() -> a2kit.App:
 
         @a2kit.read()
         async def emit_string(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-            await log.info("starting", batch=2, file="/x.csv")  #
+            await log.info("starting", batch=2, file="/x.csv")
             return {"ok": 1}
 
         @a2kit.read()
         async def emit_instance(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-            await log.info(ImportStarted(file="/x.csv", batch=2))  #
+            await log.info(ImportStarted(file="/x.csv", batch=2))
             return {"ok": 1}
 
         tools = (

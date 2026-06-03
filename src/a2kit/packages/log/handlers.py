@@ -104,7 +104,7 @@ class OtelHandler(_IsolatingHandler):
             return
         with tracer.start_as_current_span(msg) as span:
             if getattr(record, "tool_name", None):
-                span.set_attribute("a2kit.tool", record.tool_name)
+                span.set_attribute("a2kit.tool", getattr(record, "tool_name", ""))
             span.set_attribute("a2kit.elapsed_ms", getattr(record, "elapsed_ms", None) or 0)
             for key, value in getattr(record, "a2kit_fields", {}).items():
                 if isinstance(value, str | int | float | bool):

@@ -25,7 +25,8 @@ from a2kit.packages.dispatch.spec import (
     CapturedError,
     has_injectables,
 )
-from a2kit.packages.log.scope import _active_scope, bind_call_scope
+from a2kit.packages.log import bind_call_scope
+from a2kit.packages.log.scope import _active_scope  # noqa: A2K-PKG-FRONT-DOOR -- private per-call seam
 
 _CALLS_LOGGER = logging.getLogger("a2kit.calls")
 
@@ -298,7 +299,7 @@ def _emit_call_record(
     result: Any,
 ) -> None:
     """Build the span-shaped :class:`CallRecord` and emit it on ``a2kit.calls``."""
-    from a2kit.packages.log.call_log import CallRecord
+    from a2kit.packages.log import CallRecord
 
     scope = _active_scope()
     record = CallRecord(

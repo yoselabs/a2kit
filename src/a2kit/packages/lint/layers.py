@@ -62,6 +62,7 @@ _KERNEL_MODULES = frozenset(
         "_list_helpers",
         "_lifecycle_helpers",
         "_field_introspect",
+        "_log_wire",
         "_lazy_module",
         "config",
     }
@@ -100,6 +101,9 @@ FOUNDATIONAL_CORE_MODULES = frozenset(
     {
         "a2kit.exceptions",
         "a2kit._context_protocol",
+        # Condensed-line primitives shared by packages/log/formatter.py and
+        # packages/context/stderr.py; foundational to avoid the log<->context cycle.
+        "a2kit._log_wire",
         # Reusable PEP 562 lazy-loader helper. Every package front door that
         # exposes a lazy surface (top-level `a2kit`, `packages/otel`, etc.)
         # imports `lazy_attr` from here; the helper sits below every layer

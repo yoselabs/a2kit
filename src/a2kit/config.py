@@ -31,7 +31,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from a2kit.packages.log.levels import LogLevel  # noqa: TC001 -- pydantic needs the runtime type for Literal validation, not just typing.
+from a2kit.packages.log import LogLevel  # noqa: TC001 -- pydantic needs the runtime type for Literal validation, not just typing.
 
 
 class McpConfig(BaseModel):

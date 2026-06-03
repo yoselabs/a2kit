@@ -27,10 +27,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-# The condensed ``[ +s.mmm LEVEL] msg key=val`` line is owned by the log
-# package's Formatter; this CLI stderr stub routes through the same helper so
-# the line shape is defined exactly once.
-from a2kit.packages.log.formatter import format_condensed_line as _format_ldd_line
+# The condensed ``[ +s.mmm LEVEL] msg key=val`` line lives in the foundational
+# ``a2kit._log_wire`` module so both ``packages/log/formatter.py`` (the
+# canonical emitter) and this L0 stub route through it without forming a
+# cross-package cycle with ``packages/log/``. See ``a2kit._log_wire`` docstring.
+from a2kit._log_wire import format_condensed_line as _format_ldd_line
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

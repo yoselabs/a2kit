@@ -23,17 +23,24 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
-from a2kit.packages.log import emission
-from a2kit.packages.log.call_log import CallLogFileHandler
-from a2kit.packages.log.handlers import LiveHandler, OtelHandler, StderrJsonHandler, StderrPrettyHandler
-from a2kit.packages.log.levels import LOG_LEVEL_NUMBER, install_trace_level
-from a2kit.packages.log.scope import _CallScopeFilter
+from a2kit.packages.log import (
+    LOG_LEVEL_NUMBER,
+    CallLogFileHandler,
+    LiveHandler,
+    OtelHandler,
+    StderrJsonHandler,
+    StderrPrettyHandler,
+    install_trace_level,
+    set_wire_level,
+)
+from a2kit.packages.log.scope import _CallScopeFilter  # noqa: A2K-PKG-FRONT-DOOR -- private filter seam
 
 if TYPE_CHECKING:
     from a2kit.config import LogConfig
 
+_T = TypeVar("_T")
 _DISABLED_LEVEL = logging.CRITICAL + 10
 
 
@@ -47,8 +54,9 @@ def _reset_managed(logger: logging.Logger) -> None:
             logger.removeFilter(flt)
 
 
-def _managed(obj: object) -> object:
-    obj._a2kit_managed = True  # type: ignore[attr-defined]  # noqa: SLF001 -- marker for idempotent reset
+def _managed(obj: _T) -> _T:
+    """Tag ``obj`` so ``_reset_managed`` reclaims it on the next configure call."""
+    obj._a2kit_managed = True  # ty: ignore[unresolved-attribute]  # noqa: SLF001 -- dynamic marker for idempotent reset
     return obj
 
 
@@ -63,15 +71,15 @@ def configure_logging(log_config: LogConfig) -> None:
 
     if not log_config.enabled:
         a2kit.setLevel(_DISABLED_LEVEL)
-        emission.set_wire_level(_DISABLED_LEVEL)
+        set_wire_level(_DISABLED_LEVEL)
         calls.setLevel(_DISABLED_LEVEL)
         return
 
     # Logger sits at DEBUG so the call-log file can capture debug rows; each
     # handler self-filters (wire/stderr at wire_level, file at call_log_level).
     a2kit.setLevel(logging.DEBUG)
-    a2kit.addFilter(_managed(_CallScopeFilter()))  # type: ignore[arg-type]
-    emission.set_wire_level(LOG_LEVEL_NUMBER[log_config.wire_level])
+    a2kit.addFilter(_managed(_CallScopeFilter()))
+    set_wire_level(LOG_LEVEL_NUMBER[log_config.wire_level])
 
     wire_no = LOG_LEVEL_NUMBER[log_config.wire_level]
     streaming: list[logging.Handler] = []
@@ -85,7 +93,7 @@ def configure_logging(log_config: LogConfig) -> None:
         streaming.append(LiveHandler(event_prefixes=log_config.live_event_prefixes))
     for handler in streaming:
         handler.setLevel(wire_no)
-        a2kit.addHandler(_managed(handler))  # type: ignore[arg-type]
+        a2kit.addHandler(_managed(handler))
 
     if log_config.call_log != "off":
         log_dir = log_config.call_log_dir if log_config.call_log == "on" else log_config.call_log
@@ -98,7 +106,7 @@ def configure_logging(log_config: LogConfig) -> None:
         # On a2kit.calls: the auto call-records, file-only, never streamed.
         calls.propagate = False
         calls.setLevel(logging.DEBUG)
-        calls.addFilter(_managed(_CallScopeFilter()))  # type: ignore[arg-type]
+        calls.addFilter(_managed(_CallScopeFilter()))
         calls.addHandler(file_handler)
 
 
