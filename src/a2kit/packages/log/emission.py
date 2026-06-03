@@ -33,6 +33,19 @@ _MCP_LEVEL: dict[int, Literal["debug", "info", "warning", "error"]] = {
     logging.ERROR: "error",
 }
 
+#: Minimum level that streams on the MCP wire. The logger itself sits at DEBUG
+#: (so the call-log file can capture debug), and each handler self-filters; the
+#: wire is the one channel not expressed as a stdlib handler, so its threshold
+#: lives here. App boot sets it from ``LogConfig.wire_level`` (and raises it
+#: above CRITICAL to honour the ``enabled=False`` kill-switch).
+_WIRE_LEVEL: int = logging.INFO
+
+
+def set_wire_level(levelno: int) -> None:
+    """Set the minimum level that streams on the MCP wire (called at app boot)."""
+    global _WIRE_LEVEL  # noqa: PLW0603 -- module-level wire threshold, set once per app boot
+    _WIRE_LEVEL = levelno
+
 
 def _resolve(__msg_or_instance: Any, fields: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """Resolve ``(msg, fields)`` for either a string message or a typed instance.
@@ -74,7 +87,7 @@ async def _emit(levelno: int, __msg_or_instance: Any, fields: dict[str, Any]) ->
     _LOGGER.log(levelno, msg, extra={"a2kit_fields": resolved})
 
     scope = _active_scope()
-    if scope is None or scope.ctx is None:
+    if scope is None or scope.ctx is None or levelno < _WIRE_LEVEL:
         return
     if _is_fastmcp_context(scope.ctx):
         await scope.ctx.log(

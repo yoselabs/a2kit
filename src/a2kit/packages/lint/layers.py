@@ -23,7 +23,7 @@ LAYER_MANIFEST: dict[str, int] = {
     # (acyclically) and on the foundational core modules below.
     "di": 0,
     "formatter": 0,
-    "ldd": 0,
+    "log": 0,
     "lint": 0,
     "context": 0,
     "health": 0,
@@ -62,7 +62,6 @@ _KERNEL_MODULES = frozenset(
         "_list_helpers",
         "_lifecycle_helpers",
         "_field_introspect",
-        "_ldd_wire",
         "_lazy_module",
         "config",
     }
@@ -82,7 +81,7 @@ _RUNTIME_MODULES = frozenset(
         "app",
         "runtime",
         "__main__",
-        "_ldd_bootstrap",
+        "_log_bootstrap",
     }
 )
 
@@ -90,7 +89,7 @@ _RUNTIME_MODULES = frozenset(
 #: surface deeper layers as a flat public API and so import "upward" by
 #: design. Resolving to no unit keeps a facade out of the layer DAG both
 #: as an import source and as an import target.
-_FACADE_STEMS = frozenset({"__init__", "ldd", "testing"})
+_FACADE_STEMS = frozenset({"__init__", "log", "testing"})
 
 #: Foundational core modules — leaf type/exception definitions that
 #: import nothing and that any unit may depend on. Treating them as
@@ -101,11 +100,6 @@ FOUNDATIONAL_CORE_MODULES = frozenset(
     {
         "a2kit.exceptions",
         "a2kit._context_protocol",
-        # LDD wire-format primitives shared by `packages/ldd/wire.py` (the
-        # canonical emitter) and `packages/context/stderr.py` (the CLI
-        # stub). Both at L0; the foundational placement avoids closing
-        # the existing `ldd.ambient → context.request_scope` cycle.
-        "a2kit._ldd_wire",
         # Reusable PEP 562 lazy-loader helper. Every package front door that
         # exposes a lazy surface (top-level `a2kit`, `packages/otel`, etc.)
         # imports `lazy_attr` from here; the helper sits below every layer
@@ -120,8 +114,8 @@ FOUNDATIONAL_CORE_MODULES = frozenset(
 FACADE_MODULES = (
     "src/a2kit/__init__.py",
     "a2kit/__init__.py",
-    "src/a2kit/ldd.py",
-    "a2kit/ldd.py",
+    "src/a2kit/log.py",
+    "a2kit/log.py",
     "src/a2kit/testing.py",
     "a2kit/testing.py",
 )

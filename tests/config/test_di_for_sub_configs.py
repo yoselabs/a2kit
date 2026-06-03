@@ -3,7 +3,7 @@
 Locks the config-di-providers + runtime-config + di-container-package +
 ldd-level-threshold delta scenarios. The contract: A2kitConfig and each
 sub-config are DI-resolvable; resolution identity-matches `app.config.<sub>`;
-user `app.provide(LddConfig, fake)` wins last-write-wins per ADR 0006.
+user `app.provide(LogConfig, fake)` wins last-write-wins per ADR 0006.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
-from a2kit.config import A2kitConfig, CliConfig, HttpConfig, LddConfig, McpConfig
+from a2kit.config import A2kitConfig, CliConfig, HttpConfig, LogConfig, McpConfig
 
 
 @pytest.mark.asyncio
@@ -25,10 +25,10 @@ async def test_a2kitconfig_resolves_via_di_to_appconfig_instance() -> None:
 
 @pytest.mark.asyncio
 async def test_lddconfig_resolves_via_di_to_appconfig_ldd() -> None:
-    app = a2kit.App("svc", config=A2kitConfig(ldd=LddConfig(level="debug")))
+    app = a2kit.App("svc", config=A2kitConfig(log=LogConfig(level="debug")))
     async with app._container:
-        ldd = await app._container.get(LddConfig)
-    assert ldd is app.config.ldd
+        ldd = await app._container.get(LogConfig)
+    assert ldd is app.config.log
     assert ldd.level == "debug"
 
 
@@ -55,15 +55,15 @@ async def test_all_sub_configs_registered() -> None:
 
 @pytest.mark.asyncio
 async def test_user_provide_overrides_lddconfig_default() -> None:
-    """ADR 0006 last-write-wins: a user `provide(LddConfig, ...)` after
+    """ADR 0006 last-write-wins: a user `provide(LogConfig, ...)` after
     `App.__init__` MUST replace the framework-seeded provider."""
-    fake = LddConfig(level="trace")
+    fake = LogConfig(level="trace")
     app = a2kit.App("svc")
-    app.provide(LddConfig, lambda: fake)
+    app.provide(LogConfig, lambda: fake)
     async with app._container:
-        resolved = await app._container.get(LddConfig)
+        resolved = await app._container.get(LogConfig)
     assert resolved is fake
-    assert resolved is not app.config.ldd
+    assert resolved is not app.config.log
 
 
 def test_app_debug_attribute_raises_with_migration_hint() -> None:

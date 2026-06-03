@@ -67,10 +67,6 @@ def _router_for_tool(app: Any, fn: Any) -> Any | None:
 def _build_one_tool(
     app: Any,
     desc: Any,
-    *,
-    reports_enabled: bool,
-    events_enabled: bool,
-    sinks: tuple[Any, ...],
 ) -> FunctionTool | None:
     """Build the FastMCP tool for one descriptor.
 
@@ -96,9 +92,6 @@ def _build_one_tool(
         app=app,
         router=router,
         meta=meta,
-        reports_enabled=reports_enabled,
-        events_enabled=events_enabled,
-        sinks=sinks,
     )
     # Fold the shared pipeline (timeout -> enrichers -> router-lazy-enter
     # -> dispatch-hook+DI -> ldd-state -> error-capture), then append the
@@ -290,10 +283,6 @@ def build_mcp_server(
         fastmcp_kwargs["mask_error_details"] = not app_debug
     server = FastMCP(name=runtime.name, **fastmcp_kwargs)
 
-    reports_enabled = runtime.ldd_reports
-    events_enabled = runtime.ldd_events
-    app_sinks: tuple[Any, ...] = runtime.ldd.sinks
-
     # Per-tool encoding plans for the format-routing middleware and return
     # types for code-mode stub generation / dataclass marshalling, keyed by
     # the registered tool name. Only tools that actually reach the MCP
@@ -326,13 +315,7 @@ def build_mcp_server(
         # Hidden tools were already excluded from `_available_mcp` above.
         if _selector is not None and desc.name not in _selector:
             continue
-        tool = _build_one_tool(
-            runtime,
-            desc,
-            reports_enabled=reports_enabled,
-            events_enabled=events_enabled,
-            sinks=app_sinks,
-        )
+        tool = _build_one_tool(runtime, desc)
         if tool is None:
             continue
         server.add_tool(tool)

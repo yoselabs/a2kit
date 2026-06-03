@@ -27,7 +27,8 @@ from __future__ import annotations
 import asyncio
 
 import a2kit
-from a2kit.ldd import event, ldd_state_for_call
+from a2kit.log import info
+from a2kit.packages.log.scope import bind_call_scope
 from a2kit.testing import null_context
 
 
@@ -74,12 +75,12 @@ def test_request_id_is_sentinel() -> None:
     assert ctx.request_id == "null-context"
 
 
-def test_ldd_event_accepts_null_context() -> None:
+def test_log_info_accepts_null_context() -> None:
     ctx = null_context()
 
     async def _go() -> None:
-        with ldd_state_for_call(ctx=ctx, tool_name="t"):
-            await event("x", k=1)
+        with bind_call_scope(ctx=ctx, tool_name="t"):
+            await info("x", k=1)
 
     asyncio.run(_go())  # must not raise
 

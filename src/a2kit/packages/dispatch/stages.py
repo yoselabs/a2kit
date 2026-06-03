@@ -12,11 +12,12 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
+import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 import anyio
 
-from a2kit.ldd import ldd_state_for_call
 from a2kit.packages.context import StderrToolContext, request_scope
 from a2kit.packages.dispatch._invoke import _call
 from a2kit.packages.dispatch.spec import (
@@ -24,6 +25,9 @@ from a2kit.packages.dispatch.spec import (
     CapturedError,
     has_injectables,
 )
+from a2kit.packages.log.scope import _active_scope, bind_call_scope
+
+_CALLS_LOGGER = logging.getLogger("a2kit.calls")
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -218,41 +222,27 @@ class AuthorizeGateStage:
         return _wrapped
 
 
-class LddStateStage:
-    """Bind the per-call LDD ambient (including ``ctx``) around the body.
+class CallScopeStage:
+    """Bind the per-call ``_CallScope`` (ctx + minted ``call_id`` + span) around the body.
 
     Reads ``ctx`` from kwargs by the tool's declared param name, or pops
     the synthesized name when the body did not declare ctx. Falls back to
     a fresh ``StderrToolContext`` so the ambient ``ctx`` is never None
-    inside a dispatch. Never self-skips — every dispatched tool runs
-    inside an LDD ambient.
+    inside a dispatch. Never self-skips — every dispatched tool runs inside
+    a call scope so emissions correlate by ``call_id``.
 
-    The level threshold is captured at wrap time from the injected
-    ``ldd_config`` (constructor injection at pipeline build time, ADR 0022 +
-    di-for-sub-configs). When the stage is instantiated without a config
-    (the default module-level pipeline), wrap falls back to a one-shot
-    read of ``spec.app.config.ldd`` so the cached value is still
-    per-tool-per-runtime, not per-call.
+    ``call_id`` is minted here unconditionally (the shared spine for the
+    call-log AND any future gate stage). Span fields nest: a tool that
+    dispatches another tool inherits the outer ``trace_id`` and sets its
+    ``parent_span_id`` to the outer ``span_id``.
     """
 
-    name = "ldd-state"
-
-    def __init__(self, ldd_config: Any = None) -> None:
-        self._ldd_config = ldd_config
+    name = "call-scope"
 
     def wrap(self, fn: Callable[..., Any], spec: ToolBuildSpec) -> Callable[..., Any]:
-        from a2kit.packages.ldd import LDD_LEVEL_RANK
-
         meta = spec.meta
         ctx_param_name = meta.context_param_name if meta is not None else None
-        report_type = meta.extras.report_type if meta is not None else None
         tool_name = meta.tool_name if meta is not None else None
-
-        # Capture LddConfig at wrap time (per-tool-per-runtime), not per
-        # call. Constructor-injected value wins; otherwise read from the
-        # typed config root, which App.__init__ guarantees.
-        ldd_cfg = self._ldd_config if self._ldd_config is not None else spec.app.config.ldd
-        threshold: int = LDD_LEVEL_RANK.get(ldd_cfg.level, 0)
 
         @functools.wraps(fn)
         async def _wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -264,16 +254,108 @@ class LddStateStage:
                 ctx_obj = kwargs.pop(SYNTHESIZED_CTX_PARAM_NAME, None)
             if ctx_obj is None:
                 ctx_obj = StderrToolContext()
-            with ldd_state_for_call(
+            call_id = uuid.uuid4().hex
+            outer = _active_scope()
+            trace_id = outer.trace_id if outer is not None else call_id
+            parent_span_id = outer.span_id if outer is not None else None
+            with bind_call_scope(
                 ctx=ctx_obj,
-                events_enabled=spec.events_enabled,
-                reports_enabled=spec.reports_enabled,
-                report_type=report_type,
+                call_id=call_id,
                 tool_name=tool_name,
-                sinks=spec.sinks,
-                level_threshold=threshold,
+                trace_id=trace_id,
+                span_id=uuid.uuid4().hex,
+                parent_span_id=parent_span_id,
             ):
                 return await _call(fn, *args, **kwargs)
+
+        return _wrapped
+
+
+def _derive_domain(args: dict[str, Any]) -> str | None:
+    """Best-effort domain from a ``url`` arg (a2web's case); None otherwise."""
+    url = args.get("url")
+    if not isinstance(url, str):
+        return None
+    from urllib.parse import urlparse
+
+    try:
+        return urlparse(url).netloc or None
+    except ValueError:
+        return None
+
+
+def _current_principal() -> str | None:
+    from a2kit.packages.context import Principal
+
+    principal = request_scope.try_get(Principal)
+    return principal.subject if principal is not None else None
+
+
+def _emit_call_record(
+    *,
+    tool_name: str | None,
+    args: dict[str, Any],
+    result: Any,
+) -> None:
+    """Build the span-shaped :class:`CallRecord` and emit it on ``a2kit.calls``."""
+    from a2kit.packages.log.call_log import CallRecord
+
+    scope = _active_scope()
+    record = CallRecord(
+        call_id=scope.call_id if scope is not None and scope.call_id is not None else uuid.uuid4().hex,
+        tool=tool_name,
+        domain=_derive_domain(args),
+        principal=_current_principal(),
+        elapsed_ms=None,
+        args=args,
+        result=result,
+        trace_id=scope.trace_id if scope is not None else None,
+        span_id=scope.span_id if scope is not None else None,
+        parent_span_id=scope.parent_span_id if scope is not None else None,
+    )
+    _CALLS_LOGGER.info("", extra={"a2kit_call_record": record})
+
+
+class CallLogStage:
+    """Auto-capture one access-log record per call at the dispatch boundary.
+
+    Transport-neutral: captures the tool's wire args + raw return value +
+    timing + principal, identical across CLI / MCP / in-process by
+    construction. The record is emitted on the dedicated ``a2kit.calls``
+    logger (``propagate=False``, file-only). Self-skips entirely when the
+    call-log is off — no record, no cost. An error is captured in the
+    result position (a typed marker), never a missing record; a generator
+    return is captured as its materialized value, never a bare generator.
+    """
+
+    name = "call-log"
+
+    def __init__(self, log_config: Any = None) -> None:
+        self._log_config = log_config
+
+    def wrap(self, fn: Callable[..., Any], spec: ToolBuildSpec) -> Callable[..., Any]:
+        cfg = self._log_config if self._log_config is not None else spec.app.config.log
+        if cfg.call_log == "off":
+            return fn  # self-skip — the boundary stage writes nothing.
+
+        meta = spec.meta
+        ctx_param_name = meta.context_param_name if meta is not None else None
+        tool_name = meta.tool_name if meta is not None else None
+        reserved = {ctx_param_name, SYNTHESIZED_CTX_PARAM_NAME}
+
+        @functools.wraps(fn)
+        async def _wrapped(*args: Any, **kwargs: Any) -> Any:
+            captured = {k: v for k, v in kwargs.items() if k not in reserved}
+            try:
+                result = await _call(fn, *args, **kwargs)
+            except BaseException as exc:
+                _emit_call_record(tool_name=tool_name, args=captured, result={"error": type(exc).__name__, "message": str(exc)})
+                raise
+            captured_result = result
+            if inspect.isgenerator(result) or inspect.isasyncgen(result):
+                captured_result = "<streamed>"
+            _emit_call_record(tool_name=tool_name, args=captured, result=captured_result)
+            return result
 
         return _wrapped
 
@@ -311,10 +393,11 @@ class ErrorCaptureStage:
 
 __all__ = [
     "AuthorizeGateStage",
+    "CallLogStage",
+    "CallScopeStage",
     "DispatchHookStage",
     "EnricherStage",
     "ErrorCaptureStage",
-    "LddStateStage",
     "RouterLazyEnterStage",
     "TimeoutStage",
     "_run_authorize_gate",

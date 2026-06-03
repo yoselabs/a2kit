@@ -73,12 +73,6 @@ ALLOW_LIST: frozenset[str] = frozenset(
         # runtime behavior to test in isolation; consumers exercise it in
         # tests/packages/di/test_lazy_annotation.py + 3 wire/CLI tests.
         "src/a2kit/packages/di/_lazy.py",
-        # why: pure type-vocabulary module — `LddLevel` Literal alias and
-        # `LDD_LEVEL_RANK` constant. No behavior to test in isolation;
-        # consumers exercise the rank map via
-        # tests/ldd/test_level_threshold.py (rank-mapping + ordering tests)
-        # and the threshold filter end-to-end.
-        "src/a2kit/packages/ldd/levels.py",
         # why: `Scope` enum with two constants; constants exercised by
         # every per-call/app-scope test under tests/packages/di/.
         "src/a2kit/packages/di/scope.py",

@@ -57,9 +57,6 @@ class AppRuntime:
         mcp_middlewares: list[Any],
         container: Container,
         dispatch_hook: Callable[..., Any],
-        ldd_reports: bool,
-        ldd_events: bool,
-        ldd: Any,
         health: HealthRegistry,
         api_surface: Any = None,
         mcp_surface: Any = None,
@@ -74,9 +71,6 @@ class AppRuntime:
         self._mcp_middlewares = mcp_middlewares
         self._container = container
         self._dispatch_hook = dispatch_hook
-        self._ldd_reports = ldd_reports
-        self._ldd_events = ldd_events
-        self.ldd = ldd
         self._health = health
         # Substrate-native decorator surfaces collected by the source
         # ``App``. ``None`` when the author never touched ``App.api`` /
@@ -145,16 +139,6 @@ class AppRuntime:
     def has_default_dispatch_hook(self) -> bool:
         """True when no consumer package installed a custom dispatch hook."""
         return self._dispatch_hook is _default_dispatch_hook
-
-    # --- LDD kill-switch ----------------------------------------------- #
-
-    @property
-    def ldd_reports(self) -> bool:
-        return self._ldd_reports
-
-    @property
-    def ldd_events(self) -> bool:
-        return self._ldd_events
 
     # --- lazy router entry --------------------------------------------- #
 
@@ -313,9 +297,6 @@ def build(
         mcp_middlewares=app.mcp_middlewares(),
         container=runtime_container,
         dispatch_hook=app.dispatch_hook(),
-        ldd_reports=app.ldd_reports,
-        ldd_events=app.ldd_events,
-        ldd=app.ldd,
         health=health,
         # Carry substrate decorator surfaces only if they were touched —
         # `app._api` / `app._mcp` stay None until the first attribute

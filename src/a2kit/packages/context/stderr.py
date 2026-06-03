@@ -27,11 +27,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-# LDD wire-format primitives live in the foundational ``a2kit._ldd_wire``
-# module so both ``packages/ldd/wire.py`` (the canonical emitter) and
-# this L0 stub can route through it without forming a cross-package
-# cycle with ``packages/ldd/``. See ``a2kit._ldd_wire`` docstring.
-from a2kit._ldd_wire import format_ldd_line as _format_ldd_line
+# The condensed ``[ +s.mmm LEVEL] msg key=val`` line is owned by the log
+# package's Formatter; this CLI stderr stub routes through the same helper so
+# the line shape is defined exactly once.
+from a2kit.packages.log.formatter import format_condensed_line as _format_ldd_line
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from a2kit.packages.context.stderr import _format_ldd_line as inlined
-from a2kit.packages.ldd.wire import format_ldd_line as canonical
+from a2kit.packages.log.formatter import format_condensed_line as canonical
 
 
 @pytest.mark.parametrize(

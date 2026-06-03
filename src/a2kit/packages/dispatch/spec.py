@@ -33,9 +33,6 @@ class ToolBuildSpec:
     app: AppRuntime
     router: Router | None
     meta: A2KitMeta | None
-    reports_enabled: bool = True
-    events_enabled: bool = True
-    sinks: tuple[Any, ...] = ()
 
 
 @runtime_checkable
