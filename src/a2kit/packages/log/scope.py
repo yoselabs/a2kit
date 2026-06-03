@@ -88,6 +88,23 @@ def bind_call_scope(
         request_scope.reset(token)
 
 
+def _is_fastmcp_context(ctx: Any) -> bool:
+    """Identity check: distinguish a real ``fastmcp.Context`` from a CLI stub.
+
+    Cold-start preserving: only consults ``sys.modules``; if fastmcp has not
+    been imported, the object cannot be a fastmcp Context.
+    """
+    import sys
+
+    fastmcp_mod = sys.modules.get("fastmcp")
+    if fastmcp_mod is None:
+        return False
+    fastmcp_context = getattr(fastmcp_mod, "Context", None)
+    if fastmcp_context is None:
+        return False
+    return isinstance(ctx, fastmcp_context)
+
+
 class _CallScopeFilter(logging.Filter):
     """Inject per-call context onto every record from the active scope.
 

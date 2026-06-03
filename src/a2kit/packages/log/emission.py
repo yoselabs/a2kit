@@ -17,9 +17,21 @@ from __future__ import annotations
 import dataclasses
 import logging
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
+
+from a2kit.packages.log.formatter import _cap_text
+from a2kit.packages.log.scope import _active_scope, _elapsed_ms, _is_fastmcp_context
 
 _LOGGER = logging.getLogger("a2kit")
+
+#: MCP wire vocabulary. The custom ``trace`` level has no MCP counterpart, so
+#: it maps to ``debug`` on the wire.
+_MCP_LEVEL: dict[int, Literal["debug", "info", "warning", "error"]] = {
+    logging.DEBUG: "debug",
+    logging.INFO: "info",
+    logging.WARNING: "warning",
+    logging.ERROR: "error",
+}
 
 
 def _resolve(__msg_or_instance: Any, fields: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -50,9 +62,26 @@ def _resolve(__msg_or_instance: Any, fields: dict[str, Any]) -> tuple[str, dict[
 
 
 async def _emit(levelno: int, __msg_or_instance: Any, fields: dict[str, Any]) -> None:
-    """Emit one record on the ``a2kit`` logger carrying ``fields``."""
+    """Emit one record on the ``a2kit`` logger, then stream it on the wire.
+
+    Two channels: (1) the sync stdlib handlers (stderr / otel / live / call-log
+    file) via ``_LOGGER.log``; (2) the MCP wire, an inline ``await ctx.log(...)``
+    so a long-running call surfaces its emissions live, mid-call — never
+    deferred behind a sync handler. The wire fires only for a real fastmcp
+    Context; the CLI/stderr path is owned by the stdlib handlers.
+    """
     msg, resolved = _resolve(__msg_or_instance, fields)
     _LOGGER.log(levelno, msg, extra={"a2kit_fields": resolved})
+
+    scope = _active_scope()
+    if scope is None or scope.ctx is None:
+        return
+    if _is_fastmcp_context(scope.ctx):
+        await scope.ctx.log(
+            level=_MCP_LEVEL.get(levelno, "info"),
+            message=_cap_text(msg),
+            extra={**resolved, "a2kit_elapsed_ms": _elapsed_ms(scope)},
+        )
 
 
 async def info(__msg: Any, /, **fields: Any) -> None:

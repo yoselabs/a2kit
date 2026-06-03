@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from a2kit.packages.log.scope import _active_scope, _CallScope, _elapsed_ms, bind_call_scope
+from a2kit.packages.log.scope import _active_scope, _CallScope, _elapsed_ms, _is_fastmcp_context, bind_call_scope
 from a2kit.packages.testing.null_context import null_context
+
+
+def test_is_fastmcp_context_false_for_plain_object() -> None:
+    assert _is_fastmcp_context(object()) is False
 
 
 def test_active_scope_is_none_outside_dispatch() -> None:
