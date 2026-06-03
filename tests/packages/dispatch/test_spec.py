@@ -24,13 +24,6 @@ def test_tool_build_spec_is_a_frozen_dataclass() -> None:
         spec.router = None  # type: ignore[misc]  # ty: ignore[invalid-assignment]
 
 
-def test_tool_build_spec_ldd_fields_default_on() -> None:
-    spec = ToolBuildSpec(app=build(a2kit.App("spec-test")), router=None, meta=None)
-    assert spec.reports_enabled is True
-    assert spec.events_enabled is True
-    assert spec.sinks == ()
-
-
 def test_captured_error_snapshots_the_original() -> None:
     try:
         raise ValueError("boom")

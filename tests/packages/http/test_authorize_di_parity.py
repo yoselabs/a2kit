@@ -102,10 +102,7 @@ async def test_mcp_authorize_with_di_allows_when_policy_allows() -> None:
     spec = ToolBuildSpec(
         app=runtime,
         router=None,
-        meta=desc._meta,  # noqa: SLF001 -- mirrors mcp/server.py:_build_one_tool
-        reports_enabled=False,
-        events_enabled=False,
-        sinks=(),
+        meta=desc._meta,  # noqa: SLF001 -- mirrors mcp/server.py:_build_one_tool,
     )
     chained = fold_pipeline(desc.fn, spec=spec, pipeline=DISPATCH_PIPELINE)
     result = await chained(x=11)
@@ -123,10 +120,7 @@ async def test_mcp_authorize_with_di_denies_when_policy_denies() -> None:
     spec = ToolBuildSpec(
         app=runtime,
         router=None,
-        meta=desc._meta,  # noqa: SLF001 -- mirrors mcp/server.py:_build_one_tool
-        reports_enabled=False,
-        events_enabled=False,
-        sinks=(),
+        meta=desc._meta,  # noqa: SLF001 -- mirrors mcp/server.py:_build_one_tool,
     )
     chained = fold_pipeline(desc.fn, spec=spec, pipeline=DISPATCH_PIPELINE)
     import pytest
