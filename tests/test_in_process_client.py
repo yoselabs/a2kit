@@ -52,7 +52,7 @@ import pytest
 from pydantic import BaseModel
 
 import a2kit
-from a2kit.ldd import event, info, report, warning
+from a2kit.log import info, warning
 from a2kit.testing import client
 
 
@@ -77,15 +77,15 @@ class _Router(a2kit.Router):
     async def emit_telemetry(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
         await info("starting", batch=1)
         await warning("transient", attempt=2)
-        await event("phase.started", n=10)
+        await info("phase.started", n=10)
         await ctx.report_progress(5, total=10)
-        await event("phase.complete")
+        await info("phase.complete")
         return {"emitted": 4}
 
-    @a2kit.read(reports=_Report)
+    @a2kit.read()
     async def emit_reports(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-        await report(_Report(batch=0, accepted=3))
-        await report(_Report(batch=1, accepted=7))
+        await info(_Report(batch=0, accepted=3))
+        await info(_Report(batch=1, accepted=7))
         return {"reports": 2}
 
     tools = (
@@ -126,10 +126,13 @@ def test_invoke_returns_value() -> None:
 # --- Scenario 2: lifecycle hooks fire --- #
 
 
-# --- Scenario 3: events + logs captured --- #
+# --- Scenario 3: emissions captured (one unified log channel) --- #
 
 
-def test_events_and_logs_captured() -> None:
+def test_emissions_captured_as_logs() -> None:
+    """All a2kit.log.* emissions land in c.logs — there is one channel now
+    (event()/report() retired). String form carries fields; the typed-instance
+    form carries the dumped payload under the type-name message."""
     app = _build_app()
 
     async def go() -> Any:
@@ -138,12 +141,12 @@ def test_events_and_logs_captured() -> None:
             return c
 
     c = asyncio.run(go())
-    event_names = [e["name"] for e in c.events]
-    assert "phase.started" in event_names
-    assert "phase.complete" in event_names
+    msgs = [log_record["msg"] for log_record in c.logs]
+    assert "phase.started" in msgs
+    assert "phase.complete" in msgs
 
-    started = next(e for e in c.events if e["name"] == "phase.started")
-    assert started["payload"] == {"n": 10}
+    started = next(log_record for log_record in c.logs if log_record["msg"] == "phase.started")
+    assert started["fields"] == {"n": 10}
     assert isinstance(started["elapsed_ms"], int)
 
     log_msgs = [(log_record["level"], log_record["msg"]) for log_record in c.logs]
@@ -178,10 +181,12 @@ def test_reports_captured() -> None:
             return c
 
     c = asyncio.run(go())
-    assert len(c.reports) == 2
-    assert c.reports[0]["type"] == "_Report"
-    assert c.reports[0]["body"] == {"batch": 0, "accepted": 3}
-    assert c.reports[1]["body"] == {"batch": 1, "accepted": 7}
+    # Typed instances ride info() now: the type name is the message, the
+    # dumped instance is the fields. Both land in the unified log channel.
+    report_logs = [log_record for log_record in c.logs if log_record["msg"] == "_Report"]
+    assert len(report_logs) == 2
+    assert report_logs[0]["fields"] == {"batch": 0, "accepted": 3}
+    assert report_logs[1]["fields"] == {"batch": 1, "accepted": 7}
 
 
 # --- Scenario 5: render --- #
