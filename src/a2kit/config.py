@@ -153,7 +153,7 @@ class LogConfig(BaseModel):
     )
     call_log_inline_threshold: int = Field(
         default=4096,
-        description="String values longer than this (chars) are content-addressed to `bodies/<hash>` sidecars, not inlined in the jsonl row.",
+        description="Strings longer than this (chars) are content-addressed to `bodies/<hash>` sidecars, not inlined in the row.",
     )
 
 
