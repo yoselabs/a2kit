@@ -1,6 +1,6 @@
 """A2K-LOCAL-RETURN-MODEL — tool return types must be module-scope BaseModels.
 
-Mirrors ``A2K-LDD-REPORT-TYPE``'s logic for the return-annotation site. FastMCP's
+Mirrors the (removed) report-type rule's logic for the return-annotation site. FastMCP's
 ``inspect.signature(eval_str=True)`` walks the wrapper chain and runs
 ``eval(annotation_str, globals, locals)`` against the module's globals — names
 defined inside a function (``__qualname__`` contains ``<locals>``) are not

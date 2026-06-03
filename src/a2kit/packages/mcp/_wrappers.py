@@ -233,7 +233,7 @@ def _ensure_ctx_in_rewritten_signature(
        the ``a2kit.ToolContext`` Protocol.
     2. **Tool did NOT declare ctx**: synthesize a Parameter named
        ``_a2kit_ctx`` annotated ``fastmcp.Context``. FastMCP injects ctx
-       by type; the LDD stage extracts it for ambient binding and pops
+       by type; the call-scope stage extracts it for ambient binding and pops
        it before the body runs.
 
     Raises :class:`A2KitContextBindingBroken` if the post-append

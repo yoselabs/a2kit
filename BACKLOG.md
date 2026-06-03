@@ -78,16 +78,16 @@ For historical context (pre-v0.20 design audits and exploration notes), see `tod
 - **`http-render-stage-and-surface-middleware-spec`.** From `STRUCTURE_ISSUES.md` open smells S7 + S11 + S13 + R13's post-mortem (2026-05-27). The dispatch pipeline is substrate-neutral on paper (ADR-0019), but middleware-shaped cross-cutting concerns are re-implemented per substrate today. The two surfaces have drifted: `packages/http/` is one builder + 5 install helpers in `build.py`; `packages/mcp/` is one builder + 5 standalone `Middleware` classes (`format_routing`, `guards`, `listview`, `principal_middleware`, `_wrappers.TypedErrorEnvelopeMiddleware`). Same five concerns (build, typed-error envelope, auth/principal, request-scope, render/format, authorize gate), divergent shapes. S11 is the concrete driver: HTTP is missing the typed-render-stage pattern entirely. Bundle scope: extract a transport-neutral `SurfaceMiddleware` (or pipeline-stage) protocol both substrates honor, then add the render stage once. Closes S7 (shallow DecoratorSurface), S11 (HTTP render parity), S13 (duplicated AuthorizeGateStage on HTTP). Trigger to pick up: when something blocks on HTTP not having format-routing, OR a third substrate lands. Needs `/opsx:explore` before shaping. Estimate: 2-3 weeks, regression-risky (touches every request-path error/render/auth flow on both substrates). Honest caveat: the "third substrate" forcing function is hypothetical today; S11 alone may be too small to motivate the bigger spec.
 
 
-<!-- RESOLVED 2026-05-29: "LDD reshape Path A" is now the PROPOSED change
-     `refound-ldd-on-stdlib-logging` (ADR 0027, accepted). It executed Path A
-     and went further: full rename (a2kit.ldd → a2kit.log, ONE concept, no
-     aliases, no a2kit.journal), the durable record is an access-log (auto
-     dispatch stage → dedicated a2kit.calls logger + opt-in JSONL file,
-     never streams), span-shaped CallRecord, stdlib-logging refound,
-     report()/EventRegistry/event() deleted, structlog rejected for core.
+<!-- IMPLEMENTED 2026-06-03: "LDD reshape Path A" shipped as
+     `refound-ldd-on-stdlib-logging` (ADR 0027). Full rename (a2kit.ldd →
+     a2kit.log, ONE concept, no aliases, no a2kit.journal); the durable
+     record is an access-log (auto dispatch stage → dedicated a2kit.calls
+     logger + opt-in JSONL file, never streams); span-shaped CallRecord;
+     stdlib-logging refound; report()/EventRegistry/event() deleted;
+     structlog rejected for core. Suite + lint + ty green.
      See openspec/changes/refound-ldd-on-stdlib-logging/ + ADR 0027.
-     Two deferred follow-ups extracted from that work, below. -->
+     One deferred follow-up (a2web migration, separate repo) above. -->
 
-- **[trigger] Log sink `PluginManifest`.** `refound-ldd-on-stdlib-logging` decided NO manifest for sinks (sinks aren't user-extensible; `add_sink()` covers custom cases). Re-open ONLY when a third-party ships a sink as a separate package, OR consumers want declarative sink selection (`A2KIT_LOG__SINKS=otel,journal,custom`). Until then, built-ins via `register_builtin_*_sinks` + the `add_sink()` escape hatch suffice.
+- **[trigger] Log handler `PluginManifest`.** `refound-ldd-on-stdlib-logging` decided NO manifest for handlers (they aren't user-extensible; `app.log.add_handler()` covers custom cases). Re-open ONLY when a third-party ships a handler as a separate package, OR consumers want declarative handler selection (`A2KIT_LOG__SINKS=otel,custom`). Until then, config-driven built-ins + the `add_handler()` escape hatch suffice.
 
-- **[trigger] Remove LDD layer-cycle workarounds after the refound lands.** The stdlib-logging refound predicts the bespoke layer-cycle hacks dissolve: `_ldd_wire.py` shoved below L0, and `ambient → context.request_scope` under `# noqa: A2K-LAYER`. Once `refound-ldd-on-stdlib-logging` is implemented, verify the cycle is gone and delete the workarounds. Pure cleanup; trigger = refound merged.
+- **[resolved] LDD layer-cycle.** The refound did NOT dissolve the `context ↔ log` cycle (the new `log.scope` still lazy-imports `context.request_scope`). The foundational module was KEPT and renamed `_ldd_wire.py` → `_log_wire.py` (stdlib-only, below L0), with `log.scope`'s `# noqa: A2K-LAYER` lazy import retained — both deliberate, not workarounds to remove.

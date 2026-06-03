@@ -10,7 +10,7 @@ Units are the directories under `src/a2kit/packages/` plus the top-level
 `core` node: they split into three ordered sub-units — `kernel` (leaf
 types and helpers), `authoring` (the decoration-time surface), and
 `runtime` (`app` / `AppRuntime`). The re-export facade modules
-(`__init__.py`, `ldd.py`, `testing.py`) are a layer-exempt group: they
+(`__init__.py`, `log.py`, `testing.py`) are a layer-exempt group: they
 surface deeper layers as a flat public API and so import "upward" by
 design. See ADR 0019.
 """

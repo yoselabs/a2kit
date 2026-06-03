@@ -133,7 +133,7 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
     and (when applicable) ``--connection`` are added.
 
     The callback handles: schema dump, JSON body decode, format routing,
-    LDD enable/disable, enricher chain, and exception → exit-code mapping.
+    log enable/disable, enricher chain, and exception → exit-code mapping.
     """
     import typer
 
@@ -536,7 +536,7 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
       - ``health`` (only when the runtime carries an enabled health registry)
 
     Emission is controlled by ``A2KIT_LOG__*`` config (logger level + the
-    per-handler streaming level); there are no per-invocation LDD flags.
+    per-handler streaming level); there are no per-invocation log flags.
     """
     import typer
 

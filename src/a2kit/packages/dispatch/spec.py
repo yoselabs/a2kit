@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 #: Framework-reserved parameter name synthesized into an MCP tool's
 #: rewritten signature when its body does not declare ``ctx`` — FastMCP
 #: injects ctx by type under this name so ambient binding is always
-#: available. Tool bodies never see it; the LDD stage pops it. The CLI
+#: available. Tool bodies never see it; the call-scope stage pops it. The CLI
 #: adapter does not use it (it synthesizes a ``StderrToolContext``
 #: directly), but the constant is transport-neutral so it lives here.
 SYNTHESIZED_CTX_PARAM_NAME = "_a2kit_ctx"

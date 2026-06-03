@@ -1,6 +1,6 @@
 """Transport-neutral :class:`a2kit.ToolContext` implementation for stderr.
 
-``StderrToolContext`` emits compact LDD lines to stderr. It is the
+``StderrToolContext`` emits compact condensed log lines to stderr. It is the
 context used by the CLI transport and as the direct-call fallback on
 the MCP dispatch path (a tool invoked outside a live FastMCP request).
 Methods that are structurally MCP-only (sampling, resource listing,
@@ -13,7 +13,7 @@ portably with ``await ctx.info(...)`` / ``await ctx.report_progress(...)``
 works on both.
 
 This module is low-level: its only ``a2kit.packages.*`` dependency is a
-lazy import of ``a2kit.packages.ldd`` (the ``format_ldd_line`` wire-format
+lazy import of ``a2kit._log_wire`` (the ``format_condensed_line`` wire-format
 primitive, inside ``_emit``). It imports no transport package, so it can
 be shared by ``cli`` and ``mcp`` without a cycle.
 """
@@ -31,7 +31,7 @@ from urllib.parse import urlparse
 # ``a2kit._log_wire`` module so both ``packages/log/formatter.py`` (the
 # canonical emitter) and this L0 stub route through it without forming a
 # cross-package cycle with ``packages/log/``. See ``a2kit._log_wire`` docstring.
-from a2kit._log_wire import format_condensed_line as _format_ldd_line
+from a2kit._log_wire import format_condensed_line as _format_line
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -89,14 +89,14 @@ class _StubResourceResult:
 class StderrToolContext:
     """Implementation of :class:`a2kit.ToolContext` that emits to stderr.
 
-    Logging / progress methods render compact LDD lines to stderr.
+    Logging / progress methods render compact condensed log lines to stderr.
     State (``set_state`` / ``get_state`` / ``delete_state``) lives in
     a per-instance dict. ``read_resource`` handles ``file://`` URIs only.
     ``elicit`` runs a primitive ``input()`` loop. MCP-only methods raise
     :class:`MCPOnlyError`.
 
     ``request_id`` is a per-instance UUID4 (no wire-level request frame on
-    CLI; the UUID is purely a correlation token for LDD lines). ``client_id``
+    CLI; the UUID is purely a correlation token for log lines). ``client_id``
     is ``None`` on CLI — there is no remote client.
     """
 
@@ -111,11 +111,9 @@ class StderrToolContext:
     # --- Logging (fastmcp.Context-shaped, all async) ---------------------- #
     #
     # Signatures match fastmcp.Context exactly: (message, logger_name=None,
-    # extra=None). Field-bearing narrative logging lives on a2kit.ldd.* free
-    # functions (info/warning/error/debug); they share `_emit` with these
-    # methods so CLI rendering stays consistent. The kwargs-on-ctx pattern
-    # crashed under MCP transport (fastmcp's narrow signature) — the divergence
-    # is removed by routing fielded calls through a2kit.ldd.* instead.
+    # extra=None). Field-bearing framework emission lives on the a2kit.log.*
+    # level methods (info/warning/error/debug), routed through stdlib handlers
+    # — separate from these ctx methods, which render via `_emit` on CLI.
 
     async def info(self, message: str, logger_name: str | None = None, extra: Mapping[str, Any] | None = None) -> None:
         self._emit("INFO", message, _fields_with_logger(logger_name, extra))
@@ -312,11 +310,11 @@ class StderrToolContext:
     async def send_notification(self, notification: Any) -> None:  # noqa: ARG002
         raise MCPOnlyError("send_notification")
 
-    # --- LDD wire-format primitive (used by a2kit.ldd) -------------------- #
+    # --- condensed-line primitive (used by a2kit.log) -------------------- #
     # (Note: previously ``send_log_message`` mirrored the MCP-side
     # session method here, but it was never invoked from anywhere in
     # src/, tests/, or examples/ — deleted per
-    # ``align-context-method-signatures`` Treatment 3. ``a2kit.ldd``
+    # ``align-context-method-signatures`` Treatment 3. ``a2kit.log``
     # routes directly through ``_emit`` on the CLI side.)
 
     def _emit(
@@ -329,5 +327,5 @@ class StderrToolContext:
     ) -> None:
         if elapsed_ms is None:
             elapsed_ms = round((time.monotonic() - self._start_ts) * 1000)
-        line = _format_ldd_line(level, msg, fields, elapsed_ms)
+        line = _format_line(level, msg, fields, elapsed_ms)
         print(line, file=sys.stderr, flush=True)  # noqa: T201

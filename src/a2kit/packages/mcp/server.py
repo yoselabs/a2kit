@@ -94,7 +94,7 @@ def _build_one_tool(
         meta=meta,
     )
     # Fold the shared pipeline (timeout -> enrichers -> router-lazy-enter
-    # -> dispatch-hook+DI -> ldd-state -> error-capture), then append the
+    # -> dispatch-hook+DI -> call-scope -> error-capture), then append the
     # MCP error-render stage. install_mcp_signature rewrites the
     # outermost callable's signature for FastMCP schema generation.
     wrapped = fold_pipeline(fn, spec)
@@ -327,7 +327,7 @@ def build_mcp_server(
     # FastMCP's introspector sees only wire + reserved params and a2kit
     # DI is resolved per call from Container.call_scope inside the
     # wrapper body. These bypass the dispatch pipeline — they are
-    # substrate-native (no LDD ambient, no projection format routing),
+    # substrate-native (no call scope, no projection format routing),
     # which is the whole point of the FastMCP-only family.
     if runtime.mcp_surface is not None:
         _register_mcp_surface(server, runtime)

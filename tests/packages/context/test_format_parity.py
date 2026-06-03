@@ -1,4 +1,4 @@
-"""Invariant: `context.stderr._format_ldd_line` (the inlined copy) and
+"""Invariant: `context.stderr._format_line` (the inlined copy) and
 `ldd.wire.format_ldd_line` (the canonical home) produce byte-identical
 output. They diverge → operators see two different log shapes for the
 same emission.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from a2kit.packages.context.stderr import _format_ldd_line as inlined
+from a2kit.packages.context.stderr import _format_line as inlined
 from a2kit.packages.log.formatter import format_condensed_line as canonical
 
 

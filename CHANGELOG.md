@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+### Changed — LDD refounded on stdlib `logging`; one surface `a2kit.log` (BREAKING)
+
+The bespoke LDD (Logging / Data / Diagnostics) channel is retired and
+re-founded on Python's stdlib `logging`. There is now exactly **one
+author concept: `a2kit.log`** — the four level methods (`debug` / `info`
+/ `warning` / `error`), each accepting a message + fields OR a typed
+instance. The MCP wire still streams live, mid-call (inline `await
+ctx.log()` — not regressed). A durable, queryable **call access-log** is
+added: a transport-neutral dispatch-boundary stage auto-captures one
+span-shaped record per tool call (`call_id` + args/result/timing/
+principal) on a dedicated, non-streaming `a2kit.calls` logger written to
+opt-in JSONL with content-addressed body sidecars.
+
+**Removed (no aliases, clean break):**
+
+- `a2kit.ldd.event()`, `a2kit.ldd.report()`, the `@reports(T)` decorator,
+  `EventRegistry` + `emit_typed`, and the loose `a2kit.ldd.log()` verb.
+  The typed-instance ergonomic survives: `a2kit.log.info(instance)`.
+- `app.ldd` / `_AppLdd`, `App.set_ldd(...)`, `app.ldd_reports` /
+  `app.ldd_events`, and the CLI `--no-reports` / `--no-events` flags.
+- `a2kit.LddEmission` / `LddSink` (→ stdlib `logging.LogRecord` /
+  `logging.Handler`), `ReportTypeNotDeclared` / `ReportTypeMismatch`, and
+  the 147-LOC `A2K-LDD-REPORT-TYPE` lint rule.
+
+**Migration:**
+
+| Old | New |
+|---|---|
+| `a2kit.ldd` (module) | `a2kit.log` |
+| `a2kit.ldd.event(x)` / `app.ldd.events.emit_typed(x)` | `a2kit.log.info(x)` |
+| `a2kit.ldd.report(x)` | `a2kit.log.info(x)` (or `a2kit.log.debug(x)`) |
+| `a2kit.ldd.info/warning/error/debug` | `a2kit.log.info/warning/error/debug` |
+| `LddConfig` / `A2KIT_LDD__*` / `app.config.ldd` | `LogConfig` / `A2KIT_LOG__*` / `app.config.log` |
+| `app.ldd.add_sink(s)` | `app.log.add_handler(h)` (stdlib `logging.Handler`) |
+| `App.set_ldd(...)` / `--no-events` | `A2KIT_LOG__ENABLED=false` (kill-switch) |
+| `ldd_state_for_call(...)` (test SPI) | `bind_call_scope(...)` |
+
+The durable call-log is opt-in: `A2KIT_LOG__CALL_LOG=on` (off by
+default). structlog was evaluated and **rejected for core** (80ms+
+import on the hot path violates the ADR 0020 cold-start guarantee); it
+remains available to consumers for their own app-logging (ADR 0022). See
+ADR 0027.
+
 ## 0.41.1 — 2026-05-28
 
 (`v0.41.0` tag was placed on the v0.40.1 commit by mistake earlier the

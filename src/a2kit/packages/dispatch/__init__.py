@@ -1,7 +1,7 @@
 """Transport-neutral per-tool dispatch pipeline — shared by the CLI and MCP adapters.
 
 The five transport-neutral dispatch concerns (timeout, enrichers,
-router-lazy-enter, dispatch-hook + DI, LDD ambient) plus neutral
+router-lazy-enter, dispatch-hook + DI, call scope) plus neutral
 error-capture live here as :class:`DispatchStage` objects. Both the CLI
 and MCP adapters fold the single :data:`DISPATCH_PIPELINE`; each then
 appends its own per-transport error-RENDER stage. This package MUST NOT

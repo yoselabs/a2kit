@@ -7,7 +7,7 @@ directly and hand the App to a finisher:
     app = a2kit.App("test")
     app.add_router(TasksRouter(fake_get_store))
 
-`ambient_for_tests` establishes an LDD ambient so tests that call
+`ambient_for_tests` establishes an call scope so tests that call
 orchestrator / phase functions directly (bypassing
 ``TestClient.invoke``) don't trip :class:`AmbientContextMissing`.
 `ambient_for_tests_autouse` is the pre-decorated autouse peer for

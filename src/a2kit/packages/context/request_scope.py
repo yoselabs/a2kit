@@ -41,7 +41,7 @@ class RequestScopeMissing(LookupError):
 
 
 # Module-private slot. Substrate writers (auth middleware, request-scope
-# middleware, LDD scope opener) :func:`publish`; dispatch stages and
+# middleware, call-scope opener) :func:`publish`; dispatch stages and
 # other readers :func:`get` or :func:`try_get`.
 _scope: contextvars.ContextVar[dict[type, Any] | None] = contextvars.ContextVar(
     "_a2kit_request_scope_seeds",

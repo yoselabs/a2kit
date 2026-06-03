@@ -36,7 +36,7 @@ class AppRuntime:
 
     Produced only by :func:`build`. Holds a fresh validated DI container
     and the App's composed surface (routers, tool descriptors, CLI
-    extras, MCP middleware, dispatch hook, LDD config, health registry),
+    extras, MCP middleware, dispatch hook, log config, health registry),
     all frozen at build time. ``AppRuntime`` is the async context
     manager: ``async with runtime:`` enters the lifecycle; app-scope
     resources enter lazily on first ``Container.get(T)`` and unwind in
@@ -234,7 +234,7 @@ def build(
        app-scope-depends-on-per-call violation raises ``TypeError``
        before any ``AppRuntime`` is produced.
     3. Carries the App's composed surface (routers, descriptors, CLI
-       extras, MCP middleware, dispatch hook, LDD config) into the
+       extras, MCP middleware, dispatch hook, log config) into the
        runtime. When the App registered a health probe, the synthetic
        ``_meta`` router is re-bound to the runtime so the health tool
        resolves checks through the runtime's container.

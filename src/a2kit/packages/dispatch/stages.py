@@ -40,7 +40,7 @@ class TimeoutStage:
     """Cancel the tool body after ``meta.extras.timeout_seconds``.
 
     Innermost stage — the timeout budget covers only the bare body, not
-    DI resolution or LDD setup. Self-skips when no timeout is configured.
+    DI resolution or call-scope setup. Self-skips when no timeout is configured.
     """
 
     name = "timeout"
