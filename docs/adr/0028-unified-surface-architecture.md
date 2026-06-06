@@ -17,7 +17,30 @@ Proposed, 2026-06-06. Captures a a2kay-feedback-driven brainstorm
 (2026-06-06) that started as seven point-fixes and converged on a
 single surface model. Awaits human confirmation (Constitution Phase A)
 and is delivered by the change set sketched in
-`docs/SURFACE_ARCHITECTURE.md` (§ Delivery). Touches ADRs 0001
+`docs/SURFACE_ARCHITECTURE.md` (§ Delivery).
+
+**2026-06-06 — open calls resolved.** Three decisions locked in a
+follow-on brainstorm and folded into the Decisions below:
+
+1. **EMBRACE the rename**, with a verbatim escape hatch:
+   `canonical_name_override="…"` on a verb is used *exactly*, no slug
+   prefix; absent it, the name auto-derives as `slug_leaf`. Because names
+   carry no prefix today, every current explicit name is already a full
+   name, so the migration is a mechanical `s/name=/canonical_name_override=/`
+   with **tool-name values unchanged** — only the auto-derived (unnamed)
+   router verbs actually rename. Collapses the blast radius; removes the
+   soften alternative (decision 5).
+2. **Name uniqueness is enforced two-layer** — a static lint rule
+   (primary, "complain often") plus a near-free build-time assertion
+   (backstop for dynamic names) over one canonical-name resolver; global,
+   because the name is also the audit-log key (decision 6).
+3. **Router authoring = class + auto-collect** (decision 7): tools and
+   enrichers are `@a2kit`-marked methods collected at class-definition
+   time; the manual `tools=` tuple is removed. This **amends ADR 0002**'s
+   explicit-tuple stance — justified by AI-legibility, code volume, and
+   error-prevention-by-construction.
+
+Touches ADRs 0001
 (typer-cli), 0002 (author-annotation surface), 0003 (semantic-flag
 vocabulary), 0004 (tiered package layout), 0010 (auth MCP-only) and
 0020 (multi-surface authoring) — none are superseded; this ADR sits
@@ -80,7 +103,7 @@ Two load-bearing discoveries reframed the work:
 
 ## Decision
 
-Five locked decisions (each confirmed in the brainstorm):
+Seven locked decisions (each confirmed in the brainstorm):
 
 1. **CLI is a `Surface`.** `kind ∈ {NETWORK, LOCAL}` distinguishes it
    from MCP/HTTP. All three satisfy one `bind(runtime, descriptors)`
@@ -119,6 +142,65 @@ Five locked decisions (each confirmed in the brainstorm):
    (`app entity update`) is a `CliConfig.layout = "flat" | "nested"`
    flag-flip, not a rewrite.
 
+   **Name resolution precedence** (one rule, every surface):
+
+   ```
+   canonical_name(verb) =
+      explicit canonical_name_override="…"  →  used VERBATIM, no slug prefix
+      else, under a Router                  →  f"{slug}_{leaf}"   (leaf = fn.__name__)
+      else, app-level verb                  →  leaf
+   ```
+
+   A pinned `canonical_name_override` is *complete* — the slug is never
+   re-applied (no `jira_jira_search`). This matches today's behaviour
+   (names carry no prefix now, so an explicit name already IS the full
+   name), which is why the migration is a mechanical
+   `s/name=/canonical_name_override=/` with values unchanged. Mixed
+   pinning is the norm: one verb pins, the rest auto-derive and must still
+   comply with uniqueness (decision 6). A pinned name is constrained to
+   `[A-Za-z0-9_]` (legal on every surface) and is **surface-flat by
+   definition** — under a future nested layout only auto-derived names
+   nest; pinned ones stay flat.
+
+6. **Name uniqueness, enforced two-layer, globally.** The canonical name
+   is also the call-log/audit key, so two verbs MUST NOT resolve to the
+   same canonical name — *globally*, not per-surface (a CLI-only `foo` and
+   an MCP-only `foo` still make the audit log ambiguous). Enforcement is
+   two layers over **one** `resolve_canonical_name` function:
+   - **Lint (primary — "complain often").** A static rule resolves
+     literal slugs + `canonical_name_override`s across the codebase and
+     flags duplicate canonical names before the app even runs (gets a
+     ruff-compatible code per friction #7).
+   - **Runtime (backstop — "complain early, loud").** At `build()` /
+     finalize (before `serve`), every verb is resolved and global
+     uniqueness asserted, failing loud with the offending pair; exposed
+     also as a standalone `validate_composition(app)` callable so tests
+     complain too. Catches dynamic names the linter cannot resolve
+     statically. The auto-collect shape (decision 7) already prevents the
+     *registration* class of error by construction; this guards the
+     *collision* class, which no structure can fully prevent.
+
+7. **Router authoring: class + auto-collect (amends ADR 0002).** Routers
+   stay **classes**; configuration is class attributes (`slug`,
+   `visibility`, `providers`); tools and enrichers are `@a2kit`-marked
+   methods **collected at class-definition time** via `__init_subclass__`.
+   The manual `tools: ClassVar[tuple]` is **removed**. This reverses ADR
+   0002's "explicit tuple, no `__init_subclass__`" stance — but the
+   original objection was to *magic* (`dir()` walks, naming-convention
+   collection); decorator-marker collection is the *least*-magical option
+   (the `@a2kit.read` sits on the method — the most local, AI-legible
+   declaration possible) and is the enterprise-framework norm
+   (Spring/Nest/Rails/.NET). Chosen against the instance + `@router.read`
+   (FastAPI) form because a2kit's design centre is a **static, inspectable,
+   AI-legible** surface, not runtime-parametrized mounts; FastAPI's
+   instance advantages (app-factories, versioned multi-mounts, metaclass
+   avoidance) are needs a2kit does not have (each router mounts once under
+   its slug). Enrichers unify into the same marked-method pattern (folding
+   in the former instance-decorator special case). **Open follow-on:**
+   whether `App` becomes a class too for full symmetry (the `@Module`
+   shape) or stays the instance composition-root that collects
+   class-based routers — locked separately.
+
 ### How the seven frictions resolve
 
 ```
@@ -127,8 +209,8 @@ Five locked decisions (each confirmed in the brainstorm):
 #3 MCP collisions   → GONE by construction: slug is the namespace on every surface
 #5 surface on ctx   → each Surface stamps its own name as it dispatches
 #6 mcp.instructions → McpSurface.bind reads its full McpConfig
-#4(list) validate   → "resolve the surfaces matrix for every verb, offline"
-#7 lint codes       → orthogonal; tracked separately
+#4(list) validate   → resolve surfaces + canonical names for every verb, offline (decision 6)
+#7 lint codes       → ruff-compatible; the dup-name lint rule (decision 6) rides the new shape
 ```
 
 ## Consequences
@@ -150,14 +232,25 @@ Five locked decisions (each confirmed in the brainstorm):
 
 **Negative / accepted.**
 
-- **BREAKING tool-name rename on every surface.** Router verbs go from
-  bare `update` (MCP/HTTP) and `app entity update` (CLI) to
-  `entity_update` everywhere. a2atlassian, a2db, a2web all rename their
-  router-scoped tools. Ships with a migration table; on-brand with this
-  repo's recent breaking cutovers, but real work for consumers. (The
-  soften-to-opt-in alternative — flat-unless-collision — was considered
-  and rejected for reintroducing a special case into an otherwise
-  uniform rule. Open for re-litigation before the breaking change lands.)
+- **BREAKING — but only the auto-derived names.** Resolved 2026-06-06:
+  embrace. The blast radius is *only* router verbs with **no** explicit
+  name — bare auto-derived `update` (MCP/HTTP) / `app entity update` (CLI)
+  becomes `entity_update`. Verbs that already carry an explicit name
+  (every ecosystem-convention `jira_get_issue`) are **unchanged byte-for-
+  byte**, because an explicit name is now `canonical_name_override` and is
+  used verbatim — and names carry no prefix today, so today's explicit
+  names already equal their post-change value. So for consumers the
+  migration is (a) mechanical `s/name=/canonical_name_override=/` with
+  values unchanged, plus (b) renaming only the genuinely-unnamed router
+  verbs. The soften-to-opt-in alternative (flat-unless-collision) was
+  rejected for reintroducing a special case into an otherwise uniform
+  rule.
+- **Router authoring changes shape (amends ADR 0002).** The `tools=`
+  tuple is removed; routers rely on `__init_subclass__` collection of
+  `@a2kit`-marked methods. Consumers delete their `tools=` lines (a
+  removal, not a rewrite). The tier-snapshot surface still derives
+  statically (decorators are AST-visible). Enricher authoring moves from
+  the instance decorator to the same marked-method pattern.
 - The CLI trades `git`-style subcommand drill-in for flat
   underscore-named commands (mitigated by `rich_help_panel` grouping and
   tab-completion). Acceptable for operator/agent tooling, not a polished
@@ -168,7 +261,10 @@ Five locked decisions (each confirmed in the brainstorm):
 
 ## Open questions (carried into the design doc)
 
-- **Embrace vs soften the MCP-name break** (the one big real-world call).
+- **App symmetry** — does `App` become a class with marked methods (the
+  `@Module` shape, full symmetry with Router decision 7), or stay the
+  instance composition-root that collects class-based routers? (The
+  immediate follow-on now that the Router shape is locked.)
 - **UNLISTED spelling** under "just surfaces" (dict form vs tuple
   shorthand + escape).
 - **Router native detours** — all three (`router.mcp/api/cli`) day one,
@@ -179,6 +275,8 @@ Five locked decisions (each confirmed in the brainstorm):
 - `docs/SURFACE_ARCHITECTURE.md` — the full model, diagrams, and the
   OpenSpec change split.
 - ADRs 0001, 0002, 0003, 0004, 0010, 0020 — the surface decisions this
-  one sits above.
+  one sits above. **ADR 0002 is additionally amended** by decision 7
+  (the explicit `tools=` tuple is replaced by `__init_subclass__`
+  decorator-marker collection).
 - `docs/CONSUMER_FEEDBACK_DOCTRINE.md` (ADR 0005) — the a2kay frictions
   that drove this each get a ship/reframe answer here.
