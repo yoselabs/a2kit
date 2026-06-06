@@ -123,9 +123,12 @@ Seven locked decisions (each confirmed in the brainstorm):
    (FastAPI app / FastMCP root server / root Typer); `Router ↔ native
    router` (APIRouter / mounted sub-server / sub-Typer). Parity is
    *ours↔native at each level*, NOT *App↔Router*. The surface-native
-   "detour" (`app.mcp` / `router.api` / …) hands the author the native
-   node at that level for single-surface features, until they promote it
-   to a projected verb.
+   "detour" hands the author the native node at that level for
+   single-surface features, until they promote it to a projected verb.
+   Under the class authoring model (decision 7) the detour is a
+   **configurer hook** (`def configure_api(self, api): …`) called at build
+   with the native object, not a live mutable accessor; shipped
+   `api`-first, with `mcp` / `cli` hooks added on demand.
 
 4. **Fix the HTTP visibility leak.** `http/build.py` must honor the
    `surfaces` matrix exactly as MCP does. This is a correctness/security
@@ -196,10 +199,26 @@ Seven locked decisions (each confirmed in the brainstorm):
    instance advantages (app-factories, versioned multi-mounts, metaclass
    avoidance) are needs a2kit does not have (each router mounts once under
    its slug). Enrichers unify into the same marked-method pattern (folding
-   in the former instance-decorator special case). **Open follow-on:**
-   whether `App` becomes a class too for full symmetry (the `@Module`
-   shape) or stays the instance composition-root that collects
-   class-based routers — locked separately.
+   in the former instance-decorator special case).
+
+   **App is a class too (resolved 2026-06-06).** For full symmetry, `App`
+   follows the same shape: config as class attrs (`name`, `providers`,
+   per-surface config objects), app-level verbs and enrichers as
+   `@a2kit`-marked auto-collected methods, run by instantiating at the
+   entry point (`Kay().serve()`). Two App-specific notes: (i) router
+   composition is an explicit `routers = (Entity, Ontology)` ClassVar —
+   this is *reference*-composition (routers are defined elsewhere and must
+   be named somewhere), NOT the co-located `tools=` duplication that was
+   removed, and replaces `add_router`; (ii) the surface-native detour
+   cannot be a live mutable accessor (`@app.api.get`) in a class body, so
+   it becomes a **configurer hook** — `def configure_api(self, api): …`
+   called at build with the native object (the Nest `configure` / Spring
+   `WebMvcConfigurer` pattern; more static and AI-legible than a mutable
+   accessor, with the same raw native power). Routers get the symmetric
+   `configure_<surface>` hooks, shipped `api`-first. The one cost —
+   per-test / app-factory config variation — is absorbed by a2kit's
+   DI-first testing (`providers` + in-process TestClient), not app
+   rebuilding.
 
 ### How the seven frictions resolve
 
@@ -259,16 +278,21 @@ Seven locked decisions (each confirmed in the brainstorm):
   grows a `kind` and a name-rendering responsibility. Net new machinery,
   delivered in waves (see `docs/SURFACE_ARCHITECTURE.md`).
 
-## Open questions (carried into the design doc)
+## Open questions
 
-- **App symmetry** — does `App` become a class with marked methods (the
-  `@Module` shape, full symmetry with Router decision 7), or stay the
-  instance composition-root that collects class-based routers? (The
-  immediate follow-on now that the Router shape is locked.)
-- **UNLISTED spelling** under "just surfaces" (dict form vs tuple
-  shorthand + escape).
-- **Router native detours** — all three (`router.mcp/api/cli`) day one,
-  or `api` first?
+All major calls are now resolved (2026-06-06):
+
+- **App symmetry** → RESOLVED: `App` is a class too (decision 7). Detour
+  becomes a configurer hook; `add_router` → `routers = (...)` ClassVar.
+- **UNLISTED spelling** → RESOLVED: tuple shorthand for the common case
+  (`surfaces=("mcp","cli")` → LISTED there, ABSENT elsewhere) plus a dict
+  escape for the rare present-but-hidden case
+  (`surfaces={"cli": "unlisted"}`). One knob, no second axis.
+- **Router native detours** → RESOLVED: `api`-first (`configure_api`);
+  `mcp` / `cli` hooks added on demand.
+
+Remaining is execution: the Wave 0–3 change set in
+`docs/SURFACE_ARCHITECTURE.md` (§ Delivery).
 
 ## Related
 

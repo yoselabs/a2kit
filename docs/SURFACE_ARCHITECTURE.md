@@ -70,15 +70,19 @@ once-proposed `@cli()`.**
    UNLISTED  mounted + callable, hidden  (was: visibility="hidden")
 ```
 
-The whole old vocabulary falls out of it:
+The whole old vocabulary falls out of it. **Spelling:** a tuple is the
+shorthand for the common case (LISTED on the named surfaces, ABSENT
+elsewhere); a dict is the escape for the rare present-but-hidden
+(UNLISTED) case — one knob, no second axis:
 
 ```
-                          mcp        api        cli
-  default             →   LISTED     LISTED     LISTED      everywhere
-  surfaces=("mcp",)   →   LISTED     ABSENT     LISTED      (was expose=("mcp",))
-  surfaces=("cli",)   →   ABSENT     ABSENT     LISTED      operator command (was visibility="cli" / @cli())
-  UNLISTED on cli     →   …          …          UNLISTED    present, unadvertised (was visibility="hidden")
-  @app.mcp.tool()     →   LISTED     –          –           surface-native, single-surface
+                                   mcp        api        cli
+  default                      →   LISTED     LISTED     LISTED   everywhere
+  surfaces=("mcp",)            →   LISTED     ABSENT     ABSENT   (was expose=("mcp",))
+  surfaces=("mcp","cli")       →   LISTED     ABSENT     LISTED
+  surfaces=("cli",)            →   ABSENT     ABSENT     LISTED   operator command (was visibility="cli")
+  surfaces={"cli":"unlisted"}  →   ABSENT     ABSENT     UNLISTED present, unadvertised (was visibility="hidden")
+  configure_mcp(self, server)  →   (raw)      –          –        surface-native hook, single-surface
 ```
 
 An operator command is just a normal verb that lives only on the CLI —
@@ -124,11 +128,16 @@ Feasibility verified (2026-06-06): `fastapi.include_router(prefix=…)`,
 `fastmcp.FastMCP.mount(namespace=…)` (`entity` + `update` → `entity_update`),
 `typer.Typer.add_typer`.
 
-**The detour.** `app.mcp` / `router.api` / `app.cli` / … return the native
-node *at that level*. Use it for a single-surface feature that needs raw
-native power (FastAPI `Request`/`Response`, a FastMCP resource, a click
-wizard) — until you promote it to a projected verb. Surface-native is for
-genuinely surface-specific features only.
+**The detour.** Under the class authoring model (§6) the surface-native
+escape is a **configurer hook** — `def configure_api(self, api): …` (and
+`configure_mcp` / `configure_cli` on demand) — called at build with the
+native node *at that level*. Use it for a single-surface feature that
+needs raw native power (a FastAPI websocket / custom `Response`, a FastMCP
+resource, a click wizard) — until you promote it to a projected verb. It
+is a hook, not a live mutable accessor (which would need an instance and
+post-construction mutation, incoherent in a class body); the Nest
+`configure` / Spring `WebMvcConfigurer` pattern. Surface-native is for
+genuinely surface-specific features only. Shipped `api`-first.
 
 ---
 
@@ -271,28 +280,58 @@ the *least*-magical option — distinct from the `dir()`-walk / naming-
 convention magic ADR 0002 rejected. The tier-snapshot surface still
 derives statically (decorators are AST-visible).
 
+### App is a class too (symmetry — resolved)
+
+Both roots share one shape. `App` is a class with the same authoring
+mechanics as `Router`:
+
+```python
+class Kay(a2kit.App):
+    name = "kay"
+    providers = (ConnStore, (Database, make_db))
+    mcp = McpConfig(instructions="…")
+    cli = CliConfig(layout="flat")
+    routers = (Entity, Ontology)              # reference-composition (was add_router)
+
+    @a2kit.read
+    def health(self) -> Health: ...           # app-level verb → bare "health"
+
+    @a2kit.enricher
+    def on_timeout(self, exc: TimeoutError) -> Unavailable | None: ...
+
+    def configure_api(self, api): ...         # raw-native escape (configurer hook)
+
+Kay().serve()                                 # instantiate at the entry point
+```
+
+Two App-specific points:
+
+- **`routers = (...)` is reference-composition, not the `tools=`
+  anti-pattern.** Routers are defined elsewhere and must be *named*
+  somewhere; that's legitimate (auto-discovery would be the import-scan
+  magic we reject). It replaces `add_router`.
+- **The detour is a configurer hook, not an accessor** (see §4) — the only
+  non-trivial consequence of making `App` a class.
+
 ### The roots, side by side
 
 ```
-                     App (root)                 Router (class)
-   projected verbs   @app.read/.write/.list     @a2kit.read/.write/.list  (auto-collected)
+                     App (class)                Router (class)
+   projected verbs   @a2kit.read/.write/.list   @a2kit.read/.write/.list   (auto-collected)
                      (top-level, bare names)    (slug-scoped, slug_leaf)
-   config            constructor / accessors    class attrs (slug, visibility, providers)
-   enrichers         —                          @a2kit.enricher (marked method)
-   surface-native    app.mcp / app.api / app.cli   router.mcp / router.api / router.cli
-   compose           add_router, provide, auth, health…
+   config            class attrs                class attrs
+                     (name, providers, surface  (slug, visibility,
+                      config objects)            providers)
+   enrichers         @a2kit.enricher            @a2kit.enricher
+   surface-native    configure_api/_mcp/_cli    configure_api/_mcp/_cli    (hooks, api-first)
+   compose           routers = (...), serve()   —
 ```
 
 `App` ≈ "the root router" (no slug → bare top-level commands). The parity
 contract is **ours↔native at each level** (ADR 0028 decision 3): the `App`
 faithfully wraps the native app, a `Router` faithfully wraps the native
-router. They don't need identical menus.
-
-**Open follow-on (App symmetry).** Router is now class + marked methods;
-`App` is still an instance composition-root. Either `App` becomes a class
-too (the `@Module` shape, full symmetry) or it stays the instance root
-that *collects* class-based routers. Locked separately — see ADR 0028
-open questions.
+router. They don't need identical menus — but they now share one authoring
+shape.
 
 ---
 
@@ -361,14 +400,16 @@ and the orthogonal lint track are independent and can land any time.
 - **Override param name** = `canonical_name_override=` (maximally explicit
   about the no-prefix, verbatim behavior).
 - **Router authoring** = class + auto-collect (no `tools=` tuple). See §6.
+- **App symmetry** = `App` is a class too (same shape); `add_router` →
+  `routers = (...)` ClassVar; the detour becomes a configurer hook. See §6.
+- **UNLISTED spelling** = tuple shorthand (`surfaces=("mcp","cli")`) for
+  the common case + dict escape (`surfaces={"cli": "unlisted"}`) for the
+  rare present-but-hidden case. One knob.
+- **Router native detours** = `api`-first (`configure_api`); `mcp` / `cli`
+  added on demand.
 
-### Still open
-
-- **App symmetry** — `App` as a class (`@Module` shape) vs the instance
-  composition-root that collects class-based routers. Resolved inside
-  `app-as-peer-root` (Wave 2).
-- **UNLISTED spelling** under "just surfaces"; **router native detours**
-  (all three day one vs `api` first).
+All major design calls are settled; what remains is execution of the
+Wave 0–3 change set above.
 
 ---
 
