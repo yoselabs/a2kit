@@ -128,16 +128,31 @@ Feasibility verified (2026-06-06): `fastapi.include_router(prefix=…)`,
 `fastmcp.FastMCP.mount(namespace=…)` (`entity` + `update` → `entity_update`),
 `typer.Typer.add_typer`.
 
-**The detour.** Under the class authoring model (§6) the surface-native
-escape is a **configurer hook** — `def configure_api(self, api): …` (and
-`configure_mcp` / `configure_cli` on demand) — called at build with the
-native node *at that level*. Use it for a single-surface feature that
-needs raw native power (a FastAPI websocket / custom `Response`, a FastMCP
-resource, a click wizard) — until you promote it to a projected verb. It
-is a hook, not a live mutable accessor (which would need an instance and
-post-construction mutation, incoherent in a class body); the Nest
-`configure` / Spring `WebMvcConfigurer` pattern. Surface-native is for
-genuinely surface-specific features only. Shipped `api`-first.
+**The detour — two forms (never a class-body accessor).** Under the class
+authoring model (§6) the native escape lives in two places, because the
+class body has no instance to mutate:
+
+```
+  (a) class body     @app.api.get("/raw")        ✗ impossible — no instance yet
+  (b) bootstrap      app = Kay(); app.api.get()  ✓ escape — instance exists at the root
+  (c) in-class hook  def configure_api(self,api) ✓ primary — built with the native object
+```
+
+- **Primary (c): the configurer hook.** `def configure_api(self, api): …`
+  (and `configure_mcp` / `configure_cli` on demand, `api`-first) is called
+  at build with the native node. Decorator ergonomics survive on the local
+  param (`@api.get("/x")`). Use it for a single-surface raw feature (a
+  FastAPI websocket / custom `Response`, a FastMCP resource, a click
+  wizard) until you promote it to a projected verb. The Nest `configure` /
+  Spring `WebMvcConfigurer` pattern — static, in one place, AI-legible.
+- **Escape (b): the live instance accessor.** At the composition root the
+  instance exists, so `app = Kay(); app.api.get(…)` still works when you
+  genuinely need raw native with bootstrap-local runtime context. The hook
+  covers the same capability in-class, so (b) is a deliberate escape, not
+  the default — and it is the *only* place the old live-accessor form
+  survives.
+
+Surface-native is for genuinely surface-specific features only.
 
 ---
 
@@ -310,7 +325,9 @@ Two App-specific points:
   anti-pattern.** Routers are defined elsewhere and must be *named*
   somewhere; that's legitimate (auto-discovery would be the import-scan
   magic we reject). It replaces `add_router`.
-- **The detour is a configurer hook, not an accessor** (see §4) — the only
+- **The detour is the in-class configurer hook** (see §4), with the live
+  instance accessor (`app = Kay(); app.api.get(…)`, form "b") surviving
+  only as a bootstrap escape for genuine raw-native needs — the one
   non-trivial consequence of making `App` a class.
 
 ### The roots, side by side

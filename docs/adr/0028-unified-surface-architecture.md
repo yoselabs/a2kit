@@ -125,10 +125,19 @@ Seven locked decisions (each confirmed in the brainstorm):
    *ours↔native at each level*, NOT *App↔Router*. The surface-native
    "detour" hands the author the native node at that level for
    single-surface features, until they promote it to a projected verb.
-   Under the class authoring model (decision 7) the detour is a
-   **configurer hook** (`def configure_api(self, api): …`) called at build
-   with the native object, not a live mutable accessor; shipped
-   `api`-first, with `mcp` / `cli` hooks added on demand.
+   Under the class authoring model (decision 7) the detour has two forms,
+   never a class-body accessor (no instance exists when the class body
+   runs):
+   - **In-class, primary — the configurer hook.**
+     `def configure_api(self, api): …` (and `configure_mcp` / `configure_cli`,
+     shipped `api`-first) is called at build with the native object;
+     decorator ergonomics survive on the local param (`@api.get("/x")`).
+     This is the sanctioned way to add surface-native features.
+   - **Bootstrap, escape — the live instance accessor (form "b").** At the
+     composition root the instance exists, so `app = Kay(); app.api.get(…)`
+     still works for genuine raw-native needs that want bootstrap-local
+     runtime context. Deliberate escape, not the default; the hook covers
+     the same capability in-class.
 
 4. **Fix the HTTP visibility leak.** `http/build.py` must honor the
    `surfaces` matrix exactly as MCP does. This is a correctness/security
@@ -215,7 +224,10 @@ Seven locked decisions (each confirmed in the brainstorm):
    called at build with the native object (the Nest `configure` / Spring
    `WebMvcConfigurer` pattern; more static and AI-legible than a mutable
    accessor, with the same raw native power). Routers get the symmetric
-   `configure_<surface>` hooks, shipped `api`-first. The one cost —
+   `configure_<surface>` hooks, shipped `api`-first. When raw native is
+   genuinely needed with bootstrap-local context, the live instance
+   accessor (`app = Kay(); app.api.get(…)`) remains available as a
+   deliberate escape (form "b" — see decision 3). The one cost —
    per-test / app-factory config variation — is absorbed by a2kit's
    DI-first testing (`providers` + in-process TestClient), not app
    rebuilding.
