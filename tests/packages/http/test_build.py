@@ -63,6 +63,88 @@ async def test_projection_tool_rejects_get() -> None:
             assert r.status_code == 405
 
 
+def _build_visibility_app() -> a2kit.App:
+    """App with one verb per visibility tier so the HTTP surface filter is exercised."""
+
+    class R(a2kit.Router):
+        slug = "ops"
+
+        @a2kit.read()
+        async def public_op(self, *, x: int = 0) -> dict[str, int]:
+            return {"x": x}
+
+        @a2kit.write(visibility="cli")
+        async def trust_vault(self, *, path: str = "") -> dict[str, str]:
+            return {"path": path}
+
+        @a2kit.read(visibility="hidden")
+        async def secret_op(self, *, y: int = 0) -> dict[str, int]:
+            return {"y": y}
+
+        tools = (public_op, trust_vault, secret_op)
+
+    return a2kit.App("vis-demo").add_router(R())
+
+
+@pytest.mark.asyncio
+async def test_cli_only_verb_not_mounted_on_http() -> None:
+    """`visibility="cli"` must not be reachable over HTTP — no route, 404."""
+    runtime = build(_build_visibility_app())
+    async with runtime:
+        api = build_http_app(runtime)
+        mounted = {getattr(r, "path", None) for r in api.routes}
+        assert "/public_op" in mounted
+        assert "/trust_vault" not in mounted, "CLI-only verb leaked onto HTTP"
+        with TestClient(api) as client:
+            assert client.post("/trust_vault", json={"path": "x"}).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_hidden_verb_not_mounted_on_http() -> None:
+    """`visibility="hidden"` must not be reachable over HTTP — matches MCP."""
+    runtime = build(_build_visibility_app())
+    async with runtime:
+        api = build_http_app(runtime)
+        mounted = {getattr(r, "path", None) for r in api.routes}
+        assert "/secret_op" not in mounted, "hidden verb leaked onto HTTP"
+
+
+@pytest.mark.asyncio
+async def test_http_no_di_override_for_non_all_visibility() -> None:
+    """No dependency_overrides entry for an unmounted (non-"all") verb."""
+    from tests.packages.http._vault_fixture import Vault, VaultRouter
+
+    app = a2kit.App("vis-di").add_router(VaultRouter()).provide(Vault, lambda: Vault())
+    runtime = build(app)
+    async with runtime:
+        api = build_http_app(runtime)
+        assert Vault not in api.dependency_overrides, "DI override registered for an unmounted verb"
+
+
+@pytest.mark.asyncio
+async def test_http_and_mcp_apply_same_visibility_rule() -> None:
+    """HTTP mounts exactly the network-visible verbs MCP registers — one rule, two surfaces."""
+    from a2kit.packages.mcp.server import build_mcp_server
+
+    app = _build_visibility_app()
+    server = build_mcp_server(app, code_mode=False)
+    mcp_names = {t.name for t in await server.list_tools()}
+
+    runtime = build(_build_visibility_app())
+    async with runtime:
+        api = build_http_app(runtime)
+        http_projection = {
+            getattr(r, "path", "").lstrip("/")
+            for r in api.routes
+            if getattr(r, "path", "").lstrip("/") in {"public_op", "trust_vault", "secret_op"}
+        }
+
+    assert http_projection == {"public_op"}
+    assert "public_op" in mcp_names
+    assert {"trust_vault", "secret_op"} & mcp_names == set()
+    assert {"trust_vault", "secret_op"} & http_projection == set()
+
+
 @pytest.mark.asyncio
 async def test_openapi_document_contains_projection_tool() -> None:
     runtime = build(_build_di_app())

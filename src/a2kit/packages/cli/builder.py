@@ -593,14 +593,19 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
     if extras:
         # cli_extras are click.Command objects; we need a Group to attach them.
         # Typer always returns a Group when commands are registered (schema/serve
-        # are unconditional, so this is invariant for our build). Guard anyway.
-        import click as _click
-
-        if not isinstance(command, _click.Group):
-            msg = "build_full_cli: root Typer command is not a click.Group; cannot attach cli_extras"
+        # are unconditional, so this is invariant for our build). Guard anyway —
+        # but structurally: at typer >= 0.26 the root command is an instance of
+        # typer's *vendored* click.Group, which is not identical to the
+        # standalone `click.Group` type. An `isinstance` check against standalone
+        # click therefore rejects a perfectly valid group. Check the capability
+        # we actually use (`add_command`) instead, so attachment holds whichever
+        # click distribution typer vendors.
+        attach = getattr(command, "add_command", None)
+        if not callable(attach):
+            msg = "build_full_cli: root command cannot accept subcommands (no add_command); cannot attach cli_extras"
             raise TypeError(msg)
         for cmd in extras:
-            command.add_command(cmd)
+            attach(cmd)
     return command
 
 

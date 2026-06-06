@@ -44,6 +44,22 @@ if TYPE_CHECKING:
     from a2kit.runtime import AppRuntime
 
 
+def _http_mountable(desc: _Any) -> bool:
+    """Whether a tool descriptor may be mounted on the HTTP surface.
+
+    HTTP is a network surface: a tool mounts only when it is exposed on
+    ``"api"`` AND its resolved visibility is ``"all"``. CLI-only
+    (``visibility="cli"``) and hidden (``visibility="hidden"``) verbs are
+    structurally absent from HTTP — no route, no DI override — mirroring
+    MCP (``mcp/server.py``), so the two network surfaces apply one rule.
+    """
+    if "api" not in desc.expose:
+        return False
+    meta = desc._meta  # noqa: SLF001 -- mirrors mcp/server.py visibility read
+    visibility = (meta.extras.visibility if meta is not None else None) or "all"
+    return visibility == "all"
+
+
 def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -> FastAPI:
     """Build the FastAPI sub-app for ``runtime``.
 
@@ -81,7 +97,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     # do not surface on the FastAPI sub-app.
     api_surface_obj = runtime.surfaces.get("api")
     for desc in runtime.tools():
-        if "api" not in desc.expose:
+        if not _http_mountable(desc):
             continue
         wrapped = _wrap_with_pipeline(
             fn=desc.fn,
@@ -329,7 +345,7 @@ def _wire_container_depends_overrides(app: FastAPI, runtime: _Any, container: _A
     """
     seen: set[type] = set()
     for desc in runtime.tools():
-        if "api" not in desc.expose:
+        if not _http_mountable(desc):
             continue
         split = split_signature(desc.fn, runtime.surfaces.get("api"), container)
         for param in (*split.container.values(), *split.substrate_dep.values()):

@@ -47,6 +47,49 @@ def test_connections_subgroup_only_when_added(tasks_router):
     assert "connections" in out2
 
 
+def test_add_cli_attaches_under_vendored_click(tasks_router, monkeypatch):
+    """add_cli must attach even when typer's get_command returns a *vendored*
+    click.Group (typer >= 0.26), which is not an instance of standalone click.Group.
+
+    Simulates the downstream break: a foreign Group type that duck-types
+    add_command but fails `isinstance(command, click.Group)`. The attachment
+    must be guarded structurally, not by isinstance.
+    """
+    from tests.packages.connections.conftest import WidgetConfig
+
+    from a2kit.packages.cli import builder
+    from a2kit.packages.connections.cli import connections_cli
+
+    real_get_command = builder.typer.main.get_command
+
+    class VendoredGroup:
+        """Stands in for typer's vendored click.Group: add_command works,
+        but it is NOT a standalone-click Group instance."""
+
+        def __init__(self, wrapped: object) -> None:
+            self._wrapped = wrapped
+            self.added: list[object] = []
+
+        def add_command(self, cmd: object, name: str | None = None) -> None:
+            self.added.append(cmd)
+
+        def __getattr__(self, item: str) -> object:
+            return getattr(self._wrapped, item)
+
+    def fake_get_command(main: builder.typer.Typer) -> VendoredGroup:
+        return VendoredGroup(real_get_command(main))
+
+    monkeypatch.setattr(builder.typer.main, "get_command", fake_get_command)
+
+    app = a2kit.App("withcli").add_router(tasks_router).add_cli(connections_cli(WidgetConfig))
+
+    command = build_full_cli(app)  # must NOT raise TypeError under vendored click
+
+    assert not isinstance(command, click.Group), "test premise: returned group is foreign (vendored)"
+    added = getattr(command, "added", None)  # VendoredGroup records attached extras
+    assert added, "add_cli command must attach to a vendored (non-standalone) click.Group"
+
+
 def test_router_subgroup_lists_its_tools(app):
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["tasks", "--help"])
