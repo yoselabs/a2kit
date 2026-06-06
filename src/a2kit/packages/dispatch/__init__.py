@@ -57,6 +57,7 @@ from a2kit.packages.dispatch.substrate import (  # noqa: A2K-PKG-INIT-PURITY
 from a2kit.packages.dispatch.surface import (
     DecoratorSurface,
     Surface,
+    SurfaceKind,
     SurfaceRegistry,
 )
 
@@ -77,6 +78,7 @@ __all__ = [
     "SplitSignature",
     "SubstrateSignatureError",
     "Surface",
+    "SurfaceKind",
     "SurfaceRegistry",
     "TimeoutStage",
     "ToolBuildSpec",

@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from a2kit.packages.dispatch import DecoratorSurface, fastmcp_reserved
+from a2kit.packages.dispatch import DecoratorSurface, SurfaceKind, fastmcp_reserved
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -65,6 +65,7 @@ class McpSurface(DecoratorSurface[McpRegistration]):
     """
 
     name: ClassVar[str] = "mcp"
+    kind: ClassVar[SurfaceKind] = SurfaceKind.NETWORK
     # `substrate_dep_markers` is empty for FastMCP: there is no analog
     # to FastAPI's `Depends`/`Security` marker types on the MCP side.
     substrate_dep_markers: ClassVar[frozenset[type]] = frozenset()

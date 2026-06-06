@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from a2kit.packages.dispatch import DecoratorSurface, fastapi_dep_markers, fastapi_reserved
+from a2kit.packages.dispatch import DecoratorSurface, SurfaceKind, fastapi_dep_markers, fastapi_reserved
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -69,6 +69,7 @@ class ApiSurface(DecoratorSurface[ApiRoute]):
     """
 
     name: ClassVar[str] = "api"
+    kind: ClassVar[SurfaceKind] = SurfaceKind.NETWORK
 
     fastapi_app: FastAPI | None
 

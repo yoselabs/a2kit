@@ -13,6 +13,7 @@ library (fastapi, fastmcp, etc.). Cold-start preserved.
 
 from __future__ import annotations
 
+import enum
 from collections import OrderedDict
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
@@ -22,6 +23,20 @@ if TYPE_CHECKING:
     from contextvars import Token
 
 R = TypeVar("R")
+
+
+class SurfaceKind(enum.Enum):
+    """Whether a surface is reachable over the wire or process-local.
+
+    ``NETWORK`` surfaces (MCP, HTTP) are mounted into the parent ASGI app
+    by ``serve-topology``; ``LOCAL`` surfaces (the CLI) are materialized
+    on demand and never join the network mount set. The discriminator
+    lets composition code treat "mount into the parent app" as a
+    NETWORK-only concern without special-casing the CLI by name.
+    """
+
+    NETWORK = "network"
+    LOCAL = "local"
 
 
 @runtime_checkable
@@ -52,6 +67,7 @@ class Surface(Protocol):
     """
 
     name: ClassVar[str]
+    kind: ClassVar[SurfaceKind]
     reserved_types: ClassVar[frozenset[type]]
     substrate_dep_markers: ClassVar[frozenset[type]]
 
@@ -154,6 +170,7 @@ def reset_active_registry(token: Token[SurfaceRegistry | None]) -> None:
 __all__ = [
     "DecoratorSurface",
     "Surface",
+    "SurfaceKind",
     "SurfaceRegistry",
     "bind_active_registry",
     "current_registry",

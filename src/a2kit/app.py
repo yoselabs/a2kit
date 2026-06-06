@@ -161,6 +161,7 @@ class App:
         # ``fastapi`` nor ``fastmcp`` is loaded by attribute access alone.
         self._api: Any = None
         self._mcp: Any = None
+        self._cli: Any = None
         # Auth registry — populated by `App.auth(spec)` calls. Stays
         # ``None`` (no allocation, no `packages.auth` import) until an
         # author registers an auth spec; cold-start preserved for apps
@@ -433,6 +434,22 @@ class App:
             McpSurface = importlib.import_module("a2kit.packages.mcp.surface").McpSurface  # noqa: N806
             self._mcp = McpSurface()
         return self._mcp
+
+    @property
+    def cli(self) -> Any:
+        """The CLI surface, peer of :meth:`api` / :meth:`mcp`.
+
+        Lazy: same shape as :meth:`api`. Loads ``CliSurface`` via
+        ``importlib`` so reaching this property is the only path that can
+        pull ``typer`` (the constructor itself does NOT — ``typer`` loads
+        only when ``app.cli.bind(...)`` runs). Idempotent thereafter.
+        """
+        if self._cli is None:
+            import importlib
+
+            CliSurface = importlib.import_module("a2kit.packages.cli.surface").CliSurface  # noqa: N806
+            self._cli = CliSurface()
+        return self._cli
 
     def auth(self, spec: Any) -> App:
         """Register an :class:`AuthSpec` for this App.

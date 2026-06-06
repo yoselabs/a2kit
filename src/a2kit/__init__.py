@@ -110,12 +110,15 @@ def run(app: App, argv: list[str] | None = None) -> Any:
     and passes it to `build()` so `expose=` validation runs against the
     composed registry per `bootstrap-surfaces-explicit`.
     """
-    from a2kit.packages.cli import build_full_cli
     from a2kit.runtime import build
 
     surfaces = compose_default_surfaces()
     runtime = build(app, surfaces=surfaces)
-    cli = build_full_cli(runtime)
+    # The CLI is a LOCAL Surface (ADR 0028 Wave 1): materialize it through
+    # the uniform bind(...) protocol rather than calling the builder free
+    # function directly. CliSurface.bind owns the Typer build + vendored-
+    # click guard.
+    cli = app.cli.bind(runtime)
     return cli.main(args=argv, standalone_mode=True)
 
 
