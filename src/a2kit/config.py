@@ -37,6 +37,17 @@ from a2kit.packages.log import LogLevel  # noqa: TC001 -- pydantic needs the run
 class McpConfig(BaseModel):
     """MCP-surface configuration (consumer-owned)."""
 
+    instructions: str | None = Field(
+        default=None,
+        description=(
+            "Server-level natural-language guidance shown to MCP clients "
+            "(threaded into FastMCP's `instructions`). Tells an agent how to "
+            "use this server's tools as a whole. Default None preserves "
+            "FastMCP's behaviour. Set via env: A2KIT_MCP__INSTRUCTIONS=… "
+            "(env beats code, ADR 0022)."
+        ),
+    )
+
     structured_output: bool = Field(
         default=False,
         description=(

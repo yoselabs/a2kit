@@ -281,6 +281,10 @@ def build_mcp_server(
     app_debug = bool(runtime.config.debug)
     if "mask_error_details" not in fastmcp_kwargs:
         fastmcp_kwargs["mask_error_details"] = not app_debug
+    # Thread server-level instructions from config (friction #6). An explicit
+    # caller-supplied `instructions=` is the escape hatch and wins; otherwise
+    # use the configured value (None == FastMCP's own default, so harmless).
+    fastmcp_kwargs.setdefault("instructions", runtime.config.mcp.instructions)
     server = FastMCP(name=runtime.name, **fastmcp_kwargs)
 
     # Per-tool encoding plans for the format-routing middleware and return
