@@ -100,8 +100,6 @@ class FetchRouter(a2kit.Router):
         """
         return {"url": url, "timeout": str(timeout)}
 
-    tools = (fetch,)
-
 
 def _build_cli() -> click.Command:
     app = a2kit.App("descriptions").add_router(FetchRouter())

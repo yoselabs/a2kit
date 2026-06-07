@@ -35,8 +35,6 @@ class TestDescriptorProjection:
             async def fetch(self, *, ctx: ToolContext, id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id, body="x")
 
-            tools = (fetch,)
-
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert d.ctx_param_name == "ctx"
 
@@ -47,8 +45,6 @@ class TestDescriptorProjection:
             @a2kit.read()
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id, body="x")
-
-            tools = (fetch,)
 
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert d.ctx_param_name is None
@@ -61,8 +57,6 @@ class TestDescriptorProjection:
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id, body="x")
 
-            tools = (fetch,)
-
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert d.timeout == 5.0
 
@@ -74,8 +68,6 @@ class TestDescriptorProjection:
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id, body="x")
 
-            tools = (fetch,)
-
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert d.timeout is None
 
@@ -86,8 +78,6 @@ class TestDescriptorProjection:
             @a2kit.read(annotations=ToolAnnotations(readOnlyHint=True))
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id, body="x")
-
-            tools = (fetch,)
 
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert d.annotations_view["readOnlyHint"] is True
@@ -103,8 +93,6 @@ class TestDescriptorProjection:
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id, body="x")
 
-            tools = (fetch,)
-
         d = a2kit.App("t").add_router(R()).tools()[0]
         # @a2kit.read() stamps default hints: readOnly=True, destructive=False, etc.
         assert d.annotations_view["readOnlyHint"] is True
@@ -118,8 +106,6 @@ class TestDescriptorProjection:
             async def list_x(self) -> list[_Memory]:
                 return []
 
-            tools = (list_x,)
-
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert d.metadata_view["verb"] == "list"
 
@@ -130,8 +116,6 @@ class TestDescriptorProjection:
             @a2kit.read()
             async def fetch(self, *, ctx: ToolContext, id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id, body="x")
-
-            tools = (fetch,)
 
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert "read" in d.metadata_view["tags"]
@@ -144,8 +128,6 @@ class TestDescriptorProjection:
             @a2kit.read()
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id, body="x")
-
-            tools = (fetch,)
 
         d = a2kit.App("t").add_router(R()).tools()[0]
         view: Any = d.metadata_view
@@ -162,8 +144,6 @@ class TestDescriptorProjection:
             @a2kit.read()
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id, body="x")
-
-            tools = (fetch,)
 
         d = a2kit.App("t").add_router(R()).tools()[0]
         assert d.wire_param_names is None

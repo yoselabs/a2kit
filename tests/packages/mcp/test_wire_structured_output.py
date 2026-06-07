@@ -49,8 +49,6 @@ class _R(a2kit.Router):
             raise _NotFound(f"memory {id!r} not found")
         return _Memory(id=id, title="hello")
 
-    tools = (fetch,)
-
 
 def _build(cfg: A2kitConfig | None = None) -> a2kit.App:
     return a2kit.App("strict-wire-test", config=cfg).add_router(_R())

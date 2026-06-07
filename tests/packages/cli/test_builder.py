@@ -177,8 +177,6 @@ def test_optional_int_maps_to_integer_click_option():
         def get(self, *, project_id: int | None = None) -> dict:
             return {"project_id": project_id}
 
-        tools = (get,)
-
     app = a2kit.App("probe").add_router(Probe())
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["probe", "get", "--help"])
@@ -201,8 +199,6 @@ def test_optional_str_invokes_with_string_value():
             seen["query"] = query
             return {"query": query}
 
-        tools = (get,)
-
     app = a2kit.App("probe").add_router(Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--query", "hello"])
     assert result.exit_code == 0
@@ -220,8 +216,6 @@ def test_optional_bool_maps_to_flag():
         @a2kit.read()
         def get(self, *, verbose: bool | None = None) -> dict:
             return {"verbose": verbose}
-
-        tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--help"])
@@ -245,8 +239,6 @@ def test_nonprimitive_nullable_still_json_decodes():
         def get(self, *, ids: list[int] | None = None) -> dict:
             seen["ids"] = ids
             return {"ids": ids}
-
-        tools = (get,)
 
     app = a2kit.App("probe").add_router(Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--ids", "[1,2,3]"])

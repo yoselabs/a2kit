@@ -35,7 +35,6 @@ def test_construction_is_pure() -> None:
 
     class _R(a2kit.Router):
         slug = "r"
-        tools = ()
 
     app = a2kit.App("api")
     app.provide(_DB)

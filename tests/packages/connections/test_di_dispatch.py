@@ -43,8 +43,6 @@ class _Probe(a2kit.Router):
     async def ping(self, *, store: _Store) -> dict[str, str]:
         return {"hi": store.hello()}
 
-    tools = (ping,)
-
 
 async def _fake_load(self: Any, *args: Any, **kwargs: Any) -> _Cfg:
     """Fake ConnectionStore.load that constructs _Cfg from the connection
@@ -87,8 +85,6 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
         @a2kit.read()
         async def noop(self, *, n: int) -> dict[str, int]:
             return {"n": n}
-
-        tools = (noop,)
 
     app = a2kit.App("app").add_router(_Plain())
     from a2kit.schema import compute_schema

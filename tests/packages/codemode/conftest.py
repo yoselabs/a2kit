@@ -32,8 +32,6 @@ class GateRouter(a2kit.Router):
         """Non-destructive write."""
         return {"msg": "touched"}
 
-    tools = (ping, cli_only, wipe, touch)
-
 
 @pytest.fixture
 def gate_app() -> a2kit.App:

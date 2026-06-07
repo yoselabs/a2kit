@@ -49,8 +49,6 @@ def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
         async def x(self) -> dict:  # type: ignore[override]
             return {}
 
-        tools = (x,)
-
     app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:
         app.add_router(_R())

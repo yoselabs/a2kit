@@ -79,8 +79,6 @@ class JobsRouter(a2kit.Router):
             await a2kit.log.info(StepCompleted(step=i, total=steps, elapsed_ms=1))
         return {"steps": steps}
 
-    tools = (run,)
-
 
 app.add_router(JobsRouter())
 

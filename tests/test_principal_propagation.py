@@ -70,8 +70,6 @@ class TestMcpPrincipalReachesBody:
             async def whoami(self, *, principal: Principal) -> dict[str, str]:
                 return {"subject": principal.subject}
 
-            tools = (whoami,)
-
         app.add_router(R())
         runtime = build(app)
 

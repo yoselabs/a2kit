@@ -55,8 +55,6 @@ def _build_runtime(*, allow: bool):
             body_calls.append(x)
             return {"x": x}
 
-        tools = (call,)
-
     app.add_router(R())
     return build(app), body_calls
 

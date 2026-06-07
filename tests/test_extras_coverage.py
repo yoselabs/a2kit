@@ -302,7 +302,6 @@ def test_router_slug_derived_from_class() -> None:
     import a2kit
 
     class MyTrackerRouter(a2kit.Router):
-        tools = ()
         slug = "mytracker"
 
     r = MyTrackerRouter()
@@ -313,7 +312,6 @@ def test_router_slug_no_router_suffix() -> None:
     import a2kit
 
     class Tasks(a2kit.Router):
-        tools = ()
         slug = "tasks"
 
     r = Tasks()
@@ -324,11 +322,9 @@ def test_router_slug_collision_raises() -> None:
     import a2kit
 
     class TasksRouter(a2kit.Router):
-        tools = ()
         slug = "tasks"
 
     class Tasks(a2kit.Router):
-        tools = ()
         slug = "tasks"
 
     app = a2kit.App("a")
@@ -342,7 +338,6 @@ def test_router_slug_class_attr_wins() -> None:
     import a2kit
 
     class XYZ(a2kit.Router):
-        tools = ()
         slug = "custom_slug"
         name = "custom_slug"
 
@@ -354,7 +349,6 @@ def test_router_slug_attribute_pinned_at_class_level() -> None:
     import a2kit
 
     class _R(a2kit.Router):
-        tools = ()
         slug = "_r_fixed"
 
     r = _R()
@@ -370,7 +364,6 @@ def test_router_registry_round_trip() -> None:
         return {"x": 1}
 
     class R(a2kit.Router):
-        tools = ()
         slug = "r"
 
     r = R()

@@ -124,7 +124,6 @@ def test_invalid_timeout_string_raises_at_decoration() -> None:
 def _build_app_with(tool_fn: Any) -> a2kit.App:
     class _R(a2kit.Router):
         slug = "demo"
-        tools = (tool_fn,)
 
     setattr(_R, tool_fn.__name__, tool_fn)
     app = a2kit.App("t").add_router(_R())

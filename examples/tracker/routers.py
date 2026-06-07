@@ -53,13 +53,6 @@ class ProjectsRouter(a2kit.Router):
                 return projects[i]
         raise KeyError(project_id)
 
-    tools = (
-        list_projects,
-        get_project,
-        create_project,
-        archive_project,
-    )
-
 
 class TasksRouter(a2kit.Router):
     slug = "tasks"
@@ -149,11 +142,3 @@ class TasksRouter(a2kit.Router):
         store.replace(projects, tasks)
         await info("import.complete", accepted=accepted, rejected=rejected)
         return {"accepted": accepted, "rejected": rejected}
-
-    tools = (
-        list_tasks,
-        get_task,
-        create_task,
-        complete_task,
-        bulk_import_tasks,
-    )

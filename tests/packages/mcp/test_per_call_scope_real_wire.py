@@ -67,8 +67,6 @@ def _build_app() -> a2kit.App:
         async def boom_with_tx(self, tx: _Transaction) -> dict[str, Any]:
             raise ValueError("boom")
 
-        tools = (use_tx, boom_with_tx)
-
     return a2kit.App("per-call-mcp").add_router(R()).provide(_Transaction, per_call=True)
 
 

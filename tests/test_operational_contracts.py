@@ -44,8 +44,6 @@ def test_cancellation_propagates_to_tool_body() -> None:
                 cleanup_ran.append(True)
                 raise
 
-        tools = (slow,)
-
     app = a2kit.App("cancel").add_router(_R())
 
     async def go() -> None:
@@ -102,8 +100,6 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
         @a2kit.read()
         async def boom(self) -> dict:
             raise ValueError("explicit failure")
-
-        tools = (boom,)
 
     app = a2kit.App("err").add_router(_R())
 
@@ -171,8 +167,6 @@ def test_cli_error_no_traceback_when_debug_false() -> None:
         async def boom(self) -> dict:
             raise ValueError("plain failure")
 
-        tools = (boom,)
-
     app = a2kit.App("cli-err").add_router(_R())
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["_r", "boom"])
@@ -193,8 +187,6 @@ def test_cli_error_includes_traceback_when_debug_true() -> None:
         @a2kit.read()
         async def boom(self) -> dict:
             raise ValueError("detailed failure")
-
-        tools = (boom,)
 
     from a2kit.config import A2kitConfig
 

@@ -283,7 +283,6 @@ class App:
                 "detects the async-CM protocol at add_router time)."
             )
             raise TypeError(msg)
-        _validate_router_tools(router)
         self._routers.add(router)
         self._descriptors.extend(_build_descriptors(router))
         # Install Router-declared providers.
@@ -511,29 +510,7 @@ def _make_meta_router(owner: Any) -> Router:
             """Aggregated health status. Hidden from agent-facing list_tools."""
             return await run_checks(owner._health, owner._resolver, version=app_version(owner))
 
-        tools = (aggregated_health,)
-
     return _MetaRouter()
-
-
-def _validate_router_tools(router: Router) -> None:
-    """Verify every ``@a2kit.*``-decorated method on the Router class
-    is listed in its ``tools`` tuple.
-
-    Fires at ``App.add_router`` time per ``app-time-tools-tuple-validation``.
-    Only inspects the Router class's own attributes (``cls.__dict__``) so
-    inherited decorated methods from a base class are not surfaced as
-    drift unless the subclass intends them to be registered.
-    """
-    from a2kit.exceptions import A2KitDecoratedMethodNotInTools
-    from a2kit.metadata import _get_meta
-
-    cls = type(router)
-    tools_names = {getattr(fn, "__name__", None) for fn in (getattr(cls, "tools", ()) or ())}
-    decorated_methods = {name for name, attr in cls.__dict__.items() if callable(attr) and _get_meta(attr) is not None}
-    missing = sorted(decorated_methods - tools_names)
-    if missing:
-        raise A2KitDecoratedMethodNotInTools(cls.__name__, missing)
 
 
 def _strip_raises_from_annotation(annotation: Any) -> Any:

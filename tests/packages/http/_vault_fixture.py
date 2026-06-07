@@ -22,5 +22,3 @@ class VaultRouter(a2kit.Router):
     @a2kit.write(visibility="cli")
     async def trust_vault(self, *, path: str, vault: Vault) -> dict[str, Any]:
         return {"path": path, "tag": vault.tag}
-
-    tools = (trust_vault,)

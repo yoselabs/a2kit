@@ -25,8 +25,6 @@ def test_invalid_body_returns_422_with_fastapi_default_shape() -> None:
         async def echo(self, *, id: str) -> dict[str, str]:
             return {"id": id}
 
-        tools = (echo,)
-
     app = a2kit.App("validation-test").add_router(R())
     client = TestClient(build_http_app(build(app)), raise_server_exceptions=False)
 
@@ -51,8 +49,6 @@ def test_wrong_content_type_returns_422_not_typed_envelope() -> None:
         @a2kit.read()
         async def echo(self, *, id: str) -> dict[str, str]:
             return {"id": id}
-
-        tools = (echo,)
 
     app = a2kit.App("validation-test-2").add_router(R())
     client = TestClient(build_http_app(build(app)), raise_server_exceptions=False)

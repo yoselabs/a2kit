@@ -36,8 +36,6 @@ class UsersRouter(a2kit.Router):
             return {"status": "no name", "kind": result.action}
         return {"status": "ok", "greeting": f"hello {result.data}"}
 
-    tools = (greet,)
-
 
 app = a2kit.App("elicitation-demo")
 app.add_router(UsersRouter())

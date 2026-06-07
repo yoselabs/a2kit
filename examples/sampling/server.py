@@ -36,8 +36,6 @@ class TextRouter(a2kit.Router):
         summary = getattr(result, "text", None) or getattr(result, "result", None) or str(result)
         return {"summary": summary}
 
-    tools = (summarize,)
-
 
 app = a2kit.App("sampling-demo")
 app.add_router(TextRouter())

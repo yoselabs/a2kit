@@ -52,8 +52,6 @@ async def test_di_principal_provider_flows_to_tool_body() -> None:
         async def me(self, *, principal: Principal) -> dict[str, str]:
             return {"subject": principal.subject}
 
-        tools = (me,)
-
     app = a2kit.App("demo").add_router(R())
     app.container().provide(Principal, lambda: fake)
     runtime = build(app)
@@ -74,8 +72,6 @@ async def test_no_provider_and_no_substrate_write_raises_clear_error() -> None:
         @a2kit.read()
         async def me(self, *, principal: Principal) -> dict[str, str]:
             return {"subject": principal.subject}
-
-        tools = (me,)
 
     app = a2kit.App("demo").add_router(R())
     runtime = build(app)

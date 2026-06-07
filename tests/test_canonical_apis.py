@@ -58,8 +58,6 @@ class _Router(a2kit.Router):
     async def echo(self, *, payload: str) -> _Echo:
         return _Echo(payload=payload)
 
-    tools = (echo,)
-
 
 def _build_app() -> a2kit.App:
     return a2kit.App("canonical-apis").add_router(_Router())
@@ -178,8 +176,6 @@ class _VerbDemoRouter(a2kit.Router):
     async def lst(self) -> list[_Item]:
         return []
 
-    tools = (r, w, lst)
-
 
 def test_verb_decorators_decorate_methods() -> None:
     """README claims ``@a2kit.read()``, ``@a2kit.write()``, ``@a2kit.list_()`` decorate methods."""
@@ -197,8 +193,6 @@ def test_router_subclass_with_slug_and_tools() -> None:
         @a2kit.read()
         async def f(self) -> dict:
             return {"ok": True}
-
-        tools = (f,)
 
     app = a2kit.App("x").add_router(_R())
     assert any(d.name == "f" for d in app.tools())

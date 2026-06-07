@@ -24,8 +24,6 @@ def _build_di_app() -> a2kit.App:
         async def echo(self, *, msg: str, store: _Store) -> dict[str, Any]:
             return {"msg": msg, "tag": store.tag}
 
-        tools = (echo,)
-
     return a2kit.App("http-demo").add_router(R()).provide(_Store, lambda: _Store())
 
 
@@ -80,8 +78,6 @@ def _build_visibility_app() -> a2kit.App:
         @a2kit.read(visibility="hidden")
         async def secret_op(self, *, y: int = 0) -> dict[str, int]:
             return {"y": y}
-
-        tools = (public_op, trust_vault, secret_op)
 
     return a2kit.App("vis-demo").add_router(R())
 

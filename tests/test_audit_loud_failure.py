@@ -61,7 +61,6 @@ def test_router_init_rejects_unknown_kwargs() -> None:
 
     class _R(a2kit.Router):
         slug = "r"
-        tools = ()
 
     with pytest.raises(TypeError) as ei:
         _R(totally_unknown=True)  # type: ignore[call-arg]

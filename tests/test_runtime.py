@@ -60,8 +60,6 @@ class _Probe(a2kit.Router):
     async def get(self) -> dict:
         return {"ok": True}
 
-    tools = (get,)
-
 
 # --------------------------- AppRuntime lifecycle -------------------------- #
 

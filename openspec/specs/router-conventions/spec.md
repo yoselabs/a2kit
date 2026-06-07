@@ -104,36 +104,29 @@ Router authors SHOULD prefer the docstring when a parameter's only schema metada
 - **THEN** those entries are ignored and do not affect the registered
   tool's MCP input schema
 
-### Requirement: App-time validation rejects decorated-but-unlisted methods
+### Requirement: Tools are auto-collected from @a2kit-marked methods
 
-When a Router is added to an App via `App.add_router(router)`, the App SHALL inspect the Router class's own attributes (`type(router).__dict__`) and verify that every method decorated with `@a2kit.read`, `@a2kit.write`, `@a2kit.list_`, or `@a2kit.tool` is listed in the router's `tools` tuple. If any decorated method is missing from the tuple, `add_router` SHALL raise `a2kit.exceptions.A2KitDecoratedMethodNotInTools` with the Router class name and the names of the missing methods.
+A `Router` subclass SHALL NOT declare a `tools` tuple. `Router.__init_subclass__` SHALL auto-collect every method carrying `@a2kit.read`, `@a2kit.write`, `@a2kit.list_`, or `@a2kit.tool` metadata (the `_a2kit` marker) by walking the class MRO base-first, deduping by name and preserving definition order. This is marker-collection — methods without the marker (plain helpers) are never collected, and it is NOT a `dir()` / attribute walk. A leftover `tools` tuple is ignored (auto-collect is authoritative) during the migration window.
 
-The check applies to the Router class's own attributes only (`cls.__dict__`), not inherited attributes via MRO. A subclass that inherits a decorated method from a base class without re-listing it does NOT fail validation.
+Auto-collect removes the decorated-but-unlisted drift class by construction: there is no list to keep in sync, so a decorated method can never be silently omitted.
 
-#### Scenario: Drift raises with the missing method name
+#### Scenario: Decorated methods are collected without a tuple
 
-- **GIVEN** a Router subclass with two `@a2kit.read()`-decorated methods, only one of which appears in `tools = (one,)`
+- **GIVEN** a Router subclass with two `@a2kit.read()`-decorated methods and no `tools` tuple
 - **WHEN** `App("a").add_router(R())` is called
-- **THEN** the call raises `A2KitDecoratedMethodNotInTools`
-- **AND** the message identifies the Router class name and the unlisted method's name
+- **THEN** the call succeeds and both methods are registered as tools
 
-#### Scenario: All-listed passes through
+#### Scenario: Plain helper methods are not collected
 
-- **GIVEN** a Router subclass with two decorated methods, both listed in `tools = (one, two)`
-- **WHEN** `App("a").add_router(R())` is called
-- **THEN** the call succeeds and both tools are registered
+- **GIVEN** a Router subclass with one decorated verb and one undecorated helper method
+- **WHEN** the router is constructed
+- **THEN** only the decorated verb is collected; the helper is invisible
 
-#### Scenario: Inherited decorated method does not fail
+#### Scenario: Inherited decorated methods are collected
 
-- **GIVEN** a base Router `B` with a decorated method `b_tool` listed in its own `tools = (b_tool,)`, and a subclass `S(B)` that inherits `b_tool` without overriding it, with `S.tools = (s_only,)` (its own decorated method)
+- **GIVEN** a base Router `B` with a decorated method `b_tool` and a subclass `S(B)` adding a decorated method `s_tool`
 - **WHEN** `App("a").add_router(S())` is called
-- **THEN** the call succeeds; `S`'s validation only inspects `S.__dict__`, not the inherited attribute from `B`
-
-#### Scenario: Synthetic `_MetaRouter` passes
-
-- **GIVEN** `App("a", health_tool=True)` which auto-installs the `_MetaRouter` for `_meta.health`
-- **WHEN** the App is built
-- **THEN** no `A2KitDecoratedMethodNotInTools` is raised — the synthetic router's `tools = (aggregated_health,)` matches its single decorated method
+- **THEN** both `b_tool` and `s_tool` are registered (auto-collect walks the MRO)
 
 ### Requirement: Routers SHALL express lifecycle via `__aenter__` / `__aexit__`
 

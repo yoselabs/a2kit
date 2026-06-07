@@ -61,8 +61,6 @@ async def test_concurrent_first_dispatch_coalesces_router_enter() -> None:
         async def get(self) -> dict:  # type: ignore[override]
             return {}
 
-        tools = (get,)
-
     app = a2kit.App("x").add_router(_R())
 
     async with _testing_client(app) as client:
@@ -94,8 +92,6 @@ async def test_router_aenter_failure_does_not_cache_entered_state() -> None:
         @a2kit.read()
         async def get(self) -> dict:  # type: ignore[override]
             return {}
-
-        tools = (get,)
 
     app = a2kit.App("x").add_router(_R())
 

@@ -115,8 +115,6 @@ class FakeShopRouter(a2kit.Router):
         history = await state.counter.history() if include_history else []
         return TickResponse(count=count, history=history)
 
-    tools = (tick,)
-
 
 # --------------------------------------------------------------------- #
 # App composition — singleton state with auto-detected close().

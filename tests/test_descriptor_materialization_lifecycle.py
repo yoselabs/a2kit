@@ -36,8 +36,6 @@ class TestBuildTimeMaterialization:
             async def fetch(self, *, db: _Database, id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id)
 
-            tools = (fetch,)
-
         app = a2kit.App("t").add_router(R())
         app.provide(_Database, _Database)
         runtime = build(app)
@@ -53,8 +51,6 @@ class TestBuildTimeMaterialization:
             async def fetch(self, *, db: _Database, id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id)
 
-            tools = (fetch,)
-
         app = a2kit.App("t").add_router(R())
         app.provide(_Database, _Database)
         d = app.tools()[0]
@@ -68,8 +64,6 @@ class TestBuildTimeMaterialization:
             @a2kit.read()
             async def warm(self, *, cache: Lazy[_Cache], id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id)
-
-            tools = (warm,)
 
         app = a2kit.App("t").add_router(R())
         app.provide(_Cache, _Cache)
@@ -87,8 +81,6 @@ class TestBuildTimeMaterialization:
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id)
 
-            tools = (fetch,)
-
         runtime = build(a2kit.App("t").add_router(R()))
         with pytest.raises(KeyError):
             runtime.descriptor_for("does_not_exist")
@@ -100,8 +92,6 @@ class TestBuildTimeMaterialization:
             @a2kit.read()
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id)
-
-            tools = (fetch,)
 
         runtime = build(a2kit.App("t").add_router(R()))
         descs = runtime.descriptors()

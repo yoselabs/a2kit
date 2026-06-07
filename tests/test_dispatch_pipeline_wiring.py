@@ -54,8 +54,6 @@ def test_cli_adapter_enters_lifecycle_router_on_dispatch() -> None:
         async def ping(self) -> dict:
             return {"ok": True}
 
-        tools = (ping,)
-
     router = _Lifecycle()
     app = a2kit.App("cli-lifecycle").add_router(router)
     desc = app.tools()[0]

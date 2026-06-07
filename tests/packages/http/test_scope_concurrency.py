@@ -45,8 +45,6 @@ async def test_concurrent_requests_get_distinct_scoped_instances() -> None:
             await barrier.wait()
             return {"id": thing.id}
 
-        tools = (ping,)
-
     app = a2kit.App("scope-test").add_router(R()).provide(_ScopedThing, per_call=True)
     runtime = build(app)
 

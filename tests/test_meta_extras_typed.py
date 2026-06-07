@@ -50,8 +50,6 @@ def test_router_stamps_router_slug() -> None:
         async def ping(self) -> dict[str, int]:
             return {"x": 1}
 
-        tools = (ping,)
-
     router = SampleRouter()
     fn = router.bound_tools()[0]
     meta = _get_meta(fn)

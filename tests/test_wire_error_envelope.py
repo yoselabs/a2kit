@@ -56,14 +56,6 @@ def _build_app(*, debug: bool = False) -> a2kit.App:
             int("not a number")
             return {}
 
-        tools = (
-            raises_value_error,
-            raises_type_error_special_chars,
-            raises_tool_error,
-            raises_cancellation,
-            calls_bad_int_cast,
-        )
-
     from a2kit.config import A2kitConfig
 
     return a2kit.App("envelope", config=A2kitConfig(debug=debug)).add_router(R())

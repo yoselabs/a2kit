@@ -48,8 +48,6 @@ async def test_projection_mcp_only_does_not_appear_on_api() -> None:
         async def mcp_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-        tools = (mcp_only,)
-
     app = a2kit.App("test").add_router(R())
     runtime = build(app)
     server = build_mcp_server(runtime, code_mode=False)
@@ -68,8 +66,6 @@ async def test_projection_api_only_does_not_appear_on_mcp() -> None:
         @a2kit.write(expose=("api",))
         async def api_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
-
-        tools = (api_only,)
 
     app = a2kit.App("test").add_router(R())
     runtime = build(app)

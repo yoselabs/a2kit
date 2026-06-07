@@ -17,8 +17,6 @@ class _R(a2kit.Router):
     async def ping(self) -> dict[str, int]:
         return {"x": 1}
 
-    tools = (ping,)
-
 
 def _build_server() -> FastMCP:
     app = a2kit.App("demo-app").add_router(_R())

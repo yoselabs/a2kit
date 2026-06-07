@@ -24,8 +24,6 @@ class _Probe(a2kit.Router):
     async def get(self, *, connection: str = "default") -> dict:
         return {"connection": connection}
 
-    tools = (get,)
-
 
 class _PerCall:
     """Per-call-scoped dependency (module scope so annotations resolve)."""

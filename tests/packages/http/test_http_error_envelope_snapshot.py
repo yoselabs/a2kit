@@ -100,8 +100,6 @@ async def test_snapshot_not_found_404() -> None:
         async def fetch(self, *, id: str) -> Annotated[dict, Raises(_NotFound)]:
             raise _NotFound(f"memory id {id!r} does not exist", details={"id": id})
 
-        tools = (fetch,)
-
     resp = _client(R).post("/fetch", json={"id": "abc"})
     _assert_wire(
         resp,
@@ -126,8 +124,6 @@ async def test_snapshot_input_error_400() -> None:
         @a2kit.read()
         async def check(self, *, x: int) -> Annotated[dict, Raises(InputError)]:
             raise InputError("bad input shape")
-
-        tools = (check,)
 
     resp = _client(R).post("/check", json={"x": 1})
     _assert_wire(
@@ -154,8 +150,6 @@ async def test_snapshot_auth_error_401() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(AuthError)]:
             raise AuthError("missing credentials")
 
-        tools = (call,)
-
     resp = _client(R).post("/call", json={"x": 1})
     _assert_wire(
         resp,
@@ -180,8 +174,6 @@ async def test_snapshot_policy_error_403() -> None:
         @a2kit.read()
         async def call(self, *, x: int) -> Annotated[dict, Raises(PolicyError)]:
             raise PolicyError("not allowed")
-
-        tools = (call,)
 
     resp = _client(R).post("/call", json={"x": 1})
     _assert_wire(
@@ -208,8 +200,6 @@ async def test_snapshot_infra_error_503() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(InfrastructureError)]:
             raise InfrastructureError("downstream gone")
 
-        tools = (call,)
-
     resp = _client(R).post("/call", json={"x": 1})
     _assert_wire(
         resp,
@@ -235,8 +225,6 @@ async def test_snapshot_timeout_504_via_class_override() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(_Timeout)]:
             raise _Timeout("hit the deadline")
 
-        tools = (call,)
-
     resp = _client(R).post("/call", json={"x": 1})
     _assert_wire(
         resp,
@@ -261,8 +249,6 @@ async def test_snapshot_generic_bug_500() -> None:
         @a2kit.read()
         async def call(self, *, x: int) -> Annotated[dict, Raises(_Oops)]:
             raise _Oops("internal explosion")
-
-        tools = (call,)
 
     resp = _client(R).post("/call", json={"x": 1})
     _assert_wire(
@@ -294,8 +280,6 @@ async def test_snapshot_unexpected_defect_500_from_keyerror() -> None:
         @a2kit.read()
         async def call(self, *, x: int) -> dict:
             raise KeyError(f"missing-{x}")
-
-        tools = (call,)
 
     resp = _client(R).post("/call", json={"x": 1})
     body = resp.json()

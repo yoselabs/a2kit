@@ -34,8 +34,6 @@ def _app(tmp: Path, *, call_log: str = "on") -> a2kit.App:
             await a2kit.log.debug("html", html="<html>" + "x" * 10 + "</html>")
             return {"ok": url}
 
-        tools = (fetch, dig)
-
     return a2kit.App("calllog", config=cfg).add_router(R())
 
 

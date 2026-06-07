@@ -30,8 +30,6 @@ def _make_app() -> a2kit.App:
         async def ping(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-        tools = (ping,)
-
     return a2kit.App("demo").add_router(R())
 
 

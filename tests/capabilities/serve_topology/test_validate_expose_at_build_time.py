@@ -22,8 +22,6 @@ def test_expose_unknown_passes_decoration_silently() -> None:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-        tools = (t,)
-
     # Class body executed without raising; the bad name lives on the descriptor.
     app = a2kit.App("demo").add_router(R())
     [desc] = app.tools()
@@ -39,8 +37,6 @@ def test_expose_unknown_raises_at_build_with_composed_surfaces() -> None:
         @a2kit.read(expose=("typo-surface",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
-
-        tools = (t,)
 
     app = a2kit.App("demo").add_router(R())
     surfaces = a2kit.compose_default_surfaces()
@@ -59,8 +55,6 @@ def test_expose_unknown_error_lists_composed_surfaces() -> None:
         @a2kit.read(expose=("zzz",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
-
-        tools = (t,)
 
     app = a2kit.App("demo").add_router(R())
     surfaces = a2kit.compose_default_surfaces()
@@ -85,8 +79,6 @@ def test_expose_validation_runs_against_default_registry_when_no_surfaces_passed
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-        tools = (t,)
-
     app = a2kit.App("demo").add_router(R())
     with pytest.raises(TypeError, match="nonexistent"):
         build(app)
@@ -101,8 +93,6 @@ def test_expose_validation_skipped_with_empty_registry() -> None:
         @a2kit.read(expose=("anything",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
-
-        tools = (t,)
 
     app = a2kit.App("demo").add_router(R())
     runtime = build(app, surfaces=SurfaceRegistry())

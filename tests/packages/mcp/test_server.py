@@ -27,11 +27,6 @@ class _SampleRouter(a2kit.Router):
             {"id": 3, "name": "c", "extra": "drop"},
         ]
 
-    tools = (
-        ping,
-        rows,
-    )
-
 
 @pytest.fixture
 def app() -> a2kit.App:
@@ -113,8 +108,6 @@ def test_enricher_fires_before_registration() -> None:
         async def boom(self) -> dict[str, str]:
             raise RuntimeError("kaboom")
 
-        tools = (boom,)
-
     router = R()
 
     @router.enricher
@@ -152,11 +145,6 @@ def test_sync_and_async_tools_both_register() -> None:
         @a2kit.read()
         async def async_one(self) -> dict[str, int]:
             return {"x": 2}
-
-        tools = (
-            sync_one,
-            async_one,
-        )
 
     app = a2kit.App("a").add_router(R())
     server = build_mcp_server(app, code_mode=False)

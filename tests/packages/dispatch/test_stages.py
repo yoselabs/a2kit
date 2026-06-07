@@ -53,8 +53,6 @@ def test_timeout_stage_fires_when_configured() -> None:
             await anyio.sleep(2)
             return {}
 
-        tools = (crawl,)
-
     app = a2kit.App("timeout-app")
     app.add_router(_Slow())
     desc = app.tools()[0]
@@ -81,8 +79,6 @@ def test_enricher_stage_quarantines_uncaught_raises_without_enrichers() -> None:
         async def boom(self) -> dict:
             raise ValueError("orig")
 
-        tools = (boom,)
-
     app = a2kit.App("plain-q-app")
     app.add_router(_Plain())
     desc = app.tools()[0]
@@ -104,8 +100,6 @@ def test_enricher_stage_translates_exceptions_via_decorator() -> None:
         @a2kit.read()
         async def boom(self) -> dict:
             raise ValueError("orig")
-
-        tools = (boom,)
 
     router = _Enriched()
 
@@ -132,8 +126,6 @@ def test_router_lazy_enter_self_skips_without_aenter() -> None:
         async def ping(self) -> dict:
             return {"ok": True}
 
-        tools = (ping,)
-
     app = a2kit.App("plain2-app")
     app.add_router(_Plain())
     desc = app.tools()[0]
@@ -159,8 +151,6 @@ def test_router_lazy_enter_enters_router_on_dispatch() -> None:
         @a2kit.read()
         async def ping(self) -> dict:
             return {"ok": True}
-
-        tools = (ping,)
 
     app = a2kit.App("lifecycle-app")
     router = _Lifecycle()

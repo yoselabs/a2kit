@@ -41,8 +41,6 @@ async def test_not_found_subclass_maps_to_404_with_envelope() -> None:
         async def fetch(self, *, id: str) -> Annotated[dict, Raises(_NotFound)]:
             raise _NotFound(f"memory id {id!r} does not exist", details={"id": id})
 
-        tools = (fetch,)
-
     client = _make_client(R)
     resp = client.post("/fetch", json={"id": "abc"})
     assert resp.status_code == 404
@@ -64,8 +62,6 @@ async def test_infra_error_defaults_to_503() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(InfrastructureError)]:
             raise InfrastructureError("downstream gone")
 
-        tools = (call,)
-
     client = _make_client(R)
     resp = client.post("/call", json={"x": 1})
     assert resp.status_code == 503
@@ -82,8 +78,6 @@ async def test_bug_kind_maps_to_500() -> None:
         async def boom(self, *, x: int) -> Annotated[dict, Raises(_OopsBug)]:
             raise _OopsBug("internal explosion")
 
-        tools = (boom,)
-
     client = _make_client(R)
     resp = client.post("/boom", json={"x": 1})
     assert resp.status_code == 500
@@ -99,8 +93,6 @@ async def test_non_app_error_quarantined_to_500_envelope() -> None:
         @a2kit.read()
         async def boom(self, *, x: int) -> dict:
             raise KeyError(f"missing-{x}")
-
-        tools = (boom,)
 
     client = _make_client(R)
     resp = client.post("/boom", json={"x": 1})

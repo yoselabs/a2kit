@@ -24,7 +24,6 @@ class _ServiceB:
 
 def test_router_with_providers_installs_to_app() -> None:
     class _R(Router):
-        tools = ()
         slug = "rprov"
         name = "rprov"
         providers = (_ServiceA, _ServiceB)
@@ -36,7 +35,6 @@ def test_router_with_providers_installs_to_app() -> None:
 
 def test_router_providers_with_explicit_factory_tuple() -> None:
     class _R(Router):
-        tools = ()
         slug = "rfac"
         name = "rfac"
         providers = ((_ServiceA, _ServiceA),)
@@ -52,7 +50,6 @@ def test_router_lifespan_raises_during_startup_unwinds_stack() -> None:
 
     class _Good(Router):
         slug = "good"
-        tools = ()
 
         async def __aenter__(self):
             closed.append("good-enter")
@@ -63,7 +60,6 @@ def test_router_lifespan_raises_during_startup_unwinds_stack() -> None:
 
     class _Bad(Router):
         slug = "bad"
-        tools = ()
 
         async def __aenter__(self):
             raise RuntimeError("boom")
@@ -101,7 +97,6 @@ def test_router_lifespan_post_yield_raise_logged_and_continues() -> None:
 
     class _R(Router):
         slug = "shutdown_raise"
-        tools = ()
 
         async def __aenter__(self):
             return self
@@ -144,8 +139,6 @@ def test_router_lifespan_composes_into_app_lifecycle() -> None:
         async def ping(self) -> dict:
             return {"ok": True}
 
-        tools = (ping,)
-
     app = a2kit.App("t").add_router(_R())
 
     async def _go() -> None:
@@ -157,10 +150,11 @@ def test_router_lifespan_composes_into_app_lifecycle() -> None:
 
 
 def test_router_missing_slug_raises() -> None:
-    import pytest
 
     class _R(Router):
-        tools = ()
+        @a2kit.read()
+        def fetch(self) -> dict[str, int]:
+            return {"k": 1}
 
     with pytest.raises(TypeError, match=r"_R.*slug"):
         _R()
@@ -198,54 +192,21 @@ def test_leftover_tools_tuple_is_ignored() -> None:
         def fetch(self) -> dict[str, int]:
             return {"k": 1}
 
-        tools = ("garbage", 123)  # type: ignore[assignment]  # legacy, ignored
-
     names = {fn.__name__ for fn in _R().bound_tools()}
     assert names == {"fetch"}
 
 
 def test_router_empty_slug_raises() -> None:
-    import pytest
 
     class _R(Router):
         slug = ""
-        tools = ()
 
     with pytest.raises(TypeError, match="_R"):
         _R()
 
 
-def test_decorated_method_not_in_tuple_raises_at_app_construction() -> None:
-    """Post ``app-time-tools-tuple-validation``: ``App.add_router``
-    raises when a Router has decorated methods missing from its
-    ``tools`` tuple. Previously the methods were silently invisible
-    (a tier-1 footgun); the new contract fails loud at App
-    construction so the drift can't reach production.
-    """
-    from a2kit.exceptions import A2KitDecoratedMethodNotInTools
-
-    class _R(Router):
-        slug = "z"
-
-        @a2kit.read()
-        async def listed(self) -> dict[str, int]:
-            return {"k": 1}
-
-        @a2kit.read()
-        async def unlisted(self) -> dict[str, int]:
-            return {"k": 2}
-
-        tools = (listed,)
-
-    app = a2kit.App("t")
-    with pytest.raises(A2KitDecoratedMethodNotInTools) as ei:
-        app.add_router(_R())
-    assert "unlisted" in ei.value.missing
-    assert "listed" not in ei.value.missing
-
-
-def test_all_decorated_methods_listed_passes() -> None:
-    """Negative case: every decorated method in tuple → add_router clean."""
+def test_auto_collected_methods_register() -> None:
+    """Every @a2kit-decorated method auto-registers on add_router — no tuple."""
 
     class _R(Router):
         slug = "z2"
@@ -258,16 +219,13 @@ def test_all_decorated_methods_listed_passes() -> None:
         async def two(self) -> dict[str, int]:
             return {"k": 2}
 
-        tools = (one, two)
-
     app = a2kit.App("t").add_router(_R())
     tool_names = {d.name for d in app.tools()}
     assert tool_names == {"one", "two"}
 
 
-def test_inherited_decorated_method_does_not_trigger_validation() -> None:
-    """A subclass that doesn't re-list an inherited decorated method
-    is fine — validation inspects only ``cls.__dict__``."""
+def test_subclass_collects_inherited_and_own_verbs() -> None:
+    """Auto-collect walks the MRO: a subclass exposes inherited + own verbs."""
 
     class _Base(Router):
         slug = "base"
@@ -276,8 +234,6 @@ def test_inherited_decorated_method_does_not_trigger_validation() -> None:
         async def base_tool(self) -> dict[str, int]:
             return {"k": 0}
 
-        tools = (base_tool,)
-
     class _Sub(_Base):
         slug = "sub"
 
@@ -285,11 +241,10 @@ def test_inherited_decorated_method_does_not_trigger_validation() -> None:
         async def sub_tool(self) -> dict[str, int]:
             return {"k": 1}
 
-        tools = (sub_tool,)
-
     app = a2kit.App("t").add_router(_Sub())
     tool_names = {d.name for d in app.tools()}
     assert "sub_tool" in tool_names
+    assert "base_tool" in tool_names
 
 
 def test_plain_router_unchanged() -> None:
@@ -302,8 +257,6 @@ def test_plain_router_unchanged() -> None:
         @a2kit.read()
         async def ping(self) -> dict[str, int]:
             return {"k": 1}
-
-        tools = (ping,)
 
     app = a2kit.App("t").add_router(_R())
     assert any(r.slug == "rplain" for r in app.routers())

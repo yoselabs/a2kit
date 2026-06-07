@@ -42,8 +42,6 @@ class FormatRouterRouter(a2kit.Router):
         """A paginated result."""
         return Page[Task](items=[Task(id=1, title="a")], next_cursor="next")
 
-    tools = (rows, one, paged)
-
 
 @pytest.fixture
 def app() -> a2kit.App:

@@ -30,8 +30,6 @@ def _app(tmp: Path) -> a2kit.App:
             await a2kit.log.debug("secret-blob", body="s3cr3t")
             return {"ok": url}
 
-        tools = (work,)
-
     return a2kit.App("topology", config=cfg).add_router(R())
 
 

@@ -63,7 +63,6 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
     from a2kit.packages.formatter import DEFAULT_MAX_CHARS
 
     class Big(a2kit.Router):
-        tools = ()
         slug = "big"
         name = "big"
 

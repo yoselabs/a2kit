@@ -161,8 +161,6 @@ def _build_three_tool_app() -> a2kit.App:
         async def llm_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-        tools = (fetch_user, upsert_user, llm_only)
-
     return a2kit.App("demo").add_router(R())
 
 

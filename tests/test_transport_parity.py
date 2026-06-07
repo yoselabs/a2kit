@@ -82,15 +82,6 @@ def _build_parity_app() -> a2kit.App:
         async def tool_raises_value_error(self) -> dict[str, Any]:
             raise ValueError("boom")
 
-        tools = (
-            tool_none,
-            tool_state,
-            tool_ctx,
-            tool_both,
-            tool_ctx_emits_event,
-            tool_raises_value_error,
-        )
-
     return a2kit.App("parity").add_router(R()).provide(_State, lambda: _State())
 
 
@@ -248,5 +239,3 @@ def test_case9_optional_ctx_rejected_at_decoration() -> None:
             @a2kit.read()
             async def bad_ctx(self, *, ctx: a2kit.ToolContext | None = None) -> dict[str, int]:
                 return {"ok": 1}
-
-            tools = (bad_ctx,)

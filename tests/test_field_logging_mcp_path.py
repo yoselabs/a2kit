@@ -50,11 +50,6 @@ def _build_app() -> a2kit.App:
             await log.info(ImportStarted(file="/x.csv", batch=2))
             return {"ok": 1}
 
-        tools = (
-            emit_string,
-            emit_instance,
-        )
-
     return a2kit.App("field-logging-probe").add_router(R())
 
 

@@ -70,8 +70,6 @@ def test_enricher_wraps_exceptions(capsys: pytest.CaptureFixture[str]) -> None:
         def boom(self, *, x: int) -> dict:
             raise BoomError("ugly")
 
-        tools = (boom,)
-
     router = R()
 
     @router.enricher

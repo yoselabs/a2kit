@@ -166,10 +166,3 @@ class TasksRouter(a2kit.Router):
         fast operations.
         """
         return {"status": "ok"}
-
-    tools = (
-        import_csv,
-        long_running,
-        import_csv_with_reports,
-        quick_status,
-    )

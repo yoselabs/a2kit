@@ -88,12 +88,6 @@ class _Router(a2kit.Router):
         await info(_Report(batch=1, accepted=7))
         return {"reports": 2}
 
-    tools = (
-        list_items,
-        emit_telemetry,
-        emit_reports,
-    )
-
 
 def _build_app() -> a2kit.App:
     return a2kit.App("client-test").add_router(_Router())

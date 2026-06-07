@@ -28,8 +28,6 @@ async def test_tool_without_raises_emits_bare_schema() -> None:
         async def plain(self) -> dict:
             return {"ok": True}
 
-        tools = (plain,)
-
     server = build_mcp_server(build(a2kit.App("t").add_router(R())), code_mode=False)
     async with Client(server) as client:
         tools = await client.list_tools()
@@ -47,8 +45,6 @@ async def test_tool_with_raises_emits_oneof_union() -> None:
         @a2kit.read()
         async def typed(self, *, id: str) -> Annotated[dict, Raises(_NF)]:
             return {"id": id}
-
-        tools = (typed,)
 
     server = build_mcp_server(build(a2kit.App("t").add_router(R())), code_mode=False)
     async with Client(server) as client:

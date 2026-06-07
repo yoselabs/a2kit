@@ -26,12 +26,6 @@ class TasksRouter(a2kit.Router):
         """Create a task."""
         return {"title": title, "done": done}
 
-    tools = (
-        get_task,
-        list_tasks,
-        create_task,
-    )
-
 
 @pytest.fixture
 def tasks_router() -> TasksRouter:

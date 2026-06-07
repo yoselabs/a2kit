@@ -63,5 +63,3 @@ class NotesRouter(a2kit.Router):
         if not path.exists():
             return {"email": user.email, "key": key, "value": None}
         return {"email": user.email, "key": key, "value": path.read_text(encoding="utf-8")}
-
-    tools = (whoami, note_write, note_read)

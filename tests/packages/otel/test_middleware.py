@@ -73,11 +73,6 @@ def _build_server() -> Any:
         async def boom(self) -> dict[str, int]:
             raise RuntimeError("kaboom")
 
-        tools = (
-            ping,
-            boom,
-        )
-
     app = a2kit.App("demo-app").add_router(_R())
     return build_mcp_server(app)
 

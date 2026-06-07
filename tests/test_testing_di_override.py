@@ -44,8 +44,6 @@ class _SingletonRouter(a2kit.Router):
     async def whoami(self, llm: _LLM) -> dict[str, str]:
         return {"model": llm.name()}
 
-    tools = (whoami,)
-
 
 def test_reregistered_fake_wins_last_write() -> None:
     """A fake provided last on the App beats the real registration."""

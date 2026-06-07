@@ -39,8 +39,6 @@ def _build_app(db: _Database) -> a2kit.App:
         async def whoami(self, *, db: _Database) -> dict[str, str]:
             return {"tag": db.tag}
 
-        tools = (whoami,)
-
     return a2kit.App("test").add_router(R()).provide(_Database, lambda: db)
 
 

@@ -37,8 +37,6 @@ def _build_di_app() -> a2kit.App:
         async def echo(self, *, msg: str, store: _Store) -> dict[str, Any]:
             return {"msg": msg, "tag": store.tag}
 
-        tools = (echo,)
-
     return a2kit.App("multiplex-demo").add_router(R()).provide(_Store, lambda: _Store())
 
 

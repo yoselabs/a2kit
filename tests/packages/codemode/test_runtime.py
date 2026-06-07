@@ -101,8 +101,6 @@ class _SandboxRouter(a2kit.Router):
             next_cursor=None,
         )
 
-    tools = (get_task, list_tasks)
-
 
 @pytest.fixture
 def sandbox_app() -> a2kit.App:

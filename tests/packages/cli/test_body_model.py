@@ -27,8 +27,6 @@ class _BodyRouter(a2kit.Router):
     async def create_item(self, *, body: _Item) -> dict:
         return {"name": body.name, "qty": body.qty}
 
-    tools = (create_item,)
-
 
 def _app():
     return a2kit.App("bodyapp").add_router(_BodyRouter())
@@ -89,8 +87,6 @@ def test_pretty_exceptions_disabled_plain_text_traceback() -> None:
         @a2kit.read()
         async def explode(self) -> dict:
             raise RuntimeError("kaboom")
-
-        tools = (explode,)
 
     app = a2kit.App("boomapp").add_router(_BoomRouter())
     result = CliRunner().invoke(build_full_cli(app), ["boom", "explode"])

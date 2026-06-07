@@ -92,30 +92,6 @@ class A2KitContextBindingBroken(A2KitError, RuntimeError):
         )
 
 
-class A2KitDecoratedMethodNotInTools(A2KitError, TypeError):
-    """Raised at ``App.add_router`` time when a Router subclass has
-    ``@a2kit.read/write/list_/tool``-decorated methods that are not
-    listed in its ``tools`` tuple.
-
-    Without this check, the methods register no tools — they're
-    invisible on every transport. The footgun is tier-1: adding a
-    tool, forgetting to update the tuple, deploying, debugging why
-    "the tool isn't there."
-    """
-
-    def __init__(self, router_cls_name: str, missing: list[str]) -> None:
-        self.router_cls_name = router_cls_name
-        self.missing = list(missing)
-        missing_quoted = ", ".join(repr(m) for m in missing)
-        super().__init__(
-            f"Router {router_cls_name!r} has decorated methods that "
-            f"are not in its `tools` tuple: {missing_quoted}. "
-            "Either add them to `tools = (...)`, or remove the "
-            "`@a2kit.read/write/list_/tool` decorator from methods "
-            "you don't want registered."
-        )
-
-
 class A2KitSingletonTeardownError(A2KitError, RuntimeError):
     """Aggregates teardown failures from ``App._run_teardowns``.
 

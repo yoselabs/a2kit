@@ -12,7 +12,6 @@ import pytest
 
 from a2kit.exceptions import (
     A2KitContextBindingBroken,
-    A2KitDecoratedMethodNotInTools,
     A2KitError,
     A2KitInvalidContextAnnotation,
 )
@@ -45,19 +44,6 @@ def test_invalid_context_annotation_carries_attrs_and_renders() -> None:
     assert "R.bad" in msg
     assert "'ctx'" in msg
     assert "drop '| None'." in msg
-
-
-def test_decorated_method_not_in_tools_carries_attrs() -> None:
-    exc = A2KitDecoratedMethodNotInTools("MyRouter", ["foo", "bar"])
-    assert exc.router_cls_name == "MyRouter"
-    assert exc.missing == ["foo", "bar"]
-    assert isinstance(exc, A2KitError)
-    assert isinstance(exc, TypeError)
-    msg = str(exc)
-    assert "MyRouter" in msg
-    assert "'foo'" in msg
-    assert "'bar'" in msg
-    assert "`tools = (...)`" in msg
 
 
 def test_raise_and_catch_via_base() -> None:

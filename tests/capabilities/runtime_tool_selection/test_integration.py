@@ -51,8 +51,6 @@ def _three_tool_app(unique_name: str = "selection-test") -> a2kit.App:
         async def fetch_raw(self, *, url: str) -> dict[str, str]:
             return {"url": url}
 
-        tools = (ask, refresh, fetch_raw)
-
     return a2kit.App(unique_name).add_router(WebRouter())
 
 
@@ -114,8 +112,6 @@ def test_selector_cannot_re_enable_hidden_tool() -> None:
         @a2kit.read()
         async def visible_tool(self, *, x: str) -> dict[str, str]:
             return {"x": x}
-
-        tools = (hidden_tool, visible_tool)
 
     app = a2kit.App("hidden-test").add_router(HidR())
     with _env(None), pytest.raises(ToolSelectionError) as excinfo:

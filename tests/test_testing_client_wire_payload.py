@@ -26,8 +26,6 @@ class _DictRouter(a2kit.Router):
     async def whoami(self) -> dict[str, str]:
         return {"name": "alice"}
 
-    tools = (whoami,)
-
 
 def test_call_wire_json_dict() -> None:
     app = a2kit.App("t").add_router(_DictRouter())
@@ -55,8 +53,6 @@ class _ListRouter(a2kit.Router):
     @a2kit.read()
     async def rows(self) -> list[_Row]:
         return [_Row(id=1, label="a"), _Row(id=2, label="b")]
-
-    tools = (rows,)
 
 
 def test_call_wire_tsv_for_list_of_models() -> None:
@@ -103,8 +99,6 @@ class _ScalarRouter(a2kit.Router):
     @a2kit.read()
     async def model(self) -> _Model:
         return _Model(x=42)
-
-    tools = (model,)
 
 
 def test_call_wire_picks_json_for_single_model() -> None:

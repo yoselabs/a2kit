@@ -118,7 +118,6 @@ _CONTAINER_PROBE = Container()
 
 class _RouterProbe(Router):
     slug = "_spec_drift_probe"
-    tools = ()
 
 
 _CANONICAL_PROBES: dict[str, object] = {

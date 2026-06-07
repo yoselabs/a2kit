@@ -39,8 +39,6 @@ class _Pinger(a2kit.Router):
     async def ping(self) -> dict[str, Any]:
         return {"pong": True}
 
-    tools = (ping,)
-
 
 def _app_with_health() -> a2kit.App:
     app = a2kit.App("t")
@@ -103,8 +101,6 @@ def test_user_meta_tool_rejected_at_build() -> None:
         @a2kit.read()
         async def normal(self) -> dict[str, Any]:
             return {"ok": True}
-
-        tools = (normal,)
 
     router = _Sneaky()
     app = a2kit.App("sneaky").add_router(router)

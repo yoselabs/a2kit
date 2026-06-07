@@ -31,8 +31,6 @@ async def test_router_does_not_enter_on_app_aenter() -> None:
         async def fetch(self) -> dict:  # type: ignore[override]
             return {"ok": True}
 
-        tools = (fetch,)
-
     app = a2kit.App("x").add_router(_GH())
     async with build(app) as app:
         assert entered == []  # router did NOT enter just because app entered
@@ -54,8 +52,6 @@ async def test_first_dispatch_enters_router_once() -> None:
         @a2kit.read()
         async def fetch(self) -> dict:  # type: ignore[override]
             return {"ok": True}
-
-        tools = (fetch,)
 
     app = a2kit.App("x").add_router(_GH())
     async with _testing_client(app) as client:
@@ -84,8 +80,6 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
         async def gh_fetch(self) -> dict:  # type: ignore[override]
             return {}
 
-        tools = (gh_fetch,)
-
     class _SL(a2kit.Router):
         slug = "sl"
 
@@ -99,8 +93,6 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
         @a2kit.read()
         async def sl_fetch(self) -> dict:  # type: ignore[override]
             return {}
-
-        tools = (sl_fetch,)
 
     app = a2kit.App("x").add_router(_GH()).add_router(_SL())
     async with _testing_client(app) as client:
@@ -123,8 +115,6 @@ async def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
         @a2kit.read()
         async def x(self) -> dict:
             return {}  # type: ignore[override]
-
-        tools = (x,)
 
     app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:

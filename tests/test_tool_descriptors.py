@@ -27,8 +27,6 @@ class TestDescriptorBasics:
             async def list_tasks(self, *, q: str = "") -> list[FlatTask]:  # noqa: ARG002
                 return []
 
-            tools = (list_tasks,)
-
         app = a2kit.App("t").add_router(TasksRouter())
         descriptors = app.tools()
         assert len(descriptors) == 1
@@ -48,8 +46,6 @@ class TestDescriptorBasics:
             async def list_x(self) -> list[TaskWithList]:
                 return []
 
-            tools = (list_x,)
-
         app = a2kit.App("t").add_router(TR())
         d = app.tools()[0]
         assert d.format_hint == "json"
@@ -63,8 +59,6 @@ class TestDescriptorBasics:
             async def page_x(self) -> Page[FlatTask]:
                 return Page[FlatTask]()
 
-            tools = (page_x,)
-
         app = a2kit.App("t").add_router(TR())
         d = app.tools()[0]
         assert d.format_hint == "page-tsv"
@@ -77,8 +71,6 @@ class TestDescriptorBasics:
             @a2kit.read()
             async def get(self, *, id: str) -> FlatTask:  # noqa: A002, ARG002
                 return FlatTask(id=id, title="x")
-
-            tools = (get,)
 
         app = a2kit.App("t").add_router(TR())
         d = app.tools()[0]
@@ -94,8 +86,6 @@ class TestDescriptorAccessors:
             @a2kit.read()
             async def get(self, *, id: str) -> FlatTask:  # noqa: A002, ARG002
                 return FlatTask(id=id, title="x")
-
-            tools = (get,)
 
         app = a2kit.App("t").add_router(TR())
         tools = app.tools()
@@ -116,11 +106,6 @@ class TestDescriptorAccessors:
             async def b(self) -> FlatTask:
                 return FlatTask(id="b", title="y")
 
-            tools = (
-                a,
-                b,
-            )
-
         app = a2kit.App("t").add_router(TR())
         assert len(app.tools()) == len(app.tools()) == 2
 
@@ -133,8 +118,6 @@ class TestDescriptorAccessors:
             @a2kit.read()
             async def a(self) -> FlatTask:
                 return FlatTask(id="a", title="x")
-
-            tools = (a,)
 
         app = a2kit.App("t").add_router(TR())
         first = app.tools()

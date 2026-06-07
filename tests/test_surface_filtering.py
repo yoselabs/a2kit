@@ -27,8 +27,6 @@ class _SurfRouter(Router):
     async def both(self) -> dict[str, int]:
         return {"k": 1}
 
-    tools = (cli_only, hidden_op, both)
-
 
 def _app() -> a2kit.App:
     return a2kit.App("surftest").add_router(_SurfRouter())

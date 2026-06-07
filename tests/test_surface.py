@@ -72,8 +72,6 @@ def test_router_class_attr_provides_default() -> None:
         async def ping(self) -> dict[str, int]:
             return {"k": 1}
 
-        tools = (ping,)
-
     router = _R()
     fn = router.bound_tools()[0]
     meta = _get_meta(fn)
@@ -92,8 +90,6 @@ def test_per_tool_kwarg_overrides_router_default() -> None:
         async def public_status(self) -> dict[str, int]:
             return {"k": 1}
 
-        tools = (public_status,)
-
     router = _R()
     fn = router.bound_tools()[0]
     meta = _get_meta(fn)
@@ -110,8 +106,6 @@ def test_router_default_visibility_all() -> None:
         @a2kit.read()
         async def ping(self) -> dict[str, int]:
             return {"k": 1}
-
-        tools = (ping,)
 
     router = _R()
     fn = router.bound_tools()[0]

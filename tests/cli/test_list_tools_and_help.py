@@ -31,8 +31,6 @@ def _build_demo() -> a2kit.App:
             """Liveness check."""
             return {"ok": True}
 
-        tools = (fetch, ping)
-
     return a2kit.App("demo").add_router(R())
 
 
