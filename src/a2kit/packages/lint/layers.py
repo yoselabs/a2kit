@@ -64,6 +64,7 @@ _KERNEL_MODULES = frozenset(
         "_field_introspect",
         "_log_wire",
         "_lazy_module",
+        "_surfaces",
         "config",
     }
 )

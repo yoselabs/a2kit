@@ -47,17 +47,20 @@ if TYPE_CHECKING:
 def _http_mountable(desc: _Any) -> bool:
     """Whether a tool descriptor may be mounted on the HTTP surface.
 
-    HTTP is a network surface: a tool mounts only when it is exposed on
-    ``"api"`` AND its resolved visibility is ``"all"``. CLI-only
-    (``visibility="cli"``) and hidden (``visibility="hidden"``) verbs are
-    structurally absent from HTTP — no route, no DI override — mirroring
-    MCP (``mcp/server.py``), so the two network surfaces apply one rule.
+    HTTP is a network surface: a tool mounts only when it is advertised
+    (LISTED) on the ``"api"`` surface per the projection matrix (ADR 0028
+    Wave 2). ABSENT and UNLISTED verbs are not exposed on ``/api`` — no
+    route, no DI override — mirroring the MCP surface, so the two network
+    surfaces apply one rule. (An UNLISTED-on-api verb is callable in
+    principle but the FastAPI projection does not yet implement a
+    hidden-route mode, so it is treated as not mounted here.)
     """
-    if "api" not in desc.expose:
-        return False
-    meta = desc._meta  # noqa: SLF001 -- mirrors mcp/server.py visibility read
-    visibility = (meta.extras.visibility if meta is not None else None) or "all"
-    return visibility == "all"
+    from a2kit._surfaces import advertised_on, matrix_for
+
+    meta = desc._meta  # noqa: SLF001 -- mirrors mcp/server.py matrix read
+    if meta is None:
+        return "api" in desc.expose
+    return advertised_on(matrix_for(meta.extras), "api")
 
 
 def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -> FastAPI:

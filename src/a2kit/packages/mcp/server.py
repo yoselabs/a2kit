@@ -76,15 +76,17 @@ def _build_one_tool(
     tool whose visibility is not ``"all"`` (CLI-only tiers do not reach
     the MCP surface).
     """
+    from a2kit._surfaces import matrix_for, mounted_on
     from a2kit._verb_validators import _BUILTIN_RESERVED_TOOL_NAMES, _RESERVED_TOOL_NAME_PREFIX
 
     fn = desc.fn
     meta = desc._meta
     if meta is None:
         return None
-    # `"hidden"` and `"cli"` are CLI-only tiers; only `"all"` registers
-    # on programmatic surfaces (MCP / future REST / future GraphQL).
-    if (meta.extras.visibility or "all") != "all":
+    # Register on MCP only if the verb is mounted on the mcp surface
+    # (LISTED or UNLISTED). ABSENT (e.g. a CLI-only or HTTP-only verb)
+    # is skipped — mirrors the surfaces matrix (ADR 0028).
+    if not mounted_on(matrix_for(meta.extras), "mcp"):
         return None
 
     router = _router_for_tool(app, fn)
@@ -298,12 +300,13 @@ def build_mcp_server(
     # A None selector means "no selector active — expose all visible tools."
     # The selector is a SUBSET filter: hidden tools are dropped from the
     # available set before validation, so the selector cannot re-enable them.
+    from a2kit._surfaces import advertised_on, matrix_for
     from a2kit.packages.runtime_tools import resolve_selector, validate_selector
 
     _selector = resolve_selector(cli_arg=tool_selection)
     if _selector is not None:
         _available_mcp = frozenset(
-            d.name for d in runtime.tools() if "mcp" in d.expose and (d._meta is None or (d._meta.extras.visibility or "all") != "hidden")
+            d.name for d in runtime.tools() if d._meta is not None and advertised_on(matrix_for(d._meta.extras), "mcp")
         )
         validate_selector(_selector, available=_available_mcp)
 

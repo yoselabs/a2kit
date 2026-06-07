@@ -52,6 +52,13 @@ class A2KitMetaExtras(BaseModel):
     # ``add-auth``). Stored on extras (not the top-level frozen
     # dataclass) to avoid breaking the pinned shape of ``A2KitMeta``.
     expose: tuple[str, ...] = ("mcp", "api")
+    # Surface projection matrix (ADR 0028 Wave 2). When the author wrote
+    # ``surfaces=``, this holds the fully-resolved per-surface state
+    # ({mcp,api,cli} → absent|listed|unlisted) and is authoritative.
+    # ``None`` means "author used legacy expose=/visibility=" — the matrix
+    # is then derived lazily via ``a2kit._surfaces.matrix_for``. ``expose``
+    # is kept as the mounted-surfaces compat tuple for membership reads.
+    surfaces: dict[str, str] | None = None
     authorize: Any = None
 
 

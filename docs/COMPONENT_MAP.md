@@ -23,13 +23,13 @@ the lint's own view of the graph.
 | `lint` | 0 | 26 | 0 | 0 | — |
 | `log` | 0 | 8 | 4 | 1 | `context` |
 | `select` | 0 | 2 | 2 | 0 | — |
-| `kernel` | 1 | 9 | 5 | 1 | `log` |
+| `kernel` | 1 | 10 | 6 | 1 | `log` |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
 | `runtime` | 3 | 4 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `log`, `select` |
 | `connections` | 4 | 10 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 9 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `log`, `runtime` |
 | `auth` | 5 | 8 | 1 | 1 | `context` |
-| `cli` | 5 | 7 | 0 | 7 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime` |
+| `cli` | 5 | 7 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `http` | 5 | 5 | 0 | 7 | `auth`, `context`, `di`, `dispatch`, `health`, `kernel`, `runtime` |
 | `mcp` | 5 | 9 | 2 | 8 | `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select` |
@@ -68,7 +68,7 @@ the lint's own view of the graph.
 ### Layer 5
 
 - `auth` → `context`
-- `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `mcp`, `runtime`
+- `cli` → `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime`
 - `codemode` → `formatter`
 - `http` → `auth`, `context`, `di`, `dispatch`, `health`, `kernel`, `runtime`
 - `mcp` → `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select`

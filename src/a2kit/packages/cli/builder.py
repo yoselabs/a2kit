@@ -337,10 +337,14 @@ def _register_router(
         meta = desc._meta  # noqa: SLF001 -- ToolDescriptor projection seam (privatize-tool-metadata)
         hidden = False
         if meta is not None:
-            visibility = meta.extras.visibility or "all"
-            # All three tiers ("hidden", "cli", "all") mount on CLI.
-            # Only "hidden" omits from --help listing.
-            hidden = visibility == "hidden"
+            from a2kit._surfaces import advertised_on, matrix_for, mounted_on
+
+            matrix = matrix_for(meta.extras)
+            # ABSENT on cli → not a CLI command at all (e.g. surfaces=("mcp",)).
+            if not mounted_on(matrix, "cli"):
+                continue
+            # UNLISTED on cli (old "hidden") → mounted but omitted from --help.
+            hidden = not advertised_on(matrix, "cli")
         cb, short_help = _build_tool_callback(desc, app, router=router)
         tool_name = desc.name
         short = short_help or None
@@ -571,10 +575,12 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
 
     _selector = resolve_selector()
     if _selector is not None:
+        from a2kit._surfaces import advertised_on, matrix_for
+
         _available_cli = frozenset(
             d.name
             for d in app.tools()
-            if d._meta is None or (d._meta.extras.visibility or "all") != "hidden"  # noqa: SLF001 -- ToolDescriptor projection seam
+            if d._meta is not None and advertised_on(matrix_for(d._meta.extras), "cli")  # noqa: SLF001 -- ToolDescriptor projection seam
         )
         validate_selector(_selector, available=_available_cli)
 

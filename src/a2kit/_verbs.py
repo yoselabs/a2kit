@@ -19,6 +19,8 @@ from a2kit._list_helpers import (
 from a2kit._list_helpers import (
     derive_selectable_fields as _derive_selectable_fields,
 )
+from a2kit._surfaces import UNSET as _SURFACES_UNSET
+from a2kit._surfaces import mounted_surfaces, resolve_surfaces
 from a2kit._verb_validators import (
     _BUILTIN_RESERVED_TOOL_NAMES,
     _RESERVED_TOOL_NAME_PREFIX,
@@ -137,17 +139,26 @@ def _stamp(
     list_view: Any | None = None,
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
+    surfaces: object = _SURFACES_UNSET,
     authorize: Any = None,
 ) -> F:
     _check_return(fn)
     resolved_name = name or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
-    normalized_expose = _validate_expose(verb, expose)
-    extras_kwargs: dict[str, Any] = {
-        "visibility": visibility,
-        "expose": normalized_expose,
-        "authorize": authorize,
-    }
+    extras_kwargs: dict[str, Any] = {"authorize": authorize}
+    if surfaces is not _SURFACES_UNSET:
+        # New surfaces= axis (ADR 0028 Wave 2). Mutually exclusive with the
+        # legacy expose=/visibility= pair.
+        if expose is not _DEFAULT_EXPOSE or visibility is not None:
+            msg = f"@a2kit.{verb}(): surfaces= cannot be combined with the legacy expose=/visibility= kwargs. Use surfaces= alone."
+            raise TypeError(msg)
+        matrix = resolve_surfaces(surfaces)
+        extras_kwargs["surfaces"] = matrix
+        extras_kwargs["expose"] = mounted_surfaces(matrix)
+    else:
+        normalized_expose = _validate_expose(verb, expose)
+        extras_kwargs["visibility"] = visibility
+        extras_kwargs["expose"] = normalized_expose
     if reports is not None:
         extras_kwargs["report_type"] = reports
         schema = _compute_report_schema(reports)
@@ -307,6 +318,7 @@ def read(
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
+    surfaces: object = _SURFACES_UNSET,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """Read-shaped tool decorator. Sets ``readOnlyHint=True``.
@@ -341,6 +353,7 @@ def read(
             reports=reports,
             timeout=timeout,
             expose=expose,
+            surfaces=surfaces,
             authorize=authorize,
         )
 
@@ -358,6 +371,7 @@ def write(
     annotations: ToolAnnotations | None = None,
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
+    surfaces: object = _SURFACES_UNSET,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """Write-shaped tool decorator. Sets ``readOnlyHint=False, destructiveHint=True`` by default.
@@ -392,6 +406,7 @@ def write(
             reports=reports,
             timeout=timeout,
             expose=expose,
+            surfaces=surfaces,
             authorize=authorize,
         )
 
@@ -411,6 +426,7 @@ def list_(
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
+    surfaces: object = _SURFACES_UNSET,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Read-shaped; requires ``list[T]`` return.
@@ -465,6 +481,7 @@ def list_(
             list_view=settings,
             timeout=timeout,
             expose=expose,
+            surfaces=surfaces,
             authorize=authorize,
         )
 

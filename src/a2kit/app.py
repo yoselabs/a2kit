@@ -545,6 +545,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
 
     from a2effect import AppError, Raises
 
+    from a2kit._surfaces import matrix_for, mounted_surfaces
     from a2kit.metadata import _get_meta
     from a2kit.packages.di import lazy_inner_type
     from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
@@ -580,7 +581,13 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
         # ToolDescriptor (mcp_surface holds them separately).
         meta_verb = meta.verb if meta is not None else "read"
         verb: Literal["read", "list", "write"] = meta_verb if meta_verb in ("read", "list", "write") else "read"  # type: ignore[assignment]
-        expose: tuple[str, ...] = tuple(meta.extras.expose) if meta is not None else ("mcp", "api")
+        # Compat ``expose`` tuple = mounted NETWORK surfaces only (mcp/api).
+        # CLI is a LOCAL surface tracked in the matrix, not in expose, so
+        # membership reads (`"mcp" in expose`) and the network surface-name
+        # validation keep their historical meaning.
+        expose: tuple[str, ...] = (
+            tuple(s for s in mounted_surfaces(matrix_for(meta.extras)) if s != "cli") if meta is not None else ("mcp", "api")
+        )
         authorize = meta.extras.authorize if meta is not None else None
         ctx_param_name = meta.context_param_name if meta is not None else None
         timeout = meta.extras.timeout_seconds if meta is not None else None
