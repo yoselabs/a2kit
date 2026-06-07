@@ -166,18 +166,17 @@ def test_router_missing_slug_raises() -> None:
         _R()
 
 
-def test_router_missing_tools_raises() -> None:
-    import pytest
+def test_router_with_no_verbs_collects_empty() -> None:
+    """A router declaring no verbs is valid — auto-collect yields no tools."""
 
     class _R(Router):
         slug = "x"
 
-    with pytest.raises(TypeError, match=r"_R.*tools"):
-        _R()
+    assert _R().bound_tools() == []
 
 
-def test_router_tool_in_tuple_without_meta_raises() -> None:
-    import pytest
+def test_non_decorated_method_is_not_collected() -> None:
+    """Plain methods carry no @a2kit marker and are skipped (no dir() walk)."""
 
     class _R(Router):
         slug = "y"
@@ -185,32 +184,24 @@ def test_router_tool_in_tuple_without_meta_raises() -> None:
         async def not_decorated(self) -> dict[str, int]:
             return {"k": 1}
 
-        tools = (not_decorated,)
-
-    with pytest.raises(TypeError, match="not_decorated"):
-        _R()
+    assert _R().bound_tools() == []
 
 
-def test_router_non_callable_in_tools_raises() -> None:
-    import pytest
+def test_leftover_tools_tuple_is_ignored() -> None:
+    """A legacy ``tools=`` tuple is ignored; auto-collect is authoritative."""
+    import a2kit
 
     class _R(Router):
-        slug = "nc"
-        tools = ("not_a_callable",)  # type: ignore[assignment]
+        slug = "leg"
 
-    with pytest.raises(TypeError, match="callable"):
-        _R()
+        @a2kit.read()
+        def fetch(self) -> dict[str, int]:
+            return {"k": 1}
 
+        tools = ("garbage", 123)  # type: ignore[assignment]  # legacy, ignored
 
-def test_router_tools_not_tuple_raises() -> None:
-    import pytest
-
-    class _R(Router):
-        slug = "nt"
-        tools = []  # type: ignore[assignment]
-
-    with pytest.raises(TypeError, match="tools"):
-        _R()
+    names = {fn.__name__ for fn in _R().bound_tools()}
+    assert names == {"fetch"}
 
 
 def test_router_empty_slug_raises() -> None:

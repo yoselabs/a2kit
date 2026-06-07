@@ -46,20 +46,44 @@ def _resolve_enricher_filter(fn: Callable[..., Any]) -> type[BaseException]:
     return annotation
 
 
+def _collect_marked_tool_names(cls: type) -> tuple[str, ...]:
+    """Collect the names of every ``@a2kit`` verb-decorated method on ``cls``.
+
+    Walks the MRO base-first so inherited verbs precede subclass-added
+    ones, deduping by name (a subclass override keeps the base position
+    but the override is what ``getattr`` later resolves). Only methods
+    carrying the ``_a2kit`` metadata marker are collected — plain helper
+    methods are invisible. This is marker-collection, deliberately NOT a
+    ``dir()`` / attribute walk (ADR 0028 decision 7; ADR 0002 still
+    rejects the dir() walk).
+    """
+    names: dict[str, None] = {}
+    for klass in reversed(cls.__mro__):
+        if klass in (object, Router):
+            continue
+        for name, value in vars(klass).items():
+            if _get_meta(value) is not None:
+                names[name] = None
+    return tuple(names)
+
+
 class Router:
     """Group of tools sharing dependencies and a slug.
 
-    Every subclass MUST declare two class attributes:
+    Every subclass MUST declare:
 
     - ``slug: str`` — non-empty string literal identifying the router.
       Visible to type checkers and to ``grep``. Set as a class-level
       assignment in the subclass body (``slug = "x"``). The framework
       does NOT derive the slug from ``type(self).__name__``.
-    - ``tools: ClassVar[tuple[Callable[..., Any], ...]]`` — every method
-      decorated with ``@a2kit.read/write/list_/tool`` that this router
-      exposes. The tuple is placed AFTER the method definitions in the
-      class body so the names are bound when the tuple is evaluated.
-      The framework does NOT walk ``dir(self)``.
+
+    Tools are **auto-collected** (ADR 0028 decision 7): every method
+    decorated with ``@a2kit.read/write/list_/tool`` is collected by
+    ``__init_subclass__`` via its ``_a2kit`` marker. The legacy
+    ``tools = (...)`` tuple is gone; if one is still present it is
+    ignored (auto-collect is authoritative) during the migration window.
+    Helper methods carry no marker and are never collected; this is
+    marker-collection, NOT a ``dir()`` walk.
 
     Optional class-level extension points (read by ``App.add_router``):
 
@@ -73,20 +97,19 @@ class Router:
       tool belonging to this Router; ``__aexit__`` runs at App
       ``__aexit__`` time in LIFO of enter order.
 
-    The discovery surface is closed to these four attributes; no
-    ``install(self, app)`` hook, no ``on_startup``/``on_shutdown``
-    auto-bridge, no ``__init_subclass__`` registry, no ``dir()`` walk.
+    The discovery surface is closed; no ``install(self, app)`` hook, no
+    ``on_startup``/``on_shutdown`` auto-bridge, no ``dir()`` walk.
     """
 
-    # Subclasses MUST override these two attributes; the base class does
-    # NOT provide defaults so missing-attribute access raises a clear
-    # ``TypeError`` in ``Router.__init__`` (with the subclass name in the
-    # message). ``slug`` is annotated as plain ``str`` (not ``ClassVar``)
-    # so reads via ``self.slug`` / ``router.slug`` type-check uniformly.
-    # Subclass class-scope assignment ``slug = "x"`` continues to be the
-    # documented form.
+    # Subclasses MUST override ``slug``; the base class does NOT provide a
+    # default so missing-attribute access raises a clear ``TypeError`` in
+    # ``Router.__init__`` (with the subclass name in the message).
+    # ``slug`` is annotated as plain ``str`` (not ``ClassVar``) so reads
+    # via ``self.slug`` / ``router.slug`` type-check uniformly.
     slug: str
-    tools: ClassVar[tuple[Callable[..., Any], ...]]
+
+    #: Auto-collected verb-method names, populated by ``__init_subclass__``.
+    _a2kit_tool_names: ClassVar[tuple[str, ...]] = ()
 
     providers: ClassVar[tuple[Any, ...]] = ()
 
@@ -100,6 +123,7 @@ class Router:
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
+        cls._a2kit_tool_names = _collect_marked_tool_names(cls)
         if "enrichers" in cls.__dict__ or "enrich" in cls.__dict__:
             raise TypeError(
                 f"Router subclass {cls.__name__!r} defines a class-level "
@@ -128,37 +152,16 @@ class Router:
             msg = f"Router subclass {cls.__name__!r} must define class attribute 'slug: str'. Example: `slug = \"{cls.__name__.lower()}\"`."
             raise TypeError(msg)
 
-        # --- tools check --------------------------------------------------- #
-        tools = getattr(cls, "tools", None)
-        if not isinstance(tools, tuple):
-            msg = (
-                f"Router subclass {cls.__name__!r} must define class attribute "
-                f"'tools: ClassVar[tuple[Callable, ...]]' listing every "
-                f"verb-decorated method. Example: `tools = (fetch, update)`."
-            )
-            raise TypeError(msg)
-
+        # --- tools: auto-collected from @a2kit-marked methods -------------- #
+        # Names are gathered in ``__init_subclass__`` via the ``_a2kit``
+        # marker (no ``tools=`` tuple). Bind each to this instance and
+        # stamp the per-tool router_slug / visibility.
         bound: list[Callable[..., Any]] = []
-        for fn in tools:
-            if not callable(fn):
-                msg = f"Router subclass {cls.__name__!r}: every entry in `tools` must be a callable (method reference); got {fn!r}."
-                raise TypeError(msg)
-            name = getattr(fn, "__name__", None)
-            if name is None:
-                msg = (
-                    f"Router subclass {cls.__name__!r}: tools entry {fn!r} has no __name__; only top-level method references are supported."
-                )
-                raise TypeError(msg)
+        for name in cls._a2kit_tool_names:
             bound_method = getattr(self, name)
             meta = _get_meta(bound_method)
-            if meta is None:
-                msg = (
-                    f"Router subclass {cls.__name__!r}: method {name!r} listed "
-                    f"in `tools` carries no @a2kit verb-decorator metadata. "
-                    f"Decorate with @a2kit.read/write/list_/tool, or remove "
-                    f"it from the `tools` tuple."
-                )
-                raise TypeError(msg)
+            if meta is None:  # pragma: no cover -- collection only keeps marked methods
+                continue
             if meta.extras.router_slug is None:
                 meta.extras.router_slug = self.slug
             # Resolve effective visibility: per-tool kwarg (if explicitly set)
