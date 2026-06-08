@@ -62,7 +62,7 @@ class TestMcpFormatRouting:
         server = build_mcp_server(runtime, code_mode=False)
         async with runtime:
             # WHEN the tabular tool is called over MCP
-            result = await server.call_tool("rows", {})
+            result = await server.call_tool("fr_rows", {})
         # THEN content carries TSV, not raw JSON
         text = _text(result)
         assert text.splitlines()[0] == "id\ttitle"
@@ -80,7 +80,7 @@ class TestMcpFormatRouting:
         runtime = build(app)
         server = build_mcp_server(runtime, code_mode=False)
         async with runtime:
-            result = await server.call_tool("one", {})
+            result = await server.call_tool("fr_one", {})
         # a single record is JSON, not TSV
         assert json.loads(_text(result)) == {"id": 7, "title": "solo"}
 
@@ -89,7 +89,7 @@ class TestMcpFormatRouting:
         runtime = build(app)
         server = build_mcp_server(runtime, code_mode=False)
         async with runtime:
-            result = await server.call_tool("paged", {})
+            result = await server.call_tool("fr_paged", {})
         envelope = json.loads(_text(result))
         assert envelope["_items_format"] == "tsv"
         assert envelope["next_cursor"] == "next"
@@ -104,7 +104,7 @@ class TestCompactToggle:
         runtime = build(app)
         server = build_mcp_server(runtime, code_mode=False, compact=True)
         async with runtime:
-            result = await server.call_tool("rows", {})
+            result = await server.call_tool("fr_rows", {})
         # content still carries the compressed TSV
         assert _text(result).splitlines()[0] == "id\ttitle"
         # but structuredContent is dropped for non-conformant clients
@@ -115,7 +115,7 @@ class TestCompactToggle:
         runtime = build(app)
         server = build_mcp_server(runtime, code_mode=False, compact=True)
         async with runtime:
-            result = await server.call_tool("one", {})
+            result = await server.call_tool("fr_one", {})
         assert json.loads(_text(result)) == {"id": 7, "title": "solo"}
         assert result.structured_content is None
 
@@ -129,7 +129,7 @@ class TestCodeModeRegime:
         runtime = build(app)
         server = build_mcp_server(runtime, code_mode=False)
         async with runtime:
-            result = await server.call_tool("rows", {})
+            result = await server.call_tool("fr_rows", {})
         # THEN a real tool called directly is llm-rendered (compressed)
         assert _text(result).splitlines()[0] == "id\ttitle"
 
@@ -141,7 +141,7 @@ class TestCodeModeRegime:
         async with runtime:
             # a real tool stays callable by name; its result reaching the
             # sandbox is code-rendered — structured, never compressed
-            result = await server.call_tool("rows", {})
+            result = await server.call_tool("fr_rows", {})
         # content is NOT TSV-compressed under the code regime — it stays JSON
         assert json.loads(_text(result)) == [
             {"id": 1, "title": "a"},

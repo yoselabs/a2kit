@@ -44,7 +44,7 @@ async def test_projection_tool_mounts_as_post_route() -> None:
     async with runtime:
         api = build_http_app(runtime)
         with TestClient(api) as client:
-            r = client.post("/echo", json={"msg": "hi"})
+            r = client.post("/demo_echo", json={"msg": "hi"})
             assert r.status_code == 200, r.text
             body = r.json()
             assert body == {"msg": "hi", "tag": "store-ok"}
@@ -57,7 +57,7 @@ async def test_projection_tool_rejects_get() -> None:
     async with runtime:
         api = build_http_app(runtime)
         with TestClient(api) as client:
-            r = client.get("/echo")
+            r = client.get("/demo_echo")
             assert r.status_code == 405
 
 
@@ -89,10 +89,10 @@ async def test_cli_only_verb_not_mounted_on_http() -> None:
     async with runtime:
         api = build_http_app(runtime)
         mounted = {getattr(r, "path", None) for r in api.routes}
-        assert "/public_op" in mounted
-        assert "/trust_vault" not in mounted, "CLI-only verb leaked onto HTTP"
+        assert "/ops_public_op" in mounted
+        assert "/ops_trust_vault" not in mounted, "CLI-only verb leaked onto HTTP"
         with TestClient(api) as client:
-            assert client.post("/trust_vault", json={"path": "x"}).status_code == 404
+            assert client.post("/ops_trust_vault", json={"path": "x"}).status_code == 404
 
 
 @pytest.mark.asyncio
@@ -102,7 +102,7 @@ async def test_hidden_verb_not_mounted_on_http() -> None:
     async with runtime:
         api = build_http_app(runtime)
         mounted = {getattr(r, "path", None) for r in api.routes}
-        assert "/secret_op" not in mounted, "hidden verb leaked onto HTTP"
+        assert "/ops_secret_op" not in mounted, "hidden verb leaked onto HTTP"
 
 
 @pytest.mark.asyncio
@@ -132,13 +132,13 @@ async def test_http_and_mcp_apply_same_visibility_rule() -> None:
         http_projection = {
             getattr(r, "path", "").lstrip("/")
             for r in api.routes
-            if getattr(r, "path", "").lstrip("/") in {"public_op", "trust_vault", "secret_op"}
+            if getattr(r, "path", "").lstrip("/") in {"ops_public_op", "ops_trust_vault", "ops_secret_op"}
         }
 
-    assert http_projection == {"public_op"}
-    assert "public_op" in mcp_names
-    assert {"trust_vault", "secret_op"} & mcp_names == set()
-    assert {"trust_vault", "secret_op"} & http_projection == set()
+    assert http_projection == {"ops_public_op"}
+    assert "ops_public_op" in mcp_names
+    assert {"ops_trust_vault", "ops_secret_op"} & mcp_names == set()
+    assert {"ops_trust_vault", "ops_secret_op"} & http_projection == set()
 
 
 @pytest.mark.asyncio
@@ -150,10 +150,10 @@ async def test_openapi_document_contains_projection_tool() -> None:
             r = client.get("/openapi.json")
             assert r.status_code == 200
             doc = r.json()
-            assert "/echo" in doc["paths"]
-            assert "post" in doc["paths"]["/echo"]
+            assert "/demo_echo" in doc["paths"]
+            assert "post" in doc["paths"]["/demo_echo"]
             # DI dep `store` must NOT appear in the request body schema.
-            post_op = doc["paths"]["/echo"]["post"]
+            post_op = doc["paths"]["/demo_echo"]["post"]
             body_ref = post_op["requestBody"]["content"]["application/json"]["schema"]
             schema_name = body_ref.get("$ref", "").rsplit("/", 1)[-1]
             schema = doc["components"]["schemas"][schema_name]

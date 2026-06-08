@@ -31,7 +31,7 @@ async def test_tool_without_raises_emits_bare_schema() -> None:
     server = build_mcp_server(build(a2kit.App("t").add_router(R())), code_mode=False)
     async with Client(server) as client:
         tools = await client.list_tools()
-    plain = next(t for t in tools if t.name == "plain")
+    plain = next(t for t in tools if t.name == "x_plain")
     assert plain.outputSchema is not None
     assert "oneOf" not in plain.outputSchema
 
@@ -49,7 +49,7 @@ async def test_tool_with_raises_emits_oneof_union() -> None:
     server = build_mcp_server(build(a2kit.App("t").add_router(R())), code_mode=False)
     async with Client(server) as client:
         tools = await client.list_tools()
-    typed = next(t for t in tools if t.name == "typed")
+    typed = next(t for t in tools if t.name == "x_typed")
     schema = typed.outputSchema
     assert schema is not None
     assert "oneOf" in schema, f"expected oneOf union, got {schema}"

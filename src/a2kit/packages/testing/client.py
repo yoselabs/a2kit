@@ -311,10 +311,13 @@ class TestClient:
         raise KeyError(f"tool {tool_name!r} not found. Available: {available}")
 
     def _wire_name(self, tool_name: str) -> str:
+        # Post native-tree-homomorphism (ADR 0028): the MCP server mounts
+        # each tool under its canonical ``desc.name`` (flat ``slug_leaf`` /
+        # pin), NOT the bare ``_meta.tool_name`` leaf. So the wire name the
+        # test client passes to FastMCP must be ``d.name``.
         for d in self.app.tools():
             if d.name == tool_name or _qualified(d) == tool_name:
-                m = d._meta  # noqa: SLF001 -- ToolDescriptor projection seam (privatize-tool-metadata)
-                return m.tool_name if m is not None else d.name
+                return d.name
         return tool_name
 
 

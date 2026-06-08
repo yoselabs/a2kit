@@ -51,7 +51,7 @@ def test_reregistered_fake_wins_last_write() -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            result = await c.invoke("whoami")
+            result = await c.invoke("_singleton_whoami")
             assert result == {"model": "fake"}
 
     asyncio.run(go())
@@ -67,9 +67,9 @@ def test_rebuild_gives_each_test_a_fresh_app() -> None:
 
     async def go() -> None:
         async with client(build(fake=True)) as c:
-            assert (await c.invoke("whoami")) == {"model": "fake"}
+            assert (await c.invoke("_singleton_whoami")) == {"model": "fake"}
         async with client(build(fake=False)) as c:
-            assert (await c.invoke("whoami")) == {"model": "real"}
+            assert (await c.invoke("_singleton_whoami")) == {"model": "real"}
 
     asyncio.run(go())
 
@@ -84,7 +84,7 @@ def test_fake_for_an_async_factory_registration() -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            assert (await c.invoke("whoami")) == {"model": "fake"}
+            assert (await c.invoke("_singleton_whoami")) == {"model": "fake"}
 
     asyncio.run(go())
 

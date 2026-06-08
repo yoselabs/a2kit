@@ -150,9 +150,9 @@ def test_unknown_router_returns_nonzero(app):
 def test_schema_command_sees_app(app):
     """schema command closes over the active App via the build_full_cli factory."""
     cli = build_full_cli(app)
-    result = CliRunner().invoke(cli, ["schema", "get_task", "--format", "json"])
+    result = CliRunner().invoke(cli, ["schema", "tasks_get_task", "--format", "json"])
     assert result.exit_code == 0, result.output
-    assert "get_task" in result.output
+    assert "tasks_get_task" in result.output
 
 
 def test_empty_app_still_builds():

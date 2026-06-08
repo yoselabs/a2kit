@@ -111,11 +111,16 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
             surface=api_surface_obj,
         )
         _force_body_binding_for_wire_params(wrapped, desc.fn, container, api_surface_obj)
+        # Flat path = the canonical name (`/api/{slug}_{leaf}`); the router
+        # slug rides in `tags` to cluster paths in OpenAPI/Swagger (ADR 0028
+        # §4), keeping the wire identifier identical across surfaces.
+        slug = getattr(desc.router, "slug", None)
         app.add_api_route(
             path=f"/{desc.name}",
             endpoint=wrapped,
             methods=["POST"],
             name=desc.name,
+            tags=[slug] if slug else None,
         )
 
     # Author-written @app.api.<method>(path) routes.

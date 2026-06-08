@@ -20,8 +20,8 @@ async def test_non_destructive_tools_reachable_from_sandbox(gate_app: a2kit.App)
     """Read and non-destructive write tools are callable from `execute`."""
     server = build_mcp_server(gate_app)
     async with Client(server) as c:
-        ping = await c.call_tool("execute", {"code": 'await call_tool("ping", {})'})
-        touch = await c.call_tool("execute", {"code": 'await call_tool("touch", {})'})
+        ping = await c.call_tool("execute", {"code": 'await call_tool("gate_ping", {})'})
+        touch = await c.call_tool("execute", {"code": 'await call_tool("gate_touch", {})'})
     assert "pong" in _result_text(ping)
     assert "touched" in _result_text(touch)
 
@@ -32,7 +32,7 @@ async def test_destructive_tool_gated_by_default(gate_app: a2kit.App) -> None:
     server = build_mcp_server(gate_app)
     async with Client(server) as c:
         with pytest.raises(ToolError):
-            await c.call_tool("execute", {"code": 'await call_tool("wipe", {})'})
+            await c.call_tool("execute", {"code": 'await call_tool("gate_wipe", {})'})
 
 
 @pytest.mark.asyncio
@@ -40,7 +40,7 @@ async def test_operator_grant_opens_destructive(gate_app: a2kit.App) -> None:
     """`code_mode_allow_destructive=True` makes destructive tools reachable."""
     server = build_mcp_server(gate_app, code_mode_allow_destructive=True)
     async with Client(server) as c:
-        result = await c.call_tool("execute", {"code": 'await call_tool("wipe", {})'})
+        result = await c.call_tool("execute", {"code": 'await call_tool("gate_wipe", {})'})
     assert "wiped" in _result_text(result)
 
 

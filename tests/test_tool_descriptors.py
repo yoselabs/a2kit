@@ -31,7 +31,7 @@ class TestDescriptorBasics:
         descriptors = app.tools()
         assert len(descriptors) == 1
         d = descriptors[0]
-        assert d.name == "list_tasks"
+        assert d.name == "tasks_list_tasks"
         assert d.format_hint == "tsv"
         # Resolved type, not a string
         assert d.return_type is not None

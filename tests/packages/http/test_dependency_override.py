@@ -54,7 +54,7 @@ async def test_provide_at_app_build_swaps_di() -> None:
     async with runtime:
         api = build_http_app(runtime)
         with TestClient(api) as client:
-            r = client.post("/whoami", json={})
+            r = client.post("/demo_whoami", json={})
             assert r.status_code == 200, r.text
             assert r.json() == {"tag": "fake"}
 
@@ -80,7 +80,7 @@ async def test_dependency_overrides_does_not_swap_a2kit_di_on_wrapper_routes() -
         # The "naive" FastAPI override path — does nothing for a2kit DI.
         api.dependency_overrides[_Database] = lambda: fake_db
         with TestClient(api) as client:
-            r = client.post("/whoami", json={})
+            r = client.post("/demo_whoami", json={})
             assert r.status_code == 200, r.text
             # The a2kit-resolved Database wins; dependency_overrides was
             # a no-op for this type.

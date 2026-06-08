@@ -52,7 +52,7 @@ def tracker_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> a2kit.App:
 async def test_sandbox_call_tool_carries_connection_and_di(tracker_app: a2kit.App) -> None:
     """Sandboxed `call_tool` with a `connection` resolves the connection-scoped DI tool."""
     server = build_mcp_server(tracker_app)
-    code = 'await call_tool("list_tasks", {"connection": "default"})'
+    code = 'await call_tool("tasks_list_tasks", {"connection": "default"})'
     async with Client(server) as c:
         result = await c.call_tool("execute", {"code": code})
     data = result.data if result.data is not None else result.content
@@ -68,7 +68,7 @@ async def test_sandbox_missing_connection_fails_legibly(tracker_app: a2kit.App) 
     just with a generic message.
     """
     server = build_mcp_server(tracker_app, mask_error_details=False)
-    code = 'await call_tool("list_tasks", {})'
+    code = 'await call_tool("tasks_list_tasks", {})'
     async with Client(server) as c:
         with pytest.raises(ToolError) as exc:
             await c.call_tool("execute", {"code": code})

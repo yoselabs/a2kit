@@ -46,8 +46,8 @@ def test_tools_registered_with_a2kit_meta(app: a2kit.App) -> None:
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}
-        assert "ping" in tools
-        ping = tools["ping"]
+        assert "sample_ping" in tools
+        ping = tools["sample_ping"]
         meta = ping.meta or {}
         a2kit_meta = meta.get("a2kit")
         assert isinstance(a2kit_meta, dict)
@@ -69,7 +69,7 @@ def test_list_view_settings_round_trip(app: a2kit.App) -> None:
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}
-        rows = tools["rows"]
+        rows = tools["sample_rows"]
         a2kit_meta = (rows.meta or {})["a2kit"]
         lv = a2kit_meta["extras"]["list_view"]
         assert list(lv["default_fields"]) == ["id", "name"]
@@ -125,7 +125,7 @@ def test_enricher_fires_before_registration() -> None:
         from fastmcp.exceptions import ToolError
 
         tools = {t.name: t for t in await server.list_tools()}
-        bt = tools["boom"]
+        bt = tools["r_boom"]
         with pytest.raises((ToolError, EnrichedError)):
             await bt.fn()  # ty: ignore[unresolved-attribute]  # why: stub object exposes attributes only at runtime; static checker can't see them
 
@@ -151,7 +151,7 @@ def test_sync_and_async_tools_both_register() -> None:
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}
-        assert {"sync_one", "async_one"}.issubset(tools.keys())
+        assert {"r_sync_one", "r_async_one"}.issubset(tools.keys())
 
     asyncio.run(_check())
 

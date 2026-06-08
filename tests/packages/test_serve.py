@@ -166,7 +166,7 @@ async def test_multiplexed_serve_health_di_tool_and_single_lifecycle() -> None:
         with _running(parent) as port:
             health = httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=10)
             async with Client(f"http://127.0.0.1:{port}/mcp") as client:
-                result = await client.call_tool("echo", {"msg": "hi"})
+                result = await client.call_tool("demo_echo", {"msg": "hi"})
 
     assert health.status_code == 200
     payload = result.data if getattr(result, "data", None) is not None else result.structured_content

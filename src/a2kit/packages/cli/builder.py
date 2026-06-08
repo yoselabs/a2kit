@@ -346,10 +346,18 @@ def _register_router(
             # UNLISTED on cli (old "hidden") → mounted but omitted from --help.
             hidden = not advertised_on(matrix, "cli")
         cb, short_help = _build_tool_callback(desc, app, router=router)
-        tool_name = desc.name
+        # CLI uses the nested layout (ADR 0028 §5): the command sits under the
+        # router's slug sub-Typer, so the command name is the leaf (or the
+        # verbatim pin), NOT the flat `slug_leaf` canonical name — that would
+        # double the slug (`app tasks tasks_get_task`). The flat canonical
+        # name (desc.name) remains the MCP/HTTP/audit identity.
+        leaf = getattr(fn, "__name__", "<callable>")
+        tool_name = (meta.extras.canonical_name_override or leaf) if meta is not None else leaf
         short = short_help or None
         sub.command(name=tool_name, help=cb.__doc__, short_help=short, hidden=hidden)(cb)
-    typer_app.add_typer(sub)
+    # `rich_help_panel` clusters the router's flat commands in --help (the
+    # grouping affordance that lets flat canonical names stay discoverable).
+    typer_app.add_typer(sub, rich_help_panel=router.slug)
 
 
 def _register_schema(typer_app: Any, app: AppRuntime) -> None:

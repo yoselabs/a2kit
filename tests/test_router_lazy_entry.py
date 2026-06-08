@@ -55,9 +55,9 @@ async def test_first_dispatch_enters_router_once() -> None:
 
     app = a2kit.App("x").add_router(_GH())
     async with _testing_client(app) as client:
-        await client.invoke("gh.fetch")
+        await client.invoke("gh_fetch")
         assert entered == ["gh"]
-        await client.invoke("gh.fetch")
+        await client.invoke("gh_fetch")
         assert entered == ["gh"]  # not re-entered
 
 
@@ -96,7 +96,7 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
 
     app = a2kit.App("x").add_router(_GH()).add_router(_SL())
     async with _testing_client(app) as client:
-        await client.invoke("gh.gh_fetch")
+        await client.invoke("gh_gh_fetch")
 
     assert entered == ["gh"]
     assert exited == ["gh"]

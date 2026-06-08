@@ -29,7 +29,7 @@ def test_invalid_body_returns_422_with_fastapi_default_shape() -> None:
     client = TestClient(build_http_app(build(app)), raise_server_exceptions=False)
 
     # Missing required `id` field. FastAPI rejects at body parse with 422.
-    resp = client.post("/echo", json={})
+    resp = client.post("/v_echo", json={})
     assert resp.status_code == 422
     body = resp.json()
     # FastAPI's default validation-error shape: `{"detail": [{...}]}`.
@@ -54,7 +54,7 @@ def test_wrong_content_type_returns_422_not_typed_envelope() -> None:
     client = TestClient(build_http_app(build(app)), raise_server_exceptions=False)
 
     # Wrong shape: list instead of an object.
-    resp = client.post("/echo", json=["not", "an", "object"])
+    resp = client.post("/v2_echo", json=["not", "an", "object"])
     assert resp.status_code == 422
     body = resp.json()
     assert "detail" in body

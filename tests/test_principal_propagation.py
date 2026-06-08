@@ -76,7 +76,7 @@ class TestMcpPrincipalReachesBody:
         p = Principal(subject="u1", scopes=frozenset())
         token = request_scope.publish(p)
         try:
-            desc = next(d for d in runtime.tools() if d.name == "whoami")
+            desc = next(d for d in runtime.tools() if d.name == "p_whoami")
             async with runtime.container().call_scope(desc.fn, {}, framework_seeds={Principal: p}) as merged:
                 result = await desc.fn(**{k: v for k, v in merged.items() if k == "principal"})
         finally:

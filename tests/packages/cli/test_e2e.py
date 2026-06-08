@@ -55,7 +55,7 @@ def test_e2e_per_tool_schema_flag(app):
     result = CliRunner().invoke(cli, ["tasks", "get_task", "--schema", "--format", "json"])
     assert result.exit_code == 0, result.output
     schema = json.loads(result.output.strip())
-    assert schema["name"] == "get_task"
+    assert schema["name"] == "tasks_get_task"
     assert "inputSchema" in schema
 
 

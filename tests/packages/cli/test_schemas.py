@@ -22,10 +22,10 @@ def test_schema_all_default_lists_all_tools(app):
 
 
 def test_schema_specific_tool_returns_only_that(app):
-    result = _run(app, ["get_task", "--format", "json"])
+    result = _run(app, ["tasks_get_task", "--format", "json"])
     assert result.exit_code == 0, result.output
     schema = json.loads(result.output.strip())
-    assert schema["name"] == "get_task"
+    assert schema["name"] == "tasks_get_task"
     assert "inputSchema" in schema
 
 
@@ -50,7 +50,7 @@ def test_schema_jsonl_requires_json_format(app):
 
 
 def test_per_tool_schema_format_json(app):
-    result = _run(app, ["list_tasks", "--format", "json"])
+    result = _run(app, ["tasks_list_tasks", "--format", "json"])
     assert result.exit_code == 0
     schema = json.loads(result.output.strip())
     assert schema["meta"]["verb"] == "list"

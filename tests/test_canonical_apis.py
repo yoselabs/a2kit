@@ -72,7 +72,7 @@ def test_testclient_invoke_returns_tool_value() -> None:
 
     async def go() -> Any:
         async with client(app) as c:
-            return await c.invoke("x.echo", payload="hi")
+            return await c.invoke("x_echo", payload="hi")
 
     result = asyncio.run(go())
     # FastMCP synthesizes a field-equivalent type (not _Echo itself).
@@ -85,7 +85,7 @@ def test_testclient_call_wire_returns_wire_envelope() -> None:
 
     async def go() -> Any:
         async with client(app) as c:
-            return await c.call_wire("x.echo", payload="hi")
+            return await c.call_wire("x_echo", payload="hi")
 
     wire = asyncio.run(go())
     # call_wire returns the raw fastmcp result with .data / .content fields.
@@ -102,7 +102,7 @@ def test_testclient_tools_listing() -> None:
 
     descs = asyncio.run(go())
     names = [d.name for d in descs]
-    assert "echo" in names
+    assert "x_echo" in names
 
 
 def test_testclient_renamed_call_raises_typeerror() -> None:
@@ -181,7 +181,7 @@ def test_verb_decorators_decorate_methods() -> None:
     """README claims ``@a2kit.read()``, ``@a2kit.write()``, ``@a2kit.list_()`` decorate methods."""
     app = a2kit.App("x").add_router(_VerbDemoRouter())
     names = [d.name for d in app.tools()]
-    assert names == ["r", "w", "lst"]
+    assert names == ["_verbs_r", "_verbs_w", "_verbs_lst"]
 
 
 def test_router_subclass_with_slug_and_tools() -> None:
@@ -195,4 +195,4 @@ def test_router_subclass_with_slug_and_tools() -> None:
             return {"ok": True}
 
     app = a2kit.App("x").add_router(_R())
-    assert any(d.name == "f" for d in app.tools())
+    assert any(d.name == "demo_f" for d in app.tools())

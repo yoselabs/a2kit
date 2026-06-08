@@ -42,7 +42,7 @@ async def test_not_found_subclass_maps_to_404_with_envelope() -> None:
             raise _NotFound(f"memory id {id!r} does not exist", details={"id": id})
 
     client = _make_client(R)
-    resp = client.post("/fetch", json={"id": "abc"})
+    resp = client.post("/mem_fetch", json={"id": "abc"})
     assert resp.status_code == 404
     body = resp.json()
     assert body["error"]["type"] == "_NotFound"
@@ -63,7 +63,7 @@ async def test_infra_error_defaults_to_503() -> None:
             raise InfrastructureError("downstream gone")
 
     client = _make_client(R)
-    resp = client.post("/call", json={"x": 1})
+    resp = client.post("/svc_call", json={"x": 1})
     assert resp.status_code == 503
     body = resp.json()
     assert body["error"]["kind"] == "infra"
@@ -79,7 +79,7 @@ async def test_bug_kind_maps_to_500() -> None:
             raise _OopsBug("internal explosion")
 
     client = _make_client(R)
-    resp = client.post("/boom", json={"x": 1})
+    resp = client.post("/broken_boom", json={"x": 1})
     assert resp.status_code == 500
     body = resp.json()
     assert body["error"]["kind"] == "bug"
@@ -95,7 +95,7 @@ async def test_non_app_error_quarantined_to_500_envelope() -> None:
             raise KeyError(f"missing-{x}")
 
     client = _make_client(R)
-    resp = client.post("/boom", json={"x": 1})
+    resp = client.post("/raw_boom", json={"x": 1})
     assert resp.status_code == 500
     body = resp.json()
     assert body["error"]["type"] == "UnexpectedDefect"

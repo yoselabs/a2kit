@@ -64,8 +64,8 @@ async def test_concurrent_first_dispatch_coalesces_router_enter() -> None:
     app = a2kit.App("x").add_router(_R())
 
     async with _testing_client(app) as client:
-        t1 = asyncio.create_task(client.invoke("r.get"))
-        t2 = asyncio.create_task(client.invoke("r.get"))
+        t1 = asyncio.create_task(client.invoke("r_get"))
+        t2 = asyncio.create_task(client.invoke("r_get"))
         await started.wait()
         allow_finish.set()
         await asyncio.gather(t1, t2)
@@ -97,9 +97,9 @@ async def test_router_aenter_failure_does_not_cache_entered_state() -> None:
 
     async with _testing_client(app) as client:
         with pytest.raises(Exception):  # noqa: BLE001 -- shape of exception is router-impl-defined
-            await client.invoke("r.get")
+            await client.invoke("r_get")
         # Second dispatch retries __aenter__ since first failed.
-        result = await client.invoke("r.get")
+        result = await client.invoke("r_get")
         assert result == {}
 
     assert attempts == 2

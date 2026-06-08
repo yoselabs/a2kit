@@ -99,16 +99,16 @@ async def test_cli_only_verb_absent_from_mcp_and_http() -> None:
     # MCP: trust_vault absent, public_op present.
     server = build_mcp_server(app, code_mode=False)
     mcp_names = {t.name for t in await server.list_tools()}
-    assert "public_op" in mcp_names
-    assert "trust_vault" not in mcp_names
+    assert "ops_public_op" in mcp_names
+    assert "ops_trust_vault" not in mcp_names
 
     # HTTP: trust_vault not mounted.
     runtime = build(app)
     async with runtime:
         api = build_http_app(runtime)
         mounted = {getattr(r, "path", None) for r in api.routes}
-        assert "/public_op" in mounted
-        assert "/trust_vault" not in mounted
+        assert "/ops_public_op" in mounted
+        assert "/ops_trust_vault" not in mounted
 
     # CLI: trust_vault present (operator surface).
     cli = app.cli.bind(build(app))

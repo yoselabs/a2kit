@@ -118,7 +118,7 @@ class TestExecuteEndToEnd:
     async def test_call_tool_result_supports_attribute_access(self, sandbox_app: a2kit.App) -> None:
         runtime = build(sandbox_app)
         server = build_mcp_server(runtime, code_mode=True)
-        code = 'r = await call_tool("get_task", {})\nr.title'
+        code = 'r = await call_tool("sbx_get_task", {})\nr.title'
         async with runtime:
             result = await server.call_tool("execute", {"code": code})
         assert "solo" in _text(result)
@@ -127,7 +127,7 @@ class TestExecuteEndToEnd:
     async def test_nested_page_attribute_access(self, sandbox_app: a2kit.App) -> None:
         runtime = build(sandbox_app)
         server = build_mcp_server(runtime, code_mode=True)
-        code = 'page = await call_tool("list_tasks", {})\n[t.title for t in page.items]'
+        code = 'page = await call_tool("sbx_list_tasks", {})\n[t.title for t in page.items]'
         async with runtime:
             result = await server.call_tool("execute", {"code": code})
         text = _text(result)
@@ -154,7 +154,7 @@ class TestExecuteDerivationCache:
 
         runtime = build(sandbox_app)
         server = build_mcp_server(runtime, code_mode=True)
-        code = 'r = await call_tool("get_task", {})\nr.title'
+        code = 'r = await call_tool("sbx_get_task", {})\nr.title'
         async with runtime:
             await server.call_tool("execute", {"code": code})
             await server.call_tool("execute", {"code": code})

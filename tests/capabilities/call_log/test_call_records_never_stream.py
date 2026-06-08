@@ -38,7 +38,7 @@ def test_call_record_and_debug_never_reach_the_wire(tmp_path: Path) -> None:
 
     async def go() -> object:
         async with client(app) as c:
-            await c.invoke("work", url="https://x.com")
+            await c.invoke("r_work", url="https://x.com")
             return c
 
     c = asyncio.run(go())

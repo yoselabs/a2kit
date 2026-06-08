@@ -30,9 +30,9 @@ async def test_code_mode_off_lists_full_catalog(gate_app: a2kit.App) -> None:
     async with Client(server) as c:
         names = sorted(t.name for t in await c.list_tools())
     assert "execute" not in names
-    assert {"ping", "wipe", "touch"} <= set(names)
+    assert {"gate_ping", "gate_wipe", "gate_touch"} <= set(names)
     # A `cli`-tier tool is never on the MCP surface, code mode or not.
-    assert "cli_only" not in names
+    assert "gate_cli_only" not in names
 
 
 @pytest.mark.asyncio
@@ -41,6 +41,6 @@ async def test_real_tools_callable_by_name_under_code_mode(gate_app: a2kit.App) 
     server = build_mcp_server(gate_app)
     async with Client(server) as c:
         listed = {t.name for t in await c.list_tools()}
-        assert "ping" not in listed
-        result = await c.call_tool("ping", {})
+        assert "gate_ping" not in listed
+        result = await c.call_tool("gate_ping", {})
     assert "pong" in _result_text(result)

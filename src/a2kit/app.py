@@ -545,7 +545,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
 
     from a2effect import AppError, Raises
 
-    from a2kit._surfaces import matrix_for, mounted_surfaces
+    from a2kit._surfaces import matrix_for, mounted_surfaces, resolve_canonical_name
     from a2kit.metadata import _get_meta
     from a2kit.packages.di import lazy_inner_type
     from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
@@ -570,7 +570,12 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
         format_hint = infer_format_hint(bare_return_type)
         encoding_plan = build_encoding_plan(bare_return_type)
         meta = _get_meta(fn)
-        name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
+        # Canonical name = flat slug_leaf (ADR 0028 Wave 2). The override pins
+        # it verbatim; otherwise a router verb derives to `{slug}_{leaf}` and
+        # an app-level verb stays the bare leaf. desc.name is the identity
+        # used on MCP/HTTP and in the audit log.
+        leaf = getattr(fn, "__name__", "<callable>")
+        name = resolve_canonical_name(meta.extras.canonical_name_override, meta.extras.router_slug, leaf) if meta is not None else leaf
         # Carry the multi-surface fields onto the descriptor so substrate
         # adapters and selectors can filter without re-reading A2KitMeta.
         # `verb` defaults to "read" — the safest default for unstamped

@@ -39,7 +39,7 @@ class TestBuildTimeMaterialization:
         app = a2kit.App("t").add_router(R())
         app.provide(_Database, _Database)
         runtime = build(app)
-        d = runtime.descriptor_for("fetch")
+        d = runtime.descriptor_for("r_fetch")
         assert d.wire_param_names == frozenset({"id"})
         assert d.lazy_param_names == frozenset()
 
@@ -68,7 +68,7 @@ class TestBuildTimeMaterialization:
         app = a2kit.App("t").add_router(R())
         app.provide(_Cache, _Cache)
         runtime = build(app)
-        d = runtime.descriptor_for("warm")
+        d = runtime.descriptor_for("r_warm")
         assert d.lazy_param_names == frozenset({"cache"})
         assert "cache" not in (d.wire_param_names or set())
         assert d.wire_param_names == frozenset({"id"})
@@ -97,4 +97,6 @@ class TestBuildTimeMaterialization:
         descs = runtime.descriptors()
         assert isinstance(descs, tuple)
         # Same object identity as descriptor_for lookup.
-        assert descs[0] is runtime.descriptor_for("fetch") or any(d.name == "fetch" and d is runtime.descriptor_for("fetch") for d in descs)
+        assert descs[0] is runtime.descriptor_for("r_fetch") or any(
+            d.name == "r_fetch" and d is runtime.descriptor_for("r_fetch") for d in descs
+        )

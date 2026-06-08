@@ -32,7 +32,7 @@ def test_call_wire_json_dict() -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            wire = await c.call_wire("whoami")
+            wire = await c.call_wire("_dict_whoami")
             # wire is the JSON-encoded data; loadable round-trip.
             assert json.loads(wire) == {"name": "alice"}
 
@@ -60,7 +60,7 @@ def test_call_wire_tsv_for_list_of_models() -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            wire = await c.call_wire("rows")
+            wire = await c.call_wire("_list_rows")
             # TSV: header + rows separated by tabs and newlines.
             assert "id\tlabel" in wire
             assert "1\ta" in wire
@@ -77,9 +77,9 @@ def test_invoke_returns_python_value_while_call_wire_returns_encoded() -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            value = await c.invoke("whoami")
+            value = await c.invoke("_dict_whoami")
             assert value == {"name": "alice"}  # raw Python
-            wire = await c.call_wire("whoami")
+            wire = await c.call_wire("_dict_whoami")
             assert isinstance(wire, str)  # JSON-encoded
             assert "alice" in wire
 
@@ -106,7 +106,7 @@ def test_call_wire_picks_json_for_single_model() -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            wire = await c.call_wire("model")
+            wire = await c.call_wire("_scalar_model")
             assert json.loads(wire) == {"x": 42}
 
     asyncio.run(go())

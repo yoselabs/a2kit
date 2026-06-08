@@ -99,3 +99,29 @@ naming behavior against current flat-mount code before the fix.
 - [ ] 8.3 Forward-compat seam: `resolve_canonical_name` is the single
       function Wave 3 `validate-composition` + the dup-name lint rule will
       run over for global uniqueness — keep it standalone and pure.
+
+## Implementation notes (as landed)
+
+Realized via the **canonical-name resolver as the single source of truth**
+rather than literal sub-server mounting. Two deliberate divergences from
+§2–§4's first-draft strategy, both preserving the observable contract
+(flat `slug_leaf` names, tag/panel grouping, no collisions, cross-surface
+identity parity) and all tests green:
+
+- **MCP/HTTP (§2.3, §3.4):** tools register flat under their resolved
+  `desc.name` (= `slug_leaf` / pin) instead of via FastMCP `mount(prefix)`
+  / FastAPI `include_router(prefix)`. The resolver owns the name, so the
+  pin (`canonical_name_override`) never double-prefixes. HTTP still groups
+  via `tags=[slug]`.
+- **CLI (§4.1):** renders the **nested** layout (`app <slug> <leaf>` under
+  a slug sub-Typer with `rich_help_panel=slug`), NOT the flat `app
+  slug_leaf` command, to avoid the `app tasks tasks_get_task` doubling.
+  `desc.name` (the flat canonical) remains the MCP/HTTP/audit identity;
+  structured `router_slug`+`leaf` stays on the descriptor so a future
+  `CliConfig.layout` flag-flip is purely presentational (§4.2 intact).
+
+Additional src seams migrated beyond the core (the "121 pending sites"):
+`packages/testing/client._wire_name` now returns `desc.name` (canonical),
+not the bare `_meta.tool_name`; the dispatch call-log + call-scope stages
+key on the canonical name (`_canonical_tool_name`), per the design's "the
+canonical name is the call-log/audit key".

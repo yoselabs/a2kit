@@ -62,14 +62,14 @@ async def _mcp_tool_names(server) -> set[str]:
 
 def test_env_var_restricts_mcp_surface() -> None:
     """Scenario 1: A2KIT_TOOLS=ask,refresh exposes only those on MCP."""
-    with _env("ask,refresh"):
+    with _env("web_ask,web_refresh"):
         server = build_mcp_server(_three_tool_app("mcp-env-restrict"), code_mode=False)
         import asyncio
 
         names = asyncio.run(_mcp_tool_names(server))
-    assert "ask" in names
-    assert "refresh" in names
-    assert "fetch_raw" not in names
+    assert "web_ask" in names
+    assert "web_refresh" in names
+    assert "web_fetch_raw" not in names
 
 
 def test_serve_cli_flag_restricts_mcp_surface() -> None:
@@ -82,21 +82,21 @@ def test_serve_cli_flag_restricts_mcp_surface() -> None:
     behavior; same selector + validator path.
     """
     with _env(None):
-        server = build_mcp_server(_three_tool_app("serve-cli"), code_mode=False, tool_selection="ask")
+        server = build_mcp_server(_three_tool_app("serve-cli"), code_mode=False, tool_selection="web_ask")
         import asyncio
 
         names = asyncio.run(_mcp_tool_names(server))
-    assert names == {"ask"}
+    assert names == {"web_ask"}
 
 
 def test_env_and_cli_intersect_when_both_set() -> None:
     """Scenario 3: env=ask,refresh + serve --tools=ask,fetch_raw → only ask."""
-    with _env("ask,refresh"):
-        server = build_mcp_server(_three_tool_app("intersect"), code_mode=False, tool_selection="ask,fetch_raw")
+    with _env("web_ask,web_refresh"):
+        server = build_mcp_server(_three_tool_app("intersect"), code_mode=False, tool_selection="web_ask,web_fetch_raw")
         import asyncio
 
         names = asyncio.run(_mcp_tool_names(server))
-    assert names == {"ask"}
+    assert names == {"web_ask"}
 
 
 def test_selector_cannot_re_enable_hidden_tool() -> None:
@@ -115,22 +115,22 @@ def test_selector_cannot_re_enable_hidden_tool() -> None:
 
     app = a2kit.App("hidden-test").add_router(HidR())
     with _env(None), pytest.raises(ToolSelectionError) as excinfo:
-        build_mcp_server(app, code_mode=False, tool_selection="hidden_tool")
+        build_mcp_server(app, code_mode=False, tool_selection="h_hidden_tool")
     msg = str(excinfo.value)
-    assert "hidden_tool" in msg
+    assert "h_hidden_tool" in msg
     # Visible tool listed as valid; "hidden" mentioned in caveat
-    assert "visible_tool" in msg
+    assert "h_visible_tool" in msg
     assert "hidden" in msg.lower()
 
 
 def test_unknown_tool_name_fails_closed() -> None:
     """Scenario 5: unknown tool name in selector raises ToolSelectionError."""
-    with _env("ask,bogus"), pytest.raises(ToolSelectionError) as excinfo:
+    with _env("web_ask,bogus"), pytest.raises(ToolSelectionError) as excinfo:
         build_mcp_server(_three_tool_app("unknown"), code_mode=False)
     msg = str(excinfo.value)
     assert "bogus" in msg
     # Valid names listed
-    for name in ("ask", "refresh", "fetch_raw"):
+    for name in ("web_ask", "web_refresh", "web_fetch_raw"):
         assert name in msg
 
 
@@ -141,12 +141,12 @@ def test_no_selector_active_exposes_all_tools() -> None:
         import asyncio
 
         names = asyncio.run(_mcp_tool_names(server))
-    assert {"ask", "refresh", "fetch_raw"} <= names
+    assert {"web_ask", "web_refresh", "web_fetch_raw"} <= names
 
 
 def test_env_var_restricts_cli_surface() -> None:
     """Env var at CLI build time filters Click subcommand registration."""
-    with _env("ask"):
+    with _env("web_ask"):
         cli = build_full_cli(_three_tool_app("cli-env"))
         runner = CliRunner()
         result = runner.invoke(cli, ["web", "--help"])
@@ -158,6 +158,6 @@ def test_env_var_restricts_cli_surface() -> None:
 
 def test_cli_unknown_tool_in_env_fails_closed_at_build() -> None:
     """Unknown name in env var raises at build_full_cli time."""
-    with _env("ask,not-a-tool"), pytest.raises(ToolSelectionError) as excinfo:
+    with _env("web_ask,not-a-tool"), pytest.raises(ToolSelectionError) as excinfo:
         build_full_cli(_three_tool_app("cli-unknown"))
     assert "not-a-tool" in str(excinfo.value)

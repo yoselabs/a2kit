@@ -62,7 +62,7 @@ async def test_default_mode_emits_dual_content() -> None:
 
     server = build_mcp_server(_build(), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("fetch", {"id": "x"})
+        result = await client.call_tool("mem_fetch", {"id": "x"})
 
     # content[].text carries serialized JSON of the model dump
     assert result.content
@@ -84,7 +84,7 @@ async def test_strict_mode_via_env_emits_marker(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("A2KIT_MCP__STRUCTURED_OUTPUT", "true")
     server = build_mcp_server(_build(), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("fetch", {"id": "x"})
+        result = await client.call_tool("mem_fetch", {"id": "x"})
 
     # content[].text is a short marker, NOT the full payload
     assert result.content
@@ -104,7 +104,7 @@ async def test_strict_mode_via_explicit_config_emits_marker() -> None:
     cfg = A2kitConfig(mcp=McpConfig(structured_output=True))
     server = build_mcp_server(_build(cfg), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("fetch", {"id": "x"})
+        result = await client.call_tool("mem_fetch", {"id": "x"})
 
     text = result.content[0].text
     assert "hello" not in text
@@ -119,7 +119,7 @@ async def test_error_path_unaffected_in_default_mode() -> None:
 
     server = build_mcp_server(_build(), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("fetch", {"id": "missing"}, raise_on_error=False)
+        result = await client.call_tool("mem_fetch", {"id": "missing"}, raise_on_error=False)
 
     assert result.is_error
     # error envelope on structured_content
@@ -136,7 +136,7 @@ async def test_error_path_unaffected_in_strict_mode(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("A2KIT_MCP__STRUCTURED_OUTPUT", "true")
     server = build_mcp_server(_build(), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("fetch", {"id": "missing"}, raise_on_error=False)
+        result = await client.call_tool("mem_fetch", {"id": "missing"}, raise_on_error=False)
 
     assert result.is_error
     # error envelope still present in structured

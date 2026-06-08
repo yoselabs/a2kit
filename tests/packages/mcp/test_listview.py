@@ -67,7 +67,7 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
 
     async def _check() -> None:
         tools = {t.name: t for t in await server.list_tools()}
-        rows = tools["rows"]
+        rows = tools["rows_rows"]
         a2kit_meta = (rows.meta or {})["a2kit"]
         lv = a2kit_meta["extras"]["list_view"]
         # asdict turns the tuple into a list (or keeps tuple — both fine).

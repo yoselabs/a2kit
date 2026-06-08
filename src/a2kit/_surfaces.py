@@ -131,6 +131,29 @@ def matrix_for(extras: object) -> dict[str, SurfaceState]:
     )
 
 
+def resolve_canonical_name(
+    override: str | None,
+    router_slug: str | None,
+    leaf: str,
+) -> str:
+    """Resolve a verb's flat canonical name (ADR 0028 Wave 2, decision 5).
+
+    Precedence:
+      1. ``override`` (``canonical_name_override=``) → used VERBATIM, no slug.
+      2. under a Router (``router_slug`` set) → ``f"{router_slug}_{leaf}"``.
+      3. app-level verb (no router) → ``leaf``.
+
+    A pin is complete: the slug is never re-applied
+    (override="jira_search" under slug="jira" stays "jira_search"). This is
+    rendered identically on every surface and is the call-log/audit key.
+    """
+    if override is not None:
+        return override
+    if router_slug:
+        return f"{router_slug}_{leaf}"
+    return leaf
+
+
 def mounted_on(matrix: dict[str, SurfaceState], surface: str) -> bool:
     """Whether the verb is callable on ``surface`` (LISTED or UNLISTED)."""
     return matrix.get(surface, ABSENT) in {LISTED, UNLISTED}
@@ -158,5 +181,6 @@ __all__ = [
     "matrix_for",
     "mounted_on",
     "mounted_surfaces",
+    "resolve_canonical_name",
     "resolve_surfaces",
 ]

@@ -13,7 +13,7 @@ from a2kit.packages.cli.builder import build_full_cli
 def test_code_subcommand_runs_source(gate_app: a2kit.App) -> None:
     """`<app> code '<source>'` runs the source in the sandbox and prints the result."""
     cli = build_full_cli(gate_app)
-    result = CliRunner().invoke(cli, ["code", 'await call_tool("ping", {})'])
+    result = CliRunner().invoke(cli, ["code", 'await call_tool("gate_ping", {})'])
     assert result.exit_code == 0, result.output
     assert "pong" in result.output
 
@@ -21,14 +21,14 @@ def test_code_subcommand_runs_source(gate_app: a2kit.App) -> None:
 def test_code_subcommand_gates_destructive(gate_app: a2kit.App) -> None:
     """The destructive gate applies to the CLI surface identically to MCP."""
     cli = build_full_cli(gate_app)
-    result = CliRunner().invoke(cli, ["code", 'await call_tool("wipe", {})'])
+    result = CliRunner().invoke(cli, ["code", 'await call_tool("gate_wipe", {})'])
     assert result.exit_code != 0
 
 
 def test_code_subcommand_allow_destructive(gate_app: a2kit.App) -> None:
     """`--allow-destructive` opens destructive tools to the CLI sandbox."""
     cli = build_full_cli(gate_app)
-    result = CliRunner().invoke(cli, ["code", "--allow-destructive", 'await call_tool("wipe", {})'])
+    result = CliRunner().invoke(cli, ["code", "--allow-destructive", 'await call_tool("gate_wipe", {})'])
     assert result.exit_code == 0, result.output
     assert "wiped" in result.output
 

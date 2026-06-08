@@ -56,7 +56,7 @@ def test_cli_decline_returns_no_name_status() -> None:
 async def _call_greet_with_handler(handler: Any) -> Any:
     server = build_mcp_server(app)
     async with Client(transport=server, elicitation_handler=handler) as client:
-        return await client.call_tool("greet", {})
+        return await client.call_tool("users_greet", {})
 
 
 def test_mcp_path_accepts_username_via_client_handler() -> None:

@@ -91,16 +91,16 @@ async def test_span_emitted_on_success(tracing: Any) -> None:
     server = _build_server()
     mw = OTelMiddleware()
 
-    fake_ctx = _FakeMiddlewareContext("ping", server)
+    fake_ctx = _FakeMiddlewareContext("things_ping", server)
     result = await mw.on_call_tool(fake_ctx, _ok_call_next)  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
     assert result == {"ok": True}
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
-    assert span.name == "mcp.tool.ping"
+    assert span.name == "mcp.tool.things_ping"
     attrs = dict(span.attributes or {})
-    assert attrs["a2kit.tool_name"] == "ping"
+    assert attrs["a2kit.tool_name"] == "things_ping"
     assert attrs["a2kit.verb"] == "read"
     assert attrs["a2kit.router"] == "things"
     # framework auto-stamps the verb tag
@@ -116,14 +116,14 @@ async def test_span_records_exception_on_error(tracing: Any) -> None:
     server = _build_server()
     mw = OTelMiddleware()
 
-    fake_ctx = _FakeMiddlewareContext("boom", server)
+    fake_ctx = _FakeMiddlewareContext("things_boom", server)
     with pytest.raises(RuntimeError, match="kaboom"):
         await mw.on_call_tool(fake_ctx, _fail_call_next)  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
-    assert span.name == "mcp.tool.boom"
+    assert span.name == "mcp.tool.things_boom"
     assert span.status.status_code.name == "ERROR"
     # Recorded exception event.
     event_names = [e.name for e in span.events]
@@ -136,9 +136,9 @@ async def test_counter_increments_with_status(tracing: Any) -> None:
     server = _build_server()
     mw = OTelMiddleware()
 
-    await mw.on_call_tool(_FakeMiddlewareContext("ping", server), _ok_call_next)  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
+    await mw.on_call_tool(_FakeMiddlewareContext("things_ping", server), _ok_call_next)  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
     with pytest.raises(RuntimeError):
-        await mw.on_call_tool(_FakeMiddlewareContext("boom", server), _fail_call_next)  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
+        await mw.on_call_tool(_FakeMiddlewareContext("things_boom", server), _fail_call_next)  # ty: ignore[invalid-argument-type]  # why: ty's narrowed parameter type rejects this call; runtime accepts duck-typed/stub argument
 
     data = metric_reader.get_metrics_data()
     assert data is not None
@@ -150,8 +150,8 @@ async def test_counter_increments_with_status(tracing: Any) -> None:
                     points.extend(metric.data.data_points)
 
     statuses = sorted((p.attributes.get("status"), p.attributes.get("tool")) for p in points)
-    assert ("error", "boom") in statuses
-    assert ("ok", "ping") in statuses
+    assert ("error", "things_boom") in statuses
+    assert ("ok", "things_ping") in statuses
 
 
 @pytest.mark.asyncio

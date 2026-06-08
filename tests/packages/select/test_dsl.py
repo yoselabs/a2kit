@@ -167,14 +167,14 @@ def _build_three_tool_app() -> a2kit.App:
 def test_build_with_verb_select_filters_descriptors() -> None:
     runtime = build(_build_three_tool_app(), select=["verb=read"])
     names = {d.name for d in runtime.tools()}
-    assert names == {"fetch_user", "llm_only"}
+    assert names == {"demo_fetch_user", "demo_llm_only"}
 
 
 def test_build_with_surface_select_narrows_expose_and_drops_unmounted() -> None:
     """``surface=api`` drops ``llm_only`` (mcp-only) and clears mcp_surface."""
     runtime = build(_build_three_tool_app(), select=["surface=api"])
     names = {d.name for d in runtime.tools()}
-    assert "llm_only" not in names
+    assert "demo_llm_only" not in names
     # Surviving descriptors get expose narrowed to ('api',).
     for d in runtime.tools():
         assert d.expose == ("api",)
@@ -186,10 +186,10 @@ def test_build_with_surface_select_narrows_expose_and_drops_unmounted() -> None:
 def test_build_with_multiple_selects_ands() -> None:
     runtime = build(
         _build_three_tool_app(),
-        select=["verb=read", "name=fetch_*"],
+        select=["verb=read", "name=demo_fetch_*"],
     )
     names = {d.name for d in runtime.tools()}
-    assert names == {"fetch_user"}
+    assert names == {"demo_fetch_user"}
 
 
 def test_build_with_select_none_passes_through() -> None:
@@ -225,7 +225,7 @@ def test_build_does_not_invoke_selector_on_dispatch_path() -> None:
         async with runtime:
             api = build_http_app(runtime)
             with TestClient(api) as client, patch.object(Selector, "matches", side_effect=AssertionError("dispatch hit Selector.matches")):
-                return client.post("/fetch_user", json={"k": "x"})
+                return client.post("/demo_fetch_user", json={"k": "x"})
 
     r = asyncio.run(_run())
     assert r.status_code == 200

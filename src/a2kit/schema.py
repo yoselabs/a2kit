@@ -93,7 +93,13 @@ def compute_schema(fn: Callable[..., Any], container: Any | None = None) -> dict
     ``annotations``, ``tags``, ``meta``. No ``fastmcp`` import.
     """
     meta = _get_meta(fn)
-    name = meta.tool_name if meta is not None else getattr(fn, "__name__", "<callable>")
+    leaf = getattr(fn, "__name__", "<callable>")
+    if meta is not None:
+        from a2kit._surfaces import resolve_canonical_name
+
+        name = resolve_canonical_name(meta.extras.canonical_name_override, meta.extras.router_slug, leaf)
+    else:
+        name = leaf
     description = (fn.__doc__ or "").strip()
     out: dict[str, Any] = {
         "name": name,

@@ -100,7 +100,7 @@ async def test_snapshot_not_found_404() -> None:
         async def fetch(self, *, id: str) -> Annotated[dict, Raises(_NotFound)]:
             raise _NotFound(f"memory id {id!r} does not exist", details={"id": id})
 
-    resp = _client(R).post("/fetch", json={"id": "abc"})
+    resp = _client(R).post("/mem_fetch", json={"id": "abc"})
     _assert_wire(
         resp,
         status=404,
@@ -125,7 +125,7 @@ async def test_snapshot_input_error_400() -> None:
         async def check(self, *, x: int) -> Annotated[dict, Raises(InputError)]:
             raise InputError("bad input shape")
 
-    resp = _client(R).post("/check", json={"x": 1})
+    resp = _client(R).post("/val_check", json={"x": 1})
     _assert_wire(
         resp,
         status=400,
@@ -150,7 +150,7 @@ async def test_snapshot_auth_error_401() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(AuthError)]:
             raise AuthError("missing credentials")
 
-    resp = _client(R).post("/call", json={"x": 1})
+    resp = _client(R).post("/sec_call", json={"x": 1})
     _assert_wire(
         resp,
         status=401,
@@ -175,7 +175,7 @@ async def test_snapshot_policy_error_403() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(PolicyError)]:
             raise PolicyError("not allowed")
 
-    resp = _client(R).post("/call", json={"x": 1})
+    resp = _client(R).post("/pol_call", json={"x": 1})
     _assert_wire(
         resp,
         status=403,
@@ -200,7 +200,7 @@ async def test_snapshot_infra_error_503() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(InfrastructureError)]:
             raise InfrastructureError("downstream gone")
 
-    resp = _client(R).post("/call", json={"x": 1})
+    resp = _client(R).post("/svc_call", json={"x": 1})
     _assert_wire(
         resp,
         status=503,
@@ -225,7 +225,7 @@ async def test_snapshot_timeout_504_via_class_override() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(_Timeout)]:
             raise _Timeout("hit the deadline")
 
-    resp = _client(R).post("/call", json={"x": 1})
+    resp = _client(R).post("/slow_call", json={"x": 1})
     _assert_wire(
         resp,
         status=504,
@@ -250,7 +250,7 @@ async def test_snapshot_generic_bug_500() -> None:
         async def call(self, *, x: int) -> Annotated[dict, Raises(_Oops)]:
             raise _Oops("internal explosion")
 
-    resp = _client(R).post("/call", json={"x": 1})
+    resp = _client(R).post("/boom_call", json={"x": 1})
     _assert_wire(
         resp,
         status=500,
@@ -281,7 +281,7 @@ async def test_snapshot_unexpected_defect_500_from_keyerror() -> None:
         async def call(self, *, x: int) -> dict:
             raise KeyError(f"missing-{x}")
 
-    resp = _client(R).post("/call", json={"x": 1})
+    resp = _client(R).post("/raw_call", json={"x": 1})
     body = resp.json()
     cause = body["error"].get("cause")
     # Today's baseline: cause carries the underlying exception's type, message,

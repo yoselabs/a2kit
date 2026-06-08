@@ -33,7 +33,28 @@ _CALLS_LOGGER = logging.getLogger("a2kit.calls")
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from a2kit.metadata import A2KitMeta
     from a2kit.packages.dispatch.spec import ToolBuildSpec
+
+
+def _canonical_tool_name(meta: A2KitMeta | None) -> str | None:
+    """The flat ``slug_leaf`` / pin used as the call-log + scope key.
+
+    Post native-tree-homomorphism (ADR 0028) the call-log key is the
+    canonical name (rendered identically on every surface), NOT the bare
+    leaf ``meta.tool_name``. ``meta.tool_name`` is ``override or leaf``;
+    ``resolve_canonical_name`` ignores the leaf arg when an override is
+    present, so passing it as the leaf is harmless in either branch.
+    """
+    if meta is None:
+        return None
+    from a2kit._surfaces import resolve_canonical_name
+
+    return resolve_canonical_name(
+        meta.extras.canonical_name_override,
+        meta.extras.router_slug,
+        meta.tool_name,
+    )
 
 
 class TimeoutStage:
@@ -243,7 +264,7 @@ class CallScopeStage:
     def wrap(self, fn: Callable[..., Any], spec: ToolBuildSpec) -> Callable[..., Any]:
         meta = spec.meta
         ctx_param_name = meta.context_param_name if meta is not None else None
-        tool_name = meta.tool_name if meta is not None else None
+        tool_name = _canonical_tool_name(meta)
 
         @functools.wraps(fn)
         async def _wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -341,7 +362,7 @@ class CallLogStage:
 
         meta = spec.meta
         ctx_param_name = meta.context_param_name if meta is not None else None
-        tool_name = meta.tool_name if meta is not None else None
+        tool_name = _canonical_tool_name(meta)
         reserved = {ctx_param_name, SYNTHESIZED_CTX_PARAM_NAME}
 
         @functools.wraps(fn)

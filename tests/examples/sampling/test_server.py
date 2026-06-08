@@ -33,7 +33,7 @@ from examples.sampling.server import app
 async def _call_summarize_with_handler(handler: Any, text: str) -> Any:
     server = build_mcp_server(app)
     async with Client(transport=server, sampling_handler=handler) as client:
-        return await client.call_tool("summarize", {"text": text})
+        return await client.call_tool("text_summarize", {"text": text})
 
 
 def test_mcp_path_returns_summary() -> None:

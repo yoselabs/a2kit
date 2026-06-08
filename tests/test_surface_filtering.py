@@ -71,9 +71,9 @@ def test_mcp_server_skips_cli_and_hidden_tools() -> None:
         return {t.name for t in await server.list_tools()}
 
     names = asyncio.run(_names())
-    assert "both" in names
-    assert "cli_only" not in names
-    assert "hidden_op" not in names
+    assert "surf_both" in names
+    assert "surf_cli_only" not in names
+    assert "surf_hidden_op" not in names
 
 
 def test_default_visibility_visible_on_both() -> None:
@@ -95,4 +95,4 @@ def test_default_visibility_visible_on_both() -> None:
     mcp_names = asyncio.run(_names())
 
     assert "both" in surf_group.commands
-    assert "both" in mcp_names
+    assert "surf_both" in mcp_names

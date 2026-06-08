@@ -47,11 +47,11 @@ def test_silent_tool_still_gets_a_call_record(tmp_path: Path) -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            await c.invoke("fetch", url="https://x.com/page")
+            await c.invoke("r_fetch", url="https://x.com/page")
 
     asyncio.run(go())
     rows = _rows(tmp_path)
-    records = [r for r in rows if r.get("tool") == "fetch"]
+    records = [r for r in rows if r.get("tool") == "r_fetch"]
     assert len(records) == 1
     rec = records[0]
     assert rec["domain"] == "x.com"
@@ -66,7 +66,7 @@ def test_off_by_default_writes_nothing(tmp_path: Path) -> None:
 
     async def go() -> None:
         async with client(app) as c:
-            await c.invoke("fetch", url="https://x.com")
+            await c.invoke("r_fetch", url="https://x.com")
 
     asyncio.run(go())
     assert not (tmp_path / "calls").exists()
@@ -78,13 +78,13 @@ def test_concurrent_calls_get_distinct_call_ids(tmp_path: Path) -> None:
     async def go() -> None:
         async with client(app) as c:
             await asyncio.gather(
-                c.invoke("fetch", url="https://a.com"),
-                c.invoke("fetch", url="https://b.com"),
-                c.invoke("fetch", url="https://c.com"),
+                c.invoke("r_fetch", url="https://a.com"),
+                c.invoke("r_fetch", url="https://b.com"),
+                c.invoke("r_fetch", url="https://c.com"),
             )
 
     asyncio.run(go())
-    records = [r for r in _rows(tmp_path) if r.get("tool") == "fetch"]
+    records = [r for r in _rows(tmp_path) if r.get("tool") == "r_fetch"]
     call_ids = {r["call_id"] for r in records}
     assert len(records) == 3
     assert len(call_ids) == 3  # each dispatch minted its own id
@@ -98,11 +98,11 @@ def test_enrichment_is_debug_logging_correlated_by_call_id(tmp_path: Path) -> No
 
     async def go() -> None:
         async with client(app) as c:
-            await c.invoke("dig", url="https://x.com")
+            await c.invoke("r_dig", url="https://x.com")
 
     asyncio.run(go())
     rows = _rows(tmp_path)
-    record = next(r for r in rows if r.get("tool") == "dig" and "args" in r)
+    record = next(r for r in rows if r.get("tool") == "r_dig" and "args" in r)
     debug_row = next(r for r in rows if r.get("msg") == "html")
     # The debug enrichment row carries the SAME call_id as the auto record,
     # so a DuckDB GROUP BY call_id reconstructs the full call.

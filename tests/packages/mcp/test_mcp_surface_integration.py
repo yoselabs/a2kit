@@ -53,7 +53,7 @@ async def test_projection_mcp_only_does_not_appear_on_api() -> None:
     server = build_mcp_server(runtime, code_mode=False)
     async with Client(server) as client:
         names = {t.name for t in await client.list_tools()}
-    assert "mcp_only" in names
+    assert "mem_mcp_only" in names
 
 
 async def test_projection_api_only_does_not_appear_on_mcp() -> None:

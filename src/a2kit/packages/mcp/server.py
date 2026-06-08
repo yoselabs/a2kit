@@ -103,13 +103,15 @@ def _build_one_tool(
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
     install_mcp_signature(fn, wrapped, app, meta)
 
+    # The wire name is the flat canonical name (slug_leaf / pin), ADR 0028.
+    canonical = desc.name
     # `_meta.*` tools are protocol-meta (e.g. `_meta.health`) — tagged so
     # the post-loop `server.disable(tags={"_meta"})` filter excludes them
     # from default `list_tools` while keeping them callable by name.
-    is_meta = meta.tool_name.startswith(_RESERVED_TOOL_NAME_PREFIX)
-    if is_meta and meta.tool_name not in _BUILTIN_RESERVED_TOOL_NAMES:
+    is_meta = canonical.startswith(_RESERVED_TOOL_NAME_PREFIX)
+    if is_meta and canonical not in _BUILTIN_RESERVED_TOOL_NAMES:
         msg = (
-            f"tool {meta.tool_name!r} uses reserved namespace "
+            f"tool {canonical!r} uses reserved namespace "
             f"{_RESERVED_TOOL_NAME_PREFIX!r}; this prefix is reserved for "
             "built-in protocol-meta tools (e.g. `_meta.health`). See "
             "OPERATIONAL_CONTRACTS.md → 'The _meta.* tool namespace'."
@@ -122,7 +124,7 @@ def _build_one_tool(
         extra_kwargs["output_schema"] = union_schema
     return FunctionTool.from_function(
         wrapped,
-        name=meta.tool_name,
+        name=canonical,
         tags=tool_tags,
         annotations=meta.annotations,
         meta={"a2kit": _meta_to_dict(meta)},

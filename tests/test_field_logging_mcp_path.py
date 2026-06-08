@@ -61,13 +61,13 @@ async def _call(tool_name: str) -> Any:
 
 def test_string_form_round_trips_through_real_mcp() -> None:
     """``a2kit.ldd.info("msg", **fields)`` must deliver through real MCP."""
-    result = asyncio.run(_call("emit_string"))
+    result = asyncio.run(_call("r_emit_string"))
     payload = result.data if hasattr(result, "data") else result.structured_content
     assert payload == {"ok": 1}
 
 
 def test_instance_form_round_trips_through_real_mcp() -> None:
     """``a2kit.ldd.info(dataclass_instance)`` must deliver through real MCP."""
-    result = asyncio.run(_call("emit_instance"))
+    result = asyncio.run(_call("r_emit_instance"))
     payload = result.data if hasattr(result, "data") else result.structured_content
     assert payload == {"ok": 1}

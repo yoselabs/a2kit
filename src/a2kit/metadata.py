@@ -59,6 +59,12 @@ class A2KitMetaExtras(BaseModel):
     # is then derived lazily via ``a2kit._surfaces.matrix_for``. ``expose``
     # is kept as the mounted-surfaces compat tuple for membership reads.
     surfaces: dict[str, str] | None = None
+    # Verbatim canonical-name pin (ADR 0028 Wave 2). When set, it is the
+    # tool's name on every surface with no slug prefix; otherwise the
+    # canonical name auto-derives to ``f"{router_slug}_{leaf}"`` (router
+    # verbs) or the bare ``leaf`` (app-level). Resolved via
+    # ``a2kit._surfaces.resolve_canonical_name``.
+    canonical_name_override: str | None = None
     authorize: Any = None
 
 

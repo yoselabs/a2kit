@@ -110,7 +110,7 @@ def test_invoke_returns_value() -> None:
 
     async def go() -> Any:
         async with client(app) as c:
-            return await c.invoke("list_items")
+            return await c.invoke("__list_items")
 
     items = asyncio.run(go())
     assert len(items) == 2
@@ -131,7 +131,7 @@ def test_emissions_captured_as_logs() -> None:
 
     async def go() -> Any:
         async with client(app) as c:
-            await c.invoke("emit_telemetry")
+            await c.invoke("__emit_telemetry")
             return c
 
     c = asyncio.run(go())
@@ -156,7 +156,7 @@ def test_progress_captured() -> None:
 
     async def go() -> Any:
         async with client(app) as c:
-            await c.invoke("emit_telemetry")
+            await c.invoke("__emit_telemetry")
             return c
 
     c = asyncio.run(go())
@@ -171,7 +171,7 @@ def test_reports_captured() -> None:
 
     async def go() -> Any:
         async with client(app) as c:
-            await c.invoke("emit_reports")
+            await c.invoke("__emit_reports")
             return c
 
     c = asyncio.run(go())
@@ -191,7 +191,7 @@ def test_render_as_json() -> None:
 
     async def go() -> Any:
         async with client(app) as c:
-            value = await c.invoke("list_items")
+            value = await c.invoke("__list_items")
             return c.render_as("json", value)
 
     rendered = asyncio.run(go())
@@ -212,9 +212,9 @@ def test_tools_listing() -> None:
 
     tools = asyncio.run(go())
     names = [t.name for t in tools]
-    assert "list_items" in names
-    assert "emit_telemetry" in names
-    assert "emit_reports" in names
+    assert "__list_items" in names
+    assert "__emit_telemetry" in names
+    assert "__emit_reports" in names
     # Sorted by name
     assert names == sorted(names)
 
@@ -229,7 +229,7 @@ def test_connection_passthrough_tracker() -> None:
 
     async def go() -> Any:
         async with client(tracker_app) as c:
-            return await c.invoke("list_projects", connection="default")
+            return await c.invoke("projects_list_projects", connection="default")
 
     # The tracker example's connection store may not exist on a fresh test
     # filesystem, so resolution depends on the connection store layout.

@@ -36,7 +36,7 @@ async def test_success_returns_without_typed_error_channel() -> None:
     app = a2kit.App("t").add_router(R())
     server = build_mcp_server(build(app), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("ping", {"msg": "hi"})
+        result = await client.call_tool("echo_ping", {"msg": "hi"})
 
     assert result.is_error is False
     # The typed-error envelope channel is NOT touched on success.
@@ -57,7 +57,7 @@ async def test_error_emits_prose_plus_structured_envelope() -> None:
     app = a2kit.App("t").add_router(R())
     server = build_mcp_server(build(app), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("fetch", {"id": "abc"}, raise_on_error=False)
+        result = await client.call_tool("mem_fetch", {"id": "abc"}, raise_on_error=False)
 
     assert result.is_error is True
     # Prose contains kind label + type + message + hint
@@ -89,7 +89,7 @@ async def test_non_app_error_quarantined_as_unexpected_defect() -> None:
     app = a2kit.App("t").add_router(R())
     server = build_mcp_server(build(app), code_mode=False)
     async with Client(server) as client:
-        result = await client.call_tool("boom", {"x": 1}, raise_on_error=False)
+        result = await client.call_tool("broken_boom", {"x": 1}, raise_on_error=False)
 
     assert result.is_error is True
     text = result.content[0].text

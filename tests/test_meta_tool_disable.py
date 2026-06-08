@@ -70,7 +70,7 @@ def test_default_list_tools_omits_meta() -> None:
     async def go() -> None:
         listed = await server.list_tools()
         names = {t.name for t in listed}
-        assert "ping" in names
+        assert "_pinger_ping" in names
         assert not any(n.startswith("_meta.") for n in names), names
 
     asyncio.run(go())
@@ -115,7 +115,8 @@ def test_user_meta_tool_rejected_at_build() -> None:
     target = getattr(tool_fn, "__func__", tool_fn)
     meta = _get_meta(target)
     assert meta is not None
-    mutated = dataclasses.replace(meta, tool_name="_meta.custom")
+    mutated_extras = meta.extras.model_copy(update={"canonical_name_override": "_meta.custom"})
+    mutated = dataclasses.replace(meta, extras=mutated_extras)
     _set_meta(target, mutated)
 
     with pytest.raises(ValueError, match="reserved namespace"):

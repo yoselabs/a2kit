@@ -53,8 +53,8 @@ async def test_concurrent_requests_get_distinct_scoped_instances() -> None:
         transport = httpx.ASGITransport(app=fastapi_app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             r1, r2 = await asyncio.gather(
-                client.post("/ping", json={}),
-                client.post("/ping", json={}),
+                client.post("/demo_ping", json={}),
+                client.post("/demo_ping", json={}),
             )
 
     assert r1.status_code == 200, r1.text

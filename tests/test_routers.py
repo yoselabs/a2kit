@@ -143,7 +143,7 @@ def test_router_lifespan_composes_into_app_lifecycle() -> None:
 
     async def _go() -> None:
         async with _tc(app) as c:
-            await c.invoke("rlife.ping")
+            await c.invoke("rlife_ping")
 
     anyio.run(_go)
     assert calls == ["up", "down"]
@@ -221,7 +221,7 @@ def test_auto_collected_methods_register() -> None:
 
     app = a2kit.App("t").add_router(_R())
     tool_names = {d.name for d in app.tools()}
-    assert tool_names == {"one", "two"}
+    assert tool_names == {"z2_one", "z2_two"}
 
 
 def test_subclass_collects_inherited_and_own_verbs() -> None:
@@ -243,8 +243,8 @@ def test_subclass_collects_inherited_and_own_verbs() -> None:
 
     app = a2kit.App("t").add_router(_Sub())
     tool_names = {d.name for d in app.tools()}
-    assert "sub_tool" in tool_names
-    assert "base_tool" in tool_names
+    assert "sub_sub_tool" in tool_names
+    assert "sub_base_tool" in tool_names
 
 
 def test_plain_router_unchanged() -> None:

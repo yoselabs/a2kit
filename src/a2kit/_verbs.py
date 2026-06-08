@@ -140,12 +140,14 @@ def _stamp(
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
+    canonical_name_override: str | None = None,
     authorize: Any = None,
 ) -> F:
     _check_return(fn)
-    resolved_name = name or getattr(fn, "__name__", "<callable>")
+    override = canonical_name_override or name
+    resolved_name = override or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
-    extras_kwargs: dict[str, Any] = {"authorize": authorize}
+    extras_kwargs: dict[str, Any] = {"authorize": authorize, "canonical_name_override": override}
     if surfaces is not _SURFACES_UNSET:
         # New surfaces= axis (ADR 0028 Wave 2). Mutually exclusive with the
         # legacy expose=/visibility= pair.
@@ -319,6 +321,7 @@ def read(
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
+    canonical_name_override: str | None = None,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """Read-shaped tool decorator. Sets ``readOnlyHint=True``.
@@ -354,6 +357,7 @@ def read(
             timeout=timeout,
             expose=expose,
             surfaces=surfaces,
+            canonical_name_override=canonical_name_override,
             authorize=authorize,
         )
 
@@ -372,6 +376,7 @@ def write(
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
+    canonical_name_override: str | None = None,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """Write-shaped tool decorator. Sets ``readOnlyHint=False, destructiveHint=True`` by default.
@@ -407,6 +412,7 @@ def write(
             timeout=timeout,
             expose=expose,
             surfaces=surfaces,
+            canonical_name_override=canonical_name_override,
             authorize=authorize,
         )
 
@@ -427,6 +433,7 @@ def list_(
     timeout: float | int | str | None = None,
     expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
+    canonical_name_override: str | None = None,
     authorize: Any = None,
 ) -> Callable[[F], F]:
     """List-shaped tool decorator. Read-shaped; requires ``list[T]`` return.
@@ -482,6 +489,7 @@ def list_(
             timeout=timeout,
             expose=expose,
             surfaces=surfaces,
+            canonical_name_override=canonical_name_override,
             authorize=authorize,
         )
 

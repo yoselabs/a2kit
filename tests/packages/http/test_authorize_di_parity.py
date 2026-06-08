@@ -65,7 +65,7 @@ def _build_runtime(*, allow: bool):
 def test_http_authorize_with_di_allows_when_policy_allows() -> None:
     runtime, body_calls = _build_runtime(allow=True)
     client = TestClient(build_http_app(runtime), raise_server_exceptions=False)
-    resp = client.post("/call", json={"x": 7})
+    resp = client.post("/svc_call", json={"x": 7})
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"x": 7}
     assert body_calls == [7]
@@ -74,7 +74,7 @@ def test_http_authorize_with_di_allows_when_policy_allows() -> None:
 def test_http_authorize_with_di_denies_when_policy_denies() -> None:
     runtime, body_calls = _build_runtime(allow=False)
     client = TestClient(build_http_app(runtime), raise_server_exceptions=False)
-    resp = client.post("/call", json={"x": 9})
+    resp = client.post("/svc_call", json={"x": 9})
     assert resp.status_code == 403, resp.text
     body = resp.json()
     assert body["error"]["type"] == "AuthorizationDenied"
@@ -96,7 +96,7 @@ async def test_mcp_authorize_with_di_allows_when_policy_allows() -> None:
     from a2kit.packages.dispatch.spec import ToolBuildSpec
 
     runtime, body_calls = _build_runtime(allow=True)
-    desc = next(d for d in runtime.tools() if d.name == "call")
+    desc = next(d for d in runtime.tools() if d.name == "svc_call")
     spec = ToolBuildSpec(
         app=runtime,
         router=None,
@@ -114,7 +114,7 @@ async def test_mcp_authorize_with_di_denies_when_policy_denies() -> None:
     from a2kit.packages.dispatch.spec import CapturedError, ToolBuildSpec
 
     runtime, body_calls = _build_runtime(allow=False)
-    desc = next(d for d in runtime.tools() if d.name == "call")
+    desc = next(d for d in runtime.tools() if d.name == "svc_call")
     spec = ToolBuildSpec(
         app=runtime,
         router=None,

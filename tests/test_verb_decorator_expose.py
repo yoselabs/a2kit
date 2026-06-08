@@ -256,10 +256,10 @@ def test_http_build_filters_by_expose() -> None:
             api = build_http_app(runtime)
             with TestClient(api) as client:
                 # api-only registered
-                r = client.post("/api_only", json={"k": "x"})
+                r = client.post("/demo_api_only", json={"k": "x"})
                 assert r.status_code == 200
                 # mcp-only filtered out
-                r = client.post("/mcp_only", json={"k": "x"})
+                r = client.post("/demo_mcp_only", json={"k": "x"})
                 assert r.status_code == 404
 
     asyncio.run(_exercise())
