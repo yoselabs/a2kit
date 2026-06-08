@@ -18,6 +18,7 @@ from a2kit.packages.connections import (
     ConnectionConfig,
     install_connections,
 )
+from a2kit.testing import app_of
 
 
 class _DummyConn(ConnectionConfig):
@@ -29,14 +30,14 @@ class _DummyConn(ConnectionConfig):
 def test_install_connections_registers_provider() -> None:
     """install_connections registers a stub provider so container.has() is True
     and the dispatch hook substitutes typed configs into wire kwargs."""
-    app = a2kit.App("t")
+    app = app_of("t")
     install_connections(app, _DummyConn)
     assert app.has_provider(_DummyConn)
 
 
 def test_install_connections_registers_connection_wire_scope() -> None:
     """install_connections teaches the container about the ``connection`` scope."""
-    app = a2kit.App("t")
+    app = app_of("t")
     install_connections(app, _DummyConn)
     scopes = app.container().wire_scopes()
     assert "connection" in scopes
@@ -45,7 +46,7 @@ def test_install_connections_registers_connection_wire_scope() -> None:
 
 def test_install_connections_registers_cli_group() -> None:
     """install_connections also adds the `connections` Click subcommand group."""
-    app = a2kit.App("t")
+    app = app_of("t")
     install_connections(app, _DummyConn)
     cli_extras = app.cli_extras()
     assert any(getattr(c, "name", None) == "connections" for c in cli_extras)
@@ -57,7 +58,7 @@ def test_add_cli_does_not_auto_install_provider() -> None:
     """
     from a2kit.packages.connections.cli import connections_cli
 
-    app = a2kit.App("t")
+    app = app_of("t")
     cli = connections_cli(_DummyConn)
     app.add_cli(cli)
     assert not app.has_provider(_DummyConn)
@@ -78,5 +79,5 @@ def test_add_router_ignores_underscore_marker() -> None:
         slug = "sneaky"
         _a2kit_attach = staticmethod(_hidden_hook)
 
-    app = a2kit.App("t").add_router(_Sneaky())
+    app = app_of("t", _Sneaky())
     assert sentinel["called"] is False, "App.add_router must not invoke _a2kit_attach or any underscored marker"

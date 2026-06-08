@@ -18,6 +18,7 @@ from a2kit.packages.codemode.stubs import generate_stubs
 from a2kit.packages.formatter import Page
 from a2kit.packages.mcp import build_mcp_server
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class Task(BaseModel):
@@ -104,7 +105,7 @@ class _SandboxRouter(a2kit.Router):
 
 @pytest.fixture
 def sandbox_app() -> a2kit.App:
-    return a2kit.App("sandbox-runtime-test").add_router(_SandboxRouter())
+    return app_of("sandbox-runtime-test", _SandboxRouter())
 
 
 def _text(result: Any) -> str:

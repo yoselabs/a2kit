@@ -6,6 +6,7 @@ import click
 
 import a2kit
 from a2kit.packages.dispatch.surface import Surface, SurfaceKind
+from a2kit.testing import app_of
 
 
 def test_surfacekind_members() -> None:
@@ -54,5 +55,5 @@ def test_default_surface_set_excludes_local_cli() -> None:
     """LOCAL CLI surface does not join the network mount set."""
     from a2kit.runtime import build
 
-    runtime = build(a2kit.App("t"), surfaces=a2kit.compose_default_surfaces())
+    runtime = build(app_of("t"), surfaces=a2kit.compose_default_surfaces())
     assert runtime.surfaces.names() == ("mcp", "api")

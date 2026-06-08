@@ -9,6 +9,7 @@ import pytest
 
 import a2kit
 from a2kit.packages.mcp import build_mcp_server
+from a2kit.testing import app_of
 
 
 class _SampleRouter(a2kit.Router):
@@ -30,7 +31,7 @@ class _SampleRouter(a2kit.Router):
 
 @pytest.fixture
 def app() -> a2kit.App:
-    return a2kit.App("sample-app").add_router(_SampleRouter())
+    return app_of("sample-app", _SampleRouter())
 
 
 def test_build_mcp_server_returns_fastmcp(app: a2kit.App) -> None:
@@ -115,7 +116,7 @@ def test_enricher_fires_before_registration() -> None:
         fired.append(exc)
         return EnrichedError(f"enriched: {exc!s}")
 
-    app = a2kit.App("e").add_router(router)
+    app = app_of("e", router)
     server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:
@@ -146,7 +147,7 @@ def test_sync_and_async_tools_both_register() -> None:
         async def async_one(self) -> dict[str, int]:
             return {"x": 2}
 
-    app = a2kit.App("a").add_router(R())
+    app = app_of("a", R())
     server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:

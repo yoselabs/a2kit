@@ -22,7 +22,7 @@ import pytest
 
 import a2kit
 from a2kit.runtime import build
-from a2kit.testing import client, peek
+from a2kit.testing import app_of, client, peek
 
 
 # --- Q1: cancellation propagates --- #
@@ -44,7 +44,7 @@ def test_cancellation_propagates_to_tool_body() -> None:
                 cleanup_ran.append(True)
                 raise
 
-    app = a2kit.App("cancel").add_router(_R())
+    app = app_of("cancel", _R())
 
     async def go() -> None:
         async with client(app) as c:
@@ -68,8 +68,8 @@ class _AppState:
 
 def test_two_apps_have_isolated_singletons() -> None:
     """Each App keeps its own singleton cache; resolving the same type yields different instances."""
-    app_a = a2kit.App("a").provide(_AppState, lambda: _AppState("from-a"))
-    app_b = a2kit.App("b").provide(_AppState, lambda: _AppState("from-b"))
+    app_a = app_of("a").provide(_AppState, lambda: _AppState("from-a"))
+    app_b = app_of("b").provide(_AppState, lambda: _AppState("from-b"))
 
     state_a = peek(app_a, _AppState)
     state_b = peek(app_b, _AppState)
@@ -101,7 +101,7 @@ def test_unhandled_exception_bubbles_through_dispatcher() -> None:
         async def boom(self) -> dict:
             raise ValueError("explicit failure")
 
-    app = a2kit.App("err").add_router(_R())
+    app = app_of("err", _R())
 
     async def go() -> Any:
         async with client(app) as c:
@@ -119,15 +119,15 @@ def test_app_debug_flag_defaults_false(monkeypatch: pytest.MonkeyPatch) -> None:
     from a2kit.config import A2kitConfig
 
     monkeypatch.delenv("A2KIT_DEBUG", raising=False)
-    plain = a2kit.App("plain")
+    plain = app_of("plain")
     assert plain.config.debug is False
-    chatty = a2kit.App("chatty", config=A2kitConfig(debug=True))
+    chatty = app_of("chatty", config=A2kitConfig(debug=True))
     assert chatty.config.debug is True
 
 
 def test_app_debug_attribute_removed_with_migration_hint() -> None:
     """`App.debug` is removed (di-for-sub-configs). Access raises with hint."""
-    app = a2kit.App("retired")
+    app = app_of("retired")
     with pytest.raises(AttributeError) as ei:
         _ = app.debug  # type: ignore[attr-defined]
     msg = str(ei.value)
@@ -139,7 +139,7 @@ def test_app_debug_attribute_removed_with_migration_hint() -> None:
 def test_app_debug_kwarg_raises_with_migration_hint() -> None:
     """`App(debug=True)` (the removed kwarg) raises TypeError per ADR 0022."""
     with pytest.raises(TypeError) as ei:
-        a2kit.App("legacy", debug=True)  # type: ignore[call-arg]
+        app_of("legacy", debug=True)  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "A2KIT_DEBUG" in msg
     assert "A2kitConfig" in msg
@@ -150,7 +150,7 @@ def test_env_debug_beats_config_kwarg(monkeypatch: pytest.MonkeyPatch) -> None:
     from a2kit.config import A2kitConfig
 
     monkeypatch.setenv("A2KIT_DEBUG", "true")
-    app = a2kit.App("env-wins", config=A2kitConfig(debug=False))
+    app = app_of("env-wins", config=A2kitConfig(debug=False))
     assert app.config.debug is True
 
 
@@ -167,7 +167,7 @@ def test_cli_error_no_traceback_when_debug_false() -> None:
         async def boom(self) -> dict:
             raise ValueError("plain failure")
 
-    app = a2kit.App("cli-err").add_router(_R())
+    app = app_of("cli-err", _R())
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["_r", "boom"])
     assert result.exit_code != 0
@@ -190,7 +190,7 @@ def test_cli_error_includes_traceback_when_debug_true() -> None:
 
     from a2kit.config import A2kitConfig
 
-    app = a2kit.App("cli-err-dbg", config=A2kitConfig(debug=True)).add_router(_R())
+    app = app_of("cli-err-dbg", _R(), config=A2kitConfig(debug=True))
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["_r", "boom"])
     assert result.exit_code != 0
@@ -213,7 +213,6 @@ def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
 
     from fastmcp.exceptions import ToolError
 
-    import a2kit
     from a2kit.packages.dispatch import ErrorCaptureStage, ToolBuildSpec
     from a2kit.packages.mcp._wrappers import McpErrorRenderStage
 
@@ -222,7 +221,7 @@ def test_mcp_error_envelope_wraps_message_with_class_and_message() -> None:
 
     from a2kit.config import A2kitConfig
 
-    spec = ToolBuildSpec(app=build(a2kit.App("oc-err", config=A2kitConfig(debug=True))), router=None, meta=None)
+    spec = ToolBuildSpec(app=build(app_of("oc-err", config=A2kitConfig(debug=True))), router=None, meta=None)
     wrapped = ErrorCaptureStage().wrap(boom, spec)
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
@@ -239,14 +238,13 @@ def test_mcp_error_envelope_passes_cancelled_unchanged() -> None:
     """CancelledError must not be wrapped (per OPERATIONAL_CONTRACTS Q1)."""
     import asyncio
 
-    import a2kit
     from a2kit.packages.dispatch import ErrorCaptureStage, ToolBuildSpec
     from a2kit.packages.mcp._wrappers import McpErrorRenderStage
 
     async def stuck() -> None:
         await asyncio.sleep(60)
 
-    spec = ToolBuildSpec(app=build(a2kit.App("oc-cancel")), router=None, meta=None)
+    spec = ToolBuildSpec(app=build(app_of("oc-cancel")), router=None, meta=None)
     wrapped = ErrorCaptureStage().wrap(stuck, spec)
     wrapped = McpErrorRenderStage().wrap(wrapped, spec)
 
@@ -266,10 +264,10 @@ def test_mcp_server_passes_mask_error_details_from_app_debug(monkeypatch: pytest
     from a2kit.packages.mcp.server import build_mcp_server
 
     monkeypatch.delenv("A2KIT_DEBUG", raising=False)
-    plain = a2kit.App("plain")
+    plain = app_of("plain")
     server_plain = build_mcp_server(plain)
     assert server_plain._mask_error_details is True
 
-    chatty = a2kit.App("chatty", config=A2kitConfig(debug=True))
+    chatty = app_of("chatty", config=A2kitConfig(debug=True))
     server_chatty = build_mcp_server(chatty)
     assert server_chatty._mask_error_details is False

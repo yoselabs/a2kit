@@ -15,6 +15,7 @@ from a2effect import AppError, Raises
 from a2effect.errors import InfrastructureError
 from a2kit.packages.http.build import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _NotFound(AppError):
@@ -28,7 +29,7 @@ class _OopsBug(AppError):
 
 
 def _make_client(router_cls: type[a2kit.Router]) -> TestClient:
-    app = a2kit.App("t").add_router(router_cls())
+    app = app_of("t", router_cls())
     fast_app = build_http_app(build(app))
     return TestClient(fast_app, raise_server_exceptions=False)
 

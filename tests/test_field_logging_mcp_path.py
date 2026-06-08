@@ -21,6 +21,7 @@ from fastmcp import Client
 
 import a2kit
 from a2kit.packages.mcp.server import build_mcp_server
+from a2kit.testing import app_of
 
 
 def _build_app() -> a2kit.App:
@@ -50,7 +51,7 @@ def _build_app() -> a2kit.App:
             await log.info(ImportStarted(file="/x.csv", batch=2))
             return {"ok": 1}
 
-    return a2kit.App("field-logging-probe").add_router(R())
+    return app_of("field-logging-probe", R())
 
 
 async def _call(tool_name: str) -> Any:

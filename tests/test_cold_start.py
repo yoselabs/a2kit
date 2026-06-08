@@ -98,13 +98,17 @@ def test_import_a2kit_does_not_load_fastapi() -> None:
 
 def test_app_api_attribute_access_does_not_load_fastapi() -> None:
     """Touching ``app.api`` is a dataclass construction, not a FastAPI import."""
-    out = _runtime_check("import sys; import a2kit;app = a2kit.App('demo');_ = app.api;print('fastapi' in sys.modules)")
+    out = _runtime_check(
+        "import sys; import a2kit;app = type('A', (a2kit.App,), {'name': 'demo'})();_ = app.api;print('fastapi' in sys.modules)"
+    )
     assert out.strip() == "False", "app.api must not load fastapi"
 
 
 def test_app_mcp_attribute_access_does_not_load_fastmcp() -> None:
     """Touching ``app.mcp`` is a dataclass construction, not a FastMCP import."""
-    out = _runtime_check("import sys; import a2kit;app = a2kit.App('demo');_ = app.mcp;print('fastmcp' in sys.modules)")
+    out = _runtime_check(
+        "import sys; import a2kit;app = type('A', (a2kit.App,), {'name': 'demo'})();_ = app.mcp;print('fastmcp' in sys.modules)"
+    )
     assert out.strip() == "False", "app.mcp must not load fastmcp"
 
 

@@ -14,6 +14,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 import a2kit
 from a2kit.packages.mcp import build_mcp_server
 from a2kit.packages.otel import OTelMiddleware
+from a2kit.testing import app_of
 
 
 # OTel global providers can only be set once per process. Wire them up
@@ -73,7 +74,7 @@ def _build_server() -> Any:
         async def boom(self) -> dict[str, int]:
             raise RuntimeError("kaboom")
 
-    app = a2kit.App("demo-app").add_router(_R())
+    app = app_of("demo-app", _R())
     return build_mcp_server(app)
 
 

@@ -10,6 +10,7 @@ from a2kit.packages.dispatch.surface import (
     SurfaceRegistry,
     current_registry,
 )
+from a2kit.testing import app_of
 
 
 def test_compose_default_surfaces_returns_a_populated_registry() -> None:
@@ -67,7 +68,7 @@ def test_third_party_surface_via_explicit_registry() -> None:
     registry = SurfaceRegistry()
     registry.register_surface(MySurface())
 
-    app = a2kit.App("demo")
+    app = app_of("demo")
     runtime = build(app, surfaces=registry)
     assert runtime.surfaces is registry
     assert "my" in registry.names()

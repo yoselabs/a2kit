@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _SmtpSettings(BaseSettings):
@@ -36,7 +36,7 @@ async def test_basesettings_subclass_auto_resolved(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("A2KIT_TEST_SMTP_HOST", "envhost")
     monkeypatch.setenv("A2KIT_TEST_SMTP_PORT", "2525")
 
-    app = a2kit.App("test")
+    app = app_of("test")
     # No explicit `app.provide(_SmtpSettings)` — auto-resolution must kick in.
 
     async with build(app) as app:
@@ -52,7 +52,7 @@ async def test_non_basesettings_zero_arg_class_not_auto_resolved() -> None:
     """A non-``BaseSettings`` zero-arg-constructible class is NOT auto-resolved."""
     from a2kit.packages.di.container import UnresolvableType
 
-    app = a2kit.App("test")
+    app = app_of("test")
 
     async with build(app) as app:
         with pytest.raises(UnresolvableType):

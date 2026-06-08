@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.testing import app_of
 
 
 class TasksRouter(a2kit.Router):
@@ -34,4 +35,4 @@ def tasks_router() -> TasksRouter:
 
 @pytest.fixture
 def app(tasks_router: TasksRouter) -> a2kit.App:
-    return a2kit.App("tracker").add_router(tasks_router)
+    return app_of("tracker", tasks_router)

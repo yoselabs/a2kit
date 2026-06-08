@@ -14,9 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
-from a2kit.testing import lazy, peek, resolve
+from a2kit.testing import app_of, lazy, peek, resolve
 
 
 class _Inner:
@@ -64,7 +63,7 @@ def _reset_counters() -> None:
 @pytest.mark.asyncio
 async def test_resolve_runs_di_chain_on_first_call() -> None:
     """First `resolve(app, T)` call builds T via the registered factory."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)
 
     async with build(app) as app:
@@ -78,7 +77,7 @@ async def test_resolve_runs_di_chain_on_first_call() -> None:
 async def test_resolve_enters_resource_via_aenter() -> None:
     """`__aenter__` runs exactly once on first resolve; `__aexit__`
     fires at lifespan close, not per resolve call."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)
 
     async with build(app) as app:
@@ -92,7 +91,7 @@ async def test_resolve_enters_resource_via_aenter() -> None:
 @pytest.mark.asyncio
 async def test_resolve_returns_cached_singleton_on_second_call() -> None:
     """Two calls in the same lifespan return the same instance."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)
 
     async with build(app) as app:
@@ -108,7 +107,7 @@ async def test_resolve_walks_dependency_chain() -> None:
     """`resolve(app, _Outer)` runs `_Outer`'s factory with the
     resolved `_Inner` injected; subsequent `resolve(_Inner)` returns
     the same `_Inner` instance the outer received."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)
     app.provide(_Outer)
 
@@ -147,7 +146,7 @@ async def test_lazy_returns_the_same_object_by_identity() -> None:
 
 def test_peek_resolves_a_provider_from_a_sync_body() -> None:
     """`peek` drives `Container.get` via `asyncio.run` from sync test code."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Plain)
 
     got = peek(app, _Plain)

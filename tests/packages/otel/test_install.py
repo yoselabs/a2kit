@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 
 from a2kit.packages.mcp import build_mcp_server
 from a2kit.packages.otel import OTelMiddleware, install
+from a2kit.testing import app_of
 
 
 class _R(a2kit.Router):
@@ -19,7 +20,7 @@ class _R(a2kit.Router):
 
 
 def _build_server() -> FastMCP:
-    app = a2kit.App("demo-app").add_router(_R())
+    app = app_of("demo-app", _R())
     return build_mcp_server(app)
 
 

@@ -4,6 +4,7 @@ ambient_for_tests
 ambient_for_tests_autouse
 annotations
 app
+app_of
 cassette
 client
 compute_schema

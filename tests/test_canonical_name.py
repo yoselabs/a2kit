@@ -6,6 +6,7 @@ import pytest
 
 import a2kit
 from a2kit._surfaces import resolve_canonical_name
+from a2kit.testing import app_of
 
 
 def test_resolver_precedence() -> None:
@@ -25,7 +26,7 @@ def test_router_verb_canonical_is_slug_leaf() -> None:
         async def update(self, *, id: str) -> dict:
             return {"id": id}
 
-    app = a2kit.App("k").add_router(Entity())
+    app = app_of("k", Entity())
     names = {d.name for d in app.tools()}
     assert names == {"entity_update"}
 
@@ -42,7 +43,7 @@ def test_canonical_name_override_is_verbatim() -> None:
         async def issues(self) -> dict:
             return {}
 
-    app = a2kit.App("k").add_router(Jira())
+    app = app_of("k", Jira())
     names = {d.name for d in app.tools()}
     # pin stays verbatim (no jira_jira_search); sibling auto-derives.
     assert names == {"jira_search", "jira_issues"}
@@ -61,7 +62,7 @@ async def test_canonical_name_on_mcp_and_http() -> None:
         async def update(self, *, id: str = "") -> dict:
             return {"id": id}
 
-    app = a2kit.App("k").add_router(Entity())
+    app = app_of("k", Entity())
 
     server = build_mcp_server(app, code_mode=False)
     mcp_names = {t.name for t in await server.list_tools()}

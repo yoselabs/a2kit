@@ -7,6 +7,7 @@ from click.testing import CliRunner
 
 import a2kit
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.testing import app_of
 
 
 def test_returns_click_command(app):
@@ -35,13 +36,13 @@ def test_connections_subgroup_only_when_added(tasks_router):
     from a2kit.packages.connections.cli import connections_cli
 
     # Without add_cli: no connections subgroup.
-    bare = a2kit.App("bare").add_router(tasks_router)
+    bare = app_of("bare", tasks_router)
     cli = build_full_cli(bare)
     out = CliRunner().invoke(cli, ["--help"]).output
     assert "connections" not in out
 
     # With add_cli: connections subgroup present.
-    with_cli = a2kit.App("withcli").add_router(tasks_router).add_cli(connections_cli(WidgetConfig))
+    with_cli = app_of("withcli", tasks_router).add_cli(connections_cli(WidgetConfig))
     cli2 = build_full_cli(with_cli)
     out2 = CliRunner().invoke(cli2, ["--help"]).output
     assert "connections" in out2
@@ -81,7 +82,7 @@ def test_add_cli_attaches_under_vendored_click(tasks_router, monkeypatch):
 
     monkeypatch.setattr(builder.typer.main, "get_command", fake_get_command)
 
-    app = a2kit.App("withcli").add_router(tasks_router).add_cli(connections_cli(WidgetConfig))
+    app = app_of("withcli", tasks_router).add_cli(connections_cli(WidgetConfig))
 
     command = build_full_cli(app)  # must NOT raise TypeError under vendored click
 
@@ -126,6 +127,7 @@ def test_lazy_serve_does_not_load_fastmcp_at_build_time():
         "import sys\n"
         "import a2kit\n"
         "from a2kit.packages.cli.builder import build_full_cli\n"
+        "from a2kit.packages.testing.fixtures import app_of\n"
         "from click.testing import CliRunner\n"
         "class T(a2kit.Router):\n"
         "    slug = 't'\n"
@@ -133,7 +135,7 @@ def test_lazy_serve_does_not_load_fastmcp_at_build_time():
         "    def list_tasks(self, *, limit: int = 10) -> dict:\n"
         "        return {}\n"
         "    tools = (list_tasks,)\n"
-        "app = a2kit.App('demo').add_router(T())\n"
+        "app = app_of('demo', T())\n"
         "CliRunner().invoke(build_full_cli(app), ['--help'])\n"
         "print('fastmcp' in sys.modules)\n"
     )
@@ -156,7 +158,7 @@ def test_schema_command_sees_app(app):
 
 
 def test_empty_app_still_builds():
-    empty = a2kit.App("empty")
+    empty = app_of("empty")
     cli = build_full_cli(empty)
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
@@ -166,7 +168,6 @@ def test_empty_app_still_builds():
 
 
 def test_optional_int_maps_to_integer_click_option():
-    import a2kit
     from a2kit.packages.cli.builder import build_full_cli
 
     class Probe(a2kit.Router):
@@ -177,7 +178,7 @@ def test_optional_int_maps_to_integer_click_option():
         def get(self, *, project_id: int | None = None) -> dict:
             return {"project_id": project_id}
 
-    app = a2kit.App("probe").add_router(Probe())
+    app = app_of("probe", Probe())
     cli = build_full_cli(app)
     result = CliRunner().invoke(cli, ["probe", "get", "--help"])
     assert result.exit_code == 0
@@ -185,7 +186,6 @@ def test_optional_int_maps_to_integer_click_option():
 
 
 def test_optional_str_invokes_with_string_value():
-    import a2kit
     from a2kit.packages.cli.builder import build_full_cli
 
     seen: dict = {}
@@ -199,14 +199,13 @@ def test_optional_str_invokes_with_string_value():
             seen["query"] = query
             return {"query": query}
 
-    app = a2kit.App("probe").add_router(Probe())
+    app = app_of("probe", Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--query", "hello"])
     assert result.exit_code == 0
     assert seen["query"] == "hello"
 
 
 def test_optional_bool_maps_to_flag():
-    import a2kit
     from a2kit.packages.cli.builder import build_full_cli
 
     class Probe(a2kit.Router):
@@ -217,7 +216,7 @@ def test_optional_bool_maps_to_flag():
         def get(self, *, verbose: bool | None = None) -> dict:
             return {"verbose": verbose}
 
-    app = a2kit.App("probe").add_router(Probe())
+    app = app_of("probe", Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--help"])
     assert result.exit_code == 0
     # Flag form: --verbose/--no-verbose
@@ -226,7 +225,6 @@ def test_optional_bool_maps_to_flag():
 
 def test_nonprimitive_nullable_still_json_decodes():
     """Regression guard: list[int] | None stays JSON-decode mode."""
-    import a2kit
     from a2kit.packages.cli.builder import build_full_cli
 
     seen: dict = {}
@@ -240,7 +238,7 @@ def test_nonprimitive_nullable_still_json_decodes():
             seen["ids"] = ids
             return {"ids": ids}
 
-    app = a2kit.App("probe").add_router(Probe())
+    app = app_of("probe", Probe())
     result = CliRunner().invoke(build_full_cli(app), ["probe", "get", "--ids", "[1,2,3]"])
     assert result.exit_code == 0, result.output
     assert seen["ids"] == [1, 2, 3]

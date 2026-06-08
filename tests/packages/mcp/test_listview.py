@@ -13,6 +13,7 @@ from typing import Any
 import a2kit
 from a2kit.packages.mcp import build_mcp_server
 from a2kit.packages.mcp.listview import _apply
+from a2kit.testing import app_of
 
 
 def test_apply_projects_default_fields() -> None:
@@ -62,7 +63,7 @@ def test_listview_settings_serialized_into_tool_meta() -> None:
         async def rows(self) -> list[dict[str, Any]]:
             return [{"id": i, "extra": "drop"} for i in range(10)]
 
-    app = a2kit.App("a").add_router(R())
+    app = app_of("a", R())
     server = build_mcp_server(app, code_mode=False)
 
     async def _check() -> None:

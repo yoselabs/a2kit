@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 import a2kit
 from a2kit.packages.formatter.response import Page
+from a2kit.testing import app_of
 
 
 class FlatTask(BaseModel):
@@ -27,7 +28,7 @@ class TestDescriptorBasics:
             async def list_tasks(self, *, q: str = "") -> list[FlatTask]:  # noqa: ARG002
                 return []
 
-        app = a2kit.App("t").add_router(TasksRouter())
+        app = app_of("t", TasksRouter())
         descriptors = app.tools()
         assert len(descriptors) == 1
         d = descriptors[0]
@@ -46,7 +47,7 @@ class TestDescriptorBasics:
             async def list_x(self) -> list[TaskWithList]:
                 return []
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         d = app.tools()[0]
         assert d.format_hint == "json"
 
@@ -59,7 +60,7 @@ class TestDescriptorBasics:
             async def page_x(self) -> Page[FlatTask]:
                 return Page[FlatTask]()
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         d = app.tools()[0]
         assert d.format_hint == "page-tsv"
 
@@ -72,7 +73,7 @@ class TestDescriptorBasics:
             async def get(self, *, id: str) -> FlatTask:  # noqa: A002, ARG002
                 return FlatTask(id=id, title="x")
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         d = app.tools()[0]
         assert d.format_hint == "json"
 
@@ -87,7 +88,7 @@ class TestDescriptorAccessors:
             async def get(self, *, id: str) -> FlatTask:  # noqa: A002, ARG002
                 return FlatTask(id=id, title="x")
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         tools = app.tools()
         assert len(tools) == 1
         # v0.33: app.tools() returns ToolDescriptor; callable lives on .fn
@@ -106,7 +107,7 @@ class TestDescriptorAccessors:
             async def b(self) -> FlatTask:
                 return FlatTask(id="b", title="y")
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         assert len(app.tools()) == len(app.tools()) == 2
 
     def test_descriptors_returned_as_copy(self):
@@ -119,7 +120,7 @@ class TestDescriptorAccessors:
             async def a(self) -> FlatTask:
                 return FlatTask(id="a", title="x")
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         first = app.tools()
         first.clear()
         assert len(app.tools()) == 1

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 import a2kit
 from a2effect import AppError, Raises
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.testing import app_of
 
 
 class _Memory(BaseModel):
@@ -43,7 +44,7 @@ def _build() -> a2kit.App:
         async def list_simple(self) -> list[_Memory]:
             return [_Memory(id="a", text="A"), _Memory(id="b", text="B")]
 
-    return a2kit.App("demo").add_router(R())
+    return app_of("demo", R())
 
 
 def test_json_success_emits_model_dump_to_stdout() -> None:

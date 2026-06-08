@@ -17,8 +17,8 @@ from typing import Any
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 from a2kit.packages.di import Lazy
 
 
@@ -83,7 +83,7 @@ async def test_singleton_factory_with_lazy_app_scope_t_works() -> None:
     """A SINGLETON factory declaring ``Lazy[_Inner]`` (Inner is also
     app-scope) receives a callable; awaiting it from a tool body
     resolves _Inner exactly once and caches it."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)
 
     def make_outer(inner_lazy: Lazy[_Inner]) -> _Outer:
@@ -107,7 +107,7 @@ async def test_singleton_factory_with_lazy_app_scope_t_works() -> None:
 async def test_singleton_factory_lazy_handle_never_awaited() -> None:
     """If no tool body ever awaits the captured Lazy handle, _Inner's
     factory / __aenter__ never run."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)
 
     def make_outer(inner_lazy: Lazy[_Inner]) -> _Outer:
@@ -134,7 +134,7 @@ async def test_singleton_factory_lazy_handle_cached_across_dispatches() -> None:
     dispatch). The closure was captured during _Outer's construction
     on root, so subsequent awaits resolve through root.get(_Inner).
     """
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)
 
     def make_outer(inner_lazy: Lazy[_Inner]) -> _Outer:
@@ -162,7 +162,7 @@ async def test_singleton_factory_with_lazy_per_call_rejected() -> None:
     """A SINGLETON factory declaring ``Lazy[_PerCallThing]`` is
     rejected at ``async with build(app) as app:`` time with a TypeError naming the
     offending factory + the per-call inner type + migration paths."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_PerCallThing, per_call=True)
 
     def make_bad_outer(pc_lazy: Lazy[_PerCallThing]) -> _OuterWithPerCall:
@@ -188,7 +188,7 @@ async def test_per_call_factory_with_lazy_t_works() -> None:
     is valid. Each dispatch builds a fresh per-call aggregate; the
     captured closure resolves through the per-call child's parent
     chain to the cached app-scope _Inner."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Inner)  # app-scope
 
     def make_per_call(inner_lazy: Lazy[_Inner]) -> _PerCallAggregate:

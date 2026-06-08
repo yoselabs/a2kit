@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import a2kit
 from a2kit.routers import Router
+from a2kit.testing import app_of
 
 
 class _SurfRouter(Router):
@@ -29,7 +30,7 @@ class _SurfRouter(Router):
 
 
 def _app() -> a2kit.App:
-    return a2kit.App("surftest").add_router(_SurfRouter())
+    return app_of("surftest", _SurfRouter())
 
 
 def test_cli_builder_mounts_all_tiers() -> None:

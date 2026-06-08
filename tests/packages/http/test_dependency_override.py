@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 import a2kit
 from a2kit.packages.http import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Database:
@@ -39,7 +40,7 @@ def _build_app(db: _Database) -> a2kit.App:
         async def whoami(self, *, db: _Database) -> dict[str, str]:
             return {"tag": db.tag}
 
-    return a2kit.App("test").add_router(R()).provide(_Database, lambda: db)
+    return app_of("test", R()).provide(_Database, lambda: db)
 
 
 async def test_provide_at_app_build_swaps_di() -> None:

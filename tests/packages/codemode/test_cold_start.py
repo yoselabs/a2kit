@@ -33,6 +33,7 @@ def test_cli_startup_does_not_load_code_execution() -> None:
     probe = """
 import sys, a2kit
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.packages.testing.fixtures import app_of
 from click.testing import CliRunner
 
 
@@ -46,7 +47,7 @@ class R(a2kit.Router):
     tools = (ping,)
 
 
-app = a2kit.App("probe").add_router(R())
+app = app_of("probe", R())
 cli = build_full_cli(app)
 CliRunner().invoke(cli, ["--help"])
 bad = sorted(

@@ -7,6 +7,7 @@ import json
 from click.testing import CliRunner
 
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.testing import app_of
 
 
 def _run(app, args):
@@ -81,7 +82,7 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
     # tools must still be listed.
     Big.tools = tuple(generated)
 
-    app = a2kit.App("big").add_router(Big())
+    app = app_of("big", Big())
     result = CliRunner().invoke(build_full_cli(app), ["schema", "--format=json"])
 
     assert result.exit_code == 0

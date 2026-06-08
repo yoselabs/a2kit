@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 import a2kit
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.testing import app_of
 
 
 class _Item(BaseModel):
@@ -29,7 +30,7 @@ class _BodyRouter(a2kit.Router):
 
 
 def _app():
-    return a2kit.App("bodyapp").add_router(_BodyRouter())
+    return app_of("bodyapp", _BodyRouter())
 
 
 def test_body_model_decodes_from_json_string() -> None:
@@ -88,7 +89,7 @@ def test_pretty_exceptions_disabled_plain_text_traceback() -> None:
         async def explode(self) -> dict:
             raise RuntimeError("kaboom")
 
-    app = a2kit.App("boomapp").add_router(_BoomRouter())
+    app = app_of("boomapp", _BoomRouter())
     result = CliRunner().invoke(build_full_cli(app), ["boom", "explode"])
     assert result.exit_code != 0
     # Plain message reaches stderr; no Rich box characters.

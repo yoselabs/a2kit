@@ -12,8 +12,8 @@ import logging
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Resource:
@@ -97,7 +97,7 @@ async def test_lifo_order() -> None:
         def __init__(self) -> None:
             super().__init__("C")
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_A)
     app.provide(_B)
     app.provide(_C)
@@ -129,7 +129,7 @@ async def test_per_resource_exception_isolation(caplog: pytest.LogCaptureFixture
         def __init__(self) -> None:
             super().__init__("C")
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_A)
     app.provide(_B)
     app.provide(_C)
@@ -159,7 +159,7 @@ async def test_body_exception_preserved() -> None:
     class _BodyError(RuntimeError):
         pass
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Bad)
 
     with pytest.raises(_BodyError, match="body failed"):
@@ -171,7 +171,7 @@ async def test_body_exception_preserved() -> None:
 @pytest.mark.asyncio
 async def test_partial_entry_unwinds_already_entered() -> None:
     """If B fails during __aenter__, A (already entered) is still cleaned up."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_PE_A)
     app.provide(_PE_B_depends_on_A)
 
@@ -201,7 +201,7 @@ async def test_background_task_exception_during_close() -> None:
         def __init__(self) -> None:
             super().__init__("R")
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_R)
 
     async def _background_raiser() -> None:
@@ -229,7 +229,7 @@ async def test_background_task_exception_during_close() -> None:
 async def test_partial_entry_on_startup_failure() -> None:
     """Regression contract for MCP SDK #1213: partial stack on a startup failure unwinds correctly."""
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_PE_A)
     app.provide(_PE_B_plain)
     app.provide(_PE_C_depends_on_A_B)
@@ -252,7 +252,7 @@ async def test_cleanup_within_taskgroup_context() -> None:
         def __init__(self) -> None:
             super().__init__("R")
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_R)
 
     async def _noop() -> None:

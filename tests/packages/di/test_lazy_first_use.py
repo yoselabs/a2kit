@@ -12,8 +12,8 @@ import asyncio
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _BrowserPool:
@@ -60,7 +60,7 @@ async def test_app_scope_resource_not_entered_at_aenter() -> None:
     triggers entry. This is the core lazy-first-use contract from
     ``app-lifecycle``.
     """
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_BrowserPool)
     app.provide(_SqliteResource)
 
@@ -82,7 +82,7 @@ async def test_first_dispatch_warms_resource_once() -> None:
     instance. Second resolution returns the cached instance without
     re-entering. App close runs ``__aexit__`` exactly once.
     """
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_BrowserPool)
 
     async with build(app) as app:
@@ -120,7 +120,7 @@ async def test_concurrent_first_touches_coalesce() -> None:
         async def __aexit__(self, *exc: object) -> None:
             pass
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_SlowResource)
 
     async with build(app) as app:

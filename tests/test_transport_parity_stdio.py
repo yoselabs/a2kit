@@ -30,6 +30,7 @@ _SERVER_SCRIPT = textwrap.dedent(
     '''
     """In-process MCP server for the stdio parity smoke."""
     import a2kit
+    from a2kit.testing import app_of
 
 
     class _State:
@@ -50,8 +51,7 @@ _SERVER_SCRIPT = textwrap.dedent(
 
     if __name__ == "__main__":
         app = (
-            a2kit.App("parity-stdio")
-            .add_router(R())
+            app_of("parity-stdio", R())
             .provide(_State, lambda: _State())
         )
         a2kit.run(app)

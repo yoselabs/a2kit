@@ -17,6 +17,7 @@ import httpx
 import a2kit
 from a2kit.packages.http import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _ScopedThing:
@@ -45,7 +46,7 @@ async def test_concurrent_requests_get_distinct_scoped_instances() -> None:
             await barrier.wait()
             return {"id": thing.id}
 
-    app = a2kit.App("scope-test").add_router(R()).provide(_ScopedThing, per_call=True)
+    app = app_of("scope-test", R()).provide(_ScopedThing, per_call=True)
     runtime = build(app)
 
     async with runtime:

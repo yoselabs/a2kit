@@ -10,6 +10,7 @@ import pytest
 import a2kit
 from a2kit.packages.dispatch.surface import SurfaceRegistry
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 def test_expose_unknown_passes_decoration_silently() -> None:
@@ -23,7 +24,7 @@ def test_expose_unknown_passes_decoration_silently() -> None:
             return {"k": k}
 
     # Class body executed without raising; the bad name lives on the descriptor.
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     [desc] = app.tools()
     assert desc.expose == ("nonexistent-surface",)
 
@@ -38,7 +39,7 @@ def test_expose_unknown_raises_at_build_with_composed_surfaces() -> None:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     surfaces = a2kit.compose_default_surfaces()
     with pytest.raises(TypeError, match="typo-surface"):
         build(app, surfaces=surfaces)
@@ -56,7 +57,7 @@ def test_expose_unknown_error_lists_composed_surfaces() -> None:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     surfaces = a2kit.compose_default_surfaces()
     with pytest.raises(TypeError) as exc:
         build(app, surfaces=surfaces)
@@ -79,7 +80,7 @@ def test_expose_validation_runs_against_default_registry_when_no_surfaces_passed
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     with pytest.raises(TypeError, match="nonexistent"):
         build(app)
 
@@ -94,7 +95,7 @@ def test_expose_validation_skipped_with_empty_registry() -> None:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     runtime = build(app, surfaces=SurfaceRegistry())
     assert runtime.surfaces is not None
     assert runtime.surfaces.names() == ()

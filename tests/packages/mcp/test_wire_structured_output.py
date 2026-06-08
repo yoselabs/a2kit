@@ -19,6 +19,7 @@ import a2kit
 from a2effect import AppError, Raises
 from a2kit.config import A2kitConfig, McpConfig
 from a2kit.packages.mcp import build_mcp_server
+from a2kit.testing import app_of
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +52,7 @@ class _R(a2kit.Router):
 
 
 def _build(cfg: A2kitConfig | None = None) -> a2kit.App:
-    return a2kit.App("strict-wire-test", config=cfg).add_router(_R())
+    return app_of("strict-wire-test", _R(), config=cfg)
 
 
 # ----- Default mode (False): spec-compliant dual emit -------------------- #

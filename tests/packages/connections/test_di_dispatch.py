@@ -17,6 +17,7 @@ import a2kit
 from a2kit.packages.cli.builder import build_full_cli
 from a2kit.packages.connections import install_connections
 from a2kit.packages.connections.config import ConnectionConfig
+from a2kit.testing import app_of
 
 
 class _Cfg(ConnectionConfig):
@@ -54,7 +55,7 @@ async def _fake_load(self: Any, *args: Any, **kwargs: Any) -> _Cfg:
 
 def test_di_resolves_store_per_call() -> None:
     """Wire ``--connection alpha`` flows through the dispatch hook → typed _Cfg → _Store."""
-    app = a2kit.App("app").add_router(_Probe()).provide(_Store, per_call=True)
+    app = app_of("app", _Probe()).provide(_Store, per_call=True)
     install_connections(app, _Cfg)
     cli = build_full_cli(app)
     with patch("a2kit.packages.connections.store.ConnectionStore.load", _fake_load):
@@ -66,7 +67,7 @@ def test_di_resolves_store_per_call() -> None:
 def test_di_strips_injectable_from_schema() -> None:
     """The agent-facing wire schema must not include injectable ``store``;
     it should synthesize a wire ``connection: str``."""
-    app = a2kit.App("app").add_router(_Probe()).provide(_Store, per_call=True)
+    app = app_of("app", _Probe()).provide(_Store, per_call=True)
     install_connections(app, _Cfg)
     from a2kit.schema import compute_schema
 
@@ -86,7 +87,7 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
         async def noop(self, *, n: int) -> dict[str, int]:
             return {"n": n}
 
-    app = a2kit.App("app").add_router(_Plain())
+    app = app_of("app", _Plain())
     from a2kit.schema import compute_schema
 
     fn = next(iter(_Plain().bound_tools()))
@@ -97,7 +98,7 @@ def test_di_omits_connection_when_no_chain_reaches_it() -> None:
 
 
 def test_di_replace_provider_overrides_factory() -> None:
-    app = a2kit.App("app").add_router(_Probe()).provide(_Store, per_call=True)
+    app = app_of("app", _Probe()).provide(_Store, per_call=True)
     install_connections(app, _Cfg)
 
     def override_factory(cfg: _Cfg) -> _Store:

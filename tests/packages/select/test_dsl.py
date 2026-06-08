@@ -143,6 +143,7 @@ def test_selector_is_frozen() -> None:
 
 import a2kit  # noqa: E402
 from a2kit.runtime import build  # noqa: E402
+from a2kit.testing import app_of  # noqa: E402
 
 
 def _build_three_tool_app() -> a2kit.App:
@@ -161,7 +162,7 @@ def _build_three_tool_app() -> a2kit.App:
         async def llm_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    return a2kit.App("demo").add_router(R())
+    return app_of("demo", R())
 
 
 def test_build_with_verb_select_filters_descriptors() -> None:

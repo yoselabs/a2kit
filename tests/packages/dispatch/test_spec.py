@@ -6,8 +6,8 @@ import dataclasses
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 from a2kit.packages.dispatch import (
     CapturedError,
     DispatchStage,
@@ -18,7 +18,7 @@ from a2kit.packages.dispatch import (
 
 
 def test_tool_build_spec_is_a_frozen_dataclass() -> None:
-    spec = ToolBuildSpec(app=build(a2kit.App("spec-test")), router=None, meta=None)
+    spec = ToolBuildSpec(app=build(app_of("spec-test")), router=None, meta=None)
     assert dataclasses.is_dataclass(spec)
     with pytest.raises(dataclasses.FrozenInstanceError):
         spec.router = None  # type: ignore[misc]  # ty: ignore[invalid-assignment]

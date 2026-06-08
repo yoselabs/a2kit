@@ -6,6 +6,7 @@ import pytest
 
 import a2kit
 from a2kit._surfaces import advertised_on, matrix_for, mounted_on
+from a2kit.testing import app_of
 
 
 def _matrix(fn) -> dict:
@@ -94,7 +95,7 @@ async def test_cli_only_verb_absent_from_mcp_and_http() -> None:
         async def trust_vault(self, *, path: str = "") -> dict:
             return {"path": path}
 
-    app = a2kit.App("vis").add_router(Ops())
+    app = app_of("vis", Ops())
 
     # MCP: trust_vault absent, public_op present.
     server = build_mcp_server(app, code_mode=False)

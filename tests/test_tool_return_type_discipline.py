@@ -22,7 +22,7 @@ from a2kit.exceptions import InvalidToolReturnTypeError
 from a2kit.packages.di.container import UnresolvableType
 from a2kit.packages.lint.rules.local_return_model import rule_local_return_model
 from a2kit.packages.lint.static import A2K_LOCAL_RETURN_MODEL
-from a2kit.testing import peek
+from a2kit.testing import app_of, peek
 
 
 # Module-scope BaseModel for "passes" cases
@@ -313,7 +313,7 @@ class _State:
 
 
 def test_peek_resolves_registered_singleton() -> None:
-    app = a2kit.App("t").provide(_State, lambda: _State())
+    app = app_of("t").provide(_State, lambda: _State())
     s = peek(app, _State)
     assert isinstance(s, _State)
     s2 = peek(app, _State)
@@ -327,13 +327,13 @@ def test_singleton_accepts_async_factory_at_registration() -> None:
     async def factory() -> _State:
         return _State()
 
-    app = a2kit.App("t")
+    app = app_of("t")
     app.provide(_State, factory)
     assert app.has_provider(_State)
 
 
 def test_peek_raises_when_no_provider() -> None:
     """Peek on an App with no provider for the type gives an UnresolvableType."""
-    app = a2kit.App("t")
+    app = app_of("t")
     with pytest.raises(UnresolvableType):
         peek(app, _State)

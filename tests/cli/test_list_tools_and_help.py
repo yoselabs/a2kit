@@ -9,6 +9,7 @@ from click.testing import CliRunner
 import a2kit
 from a2effect import AppError, Raises
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.testing import app_of
 
 
 class _NotFound(AppError):
@@ -31,7 +32,7 @@ def _build_demo() -> a2kit.App:
             """Liveness check."""
             return {"ok": True}
 
-    return a2kit.App("demo").add_router(R())
+    return app_of("demo", R())
 
 
 def test_list_tools_emits_table_with_every_tool() -> None:

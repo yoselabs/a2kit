@@ -33,6 +33,7 @@ from fastmcp import Client
 import a2kit
 from a2kit.packages.mcp.server import build_mcp_server
 from a2kit.packages.testing.client import client as _make_test_client
+from a2kit.testing import app_of
 
 
 # --------------------------------------------------------------------- fixture
@@ -82,7 +83,7 @@ def _build_parity_app() -> a2kit.App:
         async def tool_raises_value_error(self) -> dict[str, Any]:
             raise ValueError("boom")
 
-    return a2kit.App("parity").add_router(R()).provide(_State, lambda: _State())
+    return app_of("parity", R()).provide(_State, lambda: _State())
 
 
 # ----------------------------------------------------------- transport helpers

@@ -17,6 +17,7 @@ import a2kit
 from a2kit.runtime import build
 from a2kit.packages.formatter import Page
 from a2kit.packages.mcp import build_mcp_server
+from a2kit.testing import app_of
 
 
 class Task(BaseModel):
@@ -45,7 +46,7 @@ class FormatRouterRouter(a2kit.Router):
 
 @pytest.fixture
 def app() -> a2kit.App:
-    return a2kit.App("format-routing-test").add_router(FormatRouterRouter())
+    return app_of("format-routing-test", FormatRouterRouter())
 
 
 def _text(result: Any) -> str:

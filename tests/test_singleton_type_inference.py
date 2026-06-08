@@ -12,7 +12,7 @@ Unannotated callables raise ``TypeError`` at registration.
 from __future__ import annotations
 
 
-import a2kit
+from a2kit.testing import app_of
 
 
 class _Thing:
@@ -24,7 +24,7 @@ class _Sub(_Thing):
 
 
 def test_class_as_factory_registers_class() -> None:
-    app = a2kit.App("x")
+    app = app_of("x")
     app.provide(_Thing)
     assert _Thing in app.provider_map()
 
@@ -33,7 +33,7 @@ def test_factory_with_return_annotation_registers_return_type() -> None:
     def make() -> _Thing:
         return _Thing()
 
-    app = a2kit.App("x")
+    app = app_of("x")
     app.provide(make)
     assert _Thing in app.provider_map()
 
@@ -42,7 +42,7 @@ def test_async_factory_with_return_annotation_registers_return_type() -> None:
     async def make() -> _Thing:
         return _Thing()
 
-    app = a2kit.App("x")
+    app = app_of("x")
     app.provide(make)
     assert _Thing in app.provider_map()
 
@@ -51,7 +51,7 @@ def test_explicit_base_type_override() -> None:
     def make() -> _Sub:
         return _Sub()
 
-    app = a2kit.App("x")
+    app = app_of("x")
     app.provide(_Thing, make)
     assert _Thing in app.provider_map()
     assert _Sub not in app.provider_map()

@@ -14,6 +14,7 @@ import pytest
 
 import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 from a2kit.metadata import _get_meta
 from a2kit.packages.dispatch import (
     CapturedError,
@@ -40,7 +41,7 @@ async def _stub() -> dict:
 
 def test_timeout_stage_self_skips_when_unconfigured() -> None:
     stage = TimeoutStage()
-    spec = _spec(a2kit.App("t"))
+    spec = _spec(app_of("t"))
     assert stage.wrap(_stub, spec) is _stub
 
 
@@ -53,8 +54,7 @@ def test_timeout_stage_fires_when_configured() -> None:
             await anyio.sleep(2)
             return {}
 
-    app = a2kit.App("timeout-app")
-    app.add_router(_Slow())
+    app = app_of("timeout-app", _Slow())
     desc = app.tools()[0]
     spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = TimeoutStage().wrap(desc.fn, spec)
@@ -79,8 +79,7 @@ def test_enricher_stage_quarantines_uncaught_raises_without_enrichers() -> None:
         async def boom(self) -> dict:
             raise ValueError("orig")
 
-    app = a2kit.App("plain-q-app")
-    app.add_router(_Plain())
+    app = app_of("plain-q-app", _Plain())
     desc = app.tools()[0]
     spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = EnricherStage().wrap(desc.fn, spec)
@@ -107,7 +106,7 @@ def test_enricher_stage_translates_exceptions_via_decorator() -> None:
     def translate(exc: ValueError) -> Translated | None:
         return Translated(f"enriched: {exc}")
 
-    app = a2kit.App("enricher-app").add_router(router)
+    app = app_of("enricher-app", router)
     desc = app.tools()[0]
     spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = EnricherStage().wrap(desc.fn, spec)
@@ -126,8 +125,7 @@ def test_router_lazy_enter_self_skips_without_aenter() -> None:
         async def ping(self) -> dict:
             return {"ok": True}
 
-    app = a2kit.App("plain2-app")
-    app.add_router(_Plain())
+    app = app_of("plain2-app", _Plain())
     desc = app.tools()[0]
     spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     assert RouterLazyEnterStage().wrap(desc.fn, spec) is desc.fn
@@ -152,9 +150,8 @@ def test_router_lazy_enter_enters_router_on_dispatch() -> None:
         async def ping(self) -> dict:
             return {"ok": True}
 
-    app = a2kit.App("lifecycle-app")
     router = _Lifecycle()
-    app.add_router(router)
+    app = app_of("lifecycle-app", router)
     desc = app.tools()[0]
     spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = RouterLazyEnterStage().wrap(desc.fn, spec)
@@ -169,7 +166,7 @@ def test_router_lazy_enter_enters_router_on_dispatch() -> None:
 
 def test_dispatch_hook_self_skips_on_identity_hook_with_no_injectables() -> None:
     stage = DispatchHookStage()
-    assert stage.wrap(_stub, _spec(a2kit.App("t"))) is _stub
+    assert stage.wrap(_stub, _spec(app_of("t"))) is _stub
 
 
 # --- CallScopeStage ------------------------------------------------------ #
@@ -177,7 +174,7 @@ def test_dispatch_hook_self_skips_on_identity_hook_with_no_injectables() -> None
 
 def test_call_scope_stage_never_self_skips_and_runs_the_body() -> None:
     stage = CallScopeStage()
-    wrapped = stage.wrap(_stub, _spec(a2kit.App("t")))
+    wrapped = stage.wrap(_stub, _spec(app_of("t")))
     assert wrapped is not _stub
     assert asyncio.run(wrapped()) == {"ok": True}
 
@@ -189,7 +186,7 @@ def test_error_capture_wraps_a_body_exception() -> None:
     async def _boom() -> dict:
         raise ValueError("kaboom")
 
-    wrapped = ErrorCaptureStage().wrap(_boom, _spec(a2kit.App("t")))
+    wrapped = ErrorCaptureStage().wrap(_boom, _spec(app_of("t")))
     with pytest.raises(CapturedError) as excinfo:
         asyncio.run(wrapped())
     assert isinstance(excinfo.value.original, ValueError)
@@ -197,7 +194,7 @@ def test_error_capture_wraps_a_body_exception() -> None:
 
 
 def test_error_capture_passes_a_normal_return_through() -> None:
-    wrapped = ErrorCaptureStage().wrap(_stub, _spec(a2kit.App("t")))
+    wrapped = ErrorCaptureStage().wrap(_stub, _spec(app_of("t")))
     assert asyncio.run(wrapped()) == {"ok": True}
 
 
@@ -205,6 +202,6 @@ def test_error_capture_reraises_pure_cancellation_groups() -> None:
     async def _cancelled() -> dict:
         raise BaseExceptionGroup("cancelled", [asyncio.CancelledError()])
 
-    wrapped = ErrorCaptureStage().wrap(_cancelled, _spec(a2kit.App("t")))
+    wrapped = ErrorCaptureStage().wrap(_cancelled, _spec(app_of("t")))
     with pytest.raises(BaseExceptionGroup):
         asyncio.run(wrapped())

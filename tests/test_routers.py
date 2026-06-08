@@ -7,6 +7,7 @@ import pytest
 import a2kit
 from a2kit.runtime import build
 from a2kit.routers import Router
+from a2kit.testing import app_of
 
 
 def test_mirror_stub_present() -> None:
@@ -28,7 +29,7 @@ def test_router_with_providers_installs_to_app() -> None:
         name = "rprov"
         providers = (_ServiceA, _ServiceB)
 
-    app = a2kit.App("t").add_router(_R())
+    app = app_of("t", _R())
     assert app.has_provider(_ServiceA)
     assert app.has_provider(_ServiceB)
 
@@ -39,7 +40,7 @@ def test_router_providers_with_explicit_factory_tuple() -> None:
         name = "rfac"
         providers = ((_ServiceA, _ServiceA),)
 
-    app = a2kit.App("t").add_router(_R())
+    app = app_of("t", _R())
     assert app.has_provider(_ServiceA)
 
 
@@ -67,7 +68,7 @@ def test_router_lifespan_raises_during_startup_unwinds_stack() -> None:
         async def __aexit__(self, *_exc):
             pass
 
-    app = a2kit.App("t").add_router(_Good()).add_router(_Bad())
+    app = app_of("t", _Good(), _Bad())
 
     async def _go() -> None:
         import contextlib
@@ -104,7 +105,7 @@ def test_router_lifespan_post_yield_raise_logged_and_continues() -> None:
         async def __aexit__(self, *_exc):
             raise RuntimeError("shutdown boom")
 
-    app = a2kit.App("t").add_router(_R())
+    app = app_of("t", _R())
 
     async def _go() -> None:
         # Router enters lazily; we don't trigger dispatch, so the router
@@ -139,7 +140,7 @@ def test_router_lifespan_composes_into_app_lifecycle() -> None:
         async def ping(self) -> dict:
             return {"ok": True}
 
-    app = a2kit.App("t").add_router(_R())
+    app = app_of("t", _R())
 
     async def _go() -> None:
         async with _tc(app) as c:
@@ -219,7 +220,7 @@ def test_auto_collected_methods_register() -> None:
         async def two(self) -> dict[str, int]:
             return {"k": 2}
 
-    app = a2kit.App("t").add_router(_R())
+    app = app_of("t", _R())
     tool_names = {d.name for d in app.tools()}
     assert tool_names == {"z2_one", "z2_two"}
 
@@ -241,7 +242,7 @@ def test_subclass_collects_inherited_and_own_verbs() -> None:
         async def sub_tool(self) -> dict[str, int]:
             return {"k": 1}
 
-    app = a2kit.App("t").add_router(_Sub())
+    app = app_of("t", _Sub())
     tool_names = {d.name for d in app.tools()}
     assert "sub_sub_tool" in tool_names
     assert "sub_base_tool" in tool_names
@@ -258,5 +259,5 @@ def test_plain_router_unchanged() -> None:
         async def ping(self) -> dict[str, int]:
             return {"k": 1}
 
-    app = a2kit.App("t").add_router(_R())
+    app = app_of("t", _R())
     assert any(r.slug == "rplain" for r in app.router_instances())

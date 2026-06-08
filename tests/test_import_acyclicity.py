@@ -13,10 +13,10 @@ import subprocess
 import sys
 from typing import Any
 
-import a2kit
 from a2kit.runtime import build
 from a2kit import HealthResult
 from a2kit.packages.health import app_version, run_checks
+from a2kit.testing import app_of
 
 
 def _modules_after_import(import_stmt: str) -> set[str]:
@@ -94,7 +94,7 @@ def test_packages_testing_does_not_import_core_shim() -> None:
 
 
 def test_run_checks_aggregates_through_resolver() -> None:
-    app = a2kit.App("acyclicity-health")
+    app = app_of("acyclicity-health")
     app._install_health_tool()  # noqa: SLF001 -- exercising the lower-level seam
 
     @app.health_check
@@ -114,7 +114,7 @@ def test_run_checks_aggregates_through_resolver() -> None:
 
 
 def test_run_checks_version_is_caller_supplied() -> None:
-    app = a2kit.App("acyclicity-health-version")
+    app = app_of("acyclicity-health-version")
     app._install_health_tool()  # noqa: SLF001 -- exercising the lower-level seam
 
     async def go() -> dict[str, Any]:

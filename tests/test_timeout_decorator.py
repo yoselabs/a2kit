@@ -19,6 +19,7 @@ import pytest
 from fastmcp import Client
 
 import a2kit
+from a2kit.testing import app_of
 from a2kit.metadata import _get_meta
 from a2kit.packages.mcp.server import build_mcp_server
 from a2kit._verbs import _parse_timeout
@@ -126,7 +127,7 @@ def _build_app_with(tool_fn: Any) -> a2kit.App:
         slug = "demo"
 
     setattr(_R, tool_fn.__name__, tool_fn)
-    app = a2kit.App("t").add_router(_R())
+    app = app_of("t", _R())
     return app
 
 

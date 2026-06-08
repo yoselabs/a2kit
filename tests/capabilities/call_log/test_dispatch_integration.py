@@ -16,7 +16,7 @@ from typing import Any
 import a2kit
 import a2kit.log
 from a2kit.config import A2kitConfig, LogConfig
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 def _app(tmp: Path, *, call_log: str = "on") -> a2kit.App:
@@ -34,7 +34,7 @@ def _app(tmp: Path, *, call_log: str = "on") -> a2kit.App:
             await a2kit.log.debug("html", html="<html>" + "x" * 10 + "</html>")
             return {"ok": url}
 
-    return a2kit.App("calllog", config=cfg).add_router(R())
+    return app_of("calllog", R(), config=cfg)
 
 
 def _rows(tmp: Path) -> list[dict[str, Any]]:

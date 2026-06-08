@@ -10,6 +10,7 @@ from a2kit.metadata import _get_meta
 from a2kit.packages.cli.runtime import invoke_tool_sync
 from a2kit.packages.di import Lazy
 from a2kit.packages.dispatch import ToolBuildSpec
+from a2kit.testing import app_of
 
 
 class _Browser:
@@ -37,7 +38,7 @@ async def _skip_browser(browser: Lazy[_Browser]) -> dict:
 
 def test_lazy_never_invoked_under_cli() -> None:
     """Body never awaits ``browser()`` → ``Browser.__aenter__`` never runs."""
-    app = a2kit.App("lazy-cli").provide(_Browser)  # app-scope
+    app = app_of("lazy-cli").provide(_Browser)  # app-scope
 
     spec = ToolBuildSpec(app=build(app), router=None, meta=_get_meta(_skip_browser))
     invoke_tool_sync(_skip_browser, {}, fmt="json", spec=spec)

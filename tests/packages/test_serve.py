@@ -20,6 +20,7 @@ import pytest
 import a2kit
 from a2kit.packages.serve import build_parent_app
 from a2kit.runtime import AppRuntime
+from a2kit.testing import app_of
 
 
 # --------------------------------------------------------------- DI test app
@@ -37,7 +38,7 @@ def _build_di_app() -> a2kit.App:
         async def echo(self, *, msg: str, store: _Store) -> dict[str, Any]:
             return {"msg": msg, "tag": store.tag}
 
-    return a2kit.App("multiplex-demo").add_router(R()).provide(_Store, lambda: _Store())
+    return app_of("multiplex-demo", R()).provide(_Store, lambda: _Store())
 
 
 # ------------------------------------------------------------- server harness
@@ -86,7 +87,7 @@ def test_build_parent_app_auto_mounts_both_for_projection_app() -> None:
 
 def test_build_parent_app_mcp_only_when_only_mcp_registrations() -> None:
     """``@app.mcp.tool``-only app mounts only ``/mcp``."""
-    app = a2kit.App("mcp-only")
+    app = app_of("mcp-only")
 
     @app.mcp.tool(name="hello")
     async def _h() -> dict[str, str]:
@@ -98,7 +99,7 @@ def test_build_parent_app_mcp_only_when_only_mcp_registrations() -> None:
 
 def test_build_parent_app_api_only_when_only_api_registrations() -> None:
     """``@app.api.<method>``-only app mounts only ``/api``."""
-    app = a2kit.App("api-only")
+    app = app_of("api-only")
 
     @app.api.get("/version")
     async def _v() -> dict[str, str]:
@@ -111,7 +112,7 @@ def test_build_parent_app_api_only_when_only_api_registrations() -> None:
 def test_build_parent_app_requires_a_surface() -> None:
     """Empty App with no registrations raises ValueError on build."""
     with pytest.raises(ValueError, match="no registered surface has registrations"):
-        build_parent_app(a2kit.App("empty"))
+        build_parent_app(app_of("empty"))
 
 
 # --------------------------------------------------------------- end-to-end
@@ -121,7 +122,7 @@ def test_api_only_parent_starts_and_serves_health() -> None:
     """An ``@app.api.*``-only parent runs its lifespan and serves /api/health."""
     from starlette.testclient import TestClient
 
-    app = a2kit.App("api-only")
+    app = app_of("api-only")
 
     @app.api.get("/version")
     async def _v() -> dict[str, str]:

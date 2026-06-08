@@ -30,6 +30,7 @@ from click.testing import CliRunner
 
 import a2kit
 from a2kit.packages.cli.builder import _docstring_to_help, _strip_md, build_full_cli
+from a2kit.testing import app_of
 
 
 def test_strip_md_inline_emphasis() -> None:
@@ -102,7 +103,7 @@ class FetchRouter(a2kit.Router):
 
 
 def _build_cli() -> click.Command:
-    app = a2kit.App("descriptions").add_router(FetchRouter())
+    app = app_of("descriptions", FetchRouter())
     return build_full_cli(app)
 
 

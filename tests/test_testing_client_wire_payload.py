@@ -13,7 +13,7 @@ import json
 from pydantic import BaseModel
 
 import a2kit
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 # --- JSON: scalar / dict / model return --- #
@@ -28,7 +28,7 @@ class _DictRouter(a2kit.Router):
 
 
 def test_call_wire_json_dict() -> None:
-    app = a2kit.App("t").add_router(_DictRouter())
+    app = app_of("t", _DictRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -56,7 +56,7 @@ class _ListRouter(a2kit.Router):
 
 
 def test_call_wire_tsv_for_list_of_models() -> None:
-    app = a2kit.App("t").add_router(_ListRouter())
+    app = app_of("t", _ListRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -73,7 +73,7 @@ def test_call_wire_tsv_for_list_of_models() -> None:
 
 
 def test_invoke_returns_python_value_while_call_wire_returns_encoded() -> None:
-    app = a2kit.App("t").add_router(_DictRouter())
+    app = app_of("t", _DictRouter())
 
     async def go() -> None:
         async with client(app) as c:
@@ -102,7 +102,7 @@ class _ScalarRouter(a2kit.Router):
 
 
 def test_call_wire_picks_json_for_single_model() -> None:
-    app = a2kit.App("t").add_router(_ScalarRouter())
+    app = app_of("t", _ScalarRouter())
 
     async def go() -> None:
         async with client(app) as c:

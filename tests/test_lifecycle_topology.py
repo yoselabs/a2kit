@@ -11,6 +11,7 @@ import asyncio
 import pytest
 
 import a2kit
+from a2kit.testing import app_of
 from a2kit.testing import client as _testing_client
 
 
@@ -61,7 +62,7 @@ async def test_concurrent_first_dispatch_coalesces_router_enter() -> None:
         async def get(self) -> dict:  # type: ignore[override]
             return {}
 
-    app = a2kit.App("x").add_router(_R())
+    app = app_of("x", _R())
 
     async with _testing_client(app) as client:
         t1 = asyncio.create_task(client.invoke("r_get"))
@@ -93,7 +94,7 @@ async def test_router_aenter_failure_does_not_cache_entered_state() -> None:
         async def get(self) -> dict:  # type: ignore[override]
             return {}
 
-    app = a2kit.App("x").add_router(_R())
+    app = app_of("x", _R())
 
     async with _testing_client(app) as client:
         with pytest.raises(Exception):  # noqa: BLE001 -- shape of exception is router-impl-defined

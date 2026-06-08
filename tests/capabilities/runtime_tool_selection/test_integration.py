@@ -12,6 +12,7 @@ from fastmcp import Client
 
 import a2kit
 from a2kit.packages.cli.builder import build_full_cli
+from a2kit.testing import app_of
 from a2kit.packages.mcp.server import build_mcp_server
 from a2kit.packages.runtime_tools import ENV_VAR, ToolSelectionError
 
@@ -51,7 +52,7 @@ def _three_tool_app(unique_name: str = "selection-test") -> a2kit.App:
         async def fetch_raw(self, *, url: str) -> dict[str, str]:
             return {"url": url}
 
-    return a2kit.App(unique_name).add_router(WebRouter())
+    return app_of(unique_name, WebRouter())
 
 
 async def _mcp_tool_names(server) -> set[str]:
@@ -113,7 +114,7 @@ def test_selector_cannot_re_enable_hidden_tool() -> None:
         async def visible_tool(self, *, x: str) -> dict[str, str]:
             return {"x": x}
 
-    app = a2kit.App("hidden-test").add_router(HidR())
+    app = app_of("hidden-test", HidR())
     with _env(None), pytest.raises(ToolSelectionError) as excinfo:
         build_mcp_server(app, code_mode=False, tool_selection="h_hidden_tool")
     msg = str(excinfo.value)

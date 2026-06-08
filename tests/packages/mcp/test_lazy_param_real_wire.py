@@ -15,6 +15,7 @@ from fastmcp import Client
 import a2kit
 from a2kit.packages.di import Lazy
 from a2kit.packages.mcp.server import build_mcp_server
+from a2kit.testing import app_of
 
 
 class _Browser:
@@ -47,7 +48,7 @@ async def test_lazy_never_invoked_resource_not_entered_under_mcp() -> None:
             # Intentionally do NOT await browser().
             return {"used": False}
 
-    app = a2kit.App("lazy-mcp").add_router(R()).provide(_Browser)  # app-scope
+    app = app_of("lazy-mcp", R()).provide(_Browser)  # app-scope
 
     async with Client(transport=build_mcp_server(app)) as c:
         await c.call_tool("demo_skip_browser", {})

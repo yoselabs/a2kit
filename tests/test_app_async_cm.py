@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 import a2kit
+from a2kit.testing import app_of
 
 
 class _DB:
@@ -36,9 +37,8 @@ def test_construction_is_pure() -> None:
     class _R(a2kit.Router):
         slug = "r"
 
-    app = a2kit.App("api")
+    app = app_of("api", _R())
     app.provide(_DB)
-    app.add_router(_R())
 
     assert _DB.enter_count == 0
     assert _DB.exit_count == 0

@@ -16,7 +16,7 @@ import asyncio
 import pytest
 
 import a2kit
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 class _LLM:
@@ -47,7 +47,7 @@ class _SingletonRouter(a2kit.Router):
 
 def test_reregistered_fake_wins_last_write() -> None:
     """A fake provided last on the App beats the real registration."""
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).provide(_LLM, lambda: _FakeLLM()).add_router(_SingletonRouter())
+    app = app_of("t", _SingletonRouter()).provide(_LLM, lambda: _LLM("real")).provide(_LLM, lambda: _FakeLLM())
 
     async def go() -> None:
         async with client(app) as c:
@@ -61,7 +61,7 @@ def test_rebuild_gives_each_test_a_fresh_app() -> None:
     """Re-build is the isolation mechanism — two Apps, two independent wirings."""
 
     def build(*, fake: bool) -> a2kit.App:
-        app = a2kit.App("t").add_router(_SingletonRouter())
+        app = app_of("t", _SingletonRouter())
         app.provide(_LLM, (lambda: _FakeLLM()) if fake else (lambda: _LLM("real")))
         return app
 
@@ -80,7 +80,7 @@ def test_fake_for_an_async_factory_registration() -> None:
     async def make_llm() -> _LLM:
         return _LLM("async-real")
 
-    app = a2kit.App("t").provide(_LLM, make_llm).provide(_LLM, lambda: _FakeLLM()).add_router(_SingletonRouter())
+    app = app_of("t", _SingletonRouter()).provide(_LLM, make_llm).provide(_LLM, lambda: _FakeLLM())
 
     async def go() -> None:
         async with client(app) as c:
@@ -91,7 +91,7 @@ def test_fake_for_an_async_factory_registration() -> None:
 
 def test_testclient_override_raises_migration_hint() -> None:
     """The removed `TestClient.override` raises with the re-build recipe."""
-    app = a2kit.App("t").provide(_LLM, lambda: _LLM("real")).add_router(_SingletonRouter())
+    app = app_of("t", _SingletonRouter()).provide(_LLM, lambda: _LLM("real"))
 
     async def go() -> None:
         async with client(app) as c:

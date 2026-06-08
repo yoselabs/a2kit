@@ -26,6 +26,7 @@ import pytest
 import a2kit
 from a2kit.metadata import _get_meta
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Tag:
@@ -40,7 +41,7 @@ def _build(verb_decorator: Any, **extra: Any) -> a2kit.App:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    return a2kit.App("demo").add_router(R())
+    return app_of("demo", R())
 
 
 def test_default_expose_is_both_substrates() -> None:
@@ -92,7 +93,7 @@ def test_unknown_substrate_raises_at_build() -> None:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     surfaces = a2kit.compose_default_surfaces()
     with pytest.raises(TypeError, match="unknown surface"):
         build(app, surfaces=surfaces)
@@ -110,7 +111,7 @@ def test_unknown_surface_error_enumerates_registered_names() -> None:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     surfaces = a2kit.compose_default_surfaces()
     with pytest.raises(TypeError) as exc:
         build(app, surfaces=surfaces)
@@ -146,7 +147,7 @@ def test_newly_registered_surface_name_is_accepted_via_explicit_surfaces() -> No
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     # Build with the custom surface explicitly included alongside defaults.
     from a2kit.packages.dispatch.surface import SurfaceRegistry
     from a2kit.packages.http.api import ApiSurface
@@ -180,7 +181,7 @@ def test_empty_surfaces_skips_validation() -> None:
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     empty_registry = SurfaceRegistry()
     runtime = build(app, surfaces=empty_registry)
     [desc] = runtime.tools()
@@ -208,7 +209,7 @@ def test_list_decorator_carries_expose_and_authorize() -> None:
         async def items(self, *, q: str) -> list[dict[str, str]]:
             return [{"k": q}]
 
-    runtime = build(a2kit.App("demo").add_router(R()))
+    runtime = build(app_of("demo", R()))
     [desc] = runtime.tools()
     assert desc.verb == "list"
     assert desc.expose == ("mcp",)
@@ -248,7 +249,7 @@ def test_http_build_filters_by_expose() -> None:
         async def api_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    runtime = build(a2kit.App("demo").add_router(R()))
+    runtime = build(app_of("demo", R()))
     import asyncio
 
     async def _exercise() -> None:

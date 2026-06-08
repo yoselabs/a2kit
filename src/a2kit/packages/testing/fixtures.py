@@ -45,7 +45,23 @@ def _cassette_impl(tmp_path: Path) -> Callable[..., Any]:
 
 def _app_impl() -> a2kit.App:
     """A fresh ``a2kit.App`` named ``"test"``."""
-    return a2kit.App("test")
+    return app_of("test")
+
+
+def app_of(name: str, *routers: Any, **kwargs: Any) -> a2kit.App:
+    """Build and instantiate an anonymous class-authored ``App``.
+
+    Test-namespace convenience for the class-authored App shape (ADR 0028
+    Wave 2, app-as-peer-root): ``app_of("t", Entity(), Other())`` replaces
+    the imperative ``a2kit.App("t").add_router(Entity()).add_router(Other())``.
+    Each ``routers`` entry may be a Router *class* (instantiated zero-arg) or
+    a pre-built Router *instance* (passed through), matching the ``routers=``
+    ClassVar contract. Extra kwargs (e.g. ``config=``) forward to
+    ``App.__init__``. A testing helper, NOT part of the authoring surface —
+    production apps subclass ``a2kit.App`` directly.
+    """
+    cls = type("_App", (a2kit.App,), {"name": name, "routers": tuple(routers)})
+    return cls(**kwargs)
 
 
 def _ambient_for_tests_impl() -> Iterator[None]:

@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _State:
@@ -38,7 +38,7 @@ def _reset_counters() -> None:
 @pytest.mark.asyncio
 async def test_provide_default_is_app_scope() -> None:
     """``app.provide(T)`` without ``per_call`` caches across dispatches."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_State)
 
     async with build(app) as app:
@@ -54,7 +54,7 @@ async def test_provide_default_is_app_scope() -> None:
 @pytest.mark.asyncio
 async def test_provide_per_call_true_opts_in() -> None:
     """``app.provide(T, per_call=True)`` produces a fresh instance each dispatch."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_State, per_call=True)
 
     async with build(app) as app:
@@ -76,7 +76,7 @@ async def test_async_factory_accepted_on_per_call() -> None:
         counter["awaited"] += 1
         return _State()
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_State, async_factory, per_call=True)
 
     async with build(app) as app:
@@ -96,7 +96,7 @@ async def test_re_registration_last_write_wins() -> None:
         def __init__(self, impl: _Real | _Fake) -> None:
             self.impl = impl
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Real, lambda: _Real(), per_call=False)
     app.provide(_Fake, lambda: _Fake(), per_call=False)
     # First registration of the repo binds to _Real:
@@ -113,7 +113,7 @@ async def test_re_registration_last_write_wins() -> None:
 def test_unannotated_factory_error_names_provide() -> None:
     """An unannotated factory raises a TypeError naming the live `app.provide`,
     not the removed `app.singleton`."""
-    app = a2kit.App("test")
+    app = app_of("test")
 
     def make_state():  # noqa: ANN202 -- the missing return annotation is the point
         return _State()
@@ -131,7 +131,7 @@ def test_runtime_container_is_sealed() -> None:
     The App's own compose-phase container stays mutable; only the
     snapshotted runtime container is sealed.
     """
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_State)
 
     runtime = build(app)

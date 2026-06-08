@@ -19,6 +19,7 @@ import pytest
 import a2kit
 from a2kit.metadata import _get_meta, _set_meta
 from a2kit.packages.mcp.server import build_mcp_server
+from a2kit.testing import app_of
 
 
 def _install_h(app: a2kit.App) -> a2kit.App:
@@ -41,8 +42,7 @@ class _Pinger(a2kit.Router):
 
 
 def _app_with_health() -> a2kit.App:
-    app = a2kit.App("t")
-    app.add_router(_Pinger())
+    app = app_of("t", _Pinger())
     return _install_h(app)
 
 
@@ -103,7 +103,7 @@ def test_user_meta_tool_rejected_at_build() -> None:
             return {"ok": True}
 
     router = _Sneaky()
-    app = a2kit.App("sneaky").add_router(router)
+    app = app_of("sneaky", router)
 
     # Force the tool's resolved name into the reserved namespace, bypassing
     # the decoration-time guard. This is the only realistic way a user

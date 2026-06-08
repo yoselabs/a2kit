@@ -27,6 +27,7 @@ from fastmcp.exceptions import ToolError
 
 import a2kit
 from a2kit.packages.mcp.server import build_mcp_server
+from a2kit.testing import app_of
 
 
 class _Transaction:
@@ -67,7 +68,7 @@ def _build_app() -> a2kit.App:
         async def boom_with_tx(self, tx: _Transaction) -> dict[str, Any]:
             raise ValueError("boom")
 
-    return a2kit.App("per-call-mcp").add_router(R()).provide(_Transaction, per_call=True)
+    return app_of("per-call-mcp", R()).provide(_Transaction, per_call=True)
 
 
 @pytest.mark.asyncio

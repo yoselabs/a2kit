@@ -16,6 +16,7 @@ from a2kit.packages.auth import ApiKey, APIKeyAuth
 from a2kit.packages.context import Principal
 from a2kit.packages.http import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 def _admin_only(*, principal: Principal) -> bool:
@@ -23,7 +24,7 @@ def _admin_only(*, principal: Principal) -> bool:
 
 
 def _build_app() -> a2kit.App:
-    app = a2kit.App("auth-apikey")
+    app = app_of("auth-apikey")
     app.auth(
         APIKeyAuth(
             keys=[
@@ -94,7 +95,7 @@ def test_admin_authorize_passes_for_admin_with_200() -> None:
 
 def test_no_auth_app_has_no_middleware_mounted() -> None:
     """Per `http-surface`: empty auth registry → no auth middleware."""
-    app = a2kit.App("no-auth")
+    app = app_of("no-auth")
 
     @app.api.get("/x", response_model=dict)
     async def _x() -> dict[str, str]:

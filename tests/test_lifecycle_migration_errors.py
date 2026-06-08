@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 import a2kit
+from a2kit.testing import app_of
 
 
 def test_app_lifespan_kwarg_raises_with_hint() -> None:
@@ -20,7 +21,7 @@ def test_app_lifespan_kwarg_raises_with_hint() -> None:
         yield
 
     with pytest.raises(TypeError) as ei:
-        a2kit.App("x", lifespan=cm)  # type: ignore[call-arg]
+        app_of("x", lifespan=cm)  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "lifespan=" in msg
     assert "__aenter__" in msg
@@ -30,7 +31,7 @@ def test_singleton_teardown_kwarg_raises_with_hint() -> None:
     class _R:
         def close(self) -> None: ...
 
-    app = a2kit.App("x")
+    app = app_of("x")
     with pytest.raises(TypeError) as ei:
         app.provide(_R, teardown=lambda r: r.close())  # type: ignore[call-arg]
     msg = str(ei.value)
@@ -49,9 +50,8 @@ def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
         async def x(self) -> dict:  # type: ignore[override]
             return {}
 
-    app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:
-        app.add_router(_R())
+        app_of("x", _R())
     msg = str(ei.value)
     assert "lifespan" in msg
     assert "__aenter__" in msg
@@ -59,7 +59,7 @@ def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
 
 def test_unknown_app_kwarg_raises_standard_message() -> None:
     with pytest.raises(TypeError) as ei:
-        a2kit.App("x", totally_unknown=True)  # type: ignore[call-arg]
+        app_of("x", totally_unknown=True)  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "totally_unknown" in msg
 

@@ -9,6 +9,7 @@ from click.testing import CliRunner
 import a2kit
 from a2kit.packages.cli.builder import build_full_cli
 from a2kit.packages.formatter import format_response
+from a2kit.testing import app_of
 
 
 def test_e2e_read_tool_output_matches_formatter(app):
@@ -74,7 +75,7 @@ def test_e2e_complex_param_decoded_as_json():
         def echo_dict(self, *, payload: dict) -> dict:
             return {"got": payload}
 
-    a = a2kit.App("demo").add_router(R())
+    a = app_of("demo", R())
     cli = build_full_cli(a)
 
     result = CliRunner().invoke(cli, ["demo", "echo_dict", "--payload", '{"a":1}', "--format", "json"])

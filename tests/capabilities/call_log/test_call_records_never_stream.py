@@ -16,7 +16,7 @@ from pathlib import Path
 import a2kit
 import a2kit.log
 from a2kit.config import A2kitConfig, LogConfig
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 def _app(tmp: Path) -> a2kit.App:
@@ -30,7 +30,7 @@ def _app(tmp: Path) -> a2kit.App:
             await a2kit.log.debug("secret-blob", body="s3cr3t")
             return {"ok": url}
 
-    return a2kit.App("topology", config=cfg).add_router(R())
+    return app_of("topology", R(), config=cfg)
 
 
 def test_call_record_and_debug_never_reach_the_wire(tmp_path: Path) -> None:

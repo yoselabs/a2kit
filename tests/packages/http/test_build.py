@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 import a2kit
 from a2kit.packages.http import ApiSurface, build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Store:
@@ -24,7 +25,7 @@ def _build_di_app() -> a2kit.App:
         async def echo(self, *, msg: str, store: _Store) -> dict[str, Any]:
             return {"msg": msg, "tag": store.tag}
 
-    return a2kit.App("http-demo").add_router(R()).provide(_Store, lambda: _Store())
+    return app_of("http-demo", R()).provide(_Store, lambda: _Store())
 
 
 @pytest.mark.asyncio
@@ -79,7 +80,7 @@ def _build_visibility_app() -> a2kit.App:
         async def secret_op(self, *, y: int = 0) -> dict[str, int]:
             return {"y": y}
 
-    return a2kit.App("vis-demo").add_router(R())
+    return app_of("vis-demo", R())
 
 
 @pytest.mark.asyncio
@@ -110,7 +111,7 @@ async def test_http_no_di_override_for_non_all_visibility() -> None:
     """No dependency_overrides entry for an unmounted (non-"all") verb."""
     from tests.packages.http._vault_fixture import Vault, VaultRouter
 
-    app = a2kit.App("vis-di").add_router(VaultRouter()).provide(Vault, lambda: Vault())
+    app = app_of("vis-di", VaultRouter()).provide(Vault, lambda: Vault())
     runtime = build(app)
     async with runtime:
         api = build_http_app(runtime)

@@ -14,6 +14,7 @@ from typing import Any
 import a2kit
 from a2kit.packages.mcp import build_mcp_server
 from a2kit.packages.mcp.listview import _apply, _apply_to_items, _list_view_settings, _project_row
+from a2kit.testing import app_of
 
 # --------------------------- module-level tools (no `self` binding issues) --------------------------- #
 
@@ -45,7 +46,7 @@ def _build_app() -> a2kit.App:
 
     r = R()
     r._tools.extend([list_things, plain_things, scalar_thing])
-    return a2kit.App("e2e").add_router(r)
+    return app_of("e2e", r)
 
 
 # --------------------------- end-to-end --------------------------- #

@@ -13,6 +13,7 @@ import pytest
 
 import a2kit
 from a2kit.runtime import AppRuntime, build
+from a2kit.testing import app_of
 
 
 class _Res:
@@ -67,7 +68,7 @@ class _Probe(a2kit.Router):
 async def test_runtime_entry_does_not_enter_resources_eagerly() -> None:
     """Entering the AppRuntime does not enter app-scope resources."""
     log: list[str] = []
-    app = a2kit.App("svc")
+    app = app_of("svc")
     app.provide(_ResA, lambda: _ResA("A", log))
     app.provide(_ResB, lambda: _ResB("B", log))
 
@@ -80,7 +81,7 @@ async def test_runtime_entry_does_not_enter_resources_eagerly() -> None:
 async def test_runtime_exit_unwinds_resolved_resources_lifo() -> None:
     """Resources resolved during the runtime's lifetime unwind in LIFO order."""
     log: list[str] = []
-    app = a2kit.App("svc")
+    app = app_of("svc")
     app.provide(_ResA, lambda: _ResA("A", log))
     app.provide(_ResB, lambda: _ResB("B", log))
     app.provide(_ResC, lambda: _ResC("C", log))
@@ -103,7 +104,7 @@ async def test_runtime_exit_unwinds_resolved_resources_lifo() -> None:
 async def test_runtime_lifespan_body_may_force_resolve() -> None:
     """The lifespan body may force-resolve a resource for start-time verification."""
     log: list[str] = []
-    app = a2kit.App("svc")
+    app = app_of("svc")
     app.provide(_ResA, lambda: _ResA("A", log))
 
     async with build(app) as runtime:
@@ -117,14 +118,14 @@ async def test_runtime_lifespan_body_may_force_resolve() -> None:
 
 async def test_build_snapshot_is_isolated_from_later_mutation() -> None:
     """Mutating the App after build() does not reach the already-built runtime."""
-    app = a2kit.App("svc")
+    app = app_of("svc")
     app.provide(int, lambda: 1)
 
     runtime_one = build(app)
 
     # Mutate the App after the first build.
     app.provide(str, lambda: "late")
-    app.add_router(_Probe())
+    app._register_router(_Probe())  # noqa: SLF001 -- test seam: post-build mutation
 
     assert not runtime_one._container.has_provider(str), "late provider leaked into a built runtime"
     assert all(r.slug != "probe" for r in runtime_one.routers()), "late router leaked into a built runtime"
@@ -137,7 +138,7 @@ async def test_build_snapshot_is_isolated_from_later_mutation() -> None:
 
 async def test_build_is_idempotent_on_a_runtime() -> None:
     """build() of an AppRuntime returns it unchanged — the multiplex-serve seam."""
-    app = a2kit.App("svc")
+    app = app_of("svc")
     runtime = build(app)
     assert build(runtime) is runtime
 
@@ -147,7 +148,7 @@ async def test_build_is_idempotent_on_a_runtime() -> None:
 
 def test_build_rejects_scope_violation_before_producing_a_runtime() -> None:
     """build() runs graph validation; a scope violation raises before any runtime exists."""
-    app = a2kit.App("svc")
+    app = app_of("svc")
     app.provide(_PerCall, per_call=True)
     app.provide(_AppScopeNeedsPerCall)
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 from a2kit.packages.di import Lazy
 
 
@@ -61,7 +61,7 @@ def test_lazy_alias_importable() -> None:
 async def test_lazy_param_receives_callable_not_instance() -> None:
     """A ``Lazy[T]`` parameter on a tool yields an awaitable callable, not ``T``."""
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_BrowserPool)
 
     captured: dict[str, object] = {}
@@ -82,7 +82,7 @@ async def test_lazy_param_receives_callable_not_instance() -> None:
 async def test_lazy_never_invoked_resource_never_entered() -> None:
     """If the tool body never calls the Lazy closure, the resource is not entered."""
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_BrowserPool)
 
     async def tool_body(browser: Lazy[_BrowserPool]) -> str:
@@ -101,7 +101,7 @@ async def test_lazy_never_invoked_resource_never_entered() -> None:
 async def test_lazy_honors_app_scope_cache() -> None:
     """Lazy[T] of app-scope returns the same instance across calls."""
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_BrowserPool)  # app-scope default
 
     async def tool_body(browser: Lazy[_BrowserPool]) -> _BrowserPool:
@@ -123,7 +123,7 @@ async def test_lazy_honors_app_scope_cache() -> None:
 async def test_lazy_honors_per_call_cache() -> None:
     """Lazy[T] of per-call: same instance within a call, fresh across calls."""
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Transaction, per_call=True)
 
     async def tool_body(tx: Lazy[_Transaction]) -> tuple[_Transaction, _Transaction]:
@@ -146,7 +146,7 @@ async def test_lazy_honors_per_call_cache() -> None:
 async def test_lazy_resource_cleaned_up_at_scope_exit() -> None:
     """A resource resolved through Lazy is cleaned up at the same scope as direct injection."""
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_BrowserPool)
     app.provide(_Transaction, per_call=True)
 

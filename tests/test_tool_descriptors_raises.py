@@ -8,6 +8,7 @@ import pytest
 from a2effect import AppError, Raises
 
 import a2kit
+from a2kit.testing import app_of
 
 
 class NotFound(AppError):
@@ -34,7 +35,7 @@ def test_descriptor_raises_populated_from_annotation() -> None:
         async def fetch(self, *, id: str) -> Annotated[dict, Raises(NotFound, InvalidId)]:
             return {"id": id}
 
-    app = a2kit.App("t").add_router(R())
+    app = app_of("t", R())
     desc = app.tools()[0]
     assert desc.raises == (NotFound, InvalidId)
 
@@ -47,7 +48,7 @@ def test_descriptor_raises_empty_when_no_annotation() -> None:
         async def fetch(self, *, id: str) -> dict:
             return {"id": id}
 
-    app = a2kit.App("t").add_router(R())
+    app = app_of("t", R())
     assert app.tools()[0].raises == ()
 
 
@@ -59,7 +60,7 @@ def test_multiple_raises_markers_flatten_additively() -> None:
         async def fetch(self, *, id: str) -> Annotated[dict, Raises(NotFound), Raises(InvalidId)]:
             return {"id": id}
 
-    app = a2kit.App("t").add_router(R())
+    app = app_of("t", R())
     assert set(app.tools()[0].raises) == {NotFound, InvalidId}
 
 
@@ -72,7 +73,7 @@ def test_non_app_error_in_raises_rejected_at_registration() -> None:
             return {"id": id}
 
     with pytest.raises(TypeError, match="AppError subclass"):
-        a2kit.App("t").add_router(R())
+        app_of("t", R())
 
 
 def test_return_type_strips_raises_for_format_inference() -> None:
@@ -83,6 +84,6 @@ def test_return_type_strips_raises_for_format_inference() -> None:
         async def fetch(self, *, id: str) -> Annotated[str, Raises(NotFound)]:
             return id
 
-    desc = a2kit.App("t").add_router(R()).tools()[0]
+    desc = app_of("t", R()).tools()[0]
     # The descriptor's return_type carries the bare type (str), not Annotated[...]
     assert desc.return_type is str

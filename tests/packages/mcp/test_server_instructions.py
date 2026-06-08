@@ -5,13 +5,14 @@ from __future__ import annotations
 import a2kit
 from a2kit.config import A2kitConfig, McpConfig
 from a2kit.packages.mcp.server import build_mcp_server
+from a2kit.testing import app_of
 
 _GUIDANCE = "Use entity_* for memory ops."
 
 
 def _app_with_instructions(text: str | None) -> a2kit.App:
     cfg = A2kitConfig(mcp=McpConfig(instructions=text)) if text is not None else A2kitConfig()
-    return a2kit.App("memo", config=cfg)
+    return app_of("memo", config=cfg)
 
 
 def test_mcp_config_has_instructions() -> None:
@@ -26,7 +27,7 @@ def test_build_threads_instructions() -> None:
 
 def test_default_none_preserves_today() -> None:
     """No instructions set → FastMCP default (None) preserved."""
-    default_server = build_mcp_server(a2kit.App("memo"))
+    default_server = build_mcp_server(app_of("memo"))
     assert default_server.instructions is None
 
 

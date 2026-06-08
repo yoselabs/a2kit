@@ -36,6 +36,7 @@ from a2kit.packages.di.container import Container
 from a2kit.packages.lint.static import ALL_RULES
 from a2kit.routers import Router
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 SPECS_DIR = Path(__file__).resolve().parent.parent / "openspec" / "specs"
 
@@ -111,8 +112,8 @@ _LINT_CODE = re.compile(r"A2K-[A-Z0-9-]+")
 # Live instance probes — resolving attribute accesses against an instance
 # catches attributes set in ``__init__`` (e.g. ``app.ldd``) that a
 # class-level ``hasattr`` would miss.
-_APP_PROBE = a2kit.App("_spec_drift_probe")
-_APPRUNTIME_PROBE = build(a2kit.App("_spec_drift_probe_rt"))
+_APP_PROBE = app_of("_spec_drift_probe")
+_APPRUNTIME_PROBE = build(app_of("_spec_drift_probe_rt"))
 _CONTAINER_PROBE = Container()
 
 

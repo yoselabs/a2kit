@@ -20,6 +20,7 @@ from a2kit.packages.testing.fixtures import (
     ambient_for_tests,
     ambient_for_tests_autouse,
     app,
+    app_of,
     cassette,
 )
 from a2kit.packages.testing.null_context import null_context
@@ -31,6 +32,7 @@ __all__ = [
     "ambient_for_tests",
     "ambient_for_tests_autouse",
     "app",
+    "app_of",
     "cassette",
     "compute_schema",
     "lazy",

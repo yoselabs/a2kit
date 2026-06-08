@@ -53,7 +53,7 @@ from pydantic import BaseModel
 
 import a2kit
 from a2kit.log import info, warning
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 class _Item(BaseModel):
@@ -90,7 +90,7 @@ class _Router(a2kit.Router):
 
 
 def _build_app() -> a2kit.App:
-    return a2kit.App("client-test").add_router(_Router())
+    return app_of("client-test", _Router())
 
 
 # --- Scenario 1: invoke returns tool's value --- #

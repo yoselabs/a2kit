@@ -15,12 +15,12 @@ substrate-native registrations without an extra argument hop.
 
 from __future__ import annotations
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 def test_app_api_lazy_construction() -> None:
-    app = a2kit.App("demo")
+    app = app_of("demo")
     assert app._api is None  # noqa: SLF001 -- assertion seam
     surface = app.api
     assert surface is not None
@@ -30,7 +30,7 @@ def test_app_api_lazy_construction() -> None:
 
 
 def test_app_mcp_lazy_construction() -> None:
-    app = a2kit.App("demo")
+    app = app_of("demo")
     assert app._mcp is None  # noqa: SLF001
     surface = app.mcp
     assert surface is not None
@@ -40,13 +40,13 @@ def test_app_mcp_lazy_construction() -> None:
 
 def test_constructing_app_does_not_touch_surface_attrs() -> None:
     """Plain App() construction must not populate ``_api`` / ``_mcp``."""
-    app = a2kit.App("demo")
+    app = app_of("demo")
     assert app._api is None  # noqa: SLF001
     assert app._mcp is None  # noqa: SLF001
 
 
 def test_runtime_carries_touched_api_surface() -> None:
-    app = a2kit.App("demo")
+    app = app_of("demo")
 
     @app.api.get("/v")
     async def _v() -> dict[str, str]:
@@ -58,14 +58,14 @@ def test_runtime_carries_touched_api_surface() -> None:
 
 
 def test_runtime_api_surface_is_none_when_untouched() -> None:
-    app = a2kit.App("demo")
+    app = app_of("demo")
     runtime = build(app)
     assert runtime.api_surface is None
     assert runtime.mcp_surface is None
 
 
 def test_runtime_carries_touched_mcp_surface() -> None:
-    app = a2kit.App("demo")
+    app = app_of("demo")
 
     @app.mcp.tool(name="hello")
     async def _h() -> dict[str, str]:

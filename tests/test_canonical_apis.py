@@ -20,7 +20,7 @@ import pytest
 from pydantic import BaseModel
 
 import a2kit
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 class _Echo(BaseModel):
@@ -60,7 +60,7 @@ class _Router(a2kit.Router):
 
 
 def _build_app() -> a2kit.App:
-    return a2kit.App("canonical-apis").add_router(_Router())
+    return app_of("canonical-apis", _Router())
 
 
 # --- TestClient call shapes --- #
@@ -124,21 +124,21 @@ def test_app_singleton_class_form() -> None:
     class _Resource:
         pass
 
-    app = a2kit.App("x")
+    app = app_of("x")
     app.provide(_Resource)
     assert _Resource in app.provider_map()
 
 
 def test_app_singleton_factory_form() -> None:
     """README claims ``app.provide(factory)`` registers under the return type."""
-    app = a2kit.App("x")
+    app = app_of("x")
     app.provide(_make_resource_for_factory_test)
     assert _ResourceForFactoryTest in app.provider_map()
 
 
 def test_app_singleton_explicit_base_form() -> None:
     """README claims ``app.provide(BaseClass, factory)`` registers under base."""
-    app = a2kit.App("x")
+    app = app_of("x")
     app.provide(_BaseForOverride, _make_sub_for_override)
     assert _BaseForOverride in app.provider_map()
     assert _SubForOverride not in app.provider_map()
@@ -147,13 +147,13 @@ def test_app_singleton_explicit_base_form() -> None:
 def test_app_lifespan_kwarg_removed() -> None:
     """v0.35 removal: ``App(lifespan=cm)`` raises TypeError with hint."""
     with pytest.raises(TypeError):
-        a2kit.App("x", lifespan=None)  # type: ignore[call-arg]
+        app_of("x", lifespan=None)  # type: ignore[call-arg]
 
 
 def test_app_health_tool_kwarg_removed() -> None:
     """v0.35 removal: ``App(health_tool=True)`` raises TypeError with hint."""
     with pytest.raises(TypeError):
-        a2kit.App("x", health_tool=True)  # type: ignore[call-arg]
+        app_of("x", health_tool=True)  # type: ignore[call-arg]
 
 
 # --- Verb decorator call shapes --- #
@@ -179,7 +179,7 @@ class _VerbDemoRouter(a2kit.Router):
 
 def test_verb_decorators_decorate_methods() -> None:
     """README claims ``@a2kit.read()``, ``@a2kit.write()``, ``@a2kit.list_()`` decorate methods."""
-    app = a2kit.App("x").add_router(_VerbDemoRouter())
+    app = app_of("x", _VerbDemoRouter())
     names = [d.name for d in app.tools()]
     assert names == ["_verbs_r", "_verbs_w", "_verbs_lst"]
 
@@ -194,5 +194,5 @@ def test_router_subclass_with_slug_and_tools() -> None:
         async def f(self) -> dict:
             return {"ok": True}
 
-    app = a2kit.App("x").add_router(_R())
+    app = app_of("x", _R())
     assert any(d.name == "demo_f" for d in app.tools())

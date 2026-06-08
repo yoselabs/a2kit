@@ -320,6 +320,7 @@ def test_router_slug_no_router_suffix() -> None:
 
 def test_router_slug_collision_raises() -> None:
     import a2kit
+    from a2kit.testing import app_of
 
     class TasksRouter(a2kit.Router):
         slug = "tasks"
@@ -327,11 +328,10 @@ def test_router_slug_collision_raises() -> None:
     class Tasks(a2kit.Router):
         slug = "tasks"
 
-    app = a2kit.App("a")
-    app.add_router(TasksRouter())
-
+    # Composing two same-slug routers trips the dup-slug guard at
+    # registration time (the `routers` ClassVar walks `_register_router`).
     with pytest.raises(ValueError, match="already registered"):
-        app.add_router(Tasks())
+        app_of("a", TasksRouter(), Tasks())
 
 
 def test_router_slug_class_attr_wins() -> None:

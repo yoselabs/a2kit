@@ -11,6 +11,7 @@ import a2kit
 from a2effect import AppError, Raises
 from a2kit.packages.mcp.server import build_mcp_server
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _NF(AppError):
@@ -28,7 +29,7 @@ async def test_tool_without_raises_emits_bare_schema() -> None:
         async def plain(self) -> dict:
             return {"ok": True}
 
-    server = build_mcp_server(build(a2kit.App("t").add_router(R())), code_mode=False)
+    server = build_mcp_server(build(app_of("t", R())), code_mode=False)
     async with Client(server) as client:
         tools = await client.list_tools()
     plain = next(t for t in tools if t.name == "x_plain")
@@ -46,7 +47,7 @@ async def test_tool_with_raises_emits_oneof_union() -> None:
         async def typed(self, *, id: str) -> Annotated[dict, Raises(_NF)]:
             return {"id": id}
 
-    server = build_mcp_server(build(a2kit.App("t").add_router(R())), code_mode=False)
+    server = build_mcp_server(build(app_of("t", R())), code_mode=False)
     async with Client(server) as client:
         tools = await client.list_tools()
     typed = next(t for t in tools if t.name == "x_typed")

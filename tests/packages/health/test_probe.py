@@ -33,17 +33,17 @@ import pytest
 
 import a2kit
 from a2kit.packages.health import HEALTH_TOOL_NAME, HealthResult
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 def test_health_tool_not_registered_by_default() -> None:
-    app = a2kit.App("plain")
+    app = app_of("plain")
     names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME not in names
 
 
 def test_health_tool_registered_when_enabled() -> None:
-    app = a2kit.App("with-health")
+    app = app_of("with-health")
     app._install_health_tool()
     names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME in names
@@ -51,7 +51,7 @@ def test_health_tool_registered_when_enabled() -> None:
 
 def test_health_check_auto_enables_health_tool() -> None:
     """v0.33: first `@app.health_check` auto-installs `_meta.health`."""
-    app = a2kit.App("auto-enable")
+    app = app_of("auto-enable")
 
     @app.health_check
     async def _check() -> HealthResult:
@@ -64,7 +64,7 @@ def test_health_check_auto_enables_health_tool() -> None:
 def test_health_tool_kwarg_removed_raises_with_hint() -> None:
     """v0.35: ``App(health_tool=True)`` raises TypeError with migration hint."""
     with pytest.raises(TypeError) as ei:
-        a2kit.App("x", health_tool=True)  # type: ignore[call-arg]
+        app_of("x", health_tool=True)  # type: ignore[call-arg]
     msg = str(ei.value)
     assert "health_tool" in msg
     assert "health_check" in msg
@@ -72,7 +72,7 @@ def test_health_tool_kwarg_removed_raises_with_hint() -> None:
 
 def test_health_check_idempotent_with_explicit_install() -> None:
     """Explicit ``_install_health_tool()`` + ``@app.health_check`` does not double-install."""
-    app = a2kit.App("both")
+    app = app_of("both")
     app._install_health_tool()  # noqa: SLF001 -- test seam
 
     @app.health_check
@@ -108,7 +108,7 @@ def test_health_cmd_does_not_import_testing_package() -> None:
 
 
 def test_health_returns_ok_with_no_checks() -> None:
-    app = a2kit.App("with-health")
+    app = app_of("with-health")
     app._install_health_tool()
 
     async def go() -> Any:
@@ -122,7 +122,7 @@ def test_health_returns_ok_with_no_checks() -> None:
 
 
 def test_passing_check_contributes_ok_entry() -> None:
-    app = a2kit.App("with-health")
+    app = app_of("with-health")
     app._install_health_tool()
 
     @app.health_check
@@ -139,7 +139,7 @@ def test_passing_check_contributes_ok_entry() -> None:
 
 
 def test_failing_check_flips_status_to_degraded() -> None:
-    app = a2kit.App("with-health")
+    app = app_of("with-health")
     app._install_health_tool()
 
     @app.health_check
@@ -158,7 +158,7 @@ def test_failing_check_flips_status_to_degraded() -> None:
 
 
 def test_mixed_checks_yield_degraded() -> None:
-    app = a2kit.App("with-health")
+    app = app_of("with-health")
     app._install_health_tool()
 
     @app.health_check
@@ -192,7 +192,7 @@ def test_meta_namespace_reserved_for_user_tools() -> None:
 
 def test_meta_health_name_allowed_for_builtin() -> None:
     """The internal builtin tool with name `_meta.health` decorates without error."""
-    app = a2kit.App("with-health")
+    app = app_of("with-health")
     app._install_health_tool()
     names = [d.name for d in app.tools()]
     assert HEALTH_TOOL_NAME in names

@@ -12,8 +12,8 @@ from collections.abc import Callable
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 from a2kit.packages.di import Lazy
 
 
@@ -43,7 +43,7 @@ def _reset() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_yields_resolved_kwargs() -> None:
     """``call_scope(fn, wire)`` yields merged resolved + wire kwargs."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Tx, per_call=True)
 
     async def tool(tx: _Tx, name: str) -> str:
@@ -60,7 +60,7 @@ async def test_dispatch_yields_resolved_kwargs() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_lazy_param_skips_unused() -> None:
     """Lazy[T] tool params yield a closure; never invoked = T never built."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Tx, per_call=True)
 
     async def tool(tx: Lazy[_Tx], flag: bool) -> str:
@@ -83,7 +83,7 @@ async def test_dispatch_propagates_tool_exception_and_cleans_up() -> None:
     class _BodyError(RuntimeError):
         pass
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Tx, per_call=True)
 
     async def tool(tx: _Tx) -> None:
@@ -129,7 +129,7 @@ async def test_pre_hook_runs_before_di_resolution() -> None:
         call_log.append("tool")
         return conn.host
 
-    app = a2kit.App("hook-order")
+    app = app_of("hook-order")
     app.provide(_Tx, per_call=True)
 
     async with build(app) as app, app._resolver.call_scope(tool, {"conn_str": "h1"}, pre_hook=hook) as kw:
@@ -159,7 +159,7 @@ async def test_pre_hook_output_seeds_chain_resolution() -> None:
     async def tool(store: _Store) -> str:
         return store.conn.host
 
-    app = a2kit.App("chain-seed")
+    app = app_of("chain-seed")
     # _Store depends on _ConnCfg (seeded by hook per-call), so it must be
     # per_call too — app-scope would violate the scope contract.
     app.provide(_Store, _make_store, per_call=True)

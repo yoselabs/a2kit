@@ -10,6 +10,7 @@ from __future__ import annotations
 import a2kit
 from a2kit.packages.mcp.server import build_mcp_server
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Store:
@@ -20,7 +21,7 @@ async def test_mcp_tool_registers_and_resolves_di() -> None:
     """``@app.mcp.tool`` registers on FastMCP and resolves DI types."""
     from fastmcp import Client
 
-    app = a2kit.App("mcp-native-demo").provide(_Store, lambda: _Store())
+    app = app_of("mcp-native-demo").provide(_Store, lambda: _Store())
 
     @app.mcp.tool(name="echo_native")
     async def echo(*, msg: str, store: _Store) -> dict[str, str]:
@@ -48,7 +49,7 @@ async def test_projection_mcp_only_does_not_appear_on_api() -> None:
         async def mcp_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("test").add_router(R())
+    app = app_of("test", R())
     runtime = build(app)
     server = build_mcp_server(runtime, code_mode=False)
     async with Client(server) as client:
@@ -67,7 +68,7 @@ async def test_projection_api_only_does_not_appear_on_mcp() -> None:
         async def api_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    app = a2kit.App("test").add_router(R())
+    app = app_of("test", R())
     runtime = build(app)
     server = build_mcp_server(runtime, code_mode=False)
     async with Client(server) as client:

@@ -14,6 +14,7 @@ from typing import Any
 import a2kit
 from a2kit.packages.serve import build_parent_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 def _mount_paths(parent: Any) -> set[str]:
@@ -30,7 +31,7 @@ def _make_app() -> a2kit.App:
         async def ping(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-    return a2kit.App("demo").add_router(R())
+    return app_of("demo", R())
 
 
 def test_surface_mcp_select_skips_fastapi_mount() -> None:

@@ -109,16 +109,8 @@ def test_class_body_enricher_collected() -> None:
     assert any(ft is ValueError for ft, _ in app._enrichers)
 
 
-def test_imperative_form_still_works_during_transition() -> None:
-    """The old ``App("n").add_router(R())`` path is unbroken (transition)."""
-    app = a2kit.App("legacy").add_router(_Entity())
-    names = {d.name for d in app.tools()}
-    assert "entity_update" in names
-
-
 def test_name_from_class_attr_or_positional() -> None:
     class Kay(a2kit.App):
         name = "kay"
 
     assert Kay().name == "kay"
-    assert a2kit.App("legacy").name == "legacy"

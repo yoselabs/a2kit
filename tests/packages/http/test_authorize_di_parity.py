@@ -20,6 +20,7 @@ import a2kit
 from a2effect import AppError, Raises
 from a2kit.packages.http.build import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 # A Container-resolved dependency the authorize callable consumes.
@@ -45,7 +46,6 @@ class _Denied(AppError):
 
 def _build_runtime(*, allow: bool):
     body_calls: list[int] = []
-    app = a2kit.App("authz-di-parity").provide(_AccessPolicy, lambda: _AccessPolicy(allow=allow))
 
     class R(a2kit.Router):
         slug = "svc"
@@ -55,7 +55,7 @@ def _build_runtime(*, allow: bool):
             body_calls.append(x)
             return {"x": x}
 
-    app.add_router(R())
+    app = app_of("authz-di-parity", R()).provide(_AccessPolicy, lambda: _AccessPolicy(allow=allow))
     return build(app), body_calls
 
 

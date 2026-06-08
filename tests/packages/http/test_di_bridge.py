@@ -13,9 +13,9 @@ from typing import Annotated
 from fastapi import Depends, Security
 from fastapi.testclient import TestClient
 
-import a2kit
 from a2kit.packages.http.build import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Database:
@@ -33,7 +33,7 @@ def _guard(db: Annotated[_Database, Depends(_Database)]) -> str:
 
 class TestHttpDiBridge:
     def test_security_guard_resolves_a2kit_db_and_route_sees_same_instance(self) -> None:
-        app = a2kit.App("bridge-test").provide(_Database, _Database)
+        app = app_of("bridge-test").provide(_Database, _Database)
 
         @app.api.get("/me", response_model=dict)
         async def me(

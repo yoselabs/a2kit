@@ -13,8 +13,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Transaction:
@@ -58,7 +58,7 @@ def _reset_counters() -> None:
 @pytest.mark.asyncio
 async def test_per_call_yields_fresh_instance_per_dispatch() -> None:
     """Two dispatches receive distinct ``Transaction`` instances; factory invoked twice."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Transaction, per_call=True)
 
     async with build(app) as app:
@@ -75,7 +75,7 @@ async def test_per_call_yields_fresh_instance_per_dispatch() -> None:
 @pytest.mark.asyncio
 async def test_per_call_caches_within_single_call() -> None:
     """Two resolves of the same per-call type within one dispatch share an instance."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Transaction, per_call=True)
 
     async with build(app) as app, app._resolver.child() as call:
@@ -89,7 +89,7 @@ async def test_per_call_caches_within_single_call() -> None:
 @pytest.mark.asyncio
 async def test_per_call_cleanup_runs_on_normal_return() -> None:
     """``__aexit__`` runs when the per-call scope closes after normal completion."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Transaction, per_call=True)
 
     async with build(app) as app, app._resolver.child() as call:
@@ -104,7 +104,7 @@ async def test_per_call_cleanup_runs_on_normal_return() -> None:
 @pytest.mark.asyncio
 async def test_per_call_cleanup_runs_on_exception() -> None:
     """``__aexit__`` runs with exception in scope, then the exception propagates."""
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Transaction, per_call=True)
 
     class _BodyError(RuntimeError):
@@ -132,7 +132,7 @@ async def test_per_call_depends_on_app_scope() -> None:
         async with tx:
             yield tx
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_ConnectionPool)
     app.provide(_Transaction, tx_factory, per_call=True)
 
@@ -156,7 +156,7 @@ async def test_app_scope_cannot_depend_on_per_call() -> None:
     async def bad_app_factory(tx: _Transaction) -> AsyncIterator[object]:
         yield object()
 
-    app = a2kit.App("test")
+    app = app_of("test")
     app.provide(_Transaction, per_call=True)
     app.provide(object, bad_app_factory)  # app-scope default; depends on per-call _Transaction
 

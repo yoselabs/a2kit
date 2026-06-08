@@ -14,13 +14,13 @@ import pytest
 from fastapi import Security
 from fastapi.testclient import TestClient
 
-import a2kit
 from a2kit.exceptions import AuthorizationDenied
 from a2kit.packages.context import Principal, request_scope
 from a2kit.packages.dispatch import DISPATCH_PIPELINE, AuthorizeGateStage, _run_authorize_gate
 from a2kit.packages.dispatch.spec import ToolBuildSpec
 from a2kit.packages.http.build import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 def _admin_only(*, principal: Principal) -> bool:
@@ -34,7 +34,7 @@ def _guard_returns_reader() -> Principal:
 class TestHttpAuthorizeDenies403:
     def test_admin_only_denies_non_admin(self) -> None:
         body_calls: list[int] = []
-        app = a2kit.App("authz-http")
+        app = app_of("authz-http")
 
         @app.api.get("/admin", response_model=dict, authorize=_admin_only)
         async def admin(*, _authz: Annotated[Principal, Security(_guard_returns_reader)]) -> dict[str, str]:
@@ -61,7 +61,7 @@ class TestAuthorizeGatePipelinePlacement:
 
 class TestRunAuthorizeGate:
     async def test_falsy_return_raises_authorization_denied(self) -> None:
-        app = a2kit.App("authz-direct")
+        app = app_of("authz-direct")
         runtime = build(app)
         token = request_scope.publish(Principal(subject="u1", scopes=frozenset()))
         try:
@@ -72,7 +72,7 @@ class TestRunAuthorizeGate:
         assert exc.value.callable_name.endswith("_admin_only")
 
     async def test_truthy_return_allows(self) -> None:
-        app = a2kit.App("authz-direct-allow")
+        app = app_of("authz-direct-allow")
         runtime = build(app)
         token = request_scope.publish(Principal(subject="u1", scopes=frozenset({"admin"})))
         try:
@@ -88,7 +88,7 @@ class TestAuthorizeGateStageSelfSkips:
 
         stage = AuthorizeGateStage()
         spec = ToolBuildSpec(
-            app=build(a2kit.App("authz-skip")),
+            app=build(app_of("authz-skip")),
             router=None,
             meta=None,
         )

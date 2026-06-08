@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import a2kit
 from a2kit.packages.cli.builder import build_full_cli
 from a2kit.packages.formatter.response import Page
+from a2kit.testing import app_of
 
 
 class Task(BaseModel):
@@ -36,7 +37,7 @@ class TestAutoRouting:
             async def list_x(self) -> list[Task]:
                 return [Task(id="a", title="x"), Task(id="b", title="y")]
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x"])
         assert result.exit_code == 0, result.output
         # TSV header + 2 rows
@@ -54,7 +55,7 @@ class TestAutoRouting:
             async def list_x(self) -> list[TaskWithLabels]:
                 return [TaskWithLabels(id="a", labels=["x", "y"])]
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())
@@ -69,7 +70,7 @@ class TestAutoRouting:
             async def page_x(self) -> Page[Task]:
                 return Page[Task](items=[Task(id="a", title="x")], next_cursor="c")
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "page_x"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())
@@ -85,7 +86,7 @@ class TestAutoRouting:
             async def get(self, *, id: str = "a") -> Task:
                 return Task(id=id, title="x")
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "get"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())
@@ -102,7 +103,7 @@ class TestExplicitOverride:
             async def list_x(self) -> list[Task]:
                 return [Task(id="a", title="x")]
 
-        app = a2kit.App("t").add_router(TR())
+        app = app_of("t", TR())
         result = _runner().invoke(build_full_cli(app), ["tr", "list_x", "--format", "json"])
         assert result.exit_code == 0, result.output
         parsed = json.loads(result.output.strip())

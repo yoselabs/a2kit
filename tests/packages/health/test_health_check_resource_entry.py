@@ -27,11 +27,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import a2kit
 from a2kit.runtime import build
 from a2kit import HealthResult
 from a2kit.packages.health import HEALTH_TOOL_NAME, app_version, run_checks
-from a2kit.testing import client
+from a2kit.testing import app_of, client
 
 
 class SpyResource:
@@ -57,7 +56,7 @@ def test_first_probe_enters_singleton() -> None:
     Assert ``exited == 0`` while the lifespan is still in flight.
     """
     spy = SpyResource()
-    app = a2kit.App("health-singleton-first-probe")
+    app = app_of("health-singleton-first-probe")
     app.provide(SpyResource, lambda: spy)
     app._install_health_tool()
 
@@ -85,7 +84,7 @@ def test_second_probe_reuses_cached_singleton() -> None:
     re-enter the singleton. Cached app-scope instance returns
     directly from ``_singletons``."""
     spy = SpyResource()
-    app = a2kit.App("health-singleton-second-probe")
+    app = app_of("health-singleton-second-probe")
     app.provide(SpyResource, lambda: spy)
     app._install_health_tool()
 
@@ -109,7 +108,7 @@ def test_singleton_exits_at_lifespan_unwind() -> None:
     unwinds, not before. After ``async with client(app)`` exits,
     ``spy.exited`` should be 1."""
     spy = SpyResource()
-    app = a2kit.App("health-singleton-exit-at-lifespan")
+    app = app_of("health-singleton-exit-at-lifespan")
     app.provide(SpyResource, lambda: spy)
     app._install_health_tool()
 
@@ -131,7 +130,7 @@ def test_shared_singleton_across_checks_enters_once() -> None:
     singleton kwarg share one instance; ``__aenter__`` fires
     exactly once across both."""
     spy = SpyResource()
-    app = a2kit.App("health-singleton-shared")
+    app = app_of("health-singleton-shared")
     app.provide(SpyResource, lambda: spy)
     app._install_health_tool()
 
@@ -164,7 +163,7 @@ def test_run_checks_directly_enters_singleton() -> None:
     must enter the resource via the resolver, not synthesize a
     None-shaped placeholder."""
     spy = SpyResource()
-    app = a2kit.App("health-run-checks-direct")
+    app = app_of("health-run-checks-direct")
     app.provide(SpyResource, lambda: spy)
     app._install_health_tool()
 

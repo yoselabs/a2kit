@@ -15,6 +15,7 @@ import pytest
 import a2kit
 from a2kit.packages.context import Principal
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 _SRC_ROOT = Path(__file__).resolve().parents[1] / "src/a2kit"
 
@@ -52,7 +53,7 @@ async def test_di_principal_provider_flows_to_tool_body() -> None:
         async def me(self, *, principal: Principal) -> dict[str, str]:
             return {"subject": principal.subject}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     app.container().provide(Principal, lambda: fake)
     runtime = build(app)
     async with runtime:
@@ -73,7 +74,7 @@ async def test_no_provider_and_no_substrate_write_raises_clear_error() -> None:
         async def me(self, *, principal: Principal) -> dict[str, str]:
             return {"subject": principal.subject}
 
-    app = a2kit.App("demo").add_router(R())
+    app = app_of("demo", R())
     runtime = build(app)
     async with runtime:
         [desc] = runtime.tools()

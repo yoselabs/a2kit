@@ -14,6 +14,7 @@ import a2kit
 from a2effect import AppError, Raises
 from a2kit.packages.mcp.server import build_mcp_server
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _NotFound(AppError):
@@ -33,7 +34,7 @@ async def test_success_returns_without_typed_error_channel() -> None:
         async def ping(self, *, msg: str) -> dict:
             return {"msg": msg}
 
-    app = a2kit.App("t").add_router(R())
+    app = app_of("t", R())
     server = build_mcp_server(build(app), code_mode=False)
     async with Client(server) as client:
         result = await client.call_tool("echo_ping", {"msg": "hi"})
@@ -54,7 +55,7 @@ async def test_error_emits_prose_plus_structured_envelope() -> None:
         async def fetch(self, *, id: str) -> Annotated[dict, Raises(_NotFound)]:
             raise _NotFound(f"memory id {id!r} does not exist", details={"id": id})
 
-    app = a2kit.App("t").add_router(R())
+    app = app_of("t", R())
     server = build_mcp_server(build(app), code_mode=False)
     async with Client(server) as client:
         result = await client.call_tool("mem_fetch", {"id": "abc"}, raise_on_error=False)
@@ -86,7 +87,7 @@ async def test_non_app_error_quarantined_as_unexpected_defect() -> None:
         async def boom(self, *, x: int) -> int:
             raise KeyError(f"bad-{x}")
 
-    app = a2kit.App("t").add_router(R())
+    app = app_of("t", R())
     server = build_mcp_server(build(app), code_mode=False)
     async with Client(server) as client:
         result = await client.call_tool("broken_boom", {"x": 1}, raise_on_error=False)

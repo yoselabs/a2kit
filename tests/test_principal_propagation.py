@@ -23,6 +23,7 @@ import a2kit
 from a2kit.packages.context import Principal
 from a2kit.packages.http.build import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 def _guard_returning_principal() -> Principal:
@@ -31,7 +32,7 @@ def _guard_returning_principal() -> Principal:
 
 class TestHttpPrincipalReachesBody:
     def test_security_guard_principal_resolves_in_body_via_di(self) -> None:
-        app = a2kit.App("principal-http")
+        app = app_of("principal-http")
 
         @app.api.get("/whoami", response_model=dict)
         async def whoami(
@@ -61,8 +62,6 @@ class TestMcpPrincipalReachesBody:
     async def test_dispatch_hook_seeds_principal_from_bridge(self) -> None:
         from a2kit.packages.context import request_scope
 
-        app = a2kit.App("principal-mcp")
-
         class R(a2kit.Router):
             slug = "p"
 
@@ -70,7 +69,7 @@ class TestMcpPrincipalReachesBody:
             async def whoami(self, *, principal: Principal) -> dict[str, str]:
                 return {"subject": principal.subject}
 
-        app.add_router(R())
+        app = app_of("principal-mcp", R())
         runtime = build(app)
 
         p = Principal(subject="u1", scopes=frozenset())

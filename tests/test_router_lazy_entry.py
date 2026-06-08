@@ -11,6 +11,7 @@ import pytest
 
 import a2kit
 from a2kit.runtime import build
+from a2kit.testing import app_of
 from a2kit.testing import client as _testing_client
 
 
@@ -31,7 +32,7 @@ async def test_router_does_not_enter_on_app_aenter() -> None:
         async def fetch(self) -> dict:  # type: ignore[override]
             return {"ok": True}
 
-    app = a2kit.App("x").add_router(_GH())
+    app = app_of("x", _GH())
     async with build(app) as app:
         assert entered == []  # router did NOT enter just because app entered
 
@@ -53,7 +54,7 @@ async def test_first_dispatch_enters_router_once() -> None:
         async def fetch(self) -> dict:  # type: ignore[override]
             return {"ok": True}
 
-    app = a2kit.App("x").add_router(_GH())
+    app = app_of("x", _GH())
     async with _testing_client(app) as client:
         await client.invoke("gh_fetch")
         assert entered == ["gh"]
@@ -94,7 +95,7 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
         async def sl_fetch(self) -> dict:  # type: ignore[override]
             return {}
 
-    app = a2kit.App("x").add_router(_GH()).add_router(_SL())
+    app = app_of("x", _GH(), _SL())
     async with _testing_client(app) as client:
         await client.invoke("gh_gh_fetch")
 
@@ -116,9 +117,8 @@ async def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
         async def x(self) -> dict:
             return {}  # type: ignore[override]
 
-    app = a2kit.App("x")
     with pytest.raises(TypeError) as ei:
-        app.add_router(_Legacy())
+        app_of("x", _Legacy())
     msg = str(ei.value)
     assert "lifespan" in msg
     assert "__aenter__" in msg

@@ -13,6 +13,7 @@ from pydantic import BaseModel
 import a2kit
 from a2kit.packages.di import Lazy
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 class _Memory(BaseModel):
@@ -36,7 +37,7 @@ class TestBuildTimeMaterialization:
             async def fetch(self, *, db: _Database, id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id)
 
-        app = a2kit.App("t").add_router(R())
+        app = app_of("t", R())
         app.provide(_Database, _Database)
         runtime = build(app)
         d = runtime.descriptor_for("r_fetch")
@@ -51,7 +52,7 @@ class TestBuildTimeMaterialization:
             async def fetch(self, *, db: _Database, id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id)
 
-        app = a2kit.App("t").add_router(R())
+        app = app_of("t", R())
         app.provide(_Database, _Database)
         d = app.tools()[0]
         assert d.wire_param_names is None
@@ -65,7 +66,7 @@ class TestBuildTimeMaterialization:
             async def warm(self, *, cache: Lazy[_Cache], id: str) -> _Memory:  # noqa: ARG002
                 return _Memory(id=id)
 
-        app = a2kit.App("t").add_router(R())
+        app = app_of("t", R())
         app.provide(_Cache, _Cache)
         runtime = build(app)
         d = runtime.descriptor_for("r_warm")
@@ -81,7 +82,7 @@ class TestBuildTimeMaterialization:
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id)
 
-        runtime = build(a2kit.App("t").add_router(R()))
+        runtime = build(app_of("t", R()))
         with pytest.raises(KeyError):
             runtime.descriptor_for("does_not_exist")
 
@@ -93,7 +94,7 @@ class TestBuildTimeMaterialization:
             async def fetch(self, *, id: str) -> _Memory:
                 return _Memory(id=id)
 
-        runtime = build(a2kit.App("t").add_router(R()))
+        runtime = build(app_of("t", R()))
         descs = runtime.descriptors()
         assert isinstance(descs, tuple)
         # Same object identity as descriptor_for lookup.

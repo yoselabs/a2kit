@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 import a2kit
 from a2kit.packages.http.build import build_http_app
 from a2kit.runtime import build
+from a2kit.testing import app_of
 
 
 def test_invalid_body_returns_422_with_fastapi_default_shape() -> None:
@@ -25,7 +26,7 @@ def test_invalid_body_returns_422_with_fastapi_default_shape() -> None:
         async def echo(self, *, id: str) -> dict[str, str]:
             return {"id": id}
 
-    app = a2kit.App("validation-test").add_router(R())
+    app = app_of("validation-test", R())
     client = TestClient(build_http_app(build(app)), raise_server_exceptions=False)
 
     # Missing required `id` field. FastAPI rejects at body parse with 422.
@@ -50,7 +51,7 @@ def test_wrong_content_type_returns_422_not_typed_envelope() -> None:
         async def echo(self, *, id: str) -> dict[str, str]:
             return {"id": id}
 
-    app = a2kit.App("validation-test-2").add_router(R())
+    app = app_of("validation-test-2", R())
     client = TestClient(build_http_app(build(app)), raise_server_exceptions=False)
 
     # Wrong shape: list instead of an object.

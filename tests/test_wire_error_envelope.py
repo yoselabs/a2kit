@@ -29,6 +29,7 @@ from fastmcp.exceptions import ToolError
 
 import a2kit
 from a2kit.packages.mcp.server import build_mcp_server
+from a2kit.testing import app_of
 
 
 def _build_app(*, debug: bool = False) -> a2kit.App:
@@ -58,7 +59,7 @@ def _build_app(*, debug: bool = False) -> a2kit.App:
 
     from a2kit.config import A2kitConfig
 
-    return a2kit.App("envelope", config=A2kitConfig(debug=debug)).add_router(R())
+    return app_of("envelope", R(), config=A2kitConfig(debug=debug))
 
 
 async def _call_tool(app: a2kit.App, name: str) -> Any:
