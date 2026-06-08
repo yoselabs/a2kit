@@ -93,7 +93,18 @@ depends on Wave 1 (`cli-as-surface`).
 - [ ] 7.2 Confirm Wave-1 dependency satisfied (`cli-as-surface` landed: the
       `app.cli` accessor + uniform `bind` exist) before merge.
 
-## Implementation sequence (resolved — ready to execute)
+## Status: LANDED (2026-06-09)
+
+Shipped to main across three green commits, transition-tolerant → migrate →
+flip: `af633c0` (subclassable-App core: `__init_subclass__` collect,
+`routers=`/`providers=` ClassVars, bare app-verbs via `_AppRootRouter`,
+`@a2kit.enricher` marker, `serve()`, `routers()`→`router_instances()` +
+`providers()`→`provider_map()` renames, `_build_descriptors` moved to
+`tool.py`); `e9caa57` (107 test files → `a2kit.testing.app_of`); `e913d20`
+(breaking flip: base `App(...)` + `add_router` raise migration hints,
+examples → subclass form). Full suite 1551 passed; all gates green.
+
+## Implementation sequence (resolved — executed as above)
 
 Design fully resolved (see design.md "Implementation findings"; the two
 Constitution-touching forks human-confirmed 2026-06-08). Build
