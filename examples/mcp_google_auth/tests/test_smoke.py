@@ -102,11 +102,13 @@ def _build_app_with_fake_user(user: UserSession):
     test transport. Overriding via composition-root re-registration
     (ADR 0006) is the documented pattern for tests.
     """
-    import a2kit
+    from a2kit.testing import app_of
 
     from examples.mcp_google_auth.routers import NotesRouter
 
-    return a2kit.App("mcp-google-auth-example").provide(UserSession, lambda: user, per_call=True).add_router(NotesRouter())
+    app = app_of("mcp-google-auth-example", NotesRouter)
+    app.provide(UserSession, lambda: user, per_call=True)
+    return app
 
 
 def test_per_user_write_isolation(tmp_path: Path) -> None:
@@ -122,9 +124,9 @@ def test_per_user_write_isolation(tmp_path: Path) -> None:
 
     async def run_alice_write_bob_read() -> tuple[dict, dict]:
         async with client(_build_app_with_fake_user(alice)) as c_alice:
-            write_res = await c_alice.invoke("notes.note_write", key="k1", value="alice-secret")
+            write_res = await c_alice.invoke("notes_note_write", key="k1", value="alice-secret")
         async with client(_build_app_with_fake_user(bob)) as c_bob:
-            read_res = await c_bob.invoke("notes.note_read", key="k1")
+            read_res = await c_bob.invoke("notes_note_read", key="k1")
         return write_res, read_res
 
     write_res, read_res = asyncio.run(run_alice_write_bob_read())
@@ -144,7 +146,7 @@ def test_whoami_returns_authenticated_identity(tmp_path: Path) -> None:
 
     async def go() -> dict:
         async with client(_build_app_with_fake_user(alice)) as c:
-            return await c.invoke("notes.whoami")
+            return await c.invoke("notes_whoami")
 
     result = asyncio.run(go())
     assert result["email"] == "alice@example.com"
@@ -160,7 +162,7 @@ def test_invalid_key_is_rejected_loudly(tmp_path: Path) -> None:
 
     async def go() -> None:
         async with client(_build_app_with_fake_user(alice)) as c:
-            await c.invoke("notes.note_write", key="../escape", value="x")
+            await c.invoke("notes_note_write", key="../escape", value="x")
 
     with pytest.raises(Exception):
         asyncio.run(go())

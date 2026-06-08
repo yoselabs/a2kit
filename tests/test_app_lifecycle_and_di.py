@@ -24,6 +24,7 @@ import pytest
 
 from a2kit.app import App
 from a2kit.packages.di._introspection import UnresolvableType
+from a2kit.testing import app_of
 
 
 async def _get(app: App, type_: type) -> Any:
@@ -48,21 +49,21 @@ class _Store:
 
 
 async def test_resolve_simple_chain() -> None:
-    app = App("t").provide(_Settings, lambda: _Settings()).provide(_Store, _Store)
+    app = app_of("t").provide(_Settings, lambda: _Settings()).provide(_Store, _Store)
     store = await _get(app, _Store)
     assert isinstance(store, _Store)
     assert isinstance(store.settings, _Settings)
 
 
 def test_container_is_non_optional_after_construction() -> None:
-    app = App("t")
+    app = app_of("t")
     c = app.container()
     assert c is not None
     assert app.container() is c
 
 
 async def test_resolve_unresolvable_raises() -> None:
-    app = App("t")
+    app = app_of("t")
     with pytest.raises(UnresolvableType):
         await _get(app, _Settings)
 
@@ -77,7 +78,7 @@ async def test_singleton_method_form_caches() -> None:
         calls["n"] += 1
         return _State(f"build{calls['n']}")
 
-    app = App("t").provide(_State, factory)
+    app = app_of("t").provide(_State, factory)
     a = await _get(app, _State)
     b = await _get(app, _State)
     assert a is b
@@ -90,14 +91,14 @@ async def test_singleton_class_as_factory_form() -> None:
     Class-as-factory uses ``T.__init__`` at resolve time and chains DI for
     any annotated constructor parameters.
     """
-    app = App("t").provide(_State)
+    app = app_of("t").provide(_State)
     s = await _get(app, _State)
     assert isinstance(s, _State)
 
 
 async def test_two_apps_independent_singletons() -> None:
-    app_a = App("a").provide(_State, lambda: _State("A"))
-    app_b = App("b").provide(_State, lambda: _State("B"))
+    app_a = app_of("a").provide(_State, lambda: _State("A"))
+    app_b = app_of("b").provide(_State, lambda: _State("B"))
     sa = await _get(app_a, _State)
     sb = await _get(app_b, _State)
     assert sa is not sb
@@ -111,7 +112,7 @@ def test_singleton_async_factory_accepted_at_registration() -> None:
     async def factory() -> _State:
         return _State("async")
 
-    app = App("t")
+    app = app_of("t")
     app.provide(_State, factory)
     assert app.has_provider(_State)
 
@@ -120,7 +121,7 @@ async def test_singleton_chain_with_provide() -> None:
     def make_store(settings: _Settings) -> _Store:
         return _Store(settings)
 
-    app = App("t").provide(_Settings, lambda: _Settings()).provide(_Store, make_store)
+    app = app_of("t").provide(_Settings, lambda: _Settings()).provide(_Store, make_store)
     a = await _get(app, _Store)
     b = await _get(app, _Store)
     assert a is b
@@ -128,7 +129,7 @@ async def test_singleton_chain_with_provide() -> None:
 
 
 async def test_provide_last_write_wins() -> None:
-    app = App("t").provide(_State, lambda: _State("via_first")).provide(_State, lambda: _State("via_second"))
+    app = app_of("t").provide(_State, lambda: _State("via_first")).provide(_State, lambda: _State("via_second"))
     a = await _get(app, _State)
     b = await _get(app, _State)
     assert a is b

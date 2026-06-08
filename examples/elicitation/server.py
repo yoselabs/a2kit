@@ -37,8 +37,12 @@ class UsersRouter(a2kit.Router):
         return {"status": "ok", "greeting": f"hello {result.data}"}
 
 
-app = a2kit.App("elicitation-demo")
-app.add_router(UsersRouter())
+class ElicitationApp(a2kit.App):
+    name = "elicitation-demo"
+    routers = (UsersRouter,)
+
+
+app = ElicitationApp()
 
 
 def main() -> None:

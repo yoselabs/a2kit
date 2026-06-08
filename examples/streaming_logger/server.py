@@ -16,10 +16,16 @@ from a2kit.config import A2kitConfig, LogConfig
 
 from .routers import TasksRouter
 
+
 # Stream a2kit.log emissions to stderr as condensed lines so the CLI demo
 # shows live, mid-call logging (the built-in stderr handler is opt-in).
-app = a2kit.App("streaming-logger", config=A2kitConfig(log=LogConfig(stderr_sink="pretty")))
-app.add_router(TasksRouter())
+class StreamingLoggerApp(a2kit.App):
+    name = "streaming-logger"
+    routers = (TasksRouter,)
+    config = A2kitConfig(log=LogConfig(stderr_sink="pretty"))
+
+
+app = StreamingLoggerApp()
 
 
 def main() -> None:

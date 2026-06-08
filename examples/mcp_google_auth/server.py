@@ -33,19 +33,22 @@ from .session import (
 )
 
 
+class _GoogleAuthApp(a2kit.App):
+    name = "mcp-google-auth-example"
+    routers = (NotesRouter,)
+
+
 def build_cli_app() -> a2kit.App:
     """CLI composition root — no auth, identity from $USER."""
-    app = a2kit.App("mcp-google-auth-example")
+    app = _GoogleAuthApp()
     app.provide(UserSession, build_cli_user_session, per_call=True)
-    app.add_router(NotesRouter())
     return app
 
 
 def build_mcp_app() -> a2kit.App:
     """MCP composition root — identity from verified Google JWT."""
-    app = a2kit.App("mcp-google-auth-example")
+    app = _GoogleAuthApp()
     app.provide(UserSession, build_user_session, per_call=True)
-    app.add_router(NotesRouter())
     return app
 
 

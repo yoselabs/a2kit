@@ -57,9 +57,6 @@ class StepCompleted(BaseModel):
     elapsed_ms: int
 
 
-app = a2kit.App("typed-events-demo", config=A2kitConfig(log=LogConfig(stderr_sink="pretty")))
-
-
 class JobsRouter(a2kit.Router):
     slug = "jobs"
 
@@ -80,7 +77,13 @@ class JobsRouter(a2kit.Router):
         return {"steps": steps}
 
 
-app.add_router(JobsRouter())
+class TypedEventsApp(a2kit.App):
+    name = "typed-events-demo"
+    routers = (JobsRouter,)
+    config = A2kitConfig(log=LogConfig(stderr_sink="pretty"))
+
+
+app = TypedEventsApp()
 
 
 def main() -> None:

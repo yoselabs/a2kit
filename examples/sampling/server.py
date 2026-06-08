@@ -37,8 +37,12 @@ class TextRouter(a2kit.Router):
         return {"summary": summary}
 
 
-app = a2kit.App("sampling-demo")
-app.add_router(TextRouter())
+class SamplingApp(a2kit.App):
+    name = "sampling-demo"
+    routers = (TextRouter,)
+
+
+app = SamplingApp()
 
 
 def main() -> None:

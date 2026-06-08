@@ -10,7 +10,7 @@ when `a2kit` evolves, this folder evolves with it.
 | `store.py`        | Plain class; `__init__(self, conn: TrackerConn)` — class-as-factory ready     |
 | `enrichers.py`    | Pure `(exc) -> str \| None` enricher; class-attribute `enrichers` on routers  |
 | `routers.py`      | Typed kwargs `store: TrackerStore`, `enrichers = [...]`, four LDD channels    |
-| `server.py`       | Composition root: `add_router` + `provide` + `add_cli`, `a2kit.run(app)`      |
+| `server.py`       | Composition root: `class TrackerApp(a2kit.App)` + `provide` + `install_connections`, `a2kit.run(app)` |
 
 ## The author surface
 
@@ -18,28 +18,41 @@ when `a2kit` evolves, this folder evolves with it.
 
 ```python
 import a2kit
-from a2kit.packages.connections import connections_cli
+from a2kit.packages.connections import install_connections
 
 from .connection import TrackerConn
+from .enrichers import tracker_404_enricher
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-app = (
-    a2kit.App("tracker-mcp")
-    .add_router(ProjectsRouter())
-    .add_router(TasksRouter())
-    .provide(TrackerStore)                   # class-as-factory; container reads __init__
-    .add_cli(connections_cli(TrackerConn))   # auto-installs TrackerConn provider
-)
+# Routers need instance setup (per-router enricher attachment), so they
+# are built and wired before being declared on the App subclass.
+projects = ProjectsRouter()
+tasks = TasksRouter()
+projects.enricher(tracker_404_enricher)
+tasks.enricher(tracker_404_enricher)
+
+
+class TrackerApp(a2kit.App):
+    name = "tracker-mcp"
+    routers = (projects, tasks)            # pre-built instances (enrichers attached)
+
+
+app = TrackerApp()
+install_connections(app, TrackerConn)     # auto-installs TrackerConn provider + connections CLI
+app.provide(TrackerStore, per_call=True)  # class-as-factory; container reads __init__
 
 
 def main() -> None:
     a2kit.run(app)
 ```
 
-That's the whole composition root. Two `provide()`-flavored DI calls
-(one explicit, one auto-installed by the connections CLI) plus three
-named verbs. No `Depends(...)` sentinel, no plugin protocol, no
+That's the whole composition root. The App is authored by subclassing
+`a2kit.App` — `name` and `routers` are class attributes; the `routers`
+tuple holds Router *classes* (instantiated internally) or, as here,
+pre-built instances when they need setup. Two `provide()`-flavored DI
+calls (one explicit, one auto-installed by `install_connections`) plus
+three named verbs. No `Depends(...)` sentinel, no plugin protocol, no
 class-as-key.
 
 `routers.py` per-tool surface — typed kwargs + class-attribute enrichers:

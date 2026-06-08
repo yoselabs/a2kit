@@ -42,7 +42,11 @@ class _SqliteResource:
         _state.sqlite_open = False
 
 
-app = a2kit.App("health-demo")
+class HealthDemoApp(a2kit.App):
+    name = "health-demo"
+
+
+app = HealthDemoApp()
 app.provide(_SqliteResource)
 
 

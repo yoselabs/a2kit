@@ -54,15 +54,18 @@ def _default_dispatch_hook(
 
 
 class App:
-    """The a2kit application — the compose-phase builder.
+    """The a2kit application — the compose-phase composition root.
 
-    ``App`` is constructed directly (``a2kit.App("svc")``), wired with the
-    composition verbs — :meth:`add_router`, :meth:`add_cli`,
-    :meth:`add_mcp_middleware`, :meth:`provide`, :meth:`health_check` —
-    and handed to a *finisher*: :func:`a2kit.run`,
-    :func:`a2kit.packages.mcp.build_mcp_server`, or
-    :func:`a2kit.testing.client`. Each composition verb returns the App
-    for chaining.
+    ``App`` is authored by **subclassing** (ADR 0028 Wave 2): a subclass
+    sets ``name`` / ``routers`` / ``providers`` / ``config`` class attrs
+    and declares app-level verbs + enrichers as methods. The remaining
+    composition verbs (:meth:`add_cli`, :meth:`add_mcp_middleware`,
+    :meth:`provide`, :meth:`auth`, :meth:`health_check`) are called on the
+    instance, then it is handed to a *finisher* — :func:`a2kit.run` (or
+    ``Kay().serve()``), :func:`a2kit.packages.mcp.build_mcp_server`, or
+    :func:`a2kit.testing.client`. Tests use
+    :func:`a2kit.testing.app_of`. Direct ``App(...)`` construction and
+    ``add_router`` were removed in Wave 2.
 
     ``App`` is a pure, reusable builder. It carries no sealed mode and no
     lifecycle: a finisher's internal ``build(app)`` step (see
@@ -78,18 +81,16 @@ class App:
     may be handed to more than one finisher. See ADR 0019 (supersedes
     ADR 0017).
 
-    Construction is pure: ``App(...)`` plus ``add_router`` / ``provide``
-    calls trigger no async work — useful for unit tests that introspect
-    wiring without entering a runtime.
+    Construction is pure: instantiating the subclass plus ``provide`` calls
+    trigger no async work — useful for unit tests that introspect wiring
+    without entering a runtime.
 
     Authored as a class (ADR 0028 Wave 2, app-as-peer-root): a subclass
     sets ``name`` / ``providers`` / ``routers`` (a tuple of Router
     *classes*) / ``config`` as class attributes, declares app-level verbs
     as ``@a2kit.read``/``.write``/``.list_`` methods (auto-collected, bare
     top-level names — no slug), and class-body ``@a2kit.enricher`` methods.
-    Run by instantiating at the entry point: ``Kay().serve()``. The
-    imperative form (``App("svc").add_router(...)``) stays available during
-    the Wave 2 transition.
+    Run by instantiating at the entry point: ``Kay().serve()``.
     """
 
     #: Authoring class attributes (subclass form). ``routers`` names Router
@@ -121,12 +122,23 @@ class App:
         user_config: Any = None,
         **_kw: Any,
     ) -> None:
+        # The imperative instance form is removed (ADR 0028 Wave 2): ``App``
+        # is authored by subclassing (``class Kay(a2kit.App): ...``), or via
+        # ``a2kit.testing.app_of(...)`` in tests. Base ``App(...)`` is gone.
+        if type(self) is App:
+            msg = (
+                "a2kit.App(...) direct construction was removed in ADR 0028 "
+                "Wave 2. Author an App by subclassing — `class Kay(a2kit.App): "
+                "name = 'kay'; routers = (Entity, ...)` then `Kay()` — or use "
+                "`a2kit.testing.app_of(name, *routers)` in tests."
+            )
+            raise TypeError(msg)
         if name is None:
             name = getattr(type(self), "name", None)
         if _kw:
             self._raise_unexpected_kwargs(name or type(self).__name__, _kw)
         if name is None:
-            msg = f"{type(self).__name__}() has no name: set a `name` class attribute on the App subclass, or pass App(name=...)."
+            msg = f"{type(self).__name__}() has no name: set a `name` class attribute on the App subclass."
             raise TypeError(msg)
         if config is None:
             # Per-surface config via a `config = A2kitConfig(...)` class attr
@@ -296,7 +308,7 @@ class App:
         """
         if any(r.slug == "_meta" for r in self._routers.all()):
             return
-        self.add_router(_make_meta_router(self))
+        self._register_router(_make_meta_router(self))
 
     def health_check(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register ``fn`` as a readiness probe for ``_meta.health``.
@@ -329,14 +341,20 @@ class App:
         return fn
 
     def add_router(self, router: Router) -> App:
-        """Imperative router registration (kept during the Wave 2 transition).
+        """Removed in ADR 0028 Wave 2 — use the ``routers`` ClassVar.
 
-        Authored apps should name router *classes* in the ``routers``
-        ClassVar (reference-composition) instead; ``add_router`` is removed
-        in the breaking flip. Delegates to :meth:`_register_router`.
+        Reference-composition replaces imperative registration: name the
+        Router *classes* in ``routers = (Entity, Ontology)`` on the App
+        subclass, or pass them to ``a2kit.testing.app_of(name, *routers)``
+        in tests.
         """
-        self._register_router(router)
-        return self
+        msg = (
+            "App.add_router(...) was removed in ADR 0028 Wave 2. Compose "
+            "routers declaratively: `class Kay(a2kit.App): routers = "
+            f"({type(router).__name__}, ...)`, or `app_of(name, "
+            f"{type(router).__name__}())` in tests."
+        )
+        raise AttributeError(msg)
 
     def _register_router(self, router: Router) -> None:
         """Register one Router instance: dup-slug guard, descriptors, providers.
