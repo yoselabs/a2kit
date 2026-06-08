@@ -151,3 +151,61 @@ time. With Wave 1 in place, the App authors all three surfaces uniformly.
 - No redefinition of the auto-collect mechanic — `router-class-auto-collect`
   owns it; this change reuses it for the App.
 - No `CliConfig.layout = "nested"` — flat default; bare names stay flat.
+
+## Implementation findings (discovered during execution, 2026-06-08)
+
+Tracing the real codebase before writing surfaced four points the prose
+above did not anticipate. Each has a resolved decision below; the two
+marked **[confirm]** diverge from the written shape and touch
+`core-composition` (Constitution Phase A → human confirms).
+
+1. **`routers` name collision (mechanical).** `App.routers` is today a
+   *method* (`app.routers()` → `list[Router]` instances; 4 src callers:
+   `runtime.py:269,320`, `mcp/server.py:60`, `cli/builder.py:558`, + 14
+   test calls). The new `routers = (...)` ClassVar cannot share the name.
+   **Decision:** rename the instance accessor to `router_instances()`;
+   `routers` becomes the authored ClassVar. Migrate the 4 src + 14 test
+   callers.
+
+2. **Parameterized routers and `routers = (Class,)` — RESOLVED: classes-only
+   + DI refactor (human-confirmed 2026-06-08).** Audit shows the blast
+   radius is tiny: of all `add_router(...)` calls, only ONE router type is
+   genuinely parameterized — `TasksRouter(fake_get_store)` (the tracker
+   example's store factory, used by `packages/testing/fixtures.py`). The
+   `connections(...)` path integrates via `add_cli`, not `add_router` (the
+   `add_router(connections(...))` form is a docstring example only); the
+   `_meta` router is internal. **Decision:** `routers = (...)` accepts
+   **classes only** (pure reference-composition, faithful to the design).
+   Refactor `TasksRouter` to resolve its store via DI (declare a provider;
+   tests override the fake via `app.provide(Store, fake)` — the idiomatic
+   DI-override path), so it becomes zero-arg constructible. No instance
+   escape in the tuple.
+
+3. **Per-surface config attr vs. live accessor collision [confirm].** The
+   authored-shape example shows `mcp = McpConfig(...)` / `cli =
+   CliConfig(...)` as config class-attrs — but `app.mcp` / `app.api` /
+   `app.cli` are the load-bearing **form-(b)** live accessors (92 usages,
+   heavily tested: `@app.api.get`, `@app.mcp.tool`). The same name cannot
+   be both a config object and a surface accessor. **Decision:** per-surface
+   config is authored via the existing `config = A2kitConfig(mcp=McpConfig(
+   …), cli=CliConfig(…))` class-attr (the `config=` path already exists),
+   NOT via bare `mcp =` / `cli =` attrs — those names stay the kept form-(b)
+   accessors. Honors "config as class attrs" intent while preserving the
+   form-(b) escape the design explicitly keeps.
+
+4. **`@a2kit.enricher` class-body marker (additive).** The design writes
+   `@a2kit.enricher def on_timeout`, but today enrichers are *instance*
+   methods (`router.enricher` / `app.enricher`); there is no module-level
+   class-body marker to collect. **Decision:** add an `a2kit.enricher`
+   marker decorator that stamps the method for `__init_subclass__`
+   collection (parallel to `@a2kit.read`); keep the instance
+   `app.enricher` / `router.enricher` registration forms too.
+
+**Test-ergonomics seam (not part of the authoring surface).** To keep the
+~296 `App(...)` + ~191 `add_router(...)` migration mechanical (≈1:1 line
+transform, not a 4-line subclass per site), add a
+`a2kit.testing.app_of(name, *routers, **kw)` helper that builds and
+returns an instantiated anonymous `App` subclass. The *authored* shape
+stays subclass + `routers=`; `app_of` lives only in the testing namespace.
+Authoring-focused tests (`test_app.py`, `test_app_as_peer_root.py`) use the
+real subclass form to exercise the actual surface.

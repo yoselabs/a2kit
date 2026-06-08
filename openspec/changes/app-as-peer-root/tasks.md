@@ -92,3 +92,52 @@ depends on Wave 1 (`cli-as-surface`).
       touched files.
 - [ ] 7.2 Confirm Wave-1 dependency satisfied (`cli-as-surface` landed: the
       `app.cli` accessor + uniform `bind` exist) before merge.
+
+## Implementation sequence (resolved — ready to execute)
+
+Design fully resolved (see design.md "Implementation findings"; the two
+Constitution-touching forks human-confirmed 2026-06-08). Build
+transition-tolerant → migrate → flip so each step is a green checkpoint
+(the big-bang end-state is reached via green steps, not a single red leap).
+
+**Step A — transition-tolerant core (additive, keeps instance form working):**
+1. `_verbs.py`: add an `enricher` class-body marker (sets a marker attr;
+   lazy `_resolve_enricher_filter` validation); export `a2kit.enricher`.
+2. `app.py`:
+   - `App.__init_subclass__`: collect `@a2kit`-marked verb methods (reuse
+     `_collect_marked_tool_names`) into `_a2kit_app_tool_names` + collect
+     `enricher`-marked methods.
+   - Add a module-private `_AppRootRouter` (slug=None, holds the app-verb
+     bound methods, does NOT stamp `router_slug` → bare-leaf names via
+     `resolve_canonical_name`).
+   - `App.__init__(self, name=None, ...)`: if `name is None`, read
+     `type(self).name` (new ClassVar, base default None; error if both
+     None). After existing setup, when authored as a subclass: instantiate
+     each class in the `routers` ClassVar + register (internal
+     `_register_router`, the renamed body of today's `add_router`); install
+     `providers` ClassVar; build app-verb descriptors via `_AppRootRouter`;
+     collect class-body enrichers.
+   - Rename the `routers()` method → `router_instances()`; `routers`
+     becomes the ClassVar (default `()`). Update the 4 src callers
+     (`runtime.py:269,320`, `mcp/server.py:60`, `cli/builder.py:558`).
+   - Add `App.serve(self, argv=None)` → `a2kit.run(self, argv)`.
+   - Keep `add_router` (delegates to `_register_router`) during transition.
+3. TasksRouter (examples/tracker): refactor store from constructor arg to a
+   DI provider; `packages/testing/fixtures.py` overrides the fake via
+   `app.provide(Store, fake)`.
+4. Surface builders: app-verb (slug=None) rendering — MCP root server (bare
+   name), HTTP root `/api/<leaf>`, CLI top-level command (no panel). Add the
+   `configure_api/_mcp/_cli` hook calls at build.
+5. New `tests/test_app_as_peer_root.py` covering §1–§4 with the resolved
+   decisions (config via `config=`; `routers=` classes-only). Green.
+6. `a2kit.testing.app_of(name, *router_classes, **kw)` helper (test-namespace
+   only) returning an instantiated anonymous App subclass.
+
+**Step B — migrate (~300 sites, parallel subagents per directory):**
+`a2kit.App("n").add_router(R())` → `app_of("n", R)` for fixtures/throwaway
+apps; authoring-focused tests use the real `class _App(a2kit.App)` form.
+Migrate the 14 `.routers()` test callers → `.router_instances()`.
+
+**Step C — flip breaking (one commit):** remove the positional `App(name)`
+instance constructor + public `add_router` (raise `AttributeError` with a
+`routers = (...)` migration hint). Full suite green; gates green; land.
