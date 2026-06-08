@@ -321,11 +321,19 @@ def _register_router(
     """
     import typer
 
-    sub = typer.Typer(
-        name=router.slug,
-        help=f"Tools in router {router.slug!r}.",
-        no_args_is_help=True,
-        pretty_exceptions_enable=False,
+    # App-level verbs ride a synthetic slug-less root router (ADR 0028 Wave 2,
+    # app-as-peer-root): they render as BARE top-level commands on ``main``,
+    # not under a slug sub-Typer. Router verbs keep the nested slug sub-Typer.
+    is_app_root = router.slug is None
+    sub = (
+        typer_app
+        if is_app_root
+        else typer.Typer(
+            name=router.slug,
+            help=f"Tools in router {router.slug!r}.",
+            no_args_is_help=True,
+            pretty_exceptions_enable=False,
+        )
     )
     descs_by_fn = {d.fn: d for d in app.tools() if d.router is router}
     for fn in router.bound_tools():
@@ -346,18 +354,18 @@ def _register_router(
             # UNLISTED on cli (old "hidden") → mounted but omitted from --help.
             hidden = not advertised_on(matrix, "cli")
         cb, short_help = _build_tool_callback(desc, app, router=router)
-        # CLI uses the nested layout (ADR 0028 §5): the command sits under the
-        # router's slug sub-Typer, so the command name is the leaf (or the
-        # verbatim pin), NOT the flat `slug_leaf` canonical name — that would
-        # double the slug (`app tasks tasks_get_task`). The flat canonical
-        # name (desc.name) remains the MCP/HTTP/audit identity.
+        # CLI uses the nested layout (ADR 0028 §5): a router command sits under
+        # the slug sub-Typer, so its name is the leaf (or pin), NOT the flat
+        # `slug_leaf` — that would double the slug (`app tasks tasks_get_task`).
+        # An app-level (slug-less) command is the bare leaf at top level. The
+        # flat canonical name (desc.name) remains the MCP/HTTP/audit identity.
         leaf = getattr(fn, "__name__", "<callable>")
         tool_name = (meta.extras.canonical_name_override or leaf) if meta is not None else leaf
         short = short_help or None
         sub.command(name=tool_name, help=cb.__doc__, short_help=short, hidden=hidden)(cb)
-    # `rich_help_panel` clusters the router's flat commands in --help (the
-    # grouping affordance that lets flat canonical names stay discoverable).
-    typer_app.add_typer(sub, rich_help_panel=router.slug)
+    if not is_app_root:
+        # `rich_help_panel` clusters the router's commands in --help.
+        typer_app.add_typer(sub, rich_help_panel=router.slug)
 
 
 def _register_schema(typer_app: Any, app: AppRuntime) -> None:
@@ -556,7 +564,7 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
 
     app = build(app)
     routers = list(app.routers())
-    router_help_lines = [f"  {r.slug}  (run `{app.name} {r.slug} --help` for tools)" for r in routers]
+    router_help_lines = [f"  {r.slug}  (run `{app.name} {r.slug} --help` for tools)" for r in routers if r.slug is not None]
     help_text = (app.name or "a2kit") + " — agent toolkit CLI."
     if router_help_lines:
         help_text += "\n\nRouters:\n" + "\n".join(router_help_lines)

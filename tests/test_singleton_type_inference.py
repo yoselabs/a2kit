@@ -26,7 +26,7 @@ class _Sub(_Thing):
 def test_class_as_factory_registers_class() -> None:
     app = a2kit.App("x")
     app.provide(_Thing)
-    assert _Thing in app.providers()
+    assert _Thing in app.provider_map()
 
 
 def test_factory_with_return_annotation_registers_return_type() -> None:
@@ -35,7 +35,7 @@ def test_factory_with_return_annotation_registers_return_type() -> None:
 
     app = a2kit.App("x")
     app.provide(make)
-    assert _Thing in app.providers()
+    assert _Thing in app.provider_map()
 
 
 def test_async_factory_with_return_annotation_registers_return_type() -> None:
@@ -44,7 +44,7 @@ def test_async_factory_with_return_annotation_registers_return_type() -> None:
 
     app = a2kit.App("x")
     app.provide(make)
-    assert _Thing in app.providers()
+    assert _Thing in app.provider_map()
 
 
 def test_explicit_base_type_override() -> None:
@@ -53,5 +53,5 @@ def test_explicit_base_type_override() -> None:
 
     app = a2kit.App("x")
     app.provide(_Thing, make)
-    assert _Thing in app.providers()
-    assert _Sub not in app.providers()
+    assert _Thing in app.provider_map()
+    assert _Sub not in app.provider_map()

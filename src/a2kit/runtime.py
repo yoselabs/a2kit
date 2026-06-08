@@ -18,8 +18,9 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from a2kit.app import App, _build_descriptors, _default_dispatch_hook, _make_meta_router
+from a2kit.app import App, _default_dispatch_hook, _make_meta_router
 from a2kit.packages.health import HealthRegistry
+from a2kit.tool import _build_descriptors
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -266,7 +267,7 @@ def build(
     # Carry every non-synthetic router; the ``_meta`` health router is
     # re-bound to the runtime below so its tool body resolves through the
     # runtime container, not the App's compose-phase container.
-    routers: list[Router] = [r for r in app.routers() if r.slug != "_meta"]
+    routers: list[Router] = [r for r in app.router_instances() if r.slug != "_meta"]
     # Re-materialise descriptors against the sealed runtime container so
     # `wire_param_names` / `lazy_param_names` are populated. Pre-build
     # `app.tools()` still works for introspection (sentinel `None`).
@@ -317,7 +318,7 @@ def build(
     # router closes over `runtime` (now constructed); appending to the
     # `routers` / `descriptors` lists mutates the very lists the runtime
     # holds, since `AppRuntime` stores them by reference.
-    if any(r.slug == "_meta" for r in app.routers()):
+    if any(r.slug == "_meta" for r in app.router_instances()):
         meta_router = _make_meta_router(runtime)
         routers.append(meta_router)
         meta_descs = _build_descriptors(meta_router, container=runtime_container)

@@ -53,7 +53,7 @@ def test_composition_verbs_chain() -> None:
 
 def test_add_router_registers_router_and_tools() -> None:
     app = a2kit.App("p").add_router(_Probe())
-    assert len(app.routers()) == 1
+    assert len(app.router_instances()) == 1
     assert len(app.tools()) == 1
 
 
@@ -80,7 +80,7 @@ def test_health_check_installs_meta_router() -> None:
     async def _probe() -> a2kit.HealthResult:
         return a2kit.HealthResult.ok()
 
-    assert any(r.slug == "_meta" for r in app.routers())
+    assert any(r.slug == "_meta" for r in app.router_instances())
 
 
 # ----------------------- no public AppBuilder / build ---------------------- #

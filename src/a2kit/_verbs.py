@@ -48,6 +48,7 @@ __all__ = [
     "_check_return",
     "_read_internal",
     "_resolve_return_annotation",
+    "enricher",
     "list_",
     "read",
     "write",
@@ -494,6 +495,28 @@ def list_(
         )
 
     return deco
+
+
+#: Marker attribute set by ``@a2kit.enricher`` so ``App`` / ``Router``
+#: ``__init_subclass__`` can collect class-body enricher methods (parallel
+#: to the ``_a2kit`` verb marker). The exception → ``AppError | None``
+#: signature is validated at collection time, not at decoration.
+ENRICHER_MARKER = "_a2kit_enricher"
+
+
+def enricher(fn: F) -> F:
+    """Class-body marker collecting ``fn`` as an app/router-level enricher.
+
+    Parallel to ``@a2kit.read`` for verbs (ADR 0028 Wave 2,
+    app-as-peer-root): stamps a marker attribute so the auto-collect
+    ``__init_subclass__`` mechanic registers the method as a typed-error
+    translator. The instance forms ``@app.enricher`` / ``@router.enricher``
+    remain for imperative registration; this is the declarative class-body
+    peer. The ``exc → AppError | None`` signature is validated when the
+    class is composed, not here, so decoration stays cheap.
+    """
+    object.__setattr__(fn, ENRICHER_MARKER, True)
+    return fn
 
 
 def _read_internal(

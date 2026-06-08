@@ -56,7 +56,7 @@ def test_timeout_stage_fires_when_configured() -> None:
     app = a2kit.App("timeout-app")
     app.add_router(_Slow())
     desc = app.tools()[0]
-    spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
+    spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = TimeoutStage().wrap(desc.fn, spec)
     assert wrapped is not desc.fn
     with pytest.raises(TimeoutError):
@@ -82,7 +82,7 @@ def test_enricher_stage_quarantines_uncaught_raises_without_enrichers() -> None:
     app = a2kit.App("plain-q-app")
     app.add_router(_Plain())
     desc = app.tools()[0]
-    spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
+    spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = EnricherStage().wrap(desc.fn, spec)
     with pytest.raises(UnexpectedDefect):
         asyncio.run(wrapped())
@@ -109,7 +109,7 @@ def test_enricher_stage_translates_exceptions_via_decorator() -> None:
 
     app = a2kit.App("enricher-app").add_router(router)
     desc = app.tools()[0]
-    spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
+    spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = EnricherStage().wrap(desc.fn, spec)
     with pytest.raises(Translated, match="enriched: orig"):
         asyncio.run(wrapped())
@@ -129,7 +129,7 @@ def test_router_lazy_enter_self_skips_without_aenter() -> None:
     app = a2kit.App("plain2-app")
     app.add_router(_Plain())
     desc = app.tools()[0]
-    spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
+    spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     assert RouterLazyEnterStage().wrap(desc.fn, spec) is desc.fn
 
 
@@ -156,7 +156,7 @@ def test_router_lazy_enter_enters_router_on_dispatch() -> None:
     router = _Lifecycle()
     app.add_router(router)
     desc = app.tools()[0]
-    spec = _spec(app, router=app.routers()[0], meta=_get_meta(desc.fn))
+    spec = _spec(app, router=app.router_instances()[0], meta=_get_meta(desc.fn))
     wrapped = RouterLazyEnterStage().wrap(desc.fn, spec)
     assert wrapped is not desc.fn
     asyncio.run(wrapped())

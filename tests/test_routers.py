@@ -259,4 +259,4 @@ def test_plain_router_unchanged() -> None:
             return {"k": 1}
 
     app = a2kit.App("t").add_router(_R())
-    assert any(r.slug == "rplain" for r in app.routers())
+    assert any(r.slug == "rplain" for r in app.router_instances())

@@ -9,6 +9,7 @@ TYPE_CHECKING
 ToolContext
 annotations
 compose_default_surfaces
+enricher
 list_
 read
 run

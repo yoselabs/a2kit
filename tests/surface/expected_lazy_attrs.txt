@@ -5,6 +5,7 @@ Lazy
 Principal
 Router
 ToolContext
+enricher
 list_
 read
 write

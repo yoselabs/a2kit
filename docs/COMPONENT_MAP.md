@@ -18,14 +18,14 @@ the lint's own view of the graph.
 |------|-------|-------|--------|---------|------------|
 | `context` | 0 | 4 | 8 | 0 | — |
 | `di` | 0 | 11 | 6 | 0 | — |
-| `formatter` | 0 | 10 | 6 | 0 | — |
+| `formatter` | 0 | 10 | 5 | 0 | — |
 | `health` | 0 | 2 | 3 | 1 | `di` |
 | `lint` | 0 | 26 | 0 | 0 | — |
 | `log` | 0 | 8 | 4 | 1 | `context` |
 | `select` | 0 | 2 | 2 | 0 | — |
 | `kernel` | 1 | 10 | 6 | 1 | `log` |
 | `authoring` | 2 | 6 | 6 | 3 | `di`, `formatter`, `kernel` |
-| `runtime` | 3 | 4 | 6 | 8 | `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `log`, `select` |
+| `runtime` | 3 | 4 | 6 | 7 | `authoring`, `context`, `di`, `health`, `kernel`, `log`, `select` |
 | `connections` | 4 | 10 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 9 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `log`, `runtime` |
 | `auth` | 5 | 8 | 1 | 1 | `context` |
@@ -58,7 +58,7 @@ the lint's own view of the graph.
 
 ### Layer 3
 
-- `runtime` → `authoring`, `context`, `di`, `formatter`, `health`, `kernel`, `log`, `select`
+- `runtime` → `authoring`, `context`, `di`, `health`, `kernel`, `log`, `select`
 
 ### Layer 4
 

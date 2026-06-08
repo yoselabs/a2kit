@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from a2kit._lifecycle_helpers import (
     resolve_singleton_args,
 )
 from a2kit.packages.di import Container, Scope
-from a2kit.routers import Router, RouterRegistry
-from a2kit.tool import ToolDescriptor
+from a2kit.routers import Router, RouterRegistry, _collect_marked_tool_names
+from a2kit.tool import ToolDescriptor, _build_descriptors
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -81,18 +81,58 @@ class App:
     Construction is pure: ``App(...)`` plus ``add_router`` / ``provide``
     calls trigger no async work — useful for unit tests that introspect
     wiring without entering a runtime.
+
+    Authored as a class (ADR 0028 Wave 2, app-as-peer-root): a subclass
+    sets ``name`` / ``providers`` / ``routers`` (a tuple of Router
+    *classes*) / ``config`` as class attributes, declares app-level verbs
+    as ``@a2kit.read``/``.write``/``.list_`` methods (auto-collected, bare
+    top-level names — no slug), and class-body ``@a2kit.enricher`` methods.
+    Run by instantiating at the entry point: ``Kay().serve()``. The
+    imperative form (``App("svc").add_router(...)``) stays available during
+    the Wave 2 transition.
     """
+
+    #: Authoring class attributes (subclass form). ``routers`` names Router
+    #: *classes* (reference-composition, replaces ``add_router``);
+    #: ``providers`` mirrors ``Router.providers``. ``name`` is a plain
+    #: subclass attribute (``name = "kay"``) read in ``__init__`` — not a
+    #: ClassVar, so the per-instance ``self.name`` assignment is clean.
+    routers: ClassVar[tuple[type[Router], ...]] = ()
+    providers: ClassVar[tuple[Any, ...]] = ()
+
+    #: Auto-collected app-level verb-method names (bare, no slug),
+    #: populated by ``__init_subclass__`` via the ``_a2kit`` marker.
+    _a2kit_app_tool_names: ClassVar[tuple[str, ...]] = ()
+    #: Auto-collected class-body ``@a2kit.enricher`` method names.
+    _a2kit_app_enricher_names: ClassVar[tuple[str, ...]] = ()
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        from a2kit._verbs import ENRICHER_MARKER
+
+        cls._a2kit_app_tool_names = _collect_marked_tool_names(cls)
+        cls._a2kit_app_enricher_names = tuple(name for name in vars(cls) if getattr(getattr(cls, name, None), ENRICHER_MARKER, False))
 
     def __init__(
         self,
-        name: str,
+        name: str | None = None,
         *,
         config: Any = None,
         user_config: Any = None,
         **_kw: Any,
     ) -> None:
+        if name is None:
+            name = getattr(type(self), "name", None)
         if _kw:
-            self._raise_unexpected_kwargs(name, _kw)
+            self._raise_unexpected_kwargs(name or type(self).__name__, _kw)
+        if name is None:
+            msg = f"{type(self).__name__}() has no name: set a `name` class attribute on the App subclass, or pass App(name=...)."
+            raise TypeError(msg)
+        if config is None:
+            # Per-surface config via a `config = A2kitConfig(...)` class attr
+            # on the subclass (design resolution: the names mcp/api/cli stay
+            # the live form-(b) accessors, so config rides the existing slot).
+            config = getattr(type(self), "config", None)
         self.name = name
         # ADR 0022: a2kit-owned config. Lazy-construct A2kitConfig() so the
         # env / .env / defaults are picked up at App() time. Inverted source
@@ -172,6 +212,35 @@ class App:
         # annotation (wide = BaseException; narrow = specific type). Read
         # by EnricherStage after router-level enrichers.
         self._enrichers: list[tuple[type[BaseException], Callable[..., Any]]] = []
+
+        # --- subclass authoring (ADR 0028 Wave 2, app-as-peer-root) ------- #
+        # Apply class-attr composition: install `providers`, compose the
+        # `routers` ClassVar (Router classes → instances), and collect
+        # app-level verbs + enrichers declared as methods on the subclass.
+        self._apply_class_authoring()
+
+    def _apply_class_authoring(self) -> None:
+        """Install the subclass's class-attr authoring (no-op for base ``App``).
+
+        ``providers`` ClassVar installs the same way Router providers do;
+        ``routers`` names Router *classes* (reference-composition, replaces
+        ``add_router``); app-level ``@a2kit`` verbs register on a synthetic
+        slug-less root router so their canonical names stay bare, and
+        class-body ``@a2kit.enricher`` methods join the app enricher chain.
+        """
+        cls = type(self)
+        for entry in cls.providers:
+            if isinstance(entry, tuple):
+                ptype, pfactory = entry
+                self.provide(ptype, pfactory)
+            else:
+                self.provide(entry)
+        for router_cls in cls.routers:
+            self._register_router(router_cls() if isinstance(router_cls, type) else router_cls)
+        if cls._a2kit_app_tool_names:
+            self._register_router(_AppRootRouter(self))
+        for name in cls._a2kit_app_enricher_names:
+            self.enricher(getattr(self, name))
 
     def __getattr__(self, name: str) -> Any:
         hint = _REMOVED_ATTRS.get(name)
@@ -260,6 +329,22 @@ class App:
         return fn
 
     def add_router(self, router: Router) -> App:
+        """Imperative router registration (kept during the Wave 2 transition).
+
+        Authored apps should name router *classes* in the ``routers``
+        ClassVar (reference-composition) instead; ``add_router`` is removed
+        in the breaking flip. Delegates to :meth:`_register_router`.
+        """
+        self._register_router(router)
+        return self
+
+    def _register_router(self, router: Router) -> None:
+        """Register one Router instance: dup-slug guard, descriptors, providers.
+
+        The single registration seam — used by ``add_router`` (transition),
+        the ``routers`` ClassVar composition, the synthetic ``_AppRootRouter``
+        for app-level verbs, and the internal ``_meta`` health router.
+        """
         slug = router.slug
         existing = next((r for r in self._routers.all() if r.slug == slug), None)
         if existing is not None and existing is not router:
@@ -292,7 +377,17 @@ class App:
                 self.provide(ptype, pfactory)
             else:
                 self.provide(entry)
-        return self
+
+    def serve(self, argv: list[str] | None = None) -> Any:
+        """Entry-point finisher: build this App's runtime and run its CLI.
+
+        ``Kay().serve()`` is the authored run path (ADR 0028 Wave 2). Thin
+        delegate to :func:`a2kit.run` so the instantiate-then-run shape is a
+        one-liner at ``main()``.
+        """
+        from a2kit import run  # noqa: A2K-PKG-INIT-IMPORT -- serve() is the deliberate App→facade finisher delegate
+
+        return run(self, argv)
 
     def add_cli(self, command: click.Command) -> App:
         self._cli_extras.append(command)
@@ -359,8 +454,12 @@ class App:
     def has_provider(self, type_: type) -> bool:
         return self._container.has_provider(type_)
 
-    def providers(self) -> dict[type, Any]:
-        """Snapshot of registered providers (parent-chain-aware)."""
+    def provider_map(self) -> dict[type, Any]:
+        """Snapshot of registered providers (parent-chain-aware).
+
+        Renamed from ``providers()`` since ``providers`` is now the authoring
+        ClassVar (a tuple of provider entries, ADR 0028 Wave 2).
+        """
         return self._container.providers_view()
 
     # --- DI: read-only queries ------------------------------------------ #
@@ -482,12 +581,49 @@ class App:
 
     # --- Router / tool aggregation -------------------------------------- #
 
-    def routers(self) -> list[Router]:
+    def router_instances(self) -> list[Router]:
+        """The registered Router instances (renamed from ``routers()``).
+
+        The ``routers`` name is now the authoring ClassVar (a tuple of
+        Router *classes*); this accessor returns the composed instances.
+        """
         return self._routers.all()
 
     def tools(self) -> list[ToolDescriptor]:
         """Typed descriptors materialized at ``add_router`` time. One per tool."""
         return list(self._descriptors)
+
+
+class _AppRootRouter(Router):
+    """Synthetic slug-less root router carrying app-level verbs.
+
+    App-level verbs render BARE (no slug prefix): the app name is identity,
+    not a prefix (ADR 0028 Wave 2). This holds the App subclass's ``@a2kit``
+    verb methods bound to the app instance and deliberately does NOT stamp
+    ``router_slug`` — so ``resolve_canonical_name`` yields the bare leaf.
+    ``slug = None`` keeps it out of slug-grouped rendering (CLI panels) and
+    the dotted ``_qualified`` form. ``Router.__init__`` (which requires a
+    str slug and stamps ``router_slug``) is intentionally bypassed.
+    """
+
+    slug = None  # app root is slug-less → bare canonical names
+
+    def __init__(self, app: App) -> None:
+        from a2kit.metadata import _get_meta
+
+        bound: list[Callable[..., Any]] = []
+        for name in type(app)._a2kit_app_tool_names:
+            method = getattr(app, name)
+            meta = _get_meta(method)
+            if meta is None:  # pragma: no cover -- collection keeps only marked methods
+                continue
+            # Do NOT stamp router_slug → bare canonical name. Resolve the
+            # default visibility the same way ``Router.__init__`` does.
+            if meta.extras.visibility is None:
+                meta.extras.visibility = "all"  # noqa: A2K-EXTRA-NAMESPACE
+            bound.append(method)
+        self._tools = bound
+        self._enrichers = []
 
 
 def _make_meta_router(owner: Any) -> Router:
@@ -511,129 +647,3 @@ def _make_meta_router(owner: Any) -> Router:
             return await run_checks(owner._health, owner._resolver, version=app_version(owner))
 
     return _MetaRouter()
-
-
-def _strip_raises_from_annotation(annotation: Any) -> Any:
-    """Strip `Raises(...)` markers from an `Annotated[T, Raises(...), ...]` return
-    annotation, returning either the bare `T` (when only Raises markers remain)
-    or a re-built `Annotated[T, ...]` preserving non-Raises metadata. Non-Annotated
-    types pass through unchanged.
-    """
-    from typing import Annotated, get_args, get_origin
-
-    from a2effect import Raises
-
-    if get_origin(annotation) is not Annotated:
-        return annotation
-    bare, *metadata = get_args(annotation)
-    preserved = [m for m in metadata if not isinstance(m, Raises)]
-    if not preserved:
-        return bare
-    return Annotated[(bare, *preserved)]
-
-
-def _build_descriptors(router: Router, container: Container | None = None) -> list[ToolDescriptor]:
-    """Materialize one ``ToolDescriptor`` per tool on ``router``.
-
-    When ``container`` is supplied (typically at ``runtime.build`` time),
-    populates ``wire_param_names`` and ``lazy_param_names``. Without a
-    container (``add_router`` time), those sentinel fields stay ``None``
-    and substrate adapters that need them MUST read via
-    ``AppRuntime.descriptor_for(name)``.
-    """
-    from types import MappingProxyType
-
-    from a2effect import AppError, Raises
-
-    from a2kit._surfaces import matrix_for, mounted_surfaces, resolve_canonical_name
-    from a2kit.metadata import _get_meta
-    from a2kit.packages.di import lazy_inner_type
-    from a2kit.packages.formatter import build_encoding_plan, infer_format_hint
-    from a2kit.signature import resolve_hints, wire_input_params
-
-    out: list[ToolDescriptor] = []
-    for fn in router.bound_tools():
-        hints = resolve_hints(fn)
-        return_type = hints.get("return")
-        # Strip Annotated[ReturnT, Raises(...)] for format inference: the
-        # Raises metadata is invisible to format-hint / encoding-plan logic.
-        raises = Raises.flatten_from_annotation(fn)
-        for cls in raises:
-            if not (isinstance(cls, type) and issubclass(cls, AppError)):
-                msg = (
-                    f"tool {getattr(fn, '__name__', fn)!r}: Raises({cls!r}) member "
-                    f"is not an AppError subclass; subclass a2effect.AppError or "
-                    f"register an enricher / raises_as mapping"
-                )
-                raise TypeError(msg)
-        bare_return_type = _strip_raises_from_annotation(return_type)
-        format_hint = infer_format_hint(bare_return_type)
-        encoding_plan = build_encoding_plan(bare_return_type)
-        meta = _get_meta(fn)
-        # Canonical name = flat slug_leaf (ADR 0028 Wave 2). The override pins
-        # it verbatim; otherwise a router verb derives to `{slug}_{leaf}` and
-        # an app-level verb stays the bare leaf. desc.name is the identity
-        # used on MCP/HTTP and in the audit log.
-        leaf = getattr(fn, "__name__", "<callable>")
-        name = resolve_canonical_name(meta.extras.canonical_name_override, meta.extras.router_slug, leaf) if meta is not None else leaf
-        # Carry the multi-surface fields onto the descriptor so substrate
-        # adapters and selectors can filter without re-reading A2KitMeta.
-        # `verb` defaults to "read" — the safest default for unstamped
-        # tools (e.g. the _meta.health helper that uses _read_internal).
-        # A2KitMeta.verb is `Literal["read", "write", "list", "tool"]`;
-        # ToolDescriptor.verb is narrowed to read/list/write because
-        # `tool` is the @app.mcp.tool family that does NOT produce a
-        # ToolDescriptor (mcp_surface holds them separately).
-        meta_verb = meta.verb if meta is not None else "read"
-        verb: Literal["read", "list", "write"] = meta_verb if meta_verb in ("read", "list", "write") else "read"  # type: ignore[assignment]
-        # Compat ``expose`` tuple = mounted NETWORK surfaces only (mcp/api).
-        # CLI is a LOCAL surface tracked in the matrix, not in expose, so
-        # membership reads (`"mcp" in expose`) and the network surface-name
-        # validation keep their historical meaning.
-        expose: tuple[str, ...] = (
-            tuple(s for s in mounted_surfaces(matrix_for(meta.extras)) if s != "cli") if meta is not None else ("mcp", "api")
-        )
-        authorize = meta.extras.authorize if meta is not None else None
-        ctx_param_name = meta.context_param_name if meta is not None else None
-        timeout = meta.extras.timeout_seconds if meta is not None else None
-        annotations_view = MappingProxyType(dict(meta.annotations_as_dict())) if meta is not None else MappingProxyType({})
-        if meta is not None:
-            metadata_view = MappingProxyType(
-                {
-                    "verb": meta.verb,
-                    "tags": frozenset(meta.tags),
-                    "context_param_name": meta.context_param_name,
-                    "tool_name": meta.tool_name,
-                    "extras": MappingProxyType(meta.extras.model_dump()),
-                }
-            )
-        else:
-            metadata_view = MappingProxyType({})
-        wire_param_names: frozenset[str] | None = None
-        lazy_param_names: frozenset[str] | None = None
-        if container is not None:
-            wire_params, _scopes = wire_input_params(fn, container)
-            wire_param_names = frozenset(wire_params.keys())
-            lazy_param_names = frozenset(pname for pname, ann in hints.items() if pname != "return" and lazy_inner_type(ann) is not None)
-        out.append(
-            ToolDescriptor(
-                name=name,
-                router=router,
-                fn=fn,
-                return_type=bare_return_type,
-                format_hint=format_hint,
-                encoding_plan=encoding_plan,
-                verb=verb,
-                expose=expose,
-                authorize=authorize,
-                ctx_param_name=ctx_param_name,
-                timeout=timeout,
-                annotations_view=annotations_view,
-                metadata_view=metadata_view,
-                wire_param_names=wire_param_names,
-                lazy_param_names=lazy_param_names,
-                raises=raises,
-                _meta=meta,
-            )
-        )
-    return out

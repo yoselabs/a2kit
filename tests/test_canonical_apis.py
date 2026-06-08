@@ -126,22 +126,22 @@ def test_app_singleton_class_form() -> None:
 
     app = a2kit.App("x")
     app.provide(_Resource)
-    assert _Resource in app.providers()
+    assert _Resource in app.provider_map()
 
 
 def test_app_singleton_factory_form() -> None:
     """README claims ``app.provide(factory)`` registers under the return type."""
     app = a2kit.App("x")
     app.provide(_make_resource_for_factory_test)
-    assert _ResourceForFactoryTest in app.providers()
+    assert _ResourceForFactoryTest in app.provider_map()
 
 
 def test_app_singleton_explicit_base_form() -> None:
     """README claims ``app.provide(BaseClass, factory)`` registers under base."""
     app = a2kit.App("x")
     app.provide(_BaseForOverride, _make_sub_for_override)
-    assert _BaseForOverride in app.providers()
-    assert _SubForOverride not in app.providers()
+    assert _BaseForOverride in app.provider_map()
+    assert _SubForOverride not in app.provider_map()
 
 
 def test_app_lifespan_kwarg_removed() -> None:

@@ -78,7 +78,7 @@ def test_enricher_wraps_exceptions(capsys: pytest.CaptureFixture[str]) -> None:
 
     app = a2kit.App("enricher-runtime").add_router(router)
     desc = app.tools()[0]
-    spec = _spec(desc.fn, app=app, router=app.routers()[0])
+    spec = _spec(desc.fn, app=app, router=app.router_instances()[0])
 
     with pytest.raises(typer.Exit):
         invoke_tool_sync(desc.fn, {"x": 1}, fmt="json", spec=spec)
