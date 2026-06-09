@@ -28,11 +28,17 @@ class ToolBuildSpec:
 
     Transport-neutral: the MCP adapter builds one per tool at
     server-build time; the CLI adapter builds one per invocation.
+
+    ``surface`` is the dispatching surface's identity (``"mcp"`` | ``"api"`` |
+    ``"cli"``), baked in per surface so ``CallScopeStage`` can stamp it onto
+    the per-call scope (ctx-surface-identity, ADR 0028). None for the
+    in-process test client, which drives no real surface.
     """
 
     app: AppRuntime
     router: Router | None
     meta: A2KitMeta | None
+    surface: str | None = None
 
 
 @runtime_checkable

@@ -1,4 +1,6 @@
 annotations
+current_surface
+current_surface_client_id
 debug
 error
 info

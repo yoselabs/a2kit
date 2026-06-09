@@ -257,6 +257,12 @@ class CallScopeStage:
     call-log AND any future gate stage). Span fields nest: a tool that
     dispatches another tool inherits the outer ``trace_id`` and sets its
     ``parent_span_id`` to the outer ``span_id``.
+
+    The dispatching ``surface`` (``spec.surface``, baked in per surface) is
+    stamped onto the scope (ctx-surface-identity, ADR 0028), alongside an
+    OPTIONAL ``surface_client_id`` read from the ctx (``ctx.client_id`` —
+    on the ``ToolContext`` protocol, so uniform across MCP / CLI). Both are
+    None for the in-process test client (no real surface).
     """
 
     name = "call-scope"
@@ -265,6 +271,7 @@ class CallScopeStage:
         meta = spec.meta
         ctx_param_name = meta.context_param_name if meta is not None else None
         tool_name = _canonical_tool_name(meta)
+        surface = spec.surface
 
         @functools.wraps(fn)
         async def _wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -280,6 +287,7 @@ class CallScopeStage:
             outer = _active_scope()
             trace_id = outer.trace_id if outer is not None else call_id
             parent_span_id = outer.span_id if outer is not None else None
+            surface_client_id = getattr(ctx_obj, "client_id", None)
             with bind_call_scope(
                 ctx=ctx_obj,
                 call_id=call_id,
@@ -287,6 +295,8 @@ class CallScopeStage:
                 trace_id=trace_id,
                 span_id=uuid.uuid4().hex,
                 parent_span_id=parent_span_id,
+                surface=surface,
+                surface_client_id=surface_client_id,
             ):
                 return await _call(fn, *args, **kwargs)
 
@@ -334,6 +344,7 @@ def _emit_call_record(
         trace_id=scope.trace_id if scope is not None else None,
         span_id=scope.span_id if scope is not None else None,
         parent_span_id=scope.parent_span_id if scope is not None else None,
+        surface=scope.surface if scope is not None else None,
     )
     _CALLS_LOGGER.info("", extra={"a2kit_call_record": record})
 

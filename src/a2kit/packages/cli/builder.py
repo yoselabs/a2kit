@@ -271,6 +271,7 @@ def _build_tool_callback(desc: ToolDescriptor, app: AppRuntime, router: Router |
             app=app,
             router=router,
             meta=meta,
+            surface="cli",
         )
         try:
             if json_mode:

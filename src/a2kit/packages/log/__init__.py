@@ -20,7 +20,7 @@ from a2kit.packages.log.emission import debug, error, info, set_wire_level, warn
 from a2kit.packages.log.formatter import CondensedFormatter, format_condensed_line
 from a2kit.packages.log.handlers import LiveHandler, OtelHandler, StderrJsonHandler, StderrPrettyHandler
 from a2kit.packages.log.levels import LOG_LEVEL_NUMBER, TRACE_LEVEL, LogLevel, install_trace_level
-from a2kit.packages.log.scope import bind_call_scope
+from a2kit.packages.log.scope import bind_call_scope, current_surface, current_surface_client_id
 
 __all__ = [
     "LOG_LEVEL_NUMBER",
@@ -34,6 +34,8 @@ __all__ = [
     "StderrJsonHandler",
     "StderrPrettyHandler",
     "bind_call_scope",
+    "current_surface",
+    "current_surface_client_id",
     "debug",
     "error",
     "format_condensed_line",

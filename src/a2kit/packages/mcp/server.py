@@ -94,6 +94,7 @@ def _build_one_tool(
         app=app,
         router=router,
         meta=meta,
+        surface="mcp",
     )
     # Fold the shared pipeline (timeout -> enrichers -> router-lazy-enter
     # -> dispatch-hook+DI -> call-scope -> error-capture), then append the

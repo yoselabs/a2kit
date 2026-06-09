@@ -30,7 +30,7 @@ from typing import Any
 # Columns kept in the thin jsonl row, in stable order. Body-ish fields
 # (``args`` / ``result``) follow; large string values among them are
 # content-addressed out to sidecars.
-_SPAN_COLUMNS = ("call_id", "ts", "tool", "domain", "principal", "elapsed_ms", "trace_id", "span_id", "parent_span_id")
+_SPAN_COLUMNS = ("call_id", "ts", "tool", "surface", "domain", "principal", "elapsed_ms", "trace_id", "span_id", "parent_span_id")
 
 
 @dataclass
@@ -39,6 +39,9 @@ class CallRecord:
 
     call_id: str
     tool: str | None = None
+    #: The dispatching surface (``"mcp"`` | ``"api"`` | ``"cli"``), or None
+    #: (ctx-surface-identity, ADR 0028).
+    surface: str | None = None
     domain: str | None = None
     principal: str | None = None
     elapsed_ms: int | None = None

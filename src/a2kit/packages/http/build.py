@@ -219,6 +219,7 @@ def _wrap_with_pipeline(
         app=runtime,
         router=None,
         meta=meta,
+        surface=getattr(surface, "name", "api"),
     )
     chained = fold_pipeline(fn, spec=spec)
     chained = HttpErrorRenderStage().wrap(chained, spec)

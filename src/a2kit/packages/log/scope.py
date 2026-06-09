@@ -39,6 +39,13 @@ class _CallScope:
     trace_id: str | None = None
     span_id: str | None = None
     parent_span_id: str | None = None
+    #: The dispatching surface's identity (ctx-surface-identity, ADR 0028).
+    #: ``surface`` is a short stable name (``"mcp"`` | ``"api"`` | ``"cli"``)
+    #: stamped by the surface that drove the call; ``surface_client_id`` is an
+    #: OPTIONAL transport/client correlation id (e.g. FastMCP ``ctx.client_id``).
+    #: Both None outside a surface dispatch (e.g. the in-process test client).
+    surface: str | None = None
+    surface_client_id: str | None = None
     #: The accumulating access-log record (None unless the call-log is on).
     record: Any = None
 
@@ -54,6 +61,28 @@ def _elapsed_ms(scope: _CallScope) -> int:
     return round((time.monotonic() - scope.start_monotonic) * 1000)
 
 
+def current_surface() -> str | None:
+    """The dispatching surface (``"mcp"`` | ``"api"`` | ``"cli"``), or None.
+
+    Returns the active call scope's ``surface`` inside a tool dispatch and
+    None outside any dispatch (or when the dispatching surface stamped no
+    identity, e.g. the in-process test client). Never raises.
+    """
+    scope = _active_scope()
+    return scope.surface if scope is not None else None
+
+
+def current_surface_client_id() -> str | None:
+    """The OPTIONAL transport/client id of the dispatching surface, or None.
+
+    The companion to :func:`current_surface`: FastMCP's ``ctx.client_id`` on
+    the MCP surface, an HTTP request id, etc.; None when the surface has no
+    such notion or there is no active dispatch. Never raises.
+    """
+    scope = _active_scope()
+    return scope.surface_client_id if scope is not None else None
+
+
 @contextlib.contextmanager
 def bind_call_scope(
     *,
@@ -63,12 +92,16 @@ def bind_call_scope(
     trace_id: str | None = None,
     span_id: str | None = None,
     parent_span_id: str | None = None,
+    surface: str | None = None,
+    surface_client_id: str | None = None,
 ) -> Iterator[_CallScope]:
     """Publish per-call :class:`_CallScope` on ``request_scope`` for the block.
 
     Called by every dispatcher immediately before invoking the tool body. The
     ``ctx`` it receives becomes the ambient wire endpoint the level methods
     resolve against — neither callers nor tool bodies pass ``ctx`` explicitly.
+    ``surface`` / ``surface_client_id`` are stamped by the dispatching surface
+    (ctx-surface-identity); both default None for non-surface callers.
     """
     from a2kit.packages.context import request_scope  # noqa: A2K-LAYER
 
@@ -80,6 +113,8 @@ def bind_call_scope(
         trace_id=trace_id,
         span_id=span_id,
         parent_span_id=parent_span_id,
+        surface=surface,
+        surface_client_id=surface_client_id,
     )
     token = request_scope.publish(scope)
     try:
@@ -118,4 +153,5 @@ class _CallScopeFilter(logging.Filter):
         record.call_id = scope.call_id if scope is not None else None
         record.tool_name = scope.tool_name if scope is not None else None
         record.elapsed_ms = _elapsed_ms(scope) if scope is not None else None
+        record.surface = scope.surface if scope is not None else None
         return True
