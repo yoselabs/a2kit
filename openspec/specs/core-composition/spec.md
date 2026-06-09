@@ -9,6 +9,8 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 
 `a2kit.App` SHALL be a pure compose-phase builder with no sealed mode. Composition verbs SHALL remain callable at any time, including after the App has been handed to a finisher. A finisher's internal `build(app)` step snapshots the App's current composition into an `AppRuntime`; a composition verb called after `build()` SHALL affect only subsequent builds and SHALL NOT mutate any already-produced `AppRuntime`. There SHALL be no `_sealed` flag and no `TypeError` raised by a composition verb on the basis of App lifecycle state.
 
+A finisher's internal `build(app)` step SHALL invoke `validate_composition(app)` (or its resolved equivalent over the snapshotted descriptors) as part of finalize, so the global canonical-name uniqueness backstop runs on every production build. `build()` SHALL therefore fail loud with the offending verb pair when two verbs resolve to the same canonical name, before any `AppRuntime` is produced. This is the same guarantee `validate_composition(app)` provides standalone; `build()` and the standalone validator share the one `resolve_canonical_name` resolver and so SHALL agree on every resolved name. The standalone validator additionally lets unit tests assert clean composition without paying for a full build.
+
 `App.__init__` SHALL accept the following keyword-only parameters in addition to the positional `name`:
 - `config: A2kitConfig | None = None` — optional a2kit-owned configuration instance. When `None`, `App.__init__` SHALL construct a fresh `A2kitConfig()`, which picks up env / `.env` / defaults per the inverted source order. The resolved instance SHALL be exposed as `app.config`.
 - `user_config: Any = None` — opaque developer-owned configuration pass-through, exposed as `app.user_config`. a2kit MUST NOT introspect this value.
@@ -46,6 +48,13 @@ The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(
 - **THEN** no `TypeError` is raised
 - **AND** the already-built `AppRuntime` does not observe `another`
 - **AND** a subsequent `build(app)` produces an `AppRuntime` that does include `another`
+
+#### Scenario: build invokes the canonical-name uniqueness backstop
+
+- **WHEN** a finisher calls `build(app)` on an App where two verbs resolve to the same canonical name
+- **THEN** `build()` fails loud, naming the colliding canonical name and both offending verbs
+- **AND** no `AppRuntime` is produced
+- **AND** the same App, validated standalone via `validate_composition(app)`, fails identically (shared resolver)
 
 #### Scenario: App constructed without explicit config gets a fresh A2kitConfig
 
@@ -125,10 +134,20 @@ A "store" SHALL be any plain class. The framework MUST NOT export a `Store[ConnT
 
 The `a2kit.packages.connections` package SHALL export `ConnectionConfig` (Pydantic-settings base), `ConnectionStore` (load/save with `${VAR}` and `op://` substitution), and `connections_cli(store)` (a factory returning a Click group with `login`/`logout`/`list`/`show`/`delete` subcommands). The package MUST NOT export a `Connections` plugin class, a `Plugin` Protocol implementation, or any DI resolver classes.
 
+`add_cli`-supplied commands SHALL attach to the assembled CLI regardless of which click distribution `typer` uses internally. `build_full_cli` MUST NOT gate the `cli_extras` attachment on an `isinstance` check against the top-level `click.Group` type, because at `typer >= 0.26` the root command produced by `typer.main.get_command` is an instance of typer's **vendored** click group, which is not identical to the standalone `click.Group` type. The attachment SHALL instead be guarded structurally (the assembled root command supports `add_command`), so that an app calling `app.add_cli(...)` builds successfully across the supported typer range.
+
 #### Scenario: User wires connection management explicitly
 
 - **WHEN** user writes `app.add_cli(connections_cli(conn_store))`
 - **THEN** the `<app> connections {login,logout,list,show,delete}` subcommand is available
+
+#### Scenario: add_cli commands attach under typer's vendored click
+
+- **GIVEN** an environment where `typer >= 0.26` (typer vendors its own click)
+- **AND** an `App` that has called `app.add_cli(some_click_command)`
+- **WHEN** the CLI is assembled via `build_full_cli`
+- **THEN** assembly completes without raising `TypeError`
+- **AND** the `add_cli`-supplied command is reachable as a subcommand of the root CLI
 
 #### Scenario: User omits connection wiring
 

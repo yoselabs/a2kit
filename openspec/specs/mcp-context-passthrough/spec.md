@@ -517,7 +517,6 @@ This requirement establishes the invariant: **inside any framework dispatch, the
 - **THEN** no consumer-defined param name collides (the `_a2kit_*` prefix is reserved by the framework)
 - **AND** the synthesized parameter never appears in any tool body's kwargs
 
-
 ### Requirement: `McpSurface` satisfies the `Surface` Protocol and owns Context passthrough
 
 `McpSurface` SHALL subclass `DecoratorSurface[McpRegistration]` and SHALL set `name = "mcp"`, `reserved_types = frozenset({Context})`, `substrate_dep_markers = frozenset()`. The body of `build_mcp_server` SHALL move into `McpSurface.bind`. `McpSurface.install_di_bridge` SHALL wire FastMCP `Context.principal` extraction into the call scope (delegating to the mechanism in `principal-propagation`). `packages/mcp/__init__.py` SHALL register `McpSurface()` with `SURFACE_REGISTRY` at lazy load.
@@ -528,3 +527,48 @@ This requirement establishes the invariant: **inside any framework dispatch, the
 - **WHEN** the tool is invoked via FastMCP
 - **THEN** the `ctx` parameter is filled by FastMCP's Context (via `Surface.reserved_types`)
 - **AND** the wire schema for the tool exposes `id` but not `ctx`
+
+### Requirement: MCP and CLI dispatch stamp surface identity alongside ctx binding
+
+The MCP and CLI dispatch paths SHALL additionally resolve the invoking
+surface's identity and stamp it onto the per-call scope as they bind the
+live transport context into the per-call ambient state. The MCP path
+SHALL stamp `surface = "mcp"` (plus the FastMCP
+`client_id` as `surface_client_id` when the live context exposes one);
+the CLI runtime SHALL stamp `surface = "cli"`. The surface identity SHALL
+be resolved from the dispatching path (authoritative), NOT inferred from
+the runtime type of the bound `ctx`.
+
+This is additive to the existing context binding: a tool that does not
+read the surface is unaffected, and the ctx passthrough contract is
+unchanged. The surface fields ride the per-call scope defined by
+`surface-identity-context` (which extends the `refound-ldd-on-stdlib-logging`
+`_CallScope`); this requirement only pins that the MCP/CLI bind sites are
+where the identity is stamped.
+
+#### Scenario: MCP bind stamps surface alongside ctx
+
+- **GIVEN** a tool `async def t(*, ctx: a2kit.ToolContext) -> None` dispatched via `fastmcp.Client(transport=build_mcp_server(app))`
+- **WHEN** the framework binds the live `fastmcp.Context` into the per-call scope
+- **THEN** the same scope carries `surface == "mcp"`
+- **AND** the bound `ctx` is the live `fastmcp.Context` (the existing passthrough is unchanged)
+
+#### Scenario: MCP bind carries the FastMCP client id
+
+- **GIVEN** an MCP dispatch whose live `fastmcp.Context` exposes a non-None `client_id`
+- **WHEN** the per-call scope is bound
+- **THEN** the scope's `surface_client_id` equals that `client_id`
+
+#### Scenario: CLI runtime stamps "cli" alongside the stub context
+
+- **GIVEN** a tool dispatched via the CLI runtime (with a `StderrToolContext` bound)
+- **WHEN** the per-call scope is bound
+- **THEN** the scope carries `surface == "cli"`
+- **AND** the CLI ctx-binding behaviour is otherwise unchanged
+
+#### Scenario: surface identity is not sniffed from the ctx type
+
+- **GIVEN** a dispatch whose bound context is a generic stub indistinguishable by type from another surface's stub
+- **WHEN** the surface identity is resolved
+- **THEN** it reflects the dispatching path (e.g. `"cli"`), not a guess from the ctx object's type
+

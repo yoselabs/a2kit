@@ -87,6 +87,16 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "A2K-RAISES-NOT-TYPED",
         "A2K-RAISES-HELPER-UNTYPED",
         "A2K-OUTPUT-SCHEMA-COMPAT",
+        # ruff-`noqa`-grammar-safe renames of the deferred raises rules
+        # (ruff-compatible-lint-codes). Same deferral: the live registry
+        # gains them when a2lint-extraction / a2effect lands.
+        "AK220",  # = legacy A2K-RAISES-CLOSURE
+        "AK221",  # = legacy A2K-RAISES-UNCOVERED
+        "AK222",  # = legacy A2K-RAISES-NOT-TYPED
+        "AK22",  # prose family token from `AK22x` (the AK22-series glob)
+        # --- illustrative example codes cited in pattern descriptions,
+        #     not registered rules (lint-code-format `e.g.` lists) ---
+        "RG010",  # `e.g. RG001, RG002, RG010` — illustrative RG example
         # --- string names cited in scenarios (logger names, span attrs)
         #     that look like dotted import paths but are not ---
         "a2kit.ldd.sink_failed",  # logger name for the WARN-log on sink failures

@@ -44,6 +44,13 @@ When `selectable_fields` is omitted, the framework SHALL derive it from the tool
 
 Verb decorators SHALL accept the semantic-flag kwargs (`open_world`, `title`; plus `idempotent`, `destructive` on write-verbs only — see "Verb decorators reject incompatible annotation kwargs") and the routing kwarg `reports`. Verb decorators SHALL NOT accept a `tags=` kwarg (framework-derived tags `"read"`, `"write"`, `"list"` are stamped automatically). Verb decorators SHALL NOT accept a `name=` kwarg on the public surface; the tool name SHALL be derived from `fn.__name__`. The internal `_meta.health` registration MAY use a private `_read_internal` helper that exposes `name=`; that helper is not part of the public API.
 
+The same verb decorators SHALL apply to **App-level methods** as well as Router methods, and SHALL be auto-collected at class-definition time (the App is a class authored the same way as a Router — see `core-composition`). The auto-derive-from-`fn.__name__` rule is identical for both roots; only the canonical-name prefix differs:
+
+- A **Router** verb resolves to `slug_leaf` (the router's `slug`, an underscore, then `fn.__name__`), e.g. `entity_update`.
+- An **App-level** verb has **no slug**, so it resolves to the **bare `leaf`** (`fn.__name__`) with no app-name prefix. The app name is identity, never a prefix — there is no `kay_health`. An app-level verb therefore projects as a **top-level, bare-named command**: `health` on MCP, `app health` on the CLI, `/api/health` on HTTP.
+
+(The full canonical-name resolution precedence and the `canonical_name_override` escape are defined by the co-shipping `native-tree-homomorphism` change; this requirement states only that app-level verbs are bare by that same rule.)
+
 #### Scenario: `tags=` kwarg is rejected
 
 - **WHEN** a tool is decorated `@a2kit.read(tags={"custom"})`
@@ -64,6 +71,19 @@ Verb decorators SHALL accept the semantic-flag kwargs (`open_world`, `title`; pl
 
 - **WHEN** a tool is decorated `@a2kit.read()`
 - **THEN** `meta.tags == frozenset({"read"})`
+
+#### Scenario: App-level verb produces a bare-named top-level command
+
+- **GIVEN** `class Kay(a2kit.App): @a2kit.read def health(self) -> Health: ...`
+- **WHEN** the App is composed and its surfaces are built
+- **THEN** the verb's canonical name is the bare `"health"` (no app-name prefix — no `kay_health`)
+- **AND** it renders `health` on MCP, `app health` on the CLI, and `/api/health` on HTTP
+
+#### Scenario: App-level vs Router-level prefix differs by the same rule
+
+- **GIVEN** an app-level `@a2kit.read def update(...)` and a Router `Entity(slug="entity")` with `@a2kit.read def update(...)`
+- **WHEN** both are composed on the same App
+- **THEN** the app-level verb resolves to bare `"update"` and the router verb resolves to `"entity_update"` — same `fn.__name__` rule, different prefix (none vs `slug_`)
 
 ### Requirement: Verb decorators reject incompatible annotation kwargs
 
@@ -195,40 +215,55 @@ this vocabulary MUST be captured in an ADR superseding or extending
 
 ### Requirement: `visibility` kwarg controls transport mounting tier
 
-Verb decorators SHALL accept a `visibility` kwarg of type
-`Literal["hidden", "cli", "all"] | None` with default `None`.
-`None` means "inherit from the Router's `visibility` class
-attribute (default `"all"`)". Tier semantics:
+The `visibility` kwarg SHALL be removed from the verb decorators. Surface
+placement and advertisement are governed solely by the `surfaces` kwarg
+(see capability `surfaces-projection`), which assigns each registered
+surface one of three states `ABSENT | LISTED | UNLISTED`. The former
+`visibility` tiers map onto the matrix as follows:
 
-- `"hidden"` — CLI-invokable but absent from `--help` listing;
-  not registered on any programmatic transport (MCP / future REST /
-  future GraphQL).
-- `"cli"` — visible in `--help`; not registered on programmatic
-  transports.
-- `"all"` — registered on every transport the App exposes (default).
+- `visibility="hidden"` → a present-but-hidden state, spelled
+  `surfaces={<surface>: "unlisted"}` (`UNLISTED`: mounted + callable,
+  absent from listing/help/schema).
+- `visibility="cli"` → CLI-only, spelled `surfaces=("cli",)` (`LISTED`
+  on the CLI, `ABSENT` on every network surface).
+- `visibility="all"` → advertised everywhere, spelled by omitting
+  `surfaces=` or listing the surfaces explicitly (`LISTED`).
 
-#### Scenario: `visibility="hidden"` hides from --help and MCP
-- **GIVEN** a tool `force_unlock` decorated `@a2kit.write(visibility="hidden")`
-- **WHEN** the CLI is built and `<app> --help` runs
-- **THEN** `force_unlock` is absent from the listing
-- **AND** `<app> ops force_unlock` still executes when invoked directly
-- **AND** the MCP server does not register `force_unlock`
+Passing `visibility=` to any verb decorator SHALL raise `TypeError` at
+decoration time. The error message SHALL name `surfaces=` as the
+replacement and SHALL give the mechanical rewrite for the supplied value
+(e.g. `visibility="cli"` → `surfaces=("cli",)`). A Router class attribute
+named `visibility` is likewise retired in favor of a `surfaces`-shaped
+class default; the per-verb `surfaces=` kwarg overrides the class default.
 
-#### Scenario: `visibility="cli"` excludes from MCP only
-- **GIVEN** a tool `login` decorated `@a2kit.write(visibility="cli")`
-- **WHEN** the MCP server is built
-- **THEN** `login` is not in `server.list_tools()`
-- **AND** `<app> connections login --help` runs successfully on the CLI
+#### Scenario: `visibility=` is rejected with a migration hint
 
-#### Scenario: Router class attr provides default
-- **GIVEN** a Router class with `visibility = "cli"` and a tool with no `visibility=` kwarg
-- **WHEN** the tool is registered on an App
-- **THEN** its effective `meta.extras.visibility == "cli"`
+- **GIVEN** a verb decorator `@a2kit.write`
+- **WHEN** a tool is decorated `@a2kit.write(visibility="cli")`
+- **THEN** a `TypeError` is raised at decoration time
+- **AND** the message names `surfaces=` as the replacement
+- **AND** the message gives the rewrite `surfaces=("cli",)`
 
-#### Scenario: Per-tool kwarg overrides Router default
-- **GIVEN** a Router class with `visibility = "cli"` and a tool decorated `@a2kit.read(visibility="all")`
-- **WHEN** the tool is registered on an App
-- **THEN** its effective `meta.extras.visibility == "all"`
+#### Scenario: hidden tier maps to UNLISTED via dict
+
+- **GIVEN** a verb formerly authored `@a2kit.write(visibility="hidden")`
+- **WHEN** it is migrated to `@a2kit.write(surfaces={"cli": "unlisted"})`
+- **THEN** the resolved state is `UNLISTED` on `cli`
+- **AND** the verb is callable on the CLI but absent from `--help`
+- **AND** the verb is `ABSENT` on every network surface
+
+#### Scenario: cli tier maps to single-surface tuple
+
+- **GIVEN** a verb formerly authored `@a2kit.read(visibility="cli")`
+- **WHEN** it is migrated to `@a2kit.read(surfaces=("cli",))`
+- **THEN** the resolved state is `LISTED` on `cli`
+- **AND** the verb is `ABSENT` on every network surface
+
+#### Scenario: all tier is the default
+
+- **GIVEN** a verb formerly authored `@a2kit.read(visibility="all")`
+- **WHEN** it is migrated by omitting `surfaces=`
+- **THEN** the resolved state is `LISTED` on every registered surface
 
 ### Requirement: Verb decorators accept `timeout=` kwarg
 
@@ -282,7 +317,6 @@ The MCP transport's structured error envelope SHALL serialize `TimeoutError` as 
 - **WHEN** the tool is invoked
 - **THEN** the call completes successfully — no `TimeoutError`
 
-
 ### Requirement: `get_meta` and `set_meta` are not public
 
 `a2kit.metadata` SHALL NOT expose `get_meta` or `set_meta` as callable accessors. Their underscored counterparts (`_get_meta`, `_set_meta`) are module-private and restricted to the composition-path allowlist `{a2kit._verbs, a2kit.metadata, a2kit.runtime, a2kit.tool, a2kit.app, a2kit.routers, a2kit.schema}`.
@@ -304,18 +338,34 @@ The public-name shims SHALL raise `AttributeError` with a migration hint pointin
 
 ### Requirement: expose= validates against the live surface registry
 
-Verb decorators (`@a2kit.read`, `@a2kit.write`, `@a2kit.list_`) SHALL validate the `expose=` kwarg against the set of currently-registered surface names. The set MUST be obtained at decoration time from a kernel-layer name registry that is kept in sync with `SURFACE_REGISTRY` by a side-effect of `register_surface()`. The literal `frozenset({"mcp", "api"})` MUST NOT appear in the verb-decorator validation path.
+The `expose=` kwarg SHALL be removed from the verb decorators
+(`@a2kit.read`, `@a2kit.write`, `@a2kit.list_`). Surface presence is
+expressed by the `surfaces=` kwarg (see capability `surfaces-projection`):
+a tuple of names resolves to `LISTED` on those names and `ABSENT`
+elsewhere; a dict assigns explicit per-surface state.
+
+The surface **names** used in `surfaces=` SHALL be validated against the
+set of currently-registered surface names. The set MUST be obtained at
+decoration time from a kernel-layer name registry that is kept in sync
+with `SURFACE_REGISTRY` by a side-effect of `register_surface()`. The
+literal `frozenset({"mcp", "api"})` MUST NOT appear in the verb-decorator
+validation path. An unregistered name (whether in a tuple or as a dict
+key) SHALL raise `TypeError` enumerating the registered names.
+
+Passing `expose=` to any verb decorator SHALL raise `TypeError` at
+decoration time, naming `surfaces=` as the replacement (e.g.
+`expose=("mcp",)` → `surfaces=("mcp",)`).
 
 #### Scenario: A registered surface name is accepted
 
 - **GIVEN** the MCP and HTTP packages are imported (their surfaces self-register)
-- **WHEN** a tool is decorated `@a2kit.read(expose=("mcp",))`
+- **WHEN** a tool is decorated `@a2kit.read(surfaces=("mcp",))`
 - **THEN** the decorator does not raise
 
 #### Scenario: An unregistered surface name is rejected with an enumerated message
 
 - **GIVEN** the MCP and HTTP packages are imported
-- **WHEN** a tool is decorated `@a2kit.read(expose=("foo",))`
+- **WHEN** a tool is decorated `@a2kit.read(surfaces=("foo",))`
 - **THEN** the decorator raises `TypeError`
 - **AND** the error message enumerates the currently-registered surface names (e.g. "Registered surfaces: ('mcp', 'api')")
 - **AND** the error message does not embed a hardcoded surface name list
@@ -323,13 +373,20 @@ Verb decorators (`@a2kit.read`, `@a2kit.write`, `@a2kit.list_`) SHALL validate t
 #### Scenario: A newly-registered surface name is accepted without code changes to verbs
 
 - **GIVEN** a test fixture registers a synthetic `StubSurface(name="test")`
-- **WHEN** a tool is decorated `@a2kit.read(expose=("test",))`
+- **WHEN** a tool is decorated `@a2kit.read(surfaces=("test",))`
 - **THEN** the decorator does not raise
 - **AND** no edits to `src/a2kit/_verbs.py` were required
 
 #### Scenario: Empty registry raises an actionable message
 
 - **GIVEN** no Surface implementations have been imported
-- **WHEN** a tool is decorated `@a2kit.read(expose=("mcp",))`
+- **WHEN** a tool is decorated `@a2kit.read(surfaces=("mcp",))`
 - **THEN** the decorator raises `TypeError`
 - **AND** the message instructs the author to import a surface-mounting package (e.g. `a2kit.packages.mcp`)
+
+#### Scenario: `expose=` is rejected with a migration hint
+
+- **WHEN** a tool is decorated `@a2kit.read(expose=("mcp",))`
+- **THEN** a `TypeError` is raised at decoration time
+- **AND** the message names `surfaces=` as the replacement (`surfaces=("mcp",)`)
+

@@ -7,96 +7,96 @@ naming behavior against current flat-mount code before the fix.
 
 ## 0. Prerequisite
 
-- [ ] 0.1 Confirm Wave 1 `cli-as-surface` has landed (all three surfaces
+- [x] 0.1 Confirm Wave 1 `cli-as-surface` has landed (all three surfaces
       satisfy one `bind()` protocol). If not, block — the per-level mount
       has no uniform seam to attach to.
 
 ## 1. Canonical-name resolver (RED → GREEN)
 
-- [ ] 1.1 Add a test for `resolve_canonical_name(descriptor)`: a router
+- [x] 1.1 Add a test for `resolve_canonical_name(descriptor)`: a router
       verb `Entity(slug="entity") @read def update` (no name) resolves to
       `"entity_update"`. Confirm RED (today's `desc.name == "update"`).
-- [ ] 1.2 Add a test: an app-level verb `@app.read def health` (no
+- [x] 1.2 Add a test: an app-level verb `@app.read def health` (no
       router) resolves to bare `"health"`. Confirm GREEN-by-accident is
       acceptable but assert the resolver — not `fn.__name__` — produced it.
-- [ ] 1.3 Add a test for the verbatim override: `@a2kit.read(
+- [x] 1.3 Add a test for the verbatim override: `@a2kit.read(
       canonical_name_override="jira_search")` under `slug="jira"` resolves
       to `"jira_search"` (NOT `"jira_jira_search"`). Confirm RED (no field
       exists yet).
-- [ ] 1.4 Add a test for the constraint: a `canonical_name_override`
+- [x] 1.4 Add a test for the constraint: a `canonical_name_override`
       containing a char outside `[A-Za-z0-9_]` raises `TypeError` at
       decoration time naming the offending value.
-- [ ] 1.5 GREEN: add `canonical_name_override` to the `@read/.write/.list_`
+- [x] 1.5 GREEN: add `canonical_name_override` to the `@read/.write/.list_`
       decorators, store on `A2KitMeta`, project onto `ToolDescriptor`, and
       implement the one `resolve_canonical_name` resolver (override →
       `slug_leaf` → `leaf`). Route `descriptor.name` through it.
 
 ## 2. MCP native mount + flat names (RED → GREEN)
 
-- [ ] 2.1 Add a test: two routers each with a `@read def update`
+- [x] 2.1 Add a test: two routers each with a `@read def update`
       (`slug="entity"`, `slug="ontology"`) build an MCP server exposing
       `entity_update` AND `ontology_update` — no collision, both present.
       Confirm RED today (silent collision on flat `update`).
-- [ ] 2.2 Add a test: an explicitly-pinned MCP tool name is unchanged
+- [x] 2.2 Add a test: an explicitly-pinned MCP tool name is unchanged
       byte-for-byte after the change (verbatim override).
-- [ ] 2.3 GREEN: `packages/mcp/server.py` mounts each router as a sub
+- [x] 2.3 GREEN: `packages/mcp/server.py` mounts each router as a sub
       `FastMCP` via `mount(namespace=slug)` instead of root-registering
       every tool flat; app-level verbs stay on the root server. Names come
       from `resolve_canonical_name`.
 
 ## 3. HTTP include_router + tags grouping (RED → GREEN)
 
-- [ ] 3.1 Add a test: a router verb mounts at `POST /api/entity_update`
+- [x] 3.1 Add a test: a router verb mounts at `POST /api/entity_update`
       (the flat canonical name), not `/api/update`. Confirm RED today.
-- [ ] 3.2 Add a test: the OpenAPI schema groups the route under the slug
+- [x] 3.2 Add a test: the OpenAPI schema groups the route under the slug
       via `tags=["entity"]`. Confirm RED today (no tag).
-- [ ] 3.3 Add a test: an app-level verb stays at `/api/health` (bare
+- [x] 3.3 Add a test: an app-level verb stays at `/api/health` (bare
       leaf, no prefix). Confirm GREEN-by-design.
-- [ ] 3.4 GREEN: `packages/http/build.py` builds a per-router `APIRouter`
+- [x] 3.4 GREEN: `packages/http/build.py` builds a per-router `APIRouter`
       and `include_router(prefix=…, tags=[slug])`; the route path is the
       flat canonical name; app-level verbs mount on the root app.
 
 ## 4. CLI flat names + rich_help_panel (RED → GREEN)
 
-- [ ] 4.1 Add a test: the CLI default layout renders a router verb as the
+- [x] 4.1 Add a test: the CLI default layout renders a router verb as the
       flat command `app entity_update` (canonical name), grouped under
       `rich_help_panel="entity"` in `--help`. Confirm RED (today renders
       `app entity update` nested with no panel).
-- [ ] 4.2 GREEN: `packages/cli/builder.py` renders flat canonical names
+- [x] 4.2 GREEN: `packages/cli/builder.py` renders flat canonical names
       with `rich_help_panel=slug`; identity stays structured so a future
       `CliConfig.layout="nested"` remains a flag-flip (assert the
       descriptor still carries `router_slug`+`leaf`).
 
 ## 5. Cross-surface parity (GREEN)
 
-- [ ] 5.1 Add a test: the same App resolves the **same** canonical name
+- [x] 5.1 Add a test: the same App resolves the **same** canonical name
       for a given verb on MCP, HTTP, and CLI (one resolver, three
       surfaces) — `entity_update` everywhere.
-- [ ] 5.2 Add a test: an explicitly-named tool is byte-for-byte identical
+- [x] 5.2 Add a test: an explicitly-named tool is byte-for-byte identical
       across all three surfaces and unchanged from pre-migration.
 
 ## 6. Migration fixtures (GREEN)
 
-- [ ] 6.1 Add a fixture proving the mechanical migration:
+- [x] 6.1 Add a fixture proving the mechanical migration:
       `name="x"` → `canonical_name_override="x"` yields the identical wire
       name; only unnamed router verbs gain the `slug_` prefix.
 
 ## 7. Verify
 
-- [ ] 7.1 All new tests from §1–§6 pass.
-- [ ] 7.2 Existing surface tests pass once their expected names are
+- [x] 7.1 All new tests from §1–§6 pass.
+- [x] 7.2 Existing surface tests pass once their expected names are
       updated for the auto-derived `slug_leaf` rename (explicit names
       unchanged).
-- [ ] 7.3 Full suite green; output pristine.
+- [x] 7.3 Full suite green; output pristine.
 
 ## 8. Close out
 
-- [ ] 8.1 lint / `ty check src/` / a2kit-static / ruff gates green on all
+- [x] 8.1 lint / `ty check src/` / a2kit-static / ruff gates green on all
       touched files.
-- [ ] 8.2 Confirm the co-ship set lands together (`surfaces-projection-axis`,
+- [x] 8.2 Confirm the co-ship set lands together (`surfaces-projection-axis`,
       `router-class-auto-collect`, `app-as-peer-root`) under one migration
       table; do not merge this change in isolation.
-- [ ] 8.3 Forward-compat seam: `resolve_canonical_name` is the single
+- [x] 8.3 Forward-compat seam: `resolve_canonical_name` is the single
       function Wave 3 `validate-composition` + the dup-name lint rule will
       run over for global uniqueness — keep it standalone and pure.
 

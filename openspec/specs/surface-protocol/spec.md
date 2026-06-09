@@ -13,17 +13,22 @@ The companion `remove-substrate-literal` change rips out the
 `Substrate = Literal["fastapi", "fastmcp"]` discriminator and rewires
 the dispatch-layer signature splitter to consume `Surface` ClassVars
 directly.
-
 ## Requirements
-
 ### Requirement: `Surface` Protocol is the contract for substrate adapters
 
-`a2kit.packages.dispatch.surface` SHALL define a `runtime_checkable` `Surface` Protocol with: `name: ClassVar[str]`, `reserved_types: ClassVar[frozenset[type]]`, `substrate_dep_markers: ClassVar[frozenset[type]]`, `def bind(runtime, descriptors) -> Any`, `def install_di_bridge(runtime, substrate_app) -> None`. Substrate adapters (MCP, HTTP, future) SHALL satisfy this Protocol. The `Substrate = Literal["fastapi", "fastmcp"]` discriminator stays unchanged in this capability; its removal lives in `remove-substrate-literal`.
+`a2kit.packages.dispatch.surface` SHALL define a `runtime_checkable` `Surface` Protocol with: `name: ClassVar[str]`, `kind: ClassVar[SurfaceKind]`, `reserved_types: ClassVar[frozenset[type]]`, `substrate_dep_markers: ClassVar[frozenset[type]]`, `def bind(runtime, descriptors) -> Any`, `def install_di_bridge(runtime, substrate_app) -> None`. The `kind` field SHALL be a `SurfaceKind` enum with exactly two members, `NETWORK` and `LOCAL`, distinguishing transports reachable over the network (MCP, HTTP) from process-local transports (the CLI). Substrate adapters (MCP, HTTP, CLI, future) SHALL satisfy this Protocol: `McpSurface` and `ApiSurface` declare `kind = SurfaceKind.NETWORK`; `CliSurface` declares `kind = SurfaceKind.LOCAL`. The `Substrate = Literal["fastapi", "fastmcp"]` discriminator stays unchanged in this capability; its removal lives in `remove-substrate-literal`.
 
-#### Scenario: McpSurface and ApiSurface satisfy Surface
+#### Scenario: McpSurface, ApiSurface, and CliSurface satisfy Surface
 
-- **WHEN** `isinstance(McpSurface(), Surface)` and `isinstance(ApiSurface(), Surface)` are evaluated
-- **THEN** both return `True`
+- **WHEN** `isinstance(McpSurface(), Surface)`, `isinstance(ApiSurface(), Surface)`, and `isinstance(CliSurface(), Surface)` are evaluated
+- **THEN** all three return `True`
+
+#### Scenario: kind distinguishes network from local surfaces
+
+- **WHEN** the `kind` ClassVar of each bundled surface is inspected
+- **THEN** `McpSurface.kind` and `ApiSurface.kind` are `SurfaceKind.NETWORK`
+- **AND** `CliSurface.kind` is `SurfaceKind.LOCAL`
+- **AND** `SurfaceKind` has exactly the two members `NETWORK` and `LOCAL`
 
 ### Requirement: `SurfaceRegistry` is the canonical registry of Surface instances
 
@@ -124,7 +129,6 @@ The runtime currently surfaces only the bundled `api` / `mcp` accumulators (`run
 - **THEN** `registered_surface_names()` still contains the name exactly once
 - **AND** the duplicate-name error from the existing spec is unchanged
 
-
 ### Requirement: Future `Surface` implementations register via `PluginManifest`
 
 Once `plugin-manifest` lands, every new `Surface`-Protocol implementation SHALL register via a `MANIFEST = PluginManifest(...)` constant in its package and SHALL be discovered through `load_surface(...)` at app boot. The imperative `SURFACE_REGISTRY.register_surface(...)` call path remains available for transitional purposes but SHALL NOT be the documented entry point for new surfaces.
@@ -141,3 +145,4 @@ The two existing surfaces (`mcp_surface`, `api_surface`) MAY remain on the imper
 
 - **WHEN** a `Surface`-Protocol class lands without an accompanying `MANIFEST` in the same package
 - **THEN** the pytest-archon rule `A2K-SURFACE-REGISTRY` fails and names the missing manifest
+
