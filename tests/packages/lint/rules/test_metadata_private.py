@@ -49,7 +49,7 @@ def test_public_metadata_import_is_not_flagged(tmp_path: Path) -> None:
 
 
 def test_noqa_suppresses_finding(tmp_path: Path) -> None:
-    body = "from a2kit.metadata import _get_meta  # noqa: A2K-METADATA-PRIVATE\n"
+    body = "from a2kit.metadata import _get_meta  # noqa: AK210\n"
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "cli" / "exempt.py", body)
     findings = run_static_rules([p])
     assert A2K_METADATA_PRIVATE not in _codes(findings)

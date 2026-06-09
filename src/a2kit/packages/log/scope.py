@@ -52,7 +52,7 @@ class _CallScope:
 
 def _active_scope() -> _CallScope | None:
     """Return the active :class:`_CallScope`, or None outside a dispatch."""
-    from a2kit.packages.context import request_scope  # noqa: A2K-LAYER
+    from a2kit.packages.context import request_scope  # noqa: AK200
 
     return request_scope.try_get(_CallScope)
 
@@ -103,7 +103,7 @@ def bind_call_scope(
     ``surface`` / ``surface_client_id`` are stamped by the dispatching surface
     (ctx-surface-identity); both default None for non-surface callers.
     """
-    from a2kit.packages.context import request_scope  # noqa: A2K-LAYER
+    from a2kit.packages.context import request_scope  # noqa: AK200
 
     scope = _CallScope(
         ctx=ctx,

@@ -26,7 +26,7 @@ from a2kit.packages.dispatch.spec import (
     has_injectables,
 )
 from a2kit.packages.log import bind_call_scope
-from a2kit.packages.log.scope import _active_scope  # noqa: A2K-PKG-FRONT-DOOR -- private per-call seam
+from a2kit.packages.log.scope import _active_scope  # noqa: AK205 -- private per-call seam
 
 _CALLS_LOGGER = logging.getLogger("a2kit.calls")
 

@@ -251,7 +251,7 @@ def build(
     # which is layer-exempt, so late-import keeps the L3 → L4/L5 edge
     # off the static graph.
     if surfaces is None:
-        from a2kit import compose_default_surfaces  # noqa: A2K-PKG-INIT-IMPORT
+        from a2kit import compose_default_surfaces  # noqa: AK202
 
         surface_registry: Any = compose_default_surfaces()
     else:
@@ -516,7 +516,7 @@ def validate_composition(app: App | AppRuntime) -> None:
         # container seal and builds no transport.
         descriptors = app.tools()
 
-    from a2kit import compose_default_surfaces  # noqa: A2K-PKG-INIT-IMPORT
+    from a2kit import compose_default_surfaces  # noqa: AK202
 
     surface_registry = compose_default_surfaces()
     if surface_registry is not None:

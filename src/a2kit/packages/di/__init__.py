@@ -29,7 +29,7 @@ from a2kit.packages.di._lazy import Lazy
 # GRANDFATHERED: `_a2kit_request_scope` is the FastAPI per-request ContextVar
 # bridge. Retired by `generalise-context-bridges` (per-type ContextVar bridges
 # fold into one typed `RequestScope`).
-from a2kit.packages.di._request_scope import _a2kit_request_scope  # noqa: A2K-PKG-INIT-PURITY
+from a2kit.packages.di._request_scope import _a2kit_request_scope  # noqa: AK204
 from a2kit.packages.di.container import (
     Container,
     Factory,
@@ -45,7 +45,7 @@ __all__ = [
     "Resolver",
     "Scope",
     "UnresolvableType",
-    "_a2kit_request_scope",  # noqa: A2K-PKG-INIT-PURITY
+    "_a2kit_request_scope",  # noqa: AK204
     "lazy_inner_type",
     "resolve_hints",
 ]

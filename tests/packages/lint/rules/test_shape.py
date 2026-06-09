@@ -51,7 +51,7 @@ def test_a2k002_non_str_return_silent(tmp_path: Path) -> None:
 
 
 def test_a2k002_noqa(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.write()\ndef t() -> str:  # noqa: A2K002\n    return 'x'\n"
+    body = "import a2kit\n@a2kit.write()\ndef t() -> str:  # noqa: AK002\n    return 'x'\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K002 not in _codes(findings)
@@ -126,7 +126,7 @@ def test_a2k003_noqa(tmp_path: Path) -> None:
         "class Out(BaseModel):\n"
         "    x: int\n"
         "@a2kit.write()\n"
-        "def t() -> Out:  # noqa: A2K003\n"
+        "def t() -> Out:  # noqa: AK003\n"
         "    return Out(x=1)\n"
     )
     p = _write(tmp_path, "m.py", body)
@@ -166,7 +166,7 @@ def test_a2k011_skipped_on_fixture_path(tmp_path: Path) -> None:
 
 
 def test_a2k011_noqa(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.write()\ndef t() -> dict:  # noqa: A2K011\n    return {}\n"
+    body = "import a2kit\n@a2kit.write()\ndef t() -> dict:  # noqa: AK011\n    return {}\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K011 not in _codes(findings)
@@ -243,7 +243,7 @@ def test_a2k013_skipped_on_fixture_path(tmp_path: Path) -> None:
 
 
 def test_a2k013_noqa(tmp_path: Path) -> None:
-    body = 'import a2kit\n@a2kit.write()\ndef t() -> int:  # noqa: A2K013\n    """uses a2kit.docs.param_doc(\'x\')."""\n    return 1\n'
+    body = 'import a2kit\n@a2kit.write()\ndef t() -> int:  # noqa: AK013\n    """uses a2kit.docs.param_doc(\'x\')."""\n    return 1\n'
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K013 not in _codes(findings)

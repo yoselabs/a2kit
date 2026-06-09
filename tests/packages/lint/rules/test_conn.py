@@ -84,11 +84,7 @@ def test_conn_list_placeholder_non_collection_value_silent(tmp_path: Path) -> No
 
 
 def test_conn_list_placeholder_noqa(tmp_path: Path) -> None:
-    body = (
-        "from a2kit.connections import ConnectionConfig\n"
-        "class C(ConnectionConfig):\n"
-        "    tags: list = ['${MY_TAG}']  # noqa: A2K-CONN-LIST-PLACEHOLDER\n"
-    )
+    body = "from a2kit.connections import ConnectionConfig\nclass C(ConnectionConfig):\n    tags: list = ['${MY_TAG}']  # noqa: AK206\n"
     p = _write(tmp_path / "src" / "m.py", body)
     findings = run_static_rules([p])
     assert A2K_CONN_LIST_PLACEHOLDER not in _codes(findings)

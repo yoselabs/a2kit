@@ -110,9 +110,10 @@ ignore = [
     # PLC0415: lazy imports are intentional v1.0 — LazyGroup defers fastmcp,
     # PEP 562 `__getattr__` resolves package imports on attribute access, etc.
     "PLC0415",
-    # RUF102: a2kit's own static linter uses `# noqa: A2K014` / `A2K-CORE-CLEAN`
-    # etc. — ruff doesn't recognise these codes but the suppression is read by
-    # a2kit lint, not ruff. Silence the false-positive.
+    # RUF102: a2kit's own static linter uses ruff-grammar-safe codes
+    # (`# noqa: AK014` / `AK200` / `AKR001` / `RG002`) — well-formed so ruff's
+    # parser does not break, but unknown to ruff, so RUF102 would flag them as
+    # invalid. The suppression is read by a2kit lint, not ruff. Silence it.
     "RUF102",
 ]
 

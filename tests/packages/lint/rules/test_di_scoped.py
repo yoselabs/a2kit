@@ -78,7 +78,7 @@ def test_a2k015_respects_noqa() -> None:
     import a2kit
 
     class BrowserPool:
-        async def _ensure(self):  # noqa: A2K015
+        async def _ensure(self):  # noqa: AK015
             return None
 
     app = a2kit.App("x")

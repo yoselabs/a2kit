@@ -19,7 +19,7 @@ from a2kit.packages.lint.static import LintMessage, _msg, is_fixture_path, parse
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-A2K_SUBSTRATE_DEP = "A2K-SUBSTRATE-DEP"
+A2K_SUBSTRATE_DEP = "AK213"
 
 _MARKER_NAMES = frozenset({"Depends", "Security"})
 _VERB_DECORATORS = frozenset({"read", "write", "list_"})

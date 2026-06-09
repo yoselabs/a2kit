@@ -80,7 +80,7 @@ def test_no_findings_on_clean_file(tmp_path: Path) -> None:
 
 
 def test_noqa_suppresses_rule(tmp_path: Path) -> None:
-    body = "import a2kit\n@a2kit.write()\ndef t() -> str:  # noqa: A2K002\n    return 'x'\n"
+    body = "import a2kit\n@a2kit.write()\ndef t() -> str:  # noqa: AK002\n    return 'x'\n"
     p = _write(tmp_path, "m.py", body)
     findings = run_static_rules([p])
     assert A2K002 not in _codes(findings)

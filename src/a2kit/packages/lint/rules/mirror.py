@@ -17,7 +17,7 @@ from a2kit.packages.lint.static import LintMessage
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-A2K_TEST_MIRROR = "A2K-TEST-MIRROR"
+A2K_TEST_MIRROR = "AK209"
 
 # why: each entry has no testable behavior beyond what the mirror rule
 # would mechanically demand. Documented inline; revisit if the file

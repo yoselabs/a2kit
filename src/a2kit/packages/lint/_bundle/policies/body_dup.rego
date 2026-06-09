@@ -1,6 +1,6 @@
 package a2kit
 
-# REGO-BODY-DUP — cross-file function body duplication.
+# RG001 — cross-file function body duplication.
 #
 # Fires when two functions in different files share the same
 # `ast_hash_normalized` (identifier + literal names normalized; see
@@ -14,7 +14,7 @@ package a2kit
 # statements inside try/with/if blocks). Trivial 1-2 statement
 # collisions (`return x`, `raise X`) are out of scope.
 #
-# Suppress with: `# noqa: REGO-BODY-DUP -- <why>` on the function def
+# Suppress with: `# noqa: RG001 -- <why>` on the function def
 # line, or add the name(s) to policies/data.json under
 # body_dup with a `reason`.
 
@@ -29,15 +29,15 @@ deny contains msg if {
 	not fn_i.is_dunder
 	not fn_j.is_dunder
 	not _body_dup_allowlisted(fn_i.name, fn_j.name)
-	not suppressed(fn_i, "REGO-BODY-DUP")
-	not suppressed(fn_j, "REGO-BODY-DUP")
+	not suppressed(fn_i, "RG001")
+	not suppressed(fn_j, "RG001")
 	msg := {
-		"rule": "REGO-BODY-DUP",
+		"rule": "RG001",
 		"file": fn_i.file,
 		"line": fn_i.line,
 		"col": 0,
 		"message": sprintf(
-			"body matches %s:%d (%s) — extract canonical impl or suppress with `# noqa: REGO-BODY-DUP -- <why>`",
+			"body matches %s:%d (%s) — extract canonical impl or suppress with `# noqa: RG001 -- <why>`",
 			[fn_j.file, fn_j.line, fn_j.name],
 		),
 	}
@@ -54,7 +54,7 @@ deny contains msg if {
 	some entry in policy_allowlist("body_dup")
 	not entry.reason
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,
@@ -66,7 +66,7 @@ deny contains msg if {
 	some entry in policy_allowlist("body_dup")
 	entry.reason == ""
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,

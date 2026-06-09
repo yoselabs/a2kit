@@ -1,6 +1,6 @@
 package a2kit
 
-# REGO-NAME-COLLISION — cross-file private-helper name reuse.
+# RG002 — cross-file private-helper name reuse.
 #
 # Fires when a `_`-prefixed (non-dunder) function name appears in
 # 2+ distinct files outside the allowlist. The audit's "someone
@@ -16,7 +16,7 @@ package a2kit
 # functions; these belong in the allowlist with a one-line reason
 # rather than as `# noqa`, because the convergence is by design.
 #
-# Suppress an individual occurrence with: `# noqa: REGO-NAME-COLLISION
+# Suppress an individual occurrence with: `# noqa: RG002
 # -- <why>` on the def line, or add the name to
 # policies/data.json under name_collision with a `reason`.
 
@@ -30,10 +30,10 @@ deny contains msg if {
 	not fn1.is_dunder
 	not fn2.is_dunder
 	not _name_allowlisted(fn1.name)
-	not suppressed(fn1, "REGO-NAME-COLLISION")
-	not suppressed(fn2, "REGO-NAME-COLLISION")
+	not suppressed(fn1, "RG002")
+	not suppressed(fn2, "RG002")
 	msg := {
-		"rule": "REGO-NAME-COLLISION",
+		"rule": "RG002",
 		"file": fn1.file,
 		"line": fn1.line,
 		"col": 0,
@@ -54,7 +54,7 @@ deny contains msg if {
 	some entry in policy_allowlist("name_collision")
 	not entry.reason
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,
@@ -66,7 +66,7 @@ deny contains msg if {
 	some entry in policy_allowlist("name_collision")
 	entry.reason == ""
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,

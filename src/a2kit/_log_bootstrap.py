@@ -35,7 +35,7 @@ from a2kit.packages.log import (
     install_trace_level,
     set_wire_level,
 )
-from a2kit.packages.log.scope import _CallScopeFilter  # noqa: A2K-PKG-FRONT-DOOR -- private filter seam
+from a2kit.packages.log.scope import _CallScopeFilter  # noqa: AK205 -- private filter seam
 
 if TYPE_CHECKING:
     from a2kit.config import LogConfig

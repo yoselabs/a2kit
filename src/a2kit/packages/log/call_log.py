@@ -45,14 +45,14 @@ class CallRecord:
     domain: str | None = None
     principal: str | None = None
     elapsed_ms: int | None = None
-    args: dict[str, Any] = field(default_factory=dict)  # noqa: A2K-NO-DICT-STR-ANY -- captured tool args are free-form by design
+    args: dict[str, Any] = field(default_factory=dict)  # noqa: AK214 -- captured tool args are free-form by design
     result: Any = None
     trace_id: str | None = None
     span_id: str | None = None
     parent_span_id: str | None = None
     ts: float | None = None
 
-    def to_row(self) -> dict[str, Any]:  # noqa: A2K-NO-DICT-STR-ANY -- jsonl row is free-form by design
+    def to_row(self) -> dict[str, Any]:  # noqa: AK214 -- jsonl row is free-form by design
         """Flatten to an ordered jsonl row dict (bodies not yet sidecar'd)."""
         row: dict[str, Any] = {col: getattr(self, col) for col in _SPAN_COLUMNS}
         row["args"] = self.args

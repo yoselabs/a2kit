@@ -254,10 +254,10 @@ def _iter_dunder_all_leaks(tree: ast.Module, filename: str, noqa: dict[int, set[
             if not (isinstance(elt, ast.Constant) and isinstance(elt.value, str) and _is_private_leak(elt.value)):
                 continue
             lineno = getattr(elt, "lineno", node.lineno)
-            if suppressed(noqa, "A2K-PKG-INIT-PURITY", lineno):
+            if suppressed(noqa, "AK204", lineno):
                 continue
             yield LintMessage(
-                rule="A2K-PKG-INIT-PURITY",
+                rule="AK204",
                 filename=filename,
                 line=lineno,
                 col=getattr(elt, "col_offset", 0),
@@ -269,14 +269,14 @@ def _iter_import_leaks(tree: ast.AST, filename: str, noqa: dict[int, set[str]]) 
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom):
             continue
-        if suppressed(noqa, "A2K-PKG-INIT-PURITY", node.lineno):
+        if suppressed(noqa, "AK204", node.lineno):
             continue
         for alias in node.names:
             bound = alias.asname or alias.name
             if not _is_private_leak(bound):
                 continue
             yield LintMessage(
-                rule="A2K-PKG-INIT-PURITY",
+                rule="AK204",
                 filename=filename,
                 line=node.lineno,
                 col=node.col_offset,

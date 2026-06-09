@@ -41,5 +41,5 @@ def test_rejects_unknown_extras_constructor_kwarg() -> None:
 
 
 def test_extra_namespace_noqa_suppresses() -> None:
-    msgs = _run_extra("m.extras.enricher = fn  # noqa: A2K-EXTRA-NAMESPACE\n")
+    msgs = _run_extra("m.extras.enricher = fn  # noqa: AK208\n")
     assert msgs == []

@@ -164,8 +164,8 @@ def test_lint_runtime_check_similar_tool_names_flags_close_pair() -> None:
 def test_lint_runtime_check_message_format_concise() -> None:
     from a2kit.packages.lint.runtime import CheckMessage
 
-    msg = CheckMessage(rule="A2KR999", target="foo", message="bad")
-    assert msg.format_concise() == "foo: A2KR999 bad"
+    msg = CheckMessage(rule="AKR999", target="foo", message="bad")
+    assert msg.format_concise() == "foo: AKR999 bad"
 
 
 def test_lint_runtimelist_tool_names_returns_empty_for_naive_server() -> None:

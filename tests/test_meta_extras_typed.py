@@ -64,7 +64,7 @@ def test_reports_kwarg_stamps_report_type() -> None:
         ok: bool
 
     # Intentionally non-module-scope: tests the decorator-time stamp path.
-    @a2kit.read(reports=_Report)  # noqa: A2K-LDD-REPORT-TYPE
+    @a2kit.read(reports=_Report)  # noqa: AK215
     async def f() -> dict[str, int]:
         return {"k": 1}
 
@@ -89,7 +89,7 @@ def test_reports_kwarg_handles_unschemable_type() -> None:
             self.x = 1
 
     # Intentionally non-module-scope: tests the TypeAdapter fallback path.
-    @a2kit.read(reports=_NotSchemable)  # type: ignore[arg-type]  # noqa: A2K-LDD-REPORT-TYPE
+    @a2kit.read(reports=_NotSchemable)  # type: ignore[arg-type]  # noqa: AK215
     async def f() -> dict[str, int]:
         return {"k": 1}
 

@@ -1,6 +1,6 @@
 """Capability tests for ``policies/github_actions.rego``.
 
-Three rules: REGO-GHA-PIN-SHA, REGO-GHA-PERMISSIONS, REGO-GHA-VENDOR-ALLOW.
+Three rules: RG005, RG006, RG007.
 Each test runs the policy bundle against synthetic facts with a fully
 isolated allowlist so production data.json is invisible.
 """
@@ -88,7 +88,7 @@ def _step(*, uses: str | None, vendor: str | None = None, has_pinned_sha: bool =
 
 
 # ---------------------------------------------------------------------------- #
-# REGO-GHA-PIN-SHA
+# RG005
 # ---------------------------------------------------------------------------- #
 
 
@@ -105,8 +105,8 @@ def test_unpinned_vendor_action_fires() -> None:
         },
     )
     rules = {f["rule"] for f in findings}
-    assert "REGO-GHA-PIN-SHA" in rules
-    pin_msgs = [f for f in findings if f["rule"] == "REGO-GHA-PIN-SHA"]
+    assert "RG005" in rules
+    pin_msgs = [f for f in findings if f["rule"] == "RG005"]
     assert any("tj-actions/changed-files" in f["message"] for f in pin_msgs)
 
 
@@ -125,7 +125,7 @@ def test_pinned_sha_passes() -> None:
             "github_actions_vendor_unpinned": [],
         },
     )
-    pin_msgs = [f for f in findings if f["rule"] == "REGO-GHA-PIN-SHA"]
+    pin_msgs = [f for f in findings if f["rule"] == "RG005"]
     assert pin_msgs == []
 
 
@@ -141,12 +141,12 @@ def test_allowlisted_unpinned_vendor_exempt() -> None:
             "github_actions_vendor_unpinned": [{"vendor": "actions", "reason": "first-party, mutation risk accepted"}],
         },
     )
-    pin_msgs = [f for f in findings if f["rule"] == "REGO-GHA-PIN-SHA"]
+    pin_msgs = [f for f in findings if f["rule"] == "RG005"]
     assert pin_msgs == []
 
 
 # ---------------------------------------------------------------------------- #
-# REGO-GHA-PERMISSIONS
+# RG006
 # ---------------------------------------------------------------------------- #
 
 
@@ -154,7 +154,7 @@ def test_missing_top_level_permissions_fires() -> None:
     facts = _base_facts()
     facts["workflows"] = [_wf(permissions=None, jobs=[])]
     findings = _opa_eval_gha(facts)
-    perm_msgs = [f for f in findings if f["rule"] == "REGO-GHA-PERMISSIONS"]
+    perm_msgs = [f for f in findings if f["rule"] == "RG006"]
     assert len(perm_msgs) == 1
 
 
@@ -162,12 +162,12 @@ def test_top_level_permissions_present_passes() -> None:
     facts = _base_facts()
     facts["workflows"] = [_wf(permissions={"contents": "read"}, jobs=[])]
     findings = _opa_eval_gha(facts)
-    perm_msgs = [f for f in findings if f["rule"] == "REGO-GHA-PERMISSIONS"]
+    perm_msgs = [f for f in findings if f["rule"] == "RG006"]
     assert perm_msgs == []
 
 
 # ---------------------------------------------------------------------------- #
-# REGO-GHA-VENDOR-ALLOW
+# RG007
 # ---------------------------------------------------------------------------- #
 
 
@@ -185,7 +185,7 @@ def test_unknown_vendor_fires() -> None:
             "github_actions_vendor_unpinned": [],
         },
     )
-    vendor_msgs = [f for f in findings if f["rule"] == "REGO-GHA-VENDOR-ALLOW"]
+    vendor_msgs = [f for f in findings if f["rule"] == "RG007"]
     assert len(vendor_msgs) == 1
     assert "someone-untrusted" in vendor_msgs[0]["message"]
 
@@ -205,5 +205,5 @@ def test_allowlisted_vendor_passes() -> None:
             "github_actions_vendor_unpinned": [],
         },
     )
-    vendor_msgs = [f for f in findings if f["rule"] == "REGO-GHA-VENDOR-ALLOW"]
+    vendor_msgs = [f for f in findings if f["rule"] == "RG007"]
     assert vendor_msgs == []

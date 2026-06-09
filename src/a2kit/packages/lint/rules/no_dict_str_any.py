@@ -3,7 +3,7 @@
 Goal is *deliberate* ``Any`` use, not eradication. Legitimate sites
 (JSON envelopes, wire-format payloads, kwarg pass-throughs to third-party
 libs) keep their annotation but acknowledge it with
-``# noqa: A2K-NO-DICT-STR-ANY -- <why>``.
+``# noqa: AK214 -- <why>``.
 
 Scope:
 - Class is a ``@dataclass`` / ``@dataclass(frozen=True)`` (decorator
@@ -97,7 +97,7 @@ def rule_no_dict_str_any(tree: ast.AST, filename: str, source: str) -> Iterable[
                     "dataclass/BaseModel field. Tighten the value type, or, if "
                     "the looseness is deliberate (wire envelope, third-party "
                     "kwarg pass-through), suppress with "
-                    "`# noqa: A2K-NO-DICT-STR-ANY -- <why>`."
+                    "`# noqa: AK214 -- <why>`."
                 ),
             )
 

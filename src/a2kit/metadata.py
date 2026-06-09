@@ -41,7 +41,7 @@ class A2KitMetaExtras(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     report_type: type | None = None
-    report_schema: dict[str, Any] | None = None  # noqa: A2K-NO-DICT-STR-ANY -- JSON Schema dict shape (free-form by spec)
+    report_schema: dict[str, Any] | None = None  # noqa: AK214 -- JSON Schema dict shape (free-form by spec)
     router_slug: str | None = None
     visibility: str | None = None
     list_view: ListViewSettings | None = None
@@ -84,7 +84,7 @@ class A2KitMeta:
     tool_name: str
     verb: Verb
     tags: frozenset[str]
-    _annotations_kwargs: dict[str, Any] | None = None  # noqa: A2K-NO-DICT-STR-ANY -- kwargs forwarded verbatim to mcp.types.ToolAnnotations
+    _annotations_kwargs: dict[str, Any] | None = None  # noqa: AK214 -- kwargs forwarded verbatim to mcp.types.ToolAnnotations
     _annotations_explicit: Any = None
     context_param_name: str | None = None
     extras: A2KitMetaExtras = field(default_factory=A2KitMetaExtras)

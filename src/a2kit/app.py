@@ -197,7 +197,7 @@ class App:
         # the call-scope filter, the opt-in call-log). Kill-switch lives in
         # `LogConfig.enabled` (env A2KIT_LOG__ENABLED=false).
         from a2kit._log_bootstrap import configure_logging
-        from a2kit.packages.log.app_log import _AppLog  # noqa: A2K-PKG-FRONT-DOOR -- private app namespace
+        from a2kit.packages.log.app_log import _AppLog  # noqa: AK205 -- private app namespace
 
         configure_logging(self.config.log)
         self.log = _AppLog()
@@ -403,7 +403,7 @@ class App:
         delegate to :func:`a2kit.run` so the instantiate-then-run shape is a
         one-liner at ``main()``.
         """
-        from a2kit import run  # noqa: A2K-PKG-INIT-IMPORT -- serve() is the deliberate App→facade finisher delegate
+        from a2kit import run  # noqa: AK202 -- serve() is the deliberate App→facade finisher delegate
 
         return run(self, argv)
 
@@ -638,7 +638,7 @@ class _AppRootRouter(Router):
             # Do NOT stamp router_slug → bare canonical name. Resolve the
             # default visibility the same way ``Router.__init__`` does.
             if meta.extras.visibility is None:
-                meta.extras.visibility = "all"  # noqa: A2K-EXTRA-NAMESPACE
+                meta.extras.visibility = "all"  # noqa: AK208
             bound.append(method)
         self._tools = bound
         self._enrichers = []

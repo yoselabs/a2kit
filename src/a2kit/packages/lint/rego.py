@@ -121,7 +121,7 @@ def _run_opa(facts_path: Path, *, policies_dir: Path, data_path: Path | None) ->
 
 def _to_lint_message(finding: dict) -> LintMessage:
     return LintMessage(
-        rule=str(finding.get("rule", "REGO-UNKNOWN")),
+        rule=str(finding.get("rule", "RG000")),
         filename=str(finding.get("file", "?")),
         line=int(finding.get("line", 0) or 0),
         col=int(finding.get("col", 0) or 0),

@@ -66,7 +66,7 @@ def _facts(deps: list[dict[str, Any]], optional: dict | None = None) -> dict:
 def test_bare_dep_fires() -> None:
     facts = _facts([{"name": "httpx", "spec": "httpx", "has_upper_bound": False}])
     findings = _opa_eval_py(facts)
-    msgs = [f for f in findings if f["rule"] == "REGO-PYPROJECT-UPPER-BOUND"]
+    msgs = [f for f in findings if f["rule"] == "RG004"]
     assert len(msgs) == 1
     assert "httpx" in msgs[0]["message"]
 
@@ -74,7 +74,7 @@ def test_bare_dep_fires() -> None:
 def test_dep_with_upper_bound_passes() -> None:
     facts = _facts([{"name": "fastapi", "spec": "fastapi>=0.115,<0.130", "has_upper_bound": True}])
     findings = _opa_eval_py(facts)
-    msgs = [f for f in findings if f["rule"] == "REGO-PYPROJECT-UPPER-BOUND"]
+    msgs = [f for f in findings if f["rule"] == "RG004"]
     assert msgs == []
 
 
@@ -84,7 +84,7 @@ def test_optional_dep_without_upper_bound_passes() -> None:
         optional={"test": [{"name": "pytest", "spec": "pytest", "has_upper_bound": False}]},
     )
     findings = _opa_eval_py(facts)
-    msgs = [f for f in findings if f["rule"] == "REGO-PYPROJECT-UPPER-BOUND"]
+    msgs = [f for f in findings if f["rule"] == "RG004"]
     assert msgs == []
 
 
@@ -98,5 +98,5 @@ def test_allowlisted_runtime_dep_exempt() -> None:
             "pyproject_upper_bound": [{"name": "fastmcp", "reason": "pre-1.0; pin via uv.lock"}],
         },
     )
-    msgs = [f for f in findings if f["rule"] == "REGO-PYPROJECT-UPPER-BOUND"]
+    msgs = [f for f in findings if f["rule"] == "RG004"]
     assert msgs == []

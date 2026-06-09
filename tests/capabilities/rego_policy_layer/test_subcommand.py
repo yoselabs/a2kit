@@ -39,7 +39,7 @@ def test_dirty_tree_exits_nonzero_with_structured_findings(tmp_path):
     dirty = _make_dirty_tree(tmp_path)
     proc = _run_lint_rego([dirty])
     assert proc.returncode == 1, f"expected exit 1, got {proc.returncode}; stderr={proc.stderr}"
-    assert "REGO-BODY-DUP" in proc.stdout or "REGO-NAME-COLLISION" in proc.stdout
+    assert "RG001" in proc.stdout or "RG002" in proc.stdout
     # LintMessage shape: file:line:col: RULE message
     lines = [line for line in proc.stdout.splitlines() if line.strip()]
     assert all(":" in line for line in lines)

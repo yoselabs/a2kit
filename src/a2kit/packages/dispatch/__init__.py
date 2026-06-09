@@ -30,7 +30,7 @@ from a2kit.packages.dispatch.spec import (
 
 # GRANDFATHERED: `_run_authorize_gate` is re-exported for test + sibling-stage
 # use; remove from __all__ when a refactor makes the symbol fully internal.
-from a2kit.packages.dispatch.stages import (  # noqa: A2K-PKG-INIT-PURITY
+from a2kit.packages.dispatch.stages import (  # noqa: AK204
     AuthorizeGateStage,
     CallLogStage,
     CallScopeStage,
@@ -44,7 +44,7 @@ from a2kit.packages.dispatch.stages import (  # noqa: A2K-PKG-INIT-PURITY
 
 # GRANDFATHERED: `_unwrap_annotation` is re-exported for signature plumbing;
 # remove from __all__ when a refactor makes it fully internal.
-from a2kit.packages.dispatch.substrate import (  # noqa: A2K-PKG-INIT-PURITY
+from a2kit.packages.dispatch.substrate import (  # noqa: AK204
     SplitSignature,
     SubstrateSignatureError,
     _unwrap_annotation,
@@ -82,8 +82,8 @@ __all__ = [
     "SurfaceRegistry",
     "TimeoutStage",
     "ToolBuildSpec",
-    "_run_authorize_gate",  # noqa: A2K-PKG-INIT-PURITY
-    "_unwrap_annotation",  # noqa: A2K-PKG-INIT-PURITY
+    "_run_authorize_gate",  # noqa: AK204
+    "_unwrap_annotation",  # noqa: AK204
     "close_render_state",
     "fastapi_dep_markers",
     "fastapi_reserved",

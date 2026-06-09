@@ -72,7 +72,7 @@ def _walk_return_classes(ret: Any) -> Iterable[type]:
 
 
 def _check_return_scope(fn: Callable[..., Any]) -> None:
-    """A2K-LOCAL-RETURN-MODEL — reject return types defined in non-module scope."""
+    """AK207 — reject return types defined in non-module scope."""
     ret = _resolve_return_annotation(fn)
     if ret is None:
         return
@@ -91,7 +91,7 @@ def _check_return_scope(fn: Callable[..., Any]) -> None:
             f"Tool {fn_name!r} return type {qualname!r} is defined in non-module scope; "
             "FastMCP's signature.eval_str=True cannot resolve names from a function that "
             "has already returned. Hoist the class to module scope. "
-            "See A2K-LOCAL-RETURN-MODEL."
+            "See AK207."
         )
         raise InvalidToolReturnTypeError(fn_name, message=msg)
 

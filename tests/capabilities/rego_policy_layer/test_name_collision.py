@@ -15,8 +15,8 @@ def test_name_collision_fires_for_private_name_in_two_files(tmpsrc):
     write_py(tmpsrc, "b.py", "def _helper():\n    return 2\n")
     facts = extract([tmpsrc])
     findings = opa_eval(facts, allowlist={"body_dup": [], "name_collision": []})
-    nc = [f for f in findings if f["rule"] == "REGO-NAME-COLLISION"]
-    assert nc, "expected REGO-NAME-COLLISION to fire"
+    nc = [f for f in findings if f["rule"] == "RG002"]
+    assert nc, "expected RG002 to fire"
     assert "_helper" in nc[0]["message"]
 
 
@@ -26,7 +26,7 @@ def test_name_collision_does_not_fire_for_dunder(tmpsrc):
     write_py(tmpsrc, "b.py", "def __getattr__(name):\n    return None\n")
     facts = extract([tmpsrc])
     findings = opa_eval(facts, allowlist={"body_dup": [], "name_collision": []})
-    assert not [f for f in findings if f["rule"] == "REGO-NAME-COLLISION"]
+    assert not [f for f in findings if f["rule"] == "RG002"]
 
 
 def test_name_collision_does_not_fire_for_public_names(tmpsrc):
@@ -35,7 +35,7 @@ def test_name_collision_does_not_fire_for_public_names(tmpsrc):
     write_py(tmpsrc, "b.py", "def helper():\n    return 2\n")
     facts = extract([tmpsrc])
     findings = opa_eval(facts, allowlist={"body_dup": [], "name_collision": []})
-    assert not [f for f in findings if f["rule"] == "REGO-NAME-COLLISION"]
+    assert not [f for f in findings if f["rule"] == "RG002"]
 
 
 def test_name_collision_allowlist_drops_name(tmpsrc):
@@ -49,11 +49,11 @@ def test_name_collision_allowlist_drops_name(tmpsrc):
             "name_collision": [{"names": ["_intentional"], "reason": "test"}],
         },
     )
-    assert not [f for f in findings if f["rule"] == "REGO-NAME-COLLISION"]
+    assert not [f for f in findings if f["rule"] == "RG002"]
 
 
 def test_name_collision_does_not_fire_within_same_file(tmpsrc):
     write_py(tmpsrc, "single.py", ("def _foo():\n    return 1\nclass C:\n    def _foo(self):\n        return 2\n"))
     facts = extract([tmpsrc])
     findings = opa_eval(facts, allowlist={"body_dup": [], "name_collision": []})
-    assert not [f for f in findings if f["rule"] == "REGO-NAME-COLLISION"]
+    assert not [f for f in findings if f["rule"] == "RG002"]

@@ -103,7 +103,7 @@ class TestClient:
         self._client_cm: Any = None
 
     async def __aenter__(self) -> TestClient:
-        from fastmcp import Client  # noqa: A2K-IMPORT-DISCIPLINE
+        from fastmcp import Client  # noqa: AK201
 
         # `build_mcp_server` is the finisher: it builds the App into a
         # sealed runtime internally (validates + freezes the container),

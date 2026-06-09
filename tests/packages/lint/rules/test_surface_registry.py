@@ -33,7 +33,7 @@ class MySurface(DecoratorSurface):
 """
     msgs = _findings(source)
     assert len(msgs) == 1
-    assert msgs[0].rule == "A2K-SURFACE-REGISTRY"
+    assert msgs[0].rule == "AK212"
     assert "MySurface" in msgs[0].message
     assert "MANIFEST" in msgs[0].message
 

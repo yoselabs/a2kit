@@ -1,26 +1,26 @@
 package a2kit
 
-# REGO-GHA-* — GitHub Actions supply-chain hygiene.
+# RG005-RG007 (GHA) — GitHub Actions supply-chain hygiene.
 #
 # Three rules over `input.workflows`:
 #
-#   REGO-GHA-PIN-SHA       Third-party `uses:` must be pinned to a 40-char SHA.
+#   RG005       Third-party `uses:` must be pinned to a 40-char SHA.
 #                          Allowlist (per-vendor "unpinned OK" carve-out):
 #                          policies/data.json
 #                          a2kit.allowlist.github_actions_vendor_unpinned
 #
-#   REGO-GHA-PERMISSIONS   Every workflow must declare a top-level
+#   RG006   Every workflow must declare a top-level
 #                          `permissions:` block. Defence in depth — per-job
 #                          permissions alone do not satisfy this.
 #
-#   REGO-GHA-VENDOR-ALLOW  Every `uses:` vendor must be on the allowlist
+#   RG007  Every `uses:` vendor must be on the allowlist
 #                          policies/data.json
 #                          a2kit.allowlist.github_actions_vendor
 #
 # Rule reference: woodruffw/zizmor audit catalog. We author bespoke Rego
 # rather than wrap zizmor to keep the substrate (OPA) singular.
 
-# ---- REGO-GHA-PIN-SHA -----------------------------------------------------
+# ---- RG005 -----------------------------------------------------
 
 deny contains msg if {
 	some wi, ji, si
@@ -31,7 +31,7 @@ deny contains msg if {
 	not step.has_pinned_sha
 	not _gha_vendor_unpinned_allowed(step.vendor)
 	msg := {
-		"rule": "REGO-GHA-PIN-SHA",
+		"rule": "RG005",
 		"file": wf.file,
 		"line": 0,
 		"col": 0,
@@ -47,14 +47,14 @@ _gha_vendor_unpinned_allowed(vendor) if {
 	entry.vendor == vendor
 }
 
-# ---- REGO-GHA-PERMISSIONS -------------------------------------------------
+# ---- RG006 -------------------------------------------------
 
 deny contains msg if {
 	some wi
 	wf := input.workflows[wi]
 	wf.permissions == null
 	msg := {
-		"rule": "REGO-GHA-PERMISSIONS",
+		"rule": "RG006",
 		"file": wf.file,
 		"line": 0,
 		"col": 0,
@@ -65,7 +65,7 @@ deny contains msg if {
 	}
 }
 
-# ---- REGO-GHA-VENDOR-ALLOW ------------------------------------------------
+# ---- RG007 ------------------------------------------------
 
 deny contains msg if {
 	some wi, ji, si
@@ -75,7 +75,7 @@ deny contains msg if {
 	step.uses != null
 	not _gha_vendor_allowlisted(step.vendor)
 	msg := {
-		"rule": "REGO-GHA-VENDOR-ALLOW",
+		"rule": "RG007",
 		"file": wf.file,
 		"line": 0,
 		"col": 0,
@@ -97,7 +97,7 @@ deny contains msg if {
 	some entry in policy_allowlist("github_actions_vendor")
 	not entry.reason
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,
@@ -109,7 +109,7 @@ deny contains msg if {
 	some entry in policy_allowlist("github_actions_vendor")
 	entry.reason == ""
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,
@@ -121,7 +121,7 @@ deny contains msg if {
 	some entry in policy_allowlist("github_actions_vendor_unpinned")
 	not entry.reason
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,
@@ -133,7 +133,7 @@ deny contains msg if {
 	some entry in policy_allowlist("github_actions_vendor_unpinned")
 	entry.reason == ""
 	msg := {
-		"rule": "REGO-ALLOWLIST",
+		"rule": "RG003",
 		"file": "policies/data.json",
 		"line": 0,
 		"col": 0,

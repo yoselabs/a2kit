@@ -91,7 +91,7 @@ def test_user_tool_with_fastmcp_context_annotation_is_silent(tmp_path: Path) -> 
 
 
 def test_import_discipline_noqa(tmp_path: Path) -> None:
-    body = "from fastmcp import FastMCP  # noqa: A2K-IMPORT-DISCIPLINE\n"
+    body = "from fastmcp import FastMCP  # noqa: AK201\n"
     p = _write(tmp_path / "src" / "a2kit" / "user_app.py", body)
     findings = run_static_rules([p])
     assert A2K_IMPORT_DISCIPLINE not in _codes(findings)
@@ -141,7 +141,7 @@ def test_pkg_init_self_import_in_init_is_silent(tmp_path: Path) -> None:
 
 
 def test_pkg_init_import_noqa(tmp_path: Path) -> None:
-    body = "from . import render  # noqa: A2K-PKG-INIT-IMPORT\n"
+    body = "from . import render  # noqa: AK202\n"
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "formatter" / "sub.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPORT not in _codes(findings)
@@ -203,7 +203,7 @@ def test_layer_type_only_cycle_fires(tmp_path: Path) -> None:
 
 
 def test_layer_noqa_suppresses(tmp_path: Path) -> None:
-    body = "from a2kit.app import App  # noqa: A2K-LAYER\n"
+    body = "from a2kit.app import App  # noqa: AK200\n"
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "di" / "probe.py", body)
     findings = run_static_rules([p])
     assert A2K_LAYER not in _codes(findings)
@@ -235,7 +235,7 @@ def test_front_door_same_package_submodule_is_clean(tmp_path: Path) -> None:
 
 
 def test_front_door_noqa_suppresses(tmp_path: Path) -> None:
-    body = "from a2kit.packages.di.container import Container  # noqa: A2K-PKG-FRONT-DOOR\n"
+    body = "from a2kit.packages.di.container import Container  # noqa: AK205\n"
     p = _write(tmp_path / "src" / "a2kit" / "app.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_FRONT_DOOR not in _codes(findings)
@@ -301,7 +301,7 @@ def test_init_impl_silent_in_submodule(tmp_path: Path) -> None:
 
 
 def test_init_impl_noqa_suppresses(tmp_path: Path) -> None:
-    body = "class Widget:  # noqa: A2K-PKG-INIT-IMPL\n    pass\n"
+    body = "class Widget:  # noqa: AK203\n    pass\n"
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPL not in _codes(findings)
@@ -359,16 +359,16 @@ def test_init_purity_outside_packages_silent(tmp_path: Path) -> None:
 
 
 def test_init_purity_noqa_suppresses_import(tmp_path: Path) -> None:
-    """An inline `# noqa: A2K-PKG-INIT-PURITY` on the import line suppresses."""
-    body = "from ._impl import _internal  # noqa: A2K-PKG-INIT-PURITY\n"
+    """An inline `# noqa: AK204` on the import line suppresses."""
+    body = "from ._impl import _internal  # noqa: AK204\n"
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_PURITY not in _codes(findings)
 
 
 def test_init_purity_noqa_suppresses_all_entry(tmp_path: Path) -> None:
-    """An inline `# noqa: A2K-PKG-INIT-PURITY` on an `__all__` entry suppresses."""
-    body = '__all__ = [\n    "public",\n    "_internal",  # noqa: A2K-PKG-INIT-PURITY\n]\n'
+    """An inline `# noqa: AK204` on an `__all__` entry suppresses."""
+    body = '__all__ = [\n    "public",\n    "_internal",  # noqa: AK204\n]\n'
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "foo" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_PURITY not in _codes(findings)

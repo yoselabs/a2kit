@@ -20,7 +20,7 @@ def test_allowlist_with_reason_drops_finding(tmpsrc):
             "name_collision": [{"names": ["_x"], "reason": "intentional"}],
         },
     )
-    nc = [f for f in findings if f["rule"] == "REGO-NAME-COLLISION"]
+    nc = [f for f in findings if f["rule"] == "RG002"]
     assert not nc
 
 
@@ -34,8 +34,8 @@ def test_allowlist_missing_reason_field_raises_rego_allowlist(tmpsrc):
             "name_collision": [{"names": ["_x"]}],  # no reason field
         },
     )
-    rego_allowlist_findings = [f for f in findings if f["rule"] == "REGO-ALLOWLIST"]
-    assert rego_allowlist_findings, "missing reason should produce REGO-ALLOWLIST finding"
+    rego_allowlist_findings = [f for f in findings if f["rule"] == "RG003"]
+    assert rego_allowlist_findings, "missing reason should produce RG003 finding"
 
 
 def test_allowlist_empty_reason_raises_rego_allowlist(tmpsrc):
@@ -48,5 +48,5 @@ def test_allowlist_empty_reason_raises_rego_allowlist(tmpsrc):
             "name_collision": [{"names": ["_x"], "reason": ""}],
         },
     )
-    rego_allowlist_findings = [f for f in findings if f["rule"] == "REGO-ALLOWLIST"]
-    assert rego_allowlist_findings, "empty reason should produce REGO-ALLOWLIST finding"
+    rego_allowlist_findings = [f for f in findings if f["rule"] == "RG003"]
+    assert rego_allowlist_findings, "empty reason should produce RG003 finding"

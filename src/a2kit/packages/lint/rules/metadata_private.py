@@ -17,7 +17,7 @@ from a2kit.packages.lint.static import LintMessage, _msg, is_fixture_path, parse
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-A2K_METADATA_PRIVATE = "A2K-METADATA-PRIVATE"
+A2K_METADATA_PRIVATE = "AK210"
 
 _METADATA_PRIVATE_ALLOWLIST = frozenset(
     {

@@ -23,7 +23,7 @@ class Env:
 """
     msgs = _findings(source)
     assert len(msgs) == 1
-    assert msgs[0].rule == "A2K-NO-DICT-STR-ANY"
+    assert msgs[0].rule == "AK214"
     assert "Env.payload" in msgs[0].message
 
 
@@ -105,7 +105,7 @@ from typing import Any
 
 @dataclass
 class Env:
-    payload: dict[str, Any]  # noqa: A2K-NO-DICT-STR-ANY -- wire envelope
+    payload: dict[str, Any]  # noqa: AK214 -- wire envelope
 """
     assert _findings(source) == []
 

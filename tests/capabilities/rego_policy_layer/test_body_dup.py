@@ -23,8 +23,8 @@ def test_body_dup_fires_for_cross_file_match(tmpsrc):
     _make_dup_fixture(tmpsrc, "process_items")
     facts = extract([tmpsrc])
     findings = opa_eval(facts, allowlist={"body_dup": [], "name_collision": []})
-    body_dup_findings = [f for f in findings if f["rule"] == "REGO-BODY-DUP"]
-    assert body_dup_findings, "expected REGO-BODY-DUP to fire"
+    body_dup_findings = [f for f in findings if f["rule"] == "RG001"]
+    assert body_dup_findings, "expected RG001 to fire"
     msg = body_dup_findings[0]["message"]
     assert "process_items" in msg or "b.py" in msg
 
@@ -35,7 +35,7 @@ def test_body_dup_respects_body_stmt_count_floor(tmpsrc):
     write_py(tmpsrc, "b.py", "def g():\n    y = 1\n    return y\n")
     facts = extract([tmpsrc])
     findings = opa_eval(facts, allowlist={"body_dup": [], "name_collision": []})
-    assert not [f for f in findings if f["rule"] == "REGO-BODY-DUP"], "should not fire on bodies below stmt-count floor"
+    assert not [f for f in findings if f["rule"] == "RG001"], "should not fire on bodies below stmt-count floor"
 
 
 def test_body_dup_allowlist_drops_matched_pair(tmpsrc):
@@ -48,7 +48,7 @@ def test_body_dup_allowlist_drops_matched_pair(tmpsrc):
             "name_collision": [],
         },
     )
-    assert not [f for f in findings if f["rule"] == "REGO-BODY-DUP"], "allowlisted pair should be filtered"
+    assert not [f for f in findings if f["rule"] == "RG001"], "allowlisted pair should be filtered"
 
 
 def test_body_dup_does_not_fire_within_same_file(tmpsrc):
@@ -58,4 +58,4 @@ def test_body_dup_does_not_fire_within_same_file(tmpsrc):
     write_py(tmpsrc, "single.py", src)
     facts = extract([tmpsrc])
     findings = opa_eval(facts, allowlist={"body_dup": [], "name_collision": []})
-    assert not [f for f in findings if f["rule"] == "REGO-BODY-DUP"]
+    assert not [f for f in findings if f["rule"] == "RG001"]

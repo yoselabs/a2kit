@@ -167,7 +167,7 @@ class Router:
             # Resolve effective visibility: per-tool kwarg (if explicitly set)
             # → Router class attr → "all" baseline. Per-tool None means inherit.
             if meta.extras.visibility is None:
-                meta.extras.visibility = type(self).visibility  # noqa: A2K-EXTRA-NAMESPACE
+                meta.extras.visibility = type(self).visibility  # noqa: AK208
             bound.append(bound_method)
 
         self._tools: list[Callable[..., Any]] = bound

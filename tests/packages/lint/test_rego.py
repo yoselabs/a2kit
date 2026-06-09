@@ -12,14 +12,14 @@ from a2kit.packages.lint.rego import RegoWrapperError, _to_lint_message
 
 def test_to_lint_message_maps_all_fields():
     finding = {
-        "rule": "REGO-BODY-DUP",
+        "rule": "RG001",
         "file": "src/foo.py",
         "line": 42,
         "col": 0,
         "message": "body matches src/bar.py:10",
     }
     msg = _to_lint_message(finding)
-    assert msg.rule == "REGO-BODY-DUP"
+    assert msg.rule == "RG001"
     assert msg.filename == "src/foo.py"
     assert msg.line == 42
     assert msg.col == 0
@@ -28,7 +28,7 @@ def test_to_lint_message_maps_all_fields():
 
 def test_to_lint_message_tolerates_missing_fields():
     msg = _to_lint_message({})
-    assert msg.rule == "REGO-UNKNOWN"
+    assert msg.rule == "RG000"
     assert msg.filename == "?"
     assert msg.line == 0
     assert msg.col == 0

@@ -197,7 +197,7 @@ def _build_in_function_basemodel_router() -> None:
         slug = "r"
 
         @a2kit.read()
-        async def t(self) -> LocalResult:  # noqa: A2K-LOCAL-RETURN-MODEL
+        async def t(self) -> LocalResult:  # noqa: AK207
             return LocalResult(ok=True)
 
 
@@ -205,7 +205,7 @@ def test_decoration_raises_for_in_function_basemodel() -> None:
     """Defining a tool whose return type is an in-function BaseModel raises at import time."""
     with pytest.raises(InvalidToolReturnTypeError) as ei:
         _build_in_function_basemodel_router()
-    assert "A2K-LOCAL-RETURN-MODEL" in str(ei.value)
+    assert "AK207" in str(ei.value)
     assert "<locals>" in str(ei.value) or "non-module scope" in str(ei.value)
 
 
@@ -231,14 +231,14 @@ def _build_generic_carrier_router() -> None:
         slug = "r"
 
         @a2kit.read()
-        async def t(self) -> list[Inner]:  # noqa: A2K-LOCAL-RETURN-MODEL
+        async def t(self) -> list[Inner]:  # noqa: AK207
             return []
 
 
 def test_decoration_raises_for_generic_carrier_with_local_basemodel() -> None:
     with pytest.raises(InvalidToolReturnTypeError) as ei:
         _build_generic_carrier_router()
-    assert "A2K-LOCAL-RETURN-MODEL" in str(ei.value)
+    assert "AK207" in str(ei.value)
 
 
 def test_str_return_still_raises_existing_error() -> None:
@@ -249,7 +249,7 @@ def test_str_return_still_raises_existing_error() -> None:
             slug = "r"
 
             @a2kit.read()
-            async def t(self) -> str:  # noqa: A2K002
+            async def t(self) -> str:  # noqa: AK002
                 return "hi"
 
     assert "antipattern #1" in str(ei.value) or "str" in str(ei.value)
