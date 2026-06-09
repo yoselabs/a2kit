@@ -287,6 +287,12 @@ def build(
     if surface_registry is not None:
         _validate_descriptor_expose(descriptors, surface_registry)
 
+    # Layer-2 backstop: assert global canonical-name uniqueness over the
+    # snapshotted descriptors before any AppRuntime is produced. Shares the
+    # one resolver with the standalone `validate_composition`, so build() and
+    # the validator fail identically (ADR 0028 decision 6, validate-composition).
+    _assert_unique_canonical_names(descriptors)
+
     health = HealthRegistry(enabled=app._health.enabled, checks=list(app._health.checks))  # noqa: SLF001 -- finisher snapshot
 
     runtime = AppRuntime(
@@ -449,4 +455,73 @@ def _validate_descriptor_expose(descriptors: list[ToolDescriptor], surface_regis
     raise TypeError(msg)
 
 
-__all__ = ["AppRuntime", "build"]
+def _assert_unique_canonical_names(descriptors: list[ToolDescriptor]) -> None:
+    """Assert global canonical-name uniqueness; fail loud on the offending pair.
+
+    The canonical name (``desc.name``, produced by the one shared
+    :func:`a2kit._surfaces.resolve_canonical_name`) is the single call-journal
+    / audit key (ADR 0028 decision 6). Two verbs resolving to the same name
+    make every name-keyed consumer ambiguous, so uniqueness is **global** —
+    independent of which surface each verb appears on. On collision this raises
+    naming the canonical name and BOTH offending verbs (slug-or-app + leaf
+    each); it never silently picks a winner, renames, or defers to dispatch.
+
+    Layer 2 of the two-layer model: the static dup-name lint rule (layer 1)
+    consumes the same resolver, so the layers cannot disagree.
+    """
+
+    def _ident(desc: ToolDescriptor) -> str:
+        slug = getattr(desc.router, "slug", None)
+        leaf = getattr(desc.fn, "__name__", "<verb>")
+        return f"{slug}.{leaf}" if slug else f"<app>.{leaf}"
+
+    seen: dict[str, ToolDescriptor] = {}
+    for desc in descriptors:
+        canonical = desc.name
+        prior = seen.get(canonical)
+        if prior is not None:
+            msg = (
+                f"duplicate canonical name {canonical!r}: {_ident(prior)} and "
+                f"{_ident(desc)} resolve to the same name — the global "
+                "call-journal / audit key (ADR 0028 decision 6). Rename one "
+                "verb or give it a distinct canonical_name_override=."
+            )
+            raise ValueError(msg)
+        seen[canonical] = desc
+
+
+def validate_composition(app: App | AppRuntime) -> None:
+    """Validate a compose-phase ``App`` WITHOUT a full surface build.
+
+    The standalone runtime backstop (ADR 0028 decision 6, layer 2). For every
+    projection verb (app-level verbs + every router's verbs) it resolves the
+    surfaces matrix and the canonical name via the shared
+    :func:`a2kit._surfaces.resolve_canonical_name`, then asserts **global**
+    canonical-name uniqueness, failing loud on the offending pair. It also runs
+    the same unknown-surface check ``build()`` performs, now reachable offline.
+
+    Crucially it does NOT seal the App's container, re-materialize descriptors,
+    or construct any transport (FastAPI / FastMCP / Typer) — so a unit test MAY
+    assert that an App composes cleanly without standing up a runtime. Returns
+    ``None`` on success. ``build()`` invokes the same uniqueness backstop over
+    its snapshotted descriptors, so the two entry points share one resolver and
+    cannot drift.
+    """
+    descriptors: list[ToolDescriptor]
+    if isinstance(app, AppRuntime):
+        descriptors = list(app.descriptors())
+    else:
+        # Compose-phase descriptors: materialized at compose time, carrying the
+        # canonical ``name`` from the shared resolver. Reading them touches no
+        # container seal and builds no transport.
+        descriptors = app.tools()
+
+    from a2kit import compose_default_surfaces  # noqa: A2K-PKG-INIT-IMPORT
+
+    surface_registry = compose_default_surfaces()
+    if surface_registry is not None:
+        _validate_descriptor_expose(descriptors, surface_registry)
+    _assert_unique_canonical_names(descriptors)
+
+
+__all__ = ["AppRuntime", "build", "validate_composition"]

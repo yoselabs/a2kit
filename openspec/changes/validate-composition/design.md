@@ -104,3 +104,15 @@ finisher's `build(app)` step.
   *of* the resolver's output; it does not define resolution.
 - The **HTTP visibility leak** (friction #4 leak-half): separate
   `fix-http-visibility-leak`. This is the list-half complement.
+
+## Implementation note — public-surface tier (2026-06-09)
+
+`validate_composition` is exposed at **Tier 2** (its canonical home
+`a2kit.runtime`, alongside `build`), NOT promoted to Tier 1 (`a2kit.*`).
+ADR 0004 caps the `a2kit.*` front door at ≤10 **verb-authoring** names and
+forbids adding `_LAZY_ATTRS` entries without a dedicated ADR; a composition
+*validator* is not part of the 95% authoring surface, so it stays at the
+longer public path. The spec's "expose from the public surface" is
+satisfied by `from a2kit.runtime import validate_composition` (the same
+module from which finishers already import `build`). If a future need
+justifies front-door promotion, that is a separate ADR-0004 amendment.
