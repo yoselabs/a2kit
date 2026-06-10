@@ -10,9 +10,11 @@ lives in the consumer's dispatch hook (``pre_hook`` arg). The hook may
 publish typed instances on the per-call child via the ``seed`` callable
 it receives.
 
-Legacy methods (``register`` / ``register_singleton`` / ``resolve`` /
-``aresolve`` / ``has`` / async-singleton helpers) raise ``TypeError``
-with v0.38 migration hints. See CHANGELOG.
+The legacy method names (``register`` / ``register_singleton`` /
+``resolve`` / ``aresolve`` / ``has`` / async-singleton helpers) are
+removed: accessing one raises the language-default ``AttributeError``.
+The replacements (``provide`` / ``get`` / ``has_provider``) are in the
+CHANGELOG.
 """
 
 from __future__ import annotations

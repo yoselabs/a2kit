@@ -249,10 +249,9 @@ class App:
         """Raise the standard unexpected-kwargs ``TypeError``.
 
         Core hygiene (`AGENTS.md` §3): any kwarg outside the declared set
-        is rejected loud, naming the offending keys + the CHANGELOG. Past
-        per-kwarg migration hints (``lifespan`` / ``debug`` / ``health_tool``)
-        were swept under the tombstone sunset rule; those kwargs now fall
-        through to this generic path.
+        is rejected loud, naming the offending keys + the CHANGELOG. Removed
+        kwargs (e.g. ``lifespan`` / ``debug`` / ``health_tool``) fall through
+        to this generic path — no per-kwarg hint, the CHANGELOG is the recipe.
         """
         msg = f"App({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for removals across versions."
         raise TypeError(msg)

@@ -34,7 +34,7 @@ _CODE_MODE_EXTRA = "a2kit[code-mode]"
 
 
 def _require_monty() -> None:
-    """Raise with a migration hint when the Monty sandbox runtime is absent.
+    """Raise with an install hint when the Monty sandbox runtime is absent.
 
     FastMCP's `CodeMode` module imports cleanly without `pydantic-monty`
     (the runtime is imported lazily on first sandbox execution). This
