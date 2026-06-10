@@ -11,7 +11,7 @@ MCP and a Jira/Confluence-wrapping MCP) and a2kit itself. Each entry:
 >   via `FunctionTool.from_function` directly; the underscore-prefixed
 >   manager is no longer reached for schema extraction.
 > - **old #5** (`pytest11` entry-point auto-registration) — there is no
->   `a2kit.pytest_plugin` module in v1.0. Test fixtures live in
+>   `pytest_plugin` module in v1.0. Test fixtures live in
 >   `a2kit.packages.testing` and are imported explicitly.
 > - **old #6** ("don't ship a `main()` / `MCPRunner`") — v1.0 ships exactly
 >   one entry, `a2kit.run(app)`. The lesson now applies to App composition,
@@ -156,10 +156,10 @@ project key and gets a confusing not-found error.
 What to do: the v1.0 CLI / MCP adapters auto-inject the canonical
 connection-parameter description from the `ConnectionConfig` type the
 factory resolves. Tool docstrings should *not* re-state it. Lint rule
-A2K013 fires when a tool's docstring calls
+AK013 fires when a tool's docstring calls
 `a2kit.docs.connection_param_doc(...)` — auto-injection covers it.
 
-Citation: `src/a2kit/packages/lint/rules/shape.py` (A2K013, marker
+Citation: `src/a2kit/packages/lint/rules/shape.py` (AK013, marker
 `_A2K013_MARKERS`).
 
 ## 8. OTel must not import the package when no provider is set
@@ -248,8 +248,8 @@ hides version coupling and breaks when those libraries evolve independently.
 What to do: import from the owning library directly.
 
 ```python
-from uncalled_for import Depends                                  # not a2kit.Depends
-from fastmcp import Context                                       # not a2kit.Context
+from uncalled_for import Depends                                  # NOT re-exported by a2kit
+from fastmcp import Context                                       # NOT re-exported by a2kit
 from fastmcp.server.auth.providers.google import GoogleAuthProvider
 ```
 
@@ -290,31 +290,23 @@ receives it as an unparsed string. Pattern-matching on log lines is
 fragile, and the agent loses any signal that "this was a finding worth
 reacting to" vs "this was ambient telemetry."
 
-What to do: use `a2kit.ldd.event(name, **payload)` for typed narrative
-milestones (`a2kit.ldd.event("duplicates.found", count=3, batch=4)`) or
-`a2kit.ldd.report(payload)` for typed result chunks declared via the
-`reports=` kwarg on the verb decorator. Both stream immediately to the
-client and arrive as structured data — the agent can filter by event
-name, dispatch on report type, or surface the payload to the user
-without parsing the log line.
+What to do: pass a typed instance to a level method —
+`await a2kit.log.info(DuplicatesFound(count=3, batch=4))` for a typed
+narrative milestone. The instance rides the level method (there is no
+separate `event()` / `report()` verb): it is dumped to a JSON-safe dict
+and streams immediately to the client as structured data, so the agent
+can dispatch on the payload type or surface fields to the user without
+parsing the log line.
 
-Citation: `src/a2kit/packages/ldd/__init__.py`.
+Citation: `src/a2kit/packages/log/__init__.py`.
 
-## 15. Don't rely on `A2KIT_LDD=off` env var inside test code
+## 15. ~~Don't rely on `A2KIT_LDD=off` env var inside test code~~ (RETIRED in v0.40)
 
-The mistake: integration tests that disable the LDD channels by setting
-`A2KIT_LDD=off` in the test environment. The env var is read once at
-`App.__init__`, so any App constructed before the env mutation keeps the
-old value, and any App constructed in a child process inherits the parent
-process's env at fork time. Test results become order-dependent and
-hard to reproduce.
-
-What to do: pass `app.set_ldd(reports=False, events=False)` explicitly
-in the test's setup. This works regardless of import order, regardless
-of how the App was constructed, and is visible at the test's call site
-(no hidden env spookiness).
-
-Citation: `src/a2kit/app.py::App.set_ldd`.
+The `A2KIT_LDD` env var and the `set_ldd` runtime kill-switch were removed
+by the stdlib-logging refounding (ADR 0027). Visibility is now controlled
+by per-handler levels (`A2KIT_LOG__WIRE_LEVEL`, `A2KIT_LOG__CALL_LOG_LEVEL`),
+read by stdlib logging — there is no per-App channel toggle to flip from
+test code, so the order-dependent-env hazard no longer exists.
 
 ## 16. Factories are functions, not classes
 
@@ -355,24 +347,30 @@ Citation: `examples/tracker/store.py::TrackerStore.__init__`.
 
 ## 18. Three named verbs, not one polymorphic `use`
 
-The mistake: re-introducing `app.use(thing)` polymorphism — same call
+The mistake: re-introducing a polymorphic `use(thing)` method — same call
 accepts a Router, a Click group, a middleware, an arbitrary class, etc.,
 with type-driven dispatch. It reads compactly at the call site, but the
 runtime walks an `isinstance` ladder, the order matters, and the next
 unfamiliar type silently miscategorises (the original `pluggable-core`
 ladder mismatched ABCMeta's `register()` against the Plugin Protocol).
 
-What to do: three named verbs, each takes one specific kind of thing.
+What to do: name each kind explicitly. Routers are declared on the App
+subclass via the `routers` ClassVar; CLI groups and MCP middleware keep
+their own named verbs.
 
 ```python
-app.add_router(TasksRouter(get_store))
+class Tracker(a2kit.App):
+    routers = (TasksRouter,)        # declarative, not a polymorphic use()
+
 app.add_cli(connections_cli(TrackerConn))
 app.add_mcp_middleware(my_middleware)
 ```
 
-The reader sees `add_router(...)`, knows it's a Router. No surprises.
+The reader sees `routers = (...)` / `add_cli(...)`, knows exactly what
+each is. No `isinstance` ladder, no order-dependence.
 
-Citation: `src/a2kit/app.py::App.add_router`.
+Citation: `src/a2kit/app.py` (the `routers` ClassVar, `add_cli`,
+`add_mcp_middleware`).
 
 ## 19. v0.21 — feature kwargs accumulating on the verb decorator
 
@@ -400,9 +398,8 @@ async def import_csv(self, *, ctx, file: str) -> dict: ...
 async def import_csv(self, *, ctx, file: str) -> dict: ...
 ```
 
-The boundary is enforced by lint (`A2K-CORE-CLEAN`, `A2K-EXTRA-NAMESPACE`):
-core source can't reference feature identifiers, and `extra` keys must be
-namespaced (`a2kit.*` or `<package>.*`).
+The boundary is enforced by the `AK208` extra-namespace lint rule:
+`extra` keys must be namespaced (`a2kit.*` or `<package>.*`).
 
 Citation: `src/a2kit/tool.py::_stamp` — three kwargs, full stop.
 
@@ -583,43 +580,39 @@ crashed on real MCP transport with
 — masked as `ToolError: Error calling tool 'X'` to agents under
 `App(debug=False)`.
 
-Use `a2kit.ldd.info(ctx, msg, **fields)` (and `warning` / `error` /
-`debug` siblings) for structured field-bearing logging. The free
-function dispatches internally: `await ctx.log(level=..., message=...,
-extra={...})` on MCP, `_emit(LEVEL, msg, fields)` on CLI. Same wire
-format, same rendering, both transports green. `ctx.info("plain
-message")` and `ctx.info("msg", extra={...})` (fastmcp's narrow form)
-continue to work; only the `**kwargs` shape was an invention.
+Use `a2kit.log.info(msg, **fields)` (and `warning` / `error` / `debug`
+siblings) for structured field-bearing logging. These are ambient — they
+read `ctx` from the active dispatch scope, so you pass no `ctx`. Same wire
+format and rendering on every transport. `ctx.info("plain message")` and
+`ctx.info("msg", extra={...})` (fastmcp's narrow form) continue to work;
+only the `**kwargs` shape on `ctx.info` was an invention.
 
 ```python
-# Before:
+# Before (the invented widened `ctx.info` shape):
 await ctx.info("starting import", file=file, batch_size=batch_size)
 
 # After:
-from a2kit.ldd import info
-await info(ctx, "starting import", file=file, batch_size=batch_size)
+await a2kit.log.info("starting import", file=file, batch_size=batch_size)
 ```
 
-Citation: `src/a2kit/packages/ldd/__init__.py::log` (the dispatcher);
-`tests/test_context_surface.py::test_field_bearing_logging_is_only_on_ldd_not_on_ctx`
-(the architectural-invariant test that catches regressions).
+Citation: `src/a2kit/packages/log/__init__.py` (the level methods).
 
 
 ## 26. v0.31 — reaching into `A2KitMeta.extras` by string key
 
 Pre-v0.31, `A2KitMeta.extra` was a `dict[str, Any]` open extension slot.
-Verb decorators and routers wrote namespaced keys (`"a2kit.report_type"`,
-`"a2kit.router_slug"`, `"a2kit.list_view"`, `"a2kit.surfaces"`,
-`"a2kit.report_schema"`); consumers read them with `meta.extra.get(...)`.
-The open-dict shape carried no type guarantees and let typos go silent.
+Verb decorators and routers wrote namespaced string keys
+(`"a2kit.<feature>"` — e.g. the report-type, router-slug, or list-view
+key); consumers read them with `meta.extra.get(...)`. The open-dict shape
+carried no type guarantees and let typos go silent.
 
 The v0.31 surface is `A2KitMeta.extras: A2KitMetaExtras`, a pydantic
 `BaseModel` with named fields. Read and write by attribute access:
 
 ```python
-# Before:
-report_type = meta.extra.get("a2kit.report_type")
-meta.extra["a2kit.router_slug"] = "tasks"
+# Before (untyped string keys):
+report_type = meta.extra.get("a2kit.<feature>")
+meta.extra["a2kit.<feature>"] = "tasks"
 
 # After:
 report_type = meta.extras.report_type
@@ -838,11 +831,11 @@ type from the live dispatch scope at use time.
 
 Citation: `src/a2kit/packages/di/container.py::_validate_scope_graph`.
 
-### `app.override(T, fake)` does not exist — re-register instead
+### There is no `override` seam — re-register instead
 
 ```python
-# Don't:
-app.override(LLM, FakeLLM())  # AttributeError — method removed
+# Don't — there is no override method (raises AttributeError):
+override(LLM, FakeLLM())
 ```
 
 There is no dedicated test-override seam. Re-register the type at the

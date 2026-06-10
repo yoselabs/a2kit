@@ -75,6 +75,7 @@ lint:
 	uv run a2kit lint rego src/
 	uv run pytest tests/test_readme_symbol_drift.py --no-cov -q
 	uv run pytest tests/test_spec_symbol_drift.py --no-cov -q
+	uv run pytest tests/test_docs_symbol_drift.py --no-cov -q
 
 format:
 	uv run ruff format .

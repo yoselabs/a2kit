@@ -140,9 +140,7 @@ advertising the budget in MCP annotations, that becomes a separate concern
   instances) — entered and unwound per-App.
 - Dispatch hook (`app._dispatch_hook`) — per-App; built lazily on first
   `provide(...)`.
-- LDD state (events/reports kill-switches) — per-App.
 - Health registry (`app._health`) — per-App.
-- Typed event registry (`app.ldd.events`) — per-App.
 
 Production-supported. Two App instances in one process do not share state.
 The MCP server build (`build_mcp_server(app)`) is App-scoped; you can run two
@@ -241,14 +239,16 @@ FastMCP-independence assertion (same payload shape regardless of
 full return value, formats it, and emits one response. There is no
 chunked-output API.
 
-**Workaround for mid-flight visibility — heartbeat events.** When a tool
-has a long-running phase (slow network tier, browser render, batch
-extract) and a caller needs to see *where* it is — especially before a
-timeout fires — emit periodic heartbeat events from inside the phase:
+**Workaround for mid-flight visibility — heartbeats.** When a tool has a
+long-running phase (slow network tier, browser render, batch extract) and
+a caller needs to see *where* it is — especially before a timeout fires —
+emit periodic heartbeats from inside the phase. A heartbeat is a typed
+instance passed to a level method; it streams to the wire as it is logged:
 
 ```python
 from dataclasses import dataclass
 import anyio
+import a2kit
 
 @dataclass
 class TierHeartbeat:
@@ -256,66 +256,52 @@ class TierHeartbeat:
     elapsed_s: float
     status: str
 
-# At router setup:
-app.ldd.events.register(TierHeartbeat)
-
 @router.read()
 async def fetch(*, url: str, ctx: a2kit.ToolContext) -> FetchResponse:
     async with anyio.create_task_group() as tg:
-        tg.start_soon(_heartbeat_loop, ctx, "browser")
+        tg.start_soon(_heartbeat_loop, "browser")
         async with anyio.fail_after(60):
             return await browser_fetch(url)
 
-async def _heartbeat_loop(ctx, step: str) -> None:
+async def _heartbeat_loop(step: str) -> None:
     start = anyio.current_time()
     while True:
         await anyio.sleep(5)
-        await app.ldd.events.emit_typed(
-            ctx,
+        await a2kit.log.info(
             TierHeartbeat(step=step, elapsed_s=anyio.current_time() - start, status="…")
         )
 ```
 
-If the `fail_after` fires at 60s, the caller (and any attached sinks) has
-seen 11 heartbeats and knows the tool died in the `browser` phase, not
-the extraction that comes after.
+If the `fail_after` fires at 60s, the caller has seen 11 heartbeats and
+knows the tool died in the `browser` phase, not the extraction that comes
+after. The heartbeat loop reads `ctx` from the ambient dispatch scope, so
+it takes no `ctx` argument (see Q8).
 
-**In-process observation — `app.ldd.add_sink`.** OTel exporters, Datadog
-adapters, audit-log writers, and any other in-process consumer that wants
-to observe every emission (events and reports, on every transport)
-register an async sink:
+**In-process observation — stdlib logging handlers.** Emissions are stdlib
+`logging` records on the `a2kit` logger. Any in-process consumer (OTel
+exporter, Datadog adapter, audit writer) observes them by attaching a
+standard `logging.Handler`:
 
 ```python
-from a2kit.ldd import LddEmission
+import logging
 
-async def otel_sink(emission: LddEmission) -> None:
-    span = tracer.start_span(f"a2kit.{emission.name}")
-    try:
-        span.set_attribute("kind", emission.kind)
-        span.set_attribute("elapsed_ms", emission.elapsed_ms)
-        if emission.tool_name:
-            span.set_attribute("tool", emission.tool_name)
-        for k, v in emission.payload.items():
-            span.set_attribute(k, v)
-    finally:
-        span.end()
-
-app.ldd.add_sink(otel_sink)
+logging.getLogger("a2kit").addHandler(my_handler)
 ```
 
-Sinks receive every LDD emission after the wire emit (CLI stderr or MCP
-notification). Fan-out is sequential and best-effort: a sink exception
-is caught and logged on `a2kit.ldd.sinks`, never breaking tool dispatch.
+For a durable, queryable record of every call's I/O (args, result, timing,
+principal, plus any `debug`-logged bodies), enable the call-log
+(`A2KIT_LOG__CALL_LOG`): it writes JSONL on the dedicated, non-streaming
+`a2kit.calls` logger, structurally separate from the wire. See the
+`call-log` and `log-handlers` capabilities.
 
-**Cancellation contract.** When the surrounding `anyio.fail_after`
-expires (or the tool is otherwise cancelled), every emission that
-**completed** before cancellation arrived has landed — on the wire and
-on every sink that already ran. An emission in flight at the moment of
-cancellation may be dropped at the sink that was mid-await (and any
-sinks queued after it in the fan-out). This is intentional: sinks
-shouldn't block tool cancellation. For guaranteed delivery, write
-synchronous-fast sinks that push to a queue and process out-of-band;
-use `app.on_shutdown` to flush at shutdown.
+**Cancellation contract.** When the surrounding `anyio.fail_after` expires
+(or the tool is otherwise cancelled), every emission that **completed**
+before cancellation arrived has landed — on the wire and on every attached
+handler. An emission in flight at the moment of cancellation may be
+dropped. This is intentional: logging must not block tool cancellation. For
+guaranteed delivery, write a fast handler that enqueues and processes
+out-of-band, and flush it from a resource's `__aexit__` (the per-scope
+cleanup stack runs on dispatch / App teardown).
 
 See `docs/SPIKE_LDD_CANCELLATION.md` for the spike that established
 this contract.
@@ -356,16 +342,15 @@ to `_BUILTIN_RESERVED_TOOL_NAMES` in `src/a2kit/tool.py` and
 register it through an internal builder (see
 `packages/health/` for the pattern).
 
-## Q8. LDD primitives require an active tool dispatch
+## Q8. Log primitives require an active tool dispatch
 
-`a2kit.ldd.event`, `report`, `log`, and the `info` / `warning` /
-`error` / `debug` shorthands (plus `EventRegistry.emit_typed`) read
+The `a2kit.log.info` / `warning` / `error` / `debug` level methods read
 their `ctx` from an ambient `ContextVar` set by the dispatcher for the
 duration of one tool invocation. They take NO `ctx` argument.
 
 "Active dispatch" means: a tool body (or any helper / phase function
-it transitively calls) is currently running under an
-`ldd_state_for_call(ctx=...)` scope that the framework opened around
+it transitively calls) is currently running under a
+`bind_call_scope(ctx=...)` scope that the framework opened around
 the dispatch. The dispatcher synthesizes a non-None ambient `ctx` for
 **every** framework-dispatched tool, regardless of whether the tool's
 body declares `ctx: ToolContext` in its signature. Calling from
@@ -376,11 +361,11 @@ omitted its `ctx` declaration **does not raise** — the framework's
 synthesized ambient ctx handles it (relax-ldd-ambient-requirement,
 2026-05-15).
 
-The legacy Mode B (`MODE_MISSING_CTX_PARAM`) constant is retained
-for backward compatibility but is unreachable from framework code
-paths. The raise still fires for external misuse, e.g. manually
-constructing `ldd_state_for_call(ctx=None)` and then calling an LDD
-primitive — that's documented misuse, not a normal path.
+Mode B (`MODE_MISSING_CTX_PARAM`) is retained as defense-in-depth but
+is unreachable from framework code paths. The raise still fires for
+external misuse, e.g. manually constructing `bind_call_scope(ctx=None)`
+and then calling a log primitive — that's documented misuse, not a
+normal path.
 
 Lazy singleton factories instantiated **during** a dispatch are
 reachable from the active scope and may call LDD primitives. The
@@ -390,27 +375,26 @@ ambient ctx:
 
 ```python
 async def make_pool() -> Pool:
-    await a2kit.ldd.info("opening pool")  # legal: dispatch in flight
+    await a2kit.log.info("opening pool")  # legal: dispatch in flight
     return Pool(...)
 
 app.provide(Pool, make_pool)
 ```
 
 What's still illegal is the same factory invoked from module-level
-code or a warm-up script (no dispatch in flight at all). The shorthands surface
-their own name (`a2kit.ldd.info`, `…warning`, `…error`, `…debug`)
-in the error so the trace points at the actual call site rather than
-the delegated-to `a2kit.ldd.log`. The error names the primitive and
-points at the test seam. **There is no silent no-op fallback**; fail
-loud, fix the call site.
+code or a warm-up script (no dispatch in flight at all). The level
+methods surface their own name (`a2kit.log.info`, `…warning`,
+`…error`, `…debug`) in the error so the trace points at the actual call
+site. The error names the primitive and points at the test seam.
+**There is no silent no-op fallback**; fail loud, fix the call site.
 
 The "active dispatch" behavior is uniform across all three transports
 (MCP / CLI / TestClient): all of them synthesize a non-None ambient
 ctx for every dispatched tool, so a no-ctx tool that calls
-`await a2kit.ldd.event(...)` succeeds identically on every
+`await a2kit.log.info(...)` succeeds identically on every
 dispatcher. The wire-side emission goes through whichever concrete
 context the active transport provided (real `fastmcp.Context` for
-MCP / TestClient, `StderrToolContext` for CLI); the sink-side
+MCP / TestClient, `StderrToolContext` for CLI); the handler-side
 emission fires unconditionally inside any dispatch.
 
 Tests that want to exercise LDD primitives directly (without a full
@@ -638,12 +622,11 @@ per-call type to root's cache for the app's lifetime. Migration: move
 the inner type to app-scope, or make the outer factory per-call so
 the closure captures the per-call child container.
 
-**Per-call dispatch helper.** `Container.dispatch(fn, wire_kwargs)` is
+**Per-call dispatch helper.** `Container.call_scope(fn, wire_kwargs)` is
 an async context manager that opens a child resolver, resolves the
 tool's params (Lazy[T]-aware), yields merged kwargs, and unwinds
 per-call cleanup on exit with exception propagation through each
-`__aexit__`. Production wiring into MCP transport and CLI runtime
-lands with the a2web canonical-consumer migration.
+`__aexit__`. Both transports dispatch through it.
 
 **`pydantic_settings.BaseSettings` auto-resolution.** A tool param
 typed as a `BaseSettings` subclass auto-resolves without explicit
@@ -666,7 +649,7 @@ partial-entry safety + three named upstream-bug regressions
 convention, BaseSettings duck-typing, Resolver protocol conformance,
 standalone-isolation gate, and the dispatch-helper contract.
 
-The v0.35 `teardown=` / topological-ordering / `App.teardown_failures`
+The v0.35 `teardown=` / topological-ordering / `teardown_failures`
 machinery is **retired in v0.36** — single-protocol `__aenter__`/`__aexit__`
 on the resource itself + the per-scope cleanup stack subsume it.
 Topological order is no longer guaranteed (insertion-order LIFO via
