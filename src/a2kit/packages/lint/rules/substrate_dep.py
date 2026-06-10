@@ -1,11 +1,11 @@
 """A2K-SUBSTRATE-DEP — forbid FastAPI Depends/Security on MCP-exposed tools.
 
 A parameter typed `Annotated[T, fastapi.params.Depends|Security]` on a tool
-whose effective `expose` includes `"mcp"` would fail at build time inside
+whose effective `surfaces=` includes `"mcp"` would fail at build time inside
 `install_substrate_signature` with `SubstrateSignatureError`. This rule
 promotes that failure to lint time so authors hit it before they ever run.
 
-Tools explicitly scoped `expose=("api",)` are exempt — they never reach
+Tools explicitly scoped `surfaces=("api",)` are exempt — they never reach
 the FastMCP substrate.
 """
 
@@ -37,29 +37,43 @@ def _is_verb_decorator(node: ast.expr) -> tuple[bool, ast.Call | None]:
     return False, None
 
 
-def _expose_kwarg_value(call: ast.Call) -> tuple[str, ...] | None:
-    """Extract the literal `expose=(...)` kwarg value, or `None` if absent or non-literal."""
+def _surfaces_kwarg(call: ast.Call) -> ast.expr | None:
     for kw in call.keywords:
-        if kw.arg != "expose":
-            continue
-        value = kw.value
-        if isinstance(value, ast.Tuple | ast.List):
-            out: list[str] = []
-            for elt in value.elts:
-                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                    out.append(elt.value)
-                else:
-                    return None
-            return tuple(out)
-        return None
+        if kw.arg == "surfaces":
+            return kw.value
     return None
 
 
-def _effective_expose_includes_mcp(call: ast.Call) -> bool:
-    expose = _expose_kwarg_value(call)
-    if expose is None:
-        return True  # default expose=("mcp", "api") includes mcp
-    return "mcp" in expose
+def _dict_mcp_state(value: ast.Dict) -> str | None:
+    """Literal state string for the ``"mcp"`` key, ``""`` if the state is
+    non-literal, or ``None`` if ``"mcp"`` is absent from the dict."""
+    for k, v in zip(value.keys, value.values, strict=False):
+        if isinstance(k, ast.Constant) and k.value == "mcp":
+            if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                return v.value
+            return ""  # non-literal state
+    return None
+
+
+def _effective_surfaces_include_mcp(call: ast.Call) -> bool:
+    """True if the verb is mounted on the MCP surface (so a FastAPI marker leaks).
+
+    No ``surfaces=`` → default LISTED on every surface → mcp included. Tuple/list
+    shorthand → ``"mcp"`` among the named (LISTED) surfaces. Dict spelling → an
+    ``"mcp"`` entry whose state is not ``"absent"``. Non-literal anything →
+    conservatively assume mcp-exposed (the rule cannot prove exclusion).
+    """
+    value = _surfaces_kwarg(call)
+    if value is None:
+        return True  # default: LISTED on every surface, mcp included
+    if isinstance(value, ast.Tuple | ast.List):
+        names = [elt.value for elt in value.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)]
+        # A non-literal element → cannot prove mcp is excluded → assume exposed.
+        return len(names) != len(value.elts) or "mcp" in names
+    if isinstance(value, ast.Dict):
+        state = _dict_mcp_state(value)
+        return state != "absent" if state is not None else False
+    return True  # non-literal surfaces= → conservatively assume exposed
 
 
 def _name_of(node: ast.expr) -> str | None:
@@ -97,7 +111,7 @@ def rule_substrate_dep(tree: ast.AST, filename: str, source: str) -> Iterable[Li
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         verb_call = _find_verb_call(node)
-        if verb_call is None or not _effective_expose_includes_mcp(verb_call):
+        if verb_call is None or not _effective_surfaces_include_mcp(verb_call):
             continue
         for arg in (*node.args.args, *node.args.kwonlyargs):
             if not _annotation_carries_marker(arg.annotation):
@@ -111,7 +125,7 @@ def rule_substrate_dep(tree: ast.AST, filename: str, source: str) -> Iterable[Li
                 (
                     f"parameter {arg.arg!r} on tool {node.name!r} carries a FastAPI "
                     f"`Depends`/`Security` marker, which cannot appear on MCP-exposed "
-                    f"tools. Remove the marker or scope this tool with expose=('api',)."
+                    f"tools. Remove the marker or scope this tool with surfaces=('api',)."
                 ),
             )
 

@@ -61,14 +61,13 @@ def test_collection_preserves_definition_order() -> None:
     assert [fn.__name__ for fn in R().bound_tools()] == ["alpha", "beta", "gamma"]
 
 
-def test_router_slug_and_visibility_still_stamped() -> None:
+def test_router_slug_and_surfaces_still_stamped() -> None:
     from a2kit.metadata import _get_meta
 
     class R(a2kit.Router):
         slug = "memo"
-        visibility = "cli"
 
-        @a2kit.read()
+        @a2kit.read(surfaces=("cli",))
         def fetch(self) -> dict:
             return {}
 
@@ -76,4 +75,4 @@ def test_router_slug_and_visibility_still_stamped() -> None:
     meta = _get_meta(fn)
     assert meta is not None
     assert meta.extras.router_slug == "memo"
-    assert meta.extras.visibility == "cli"
+    assert meta.extras.surfaces == {"mcp": "absent", "api": "absent", "cli": "listed"}

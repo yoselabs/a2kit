@@ -1,11 +1,12 @@
-"""``expose=`` and ``authorize=`` kwargs on ``@a2kit.read/list/write``.
+"""``surfaces=`` and ``authorize=`` kwargs on ``@a2kit.read/list/write``.
 
-Per ``verb-decorators`` ADDED requirements (add-multi-surface) and
+Per ``surfaces-projection`` / ``verb-decorators`` and
 ``bootstrap-surfaces-explicit`` (2026-05-26):
 
-- Default ``expose=("mcp", "api")``.
-- Empty tuple raises ``ValueError`` at decoration time (a tool exposed
-  on no substrate is dead code).
+- Omitting ``surfaces=`` defaults to LISTED on every registered surface;
+  the derived mounted-surfaces tuple is ``ToolDescriptor.expose``.
+- ``surfaces=()`` raises ``ValueError`` at decoration time (a tool placed
+  on no surface is dead code).
 - Unknown surface names raise ``TypeError`` at **runtime.build()**
   time (NOT at decoration), per ``bootstrap-surfaces-explicit``:
   surface validation requires the composed registry, which is built
@@ -44,52 +45,55 @@ def _build(verb_decorator: Any, **extra: Any) -> a2kit.App:
     return app_of("demo", R())
 
 
-def test_default_expose_is_both_substrates() -> None:
+def test_default_surfaces_is_all_substrates() -> None:
     app = _build(a2kit.read)
     runtime = build(app)
     [desc] = runtime.tools()
+    # ``desc.expose`` reports only the NETWORK surfaces (mcp/api); cli is a
+    # local surface tracked in the matrix, not in expose. Default = LISTED
+    # everywhere, so both network surfaces are present.
     assert desc.expose == ("mcp", "api")
     assert desc.authorize is None
     assert desc.verb == "read"
 
 
-def test_expose_mcp_only() -> None:
-    app = _build(a2kit.read, expose=("mcp",))
+def test_surfaces_mcp_only() -> None:
+    app = _build(a2kit.read, surfaces=("mcp",))
     runtime = build(app)
     [desc] = runtime.tools()
     assert desc.expose == ("mcp",)
 
 
-def test_expose_api_only() -> None:
-    app = _build(a2kit.write, expose=("api",))
+def test_surfaces_api_only() -> None:
+    app = _build(a2kit.write, surfaces=("api",))
     runtime = build(app)
     [desc] = runtime.tools()
     assert desc.expose == ("api",)
     assert desc.verb == "write"
 
 
-def test_empty_expose_raises_at_decoration() -> None:
+def test_empty_surfaces_raises_at_decoration() -> None:
     with pytest.raises(ValueError, match="at least one surface"):
 
         class R(a2kit.Router):
             slug = "demo"
 
-            @a2kit.read(expose=())
+            @a2kit.read(surfaces=())
             async def t(self, *, k: str) -> dict[str, str]:
                 return {"k": k}
 
 
 def test_unknown_substrate_raises_at_build() -> None:
-    """Per `bootstrap-surfaces-explicit`: unknown surface in expose= is
+    """Per `bootstrap-surfaces-explicit`: unknown surface in surfaces= is
     a build-time error, not a decoration-time error. The decorator
-    captures expose= unchanged; build() walks descriptors and validates
+    captures surfaces= unchanged; build() walks descriptors and validates
     against the composed surface registry passed via `surfaces=`.
     """
 
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("mcp", "graphql"))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("mcp", "graphql"))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -107,7 +111,7 @@ def test_unknown_surface_error_enumerates_registered_names() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("zzz",))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("zzz",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -143,7 +147,7 @@ def test_newly_registered_surface_name_is_accepted_via_explicit_surfaces() -> No
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("stub_expose",))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("stub_expose",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -177,7 +181,7 @@ def test_empty_surfaces_skips_validation() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("mcp",))
+        @a2kit.read(surfaces=("mcp",))
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -205,7 +209,7 @@ def test_list_decorator_carries_expose_and_authorize() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.list_("k", expose=("mcp",), authorize=_gate)
+        @a2kit.list_("k", surfaces=("mcp",), authorize=_gate)
         async def items(self, *, q: str) -> list[dict[str, str]]:
             return [{"k": q}]
 
@@ -222,7 +226,7 @@ def test_meta_extras_carry_expose_and_authorize() -> None:
     async def _gate() -> bool:
         return True
 
-    @a2kit.read(expose=("api",), authorize=_gate)
+    @a2kit.read(surfaces=("api",), authorize=_gate)
     async def fetch(*, id: str) -> dict[str, str]:
         return {"id": id}
 
@@ -233,7 +237,7 @@ def test_meta_extras_carry_expose_and_authorize() -> None:
 
 
 def test_http_build_filters_by_expose() -> None:
-    """A projection tool with expose=('mcp',) does NOT mount on /api."""
+    """A projection tool with surfaces=('mcp',) does NOT mount on /api."""
     from fastapi.testclient import TestClient
 
     from a2kit.packages.http import build_http_app
@@ -241,11 +245,11 @@ def test_http_build_filters_by_expose() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("mcp",))
+        @a2kit.read(surfaces=("mcp",))
         async def mcp_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-        @a2kit.read(expose=("api",))
+        @a2kit.read(surfaces=("api",))
         async def api_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 

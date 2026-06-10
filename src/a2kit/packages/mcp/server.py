@@ -314,11 +314,11 @@ def build_mcp_server(
         validate_selector(_selector, available=_available_mcp)
 
     for desc in runtime.tools():
-        # Honour per-tool expose: a projection tool registered as
-        # `@a2kit.read(expose=("api",))` does NOT appear on the FastMCP
+        # Honour per-tool surfaces: a projection tool registered as
+        # `@a2kit.read(surfaces=("api",))` does NOT appear on the FastMCP
         # surface. The pre-extension `_meta.*` health router uses
-        # `_read_internal` which stamps default `expose=("mcp","api")`,
-        # so it continues to land here.
+        # `_read_internal` which stamps the default (LISTED on every
+        # surface), so it continues to land here.
         if "mcp" not in desc.expose:
             continue
         # Runtime tool selection: drop tools not in the (validated) selector.

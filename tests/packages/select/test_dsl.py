@@ -158,7 +158,7 @@ def _build_three_tool_app() -> a2kit.App:
         async def upsert_user(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
-        @a2kit.read(expose=("mcp",))
+        @a2kit.read(surfaces=("mcp",))
         async def llm_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 

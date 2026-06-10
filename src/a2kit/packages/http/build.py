@@ -96,7 +96,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
         return {"status": "ok"}
 
     # Projection tools as POST /api/<name>. Filter by `"api" in expose`
-    # so tools explicitly opted out (e.g. `@app.read(expose=("mcp",))`)
+    # so tools explicitly opted out (e.g. `@app.read(surfaces=("mcp",))`)
     # do not surface on the FastAPI sub-app.
     api_surface_obj = runtime.surfaces.get("api")
     for desc in runtime.tools():

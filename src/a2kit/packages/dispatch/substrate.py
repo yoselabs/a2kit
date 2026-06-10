@@ -449,7 +449,7 @@ def _reject_substrate_dep_on_alien_surface(fn: Callable[..., Any], surface: Surf
     msg = (
         f"{fn_name}: parameter(s) {sorted(offending)} carry FastAPI `Depends`/`Security` "
         f"markers, which cannot appear on MCP-exposed tools. Remove the marker "
-        f"or scope this tool with expose=('api',)."
+        f"or scope this tool with surfaces=('api',)."
     )
     raise SubstrateSignatureError(message=msg)
 

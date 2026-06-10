@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.42.1 — 2026-06-11
+
+### Changed — Removed the legacy `expose=` / `visibility=` kwargs outright (BREAKING)
+
+v0.42.0 kept `@a2kit.read/write/list_(expose=…, visibility=…)` working as a
+**silent** backward-compat shim (mapped forward to `surfaces=` with no warning).
+That is the exact drift-hiding `AGENTS.md` §1 forbids ("graceful migration paths
+hide drift from consumer read paths"), so the kwargs — and the Router-level
+`visibility` ClassVar default — are now **removed entirely**. There is no shim,
+no `DeprecationWarning`, no hinted tombstone: passing either kwarg raises the
+language-default `TypeError: read() got an unexpected keyword argument 'expose'`
+(caught statically by type checkers, at decoration time at runtime). `surfaces=`
+is the sole surface-placement axis.
+
+**A verb is available on all surfaces by default.** Omitting `surfaces=` is
+LISTED on `mcp` / `api` / `cli` — only opt *out* per-verb. There is no
+Router-level surface default (the `visibility` ClassVar is gone); a whole
+operator router that was CLI-only now spells `surfaces=("cli",)` on each verb.
+
+**Migration recipe.** The default surfaces are `("mcp","api","cli")`; legacy
+`visibility="all"` also always mounted the CLI ("god-view"), so faithful
+rewrites preserve CLI presence — a blind `expose→surfaces` rename silently drops
+the CLI mount:
+
+| Old | New |
+|---|---|
+| `expose=("mcp","api")`, `visibility="all"`, or nothing | omit `surfaces=` (default LISTED on mcp/api/cli) |
+| `expose=("mcp",)` | `surfaces=("mcp","cli")` (CLI preserved) |
+| `expose=("api",)` | `surfaces=("api","cli")` |
+| `visibility="cli"` | `surfaces=("cli",)` |
+| `visibility="hidden"` | `surfaces={"cli": "unlisted"}` |
+| `class Foo(Router): visibility = "cli"` | per-verb `surfaces=("cli",)` (no Router-level default) |
+
+The `AK211` (`A2K-SURFACE-EXPLICIT`) lint rule now prescribes an explicit
+`surfaces=` on credential-named tools (was `visibility=`); the `A2K-SUBSTRATE-DEP`
+rule reads `surfaces=` to decide MCP-exposure. The `A2KitMetaExtras.visibility`
+field and the `a2kit.tool.Visibility` type are removed; `extras.expose` /
+`ToolDescriptor.expose` (the derived mounted-surfaces tuple) are unchanged.
+
 ## 0.42.0 — 2026-06-10
 
 ### Changed — ADR 0028 unified surface: one typed verb projects to MCP/HTTP/CLI; App is authored by subclassing (BREAKING)
@@ -52,9 +91,9 @@ loud and naming both offending verbs.
 
 **`surfaces=` projection axis replaced `expose=` / `visibility=`.** A
 verb's surface matrix is now `@a2kit.read(surfaces=...)` with
-`{absent, listed, unlisted}` semantics. The old `expose=` / `visibility=`
-pair still works transitionally via a `_resolve_legacy` shim that maps it
-forward with a `DeprecationWarning` — migrate to `surfaces=`.
+`{absent, listed, unlisted}` semantics. In v0.42.0 the old `expose=` /
+`visibility=` pair still worked as a **silent** compat shim (no warning);
+it is **removed outright in v0.42.1** — migrate to `surfaces=`.
 
 **Test authoring: `a2kit.testing.app_of(name, *RouterClasses, **kw)`.**
 Returns an anonymous `App` subclass instance for fixtures and throwaway
@@ -67,7 +106,7 @@ apps — the replacement for `App(...) + add_router(...)` in tests.
 | `app = a2kit.App("n")` + `app.add_router(Foo())` | `class MyApp(a2kit.App): name = "n"; routers = (Foo,)` |
 | `a2kit.run(app)` / `build_mcp_server(app)` | `MyApp().serve()` / `a2kit.run(MyApp())` / `build_mcp_server(MyApp())` |
 | `class Foo(Router): tools = (x, y)` | drop `tools=`; `@a2kit.read/write/list_` methods auto-collect |
-| `@a2kit.read(expose=("mcp", "api"))` / `visibility=` | `@a2kit.read(surfaces=...)` (old pair maps via a `DeprecationWarning` shim) |
+| `@a2kit.read(expose=("mcp", "api"))` / `visibility=` | `@a2kit.read(surfaces=...)` (silent compat in v0.42.0; removed in v0.42.1) |
 | MCP tool name `jira.search` / mounted prefix | flat `jira_search` (`{slug}_{leaf}`); pin with `canonical_name_override=` |
 | test: build an `App` + `add_router(...)` | `a2kit.testing.app_of("n", FooRouter, BarRouter)` |
 

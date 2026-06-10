@@ -63,7 +63,7 @@ async def test_projection_tool_rejects_get() -> None:
 
 
 def _build_visibility_app() -> a2kit.App:
-    """App with one verb per visibility tier so the HTTP surface filter is exercised."""
+    """App with one verb per placement tier so the HTTP surface filter is exercised."""
 
     class R(a2kit.Router):
         slug = "ops"
@@ -72,11 +72,11 @@ def _build_visibility_app() -> a2kit.App:
         async def public_op(self, *, x: int = 0) -> dict[str, int]:
             return {"x": x}
 
-        @a2kit.write(visibility="cli")
+        @a2kit.write(surfaces=("cli",))
         async def trust_vault(self, *, path: str = "") -> dict[str, str]:
             return {"path": path}
 
-        @a2kit.read(visibility="hidden")
+        @a2kit.read(surfaces={"cli": "unlisted"})
         async def secret_op(self, *, y: int = 0) -> dict[str, int]:
             return {"y": y}
 
@@ -85,7 +85,7 @@ def _build_visibility_app() -> a2kit.App:
 
 @pytest.mark.asyncio
 async def test_cli_only_verb_not_mounted_on_http() -> None:
-    """`visibility="cli"` must not be reachable over HTTP — no route, 404."""
+    """`surfaces=("cli",)` must not be reachable over HTTP — no route, 404."""
     runtime = build(_build_visibility_app())
     async with runtime:
         api = build_http_app(runtime)
@@ -98,7 +98,7 @@ async def test_cli_only_verb_not_mounted_on_http() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_verb_not_mounted_on_http() -> None:
-    """`visibility="hidden"` must not be reachable over HTTP — matches MCP."""
+    """`surfaces={"cli": "unlisted"}` must not be reachable over HTTP — matches MCP."""
     runtime = build(_build_visibility_app())
     async with runtime:
         api = build_http_app(runtime)
@@ -108,7 +108,7 @@ async def test_hidden_verb_not_mounted_on_http() -> None:
 
 @pytest.mark.asyncio
 async def test_http_no_di_override_for_non_all_visibility() -> None:
-    """No dependency_overrides entry for an unmounted (non-"all") verb."""
+    """No dependency_overrides entry for an unmounted (cli-only) verb."""
     from tests.packages.http._vault_fixture import Vault, VaultRouter
 
     app = app_of("vis-di", VaultRouter()).provide(Vault, lambda: Vault())
@@ -212,11 +212,11 @@ async def test_api_surface_di_resolves_on_get() -> None:
             assert r.json() == {"tag": "store-ok"}
 
 
-def test_api_surface_expose_kwarg_rejected() -> None:
+def test_api_surface_surfaces_kwarg_rejected() -> None:
     surface = ApiSurface()
-    with pytest.raises(TypeError, match=r"expose="):
+    with pytest.raises(TypeError, match=r"surfaces="):
 
-        @surface.get("/x", expose=["api"])
+        @surface.get("/x", surfaces=["api"])
         async def _h() -> None:
             return None
 

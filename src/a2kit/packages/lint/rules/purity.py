@@ -36,7 +36,6 @@ _TYPED_EXTRAS_FIELDS = frozenset(
         "report_type",
         "report_schema",
         "router_slug",
-        "visibility",
         "list_view",
         "timeout_seconds",
         "expose",

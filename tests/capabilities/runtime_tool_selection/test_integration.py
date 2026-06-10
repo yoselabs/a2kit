@@ -101,12 +101,12 @@ def test_env_and_cli_intersect_when_both_set() -> None:
 
 
 def test_selector_cannot_re_enable_hidden_tool() -> None:
-    """Scenario 4: visibility='hidden' tool stays hidden even if named in selector."""
+    """Scenario 4: a cli-unlisted tool stays hidden from MCP even if named in selector."""
 
     class HidR(a2kit.Router):
         slug = "h"
 
-        @a2kit.read(visibility="hidden")
+        @a2kit.read(surfaces={"cli": "unlisted"})
         async def hidden_tool(self, *, x: str) -> dict[str, str]:
             return {"x": x}
 

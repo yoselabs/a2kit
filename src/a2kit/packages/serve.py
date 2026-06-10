@@ -46,8 +46,8 @@ if TYPE_CHECKING:
 def _surface_has_registrations(runtime: AppRuntime, surface_name: str) -> bool:
     """True if `runtime` has anything to expose on `surface_name`.
 
-    Honours per-tool `expose=`: a projection tool registered with
-    `@app.read(expose=("mcp",))` does NOT count towards `/api`. Author-
+    Honours per-tool `surfaces=`: a projection tool registered with
+    `@app.read(surfaces=("mcp",))` does NOT count towards `/api`. Author-
     written surface-native registrations (e.g. `@app.api.<method>` on
     `runtime.api_surface`, `@app.mcp.<feature>` on `runtime.mcp_surface`)
     always count.

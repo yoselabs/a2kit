@@ -39,13 +39,13 @@ async def test_mcp_tool_registers_and_resolves_di() -> None:
 
 
 async def test_projection_mcp_only_does_not_appear_on_api() -> None:
-    """``@a2kit.read(expose=("mcp",))`` mounts on FastMCP, NOT on FastAPI."""
+    """``@a2kit.read(surfaces=("mcp",))`` mounts on FastMCP, NOT on FastAPI."""
     from fastmcp import Client
 
     class R(a2kit.Router):
         slug = "mem"
 
-        @a2kit.read(expose=("mcp",))
+        @a2kit.read(surfaces=("mcp",))
         async def mcp_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -58,13 +58,13 @@ async def test_projection_mcp_only_does_not_appear_on_api() -> None:
 
 
 async def test_projection_api_only_does_not_appear_on_mcp() -> None:
-    """``@a2kit.write(expose=("api",))`` is hidden from FastMCP."""
+    """``@a2kit.write(surfaces=("api",))`` is hidden from FastMCP."""
     from fastmcp import Client
 
     class R(a2kit.Router):
         slug = "mem"
 
-        @a2kit.write(expose=("api",))
+        @a2kit.write(surfaces=("api",))
         async def api_only(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 

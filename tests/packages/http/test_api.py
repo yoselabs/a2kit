@@ -54,12 +54,12 @@ def test_method_specific_decorators() -> None:
     }
 
 
-def test_expose_kwarg_is_rejected() -> None:
-    """``expose=`` belongs on projection decorators, not on ``@app.api.*``."""
+def test_surfaces_kwarg_is_rejected() -> None:
+    """``surfaces=`` belongs on projection decorators, not on ``@app.api.*``."""
     surface = ApiSurface()
-    with pytest.raises(TypeError, match=r"expose="):
+    with pytest.raises(TypeError, match=r"surfaces="):
 
-        @surface.get("/x", expose=["api"])
+        @surface.get("/x", surfaces=["api"])
         async def _h() -> None:
             return None
 

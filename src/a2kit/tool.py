@@ -16,8 +16,6 @@ if TYPE_CHECKING:
     from a2kit.packages.formatter import EncodingPlan
     from a2kit.routers import Router
 
-Visibility = Literal["hidden", "cli", "all"]
-
 _EMPTY_VIEW: Mapping[str, Any] = MappingProxyType({})
 
 
@@ -222,7 +220,6 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
 __all__ = [
     "DispatchHook",
     "ToolDescriptor",
-    "Visibility",
     "_build_descriptors",
     "enricher",
     "list_",

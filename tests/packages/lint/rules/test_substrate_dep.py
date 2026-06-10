@@ -47,7 +47,7 @@ def test_marker_on_api_only_tool_passes(tmp_path: Path) -> None:
         "def _f(): return _D()\n"
         "class R(a2kit.Router):\n"
         "    slug = 'r'\n"
-        "    @a2kit.read(expose=('api',))\n"
+        "    @a2kit.read(surfaces=('api',))\n"
         "    async def fetch(self, *, who: Annotated[Principal, Depends(_f)], id: str) -> dict:\n"
         "        return {'id': id}\n"
         "    tools = (fetch,)\n"

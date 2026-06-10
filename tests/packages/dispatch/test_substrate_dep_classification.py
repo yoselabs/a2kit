@@ -78,7 +78,7 @@ class TestSubstrateDepClassification:
             install_substrate_signature(fetch, _mcp(), Container())
         msg = str(excinfo.value)
         assert "Depends" in msg or "Security" in msg
-        assert "expose=" in msg
+        assert "surfaces=" in msg
 
     def test_substrate_dep_passes_through_to_fastapi_signature(self) -> None:
         async def fetch(*, db: Annotated[_Database, Depends(_get_db)], id: str) -> _Memory:  # noqa: ARG001

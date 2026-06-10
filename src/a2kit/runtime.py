@@ -278,8 +278,8 @@ def build(
     api_surface = _filter_api_surface(app._api, compiled_selectors)  # noqa: SLF001
     mcp_surface = _filter_mcp_surface(app._mcp, compiled_selectors)  # noqa: SLF001
 
-    # Validate every captured `expose=` against the composed surface set.
-    # Empty `expose=()` was rejected at decoration; here we catch the
+    # Validate every captured mounted-surfaces tuple against the composed set.
+    # Empty `surfaces=()` was rejected at decoration; here we catch the
     # unknown-name case that decoration deliberately skipped (per
     # `bootstrap-surfaces-explicit` — surface validation requires the
     # composed registry, not import-time accumulation). Skipped when no
@@ -430,9 +430,9 @@ def _validate_descriptor_expose(descriptors: list[ToolDescriptor], surface_regis
 
     Per `bootstrap-surfaces-explicit`: surface name validation moves from
     decoration time (where the registry may not yet be populated) to build
-    time (where `surfaces=` has been composed). Empty `expose=()` was
-    already rejected at decoration. The default `_DEFAULT_EXPOSE` sentinel
-    is also skipped (it stamps the bundled names regardless).
+    time (where `surfaces=` has been composed). Empty `surfaces=()` was
+    already rejected at decoration. Verbs whose mounted-surfaces tuple is
+    the bundled default are skipped (they stamp the bundled names regardless).
     """
     allowed = frozenset(surface_registry.names())
     if not allowed:

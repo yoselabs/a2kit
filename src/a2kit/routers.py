@@ -113,14 +113,6 @@ class Router:
 
     providers: ClassVar[tuple[Any, ...]] = ()
 
-    #: Default visibility tier for this Router's tools. Per-tool ``visibility=``
-    #: kwarg overrides this. Resolution: per-tool kwarg (if explicitly set)
-    #: → Router class attr → ``"all"`` baseline. See ADR 0003 vs. visibility:
-    #: ``"hidden"`` = CLI-invokable but absent from --help; ``"cli"`` =
-    #: visible in --help, hidden from MCP/API/GraphQL; ``"all"`` =
-    #: everywhere (default).
-    visibility: ClassVar[str] = "all"
-
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         cls._a2kit_tool_names = _collect_marked_tool_names(cls)
@@ -155,7 +147,8 @@ class Router:
         # --- tools: auto-collected from @a2kit-marked methods -------------- #
         # Names are gathered in ``__init_subclass__`` via the ``_a2kit``
         # marker (no ``tools=`` tuple). Bind each to this instance and
-        # stamp the per-tool router_slug / visibility.
+        # stamp the per-tool router_slug. Surface placement is per-verb
+        # ``surfaces=`` (default LISTED everywhere) — no Router-level default.
         bound: list[Callable[..., Any]] = []
         for name in cls._a2kit_tool_names:
             bound_method = getattr(self, name)
@@ -164,10 +157,6 @@ class Router:
                 continue
             if meta.extras.router_slug is None:
                 meta.extras.router_slug = self.slug
-            # Resolve effective visibility: per-tool kwarg (if explicitly set)
-            # → Router class attr → "all" baseline. Per-tool None means inherit.
-            if meta.extras.visibility is None:
-                meta.extras.visibility = type(self).visibility  # noqa: AK208
             bound.append(bound_method)
 
         self._tools: list[Callable[..., Any]] = bound

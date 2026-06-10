@@ -585,8 +585,8 @@ def build_full_cli(app: App | AppRuntime) -> click.Command:
         ctx.ensure_object(dict)
 
     # Runtime tool selection at CLI build time. Reads A2KIT_TOOLS env var;
-    # when set, filters which tools register as Click subcommands. Hidden
-    # tools (`visibility="hidden"`) are excluded from the selector's
+    # when set, filters which tools register as Click subcommands. Unlisted
+    # tools (`surfaces={...: "unlisted"}`) are excluded from the selector's
     # available set, so the selector cannot re-enable them.
     from a2kit.packages.runtime_tools import resolve_selector, validate_selector
 

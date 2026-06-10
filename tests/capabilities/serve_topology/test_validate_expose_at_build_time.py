@@ -19,7 +19,7 @@ def test_expose_unknown_passes_decoration_silently() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("nonexistent-surface",))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("nonexistent-surface",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -35,7 +35,7 @@ def test_expose_unknown_raises_at_build_with_composed_surfaces() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("typo-surface",))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("typo-surface",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -53,7 +53,7 @@ def test_expose_unknown_error_lists_composed_surfaces() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("zzz",))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("zzz",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -76,7 +76,7 @@ def test_expose_validation_runs_against_default_registry_when_no_surfaces_passed
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("nonexistent",))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("nonexistent",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 
@@ -91,7 +91,7 @@ def test_expose_validation_skipped_with_empty_registry() -> None:
     class R(a2kit.Router):
         slug = "demo"
 
-        @a2kit.read(expose=("anything",))  # type: ignore[arg-type]
+        @a2kit.read(surfaces=("anything",))  # type: ignore[arg-type]
         async def t(self, *, k: str) -> dict[str, str]:
             return {"k": k}
 

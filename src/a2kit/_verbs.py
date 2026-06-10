@@ -37,8 +37,6 @@ if TYPE_CHECKING:
 
     from mcp.types import ToolAnnotations
 
-    from a2kit.tool import Visibility
-
 __all__ = [
     "_BUILTIN_RESERVED_TOOL_NAMES",
     "_RESERVED_TOOL_NAME_PREFIX",
@@ -55,13 +53,6 @@ __all__ = [
 ]
 
 _WARN_ONCE_REPORT_SCHEMA: set[str] = set()
-
-#: Sentinel for ``expose=`` defaulting to "both bundled surfaces". Kept
-#: as a distinct singleton so the validator can tell "user passed
-#: ('mcp','api')" (validate strictly) from "kwarg unspecified"
-#: (skip registry validation so cold-start paths that don't import the
-#: surface packages still decorate cleanly).
-_DEFAULT_EXPOSE: tuple[str, ...] = ("mcp", "api")
 
 F = TypeVar("F", bound="Callable[..., Any]")
 
@@ -99,34 +90,6 @@ def _parse_timeout(value: float | int | str | None) -> float | None:
         raise TypeError(msg) from exc
 
 
-def _validate_expose(verb: str, expose: tuple[str, ...]) -> tuple[str, ...]:
-    """Normalize the ``expose=`` kwarg. Empty tuple rejected at decoration;
-    surface-name validation deferred to ``runtime.build()``.
-
-    Per ``bootstrap-surfaces-explicit`` (2026-05-26), the surface set is
-    composed at ``runtime.build(surfaces=...)`` time rather than
-    accumulated by import-time self-registration. Validating surface
-    names at decoration would require the registry to be populated
-    before any ``App`` exists, which conflicts with the "no import-time
-    mutation" invariant. ``runtime.build()`` walks every captured
-    descriptor and fails with a precise ``TypeError`` naming unknown
-    surfaces alongside the registered ones.
-
-    The empty-tuple check stays at decoration because it's a structural
-    spec rule (per ``verb-decorators``) independent of the registry.
-    """
-    if expose is _DEFAULT_EXPOSE:
-        return _DEFAULT_EXPOSE
-    if not expose:
-        msg = (
-            f"@a2kit.{verb}(expose=()) is empty: a projection tool must expose "
-            f"on at least one surface. Use expose=('mcp',) or expose=('api',) "
-            f"to opt into one; omit the kwarg for both (the default)."
-        )
-        raise ValueError(msg)
-    return tuple(expose)
-
-
 def _stamp(
     fn: F,
     *,
@@ -135,11 +98,9 @@ def _stamp(
     tags: frozenset[str],
     annotations_kwargs: dict[str, Any] | None = None,
     annotations_explicit: Any = None,
-    visibility: Visibility | None = None,
     reports: type | None = None,
     list_view: Any | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
     canonical_name_override: str | None = None,
     authorize: Any = None,
@@ -149,19 +110,13 @@ def _stamp(
     resolved_name = override or getattr(fn, "__name__", "<callable>")
     _check_reserved_name(resolved_name)
     extras_kwargs: dict[str, Any] = {"authorize": authorize, "canonical_name_override": override}
-    if surfaces is not _SURFACES_UNSET:
-        # New surfaces= axis (ADR 0028 Wave 2). Mutually exclusive with the
-        # legacy expose=/visibility= pair.
-        if expose is not _DEFAULT_EXPOSE or visibility is not None:
-            msg = f"@a2kit.{verb}(): surfaces= cannot be combined with the legacy expose=/visibility= kwargs. Use surfaces= alone."
-            raise TypeError(msg)
-        matrix = resolve_surfaces(surfaces)
-        extras_kwargs["surfaces"] = matrix
-        extras_kwargs["expose"] = mounted_surfaces(matrix)
-    else:
-        normalized_expose = _validate_expose(verb, expose)
-        extras_kwargs["visibility"] = visibility
-        extras_kwargs["expose"] = normalized_expose
+    # ``surfaces=`` is the sole surface-placement axis (ADR 0028 Wave 2).
+    # Omitted (_SURFACES_UNSET) defaults to LISTED on every registered
+    # surface. ``extras.expose`` stays as the derived mounted-surfaces tuple
+    # every adapter reads.
+    matrix = resolve_surfaces(surfaces)
+    extras_kwargs["surfaces"] = matrix
+    extras_kwargs["expose"] = mounted_surfaces(matrix)
     if reports is not None:
         extras_kwargs["report_type"] = reports
         schema = _compute_report_schema(reports)
@@ -314,13 +269,11 @@ def read(
     *,
     open_world: bool | None = None,
     title: str | None = None,
-    visibility: Visibility | None = None,
     reports: type | None = None,
     annotations: ToolAnnotations | None = None,
     idempotent: bool | None = None,
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
     canonical_name_override: str | None = None,
     authorize: Any = None,
@@ -353,10 +306,8 @@ def read(
                     explicit=annotations,
                 )
             ),
-            visibility=visibility,
             reports=reports,
             timeout=timeout,
-            expose=expose,
             surfaces=surfaces,
             canonical_name_override=canonical_name_override,
             authorize=authorize,
@@ -371,11 +322,9 @@ def write(
     open_world: bool | None = None,
     destructive: bool | None = None,
     title: str | None = None,
-    visibility: Visibility | None = None,
     reports: type | None = None,
     annotations: ToolAnnotations | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
     canonical_name_override: str | None = None,
     authorize: Any = None,
@@ -408,10 +357,8 @@ def write(
                     explicit=annotations,
                 )
             ),
-            visibility=visibility,
             reports=reports,
             timeout=timeout,
-            expose=expose,
             surfaces=surfaces,
             canonical_name_override=canonical_name_override,
             authorize=authorize,
@@ -424,7 +371,6 @@ def list_(
     *default_fields: str,
     page_size: int | None = None,
     selectable_fields: tuple[str, ...] | None = None,
-    visibility: Visibility | None = None,
     reports: type | None = None,
     open_world: bool | None = None,
     title: str | None = None,
@@ -432,7 +378,6 @@ def list_(
     idempotent: bool | None = None,
     destructive: bool | None = None,
     timeout: float | int | str | None = None,
-    expose: tuple[str, ...] = _DEFAULT_EXPOSE,
     surfaces: object = _SURFACES_UNSET,
     canonical_name_override: str | None = None,
     authorize: Any = None,
@@ -484,11 +429,9 @@ def list_(
                     explicit=annotations,
                 )
             ),
-            visibility=visibility,
             reports=reports,
             list_view=settings,
             timeout=timeout,
-            expose=expose,
             surfaces=surfaces,
             canonical_name_override=canonical_name_override,
             authorize=authorize,
@@ -523,7 +466,6 @@ def _read_internal(
     name: str,
     *,
     title: str | None = None,
-    visibility: Visibility | None = None,
 ) -> Callable[[F], F]:
     """Private read-decorator variant that accepts a custom tool name.
 
@@ -549,7 +491,6 @@ def _read_internal(
                     explicit=None,
                 )
             ),
-            visibility=visibility,
             reports=None,
         )
 

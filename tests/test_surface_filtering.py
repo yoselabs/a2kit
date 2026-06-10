@@ -1,8 +1,8 @@
-"""Transport mounters filter tools by declared `visibility` tier.
+"""Transport mounters filter tools by declared `surfaces=` placement.
 
-`visibility="all"` (default) — registered on CLI and MCP.
-`visibility="cli"` — registered on CLI, skipped on MCP.
-`visibility="hidden"` — registered on CLI but absent from --help; skipped on MCP.
+(omitted, default) — LISTED on CLI and MCP.
+`surfaces=("cli",)` — registered on CLI, absent on MCP.
+`surfaces={"cli": "unlisted"}` — on CLI but absent from --help; absent on MCP.
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ class _SurfRouter(Router):
     slug = "surf"
     name = "surf"
 
-    @a2kit.read(visibility="cli")
+    @a2kit.read(surfaces=("cli",))
     async def cli_only(self) -> dict[str, int]:
         return {"k": 1}
 
-    @a2kit.read(visibility="hidden")
+    @a2kit.read(surfaces={"cli": "unlisted"})
     async def hidden_op(self) -> dict[str, int]:
         return {"k": 1}
 
@@ -34,7 +34,7 @@ def _app() -> a2kit.App:
 
 
 def test_cli_builder_mounts_all_tiers() -> None:
-    """CLI mounts all three tiers; visibility only affects --help and MCP."""
+    """CLI mounts all three tiers; surface placement only affects --help and MCP."""
     from a2kit.packages.cli.builder import build_full_cli
 
     cli = build_full_cli(_app())
@@ -46,7 +46,7 @@ def test_cli_builder_mounts_all_tiers() -> None:
 
 
 def test_cli_hidden_tier_marked_hidden_in_click() -> None:
-    """`visibility="hidden"` propagates to Click's `hidden=True`."""
+    """`surfaces={"cli": "unlisted"}` propagates to Click's `hidden=True`."""
     from a2kit.packages.cli.builder import build_full_cli
 
     cli = build_full_cli(_app())
@@ -61,7 +61,7 @@ def test_cli_hidden_tier_marked_hidden_in_click() -> None:
 
 
 def test_mcp_server_skips_cli_and_hidden_tools() -> None:
-    """MCP only registers `visibility="all"` tools."""
+    """MCP only registers tools LISTED on the mcp surface."""
     import asyncio
 
     from a2kit.packages.mcp.server import build_mcp_server
@@ -78,7 +78,7 @@ def test_mcp_server_skips_cli_and_hidden_tools() -> None:
 
 
 def test_default_visibility_visible_on_both() -> None:
-    """Tool with no `visibility=` (resolves to "all") appears on every transport."""
+    """Tool with no `surfaces=` (LISTED everywhere) appears on every transport."""
     import asyncio
 
     from a2kit.packages.cli.builder import build_full_cli

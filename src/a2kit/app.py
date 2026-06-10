@@ -573,10 +573,8 @@ class _AppRootRouter(Router):
             meta = _get_meta(method)
             if meta is None:  # pragma: no cover -- collection keeps only marked methods
                 continue
-            # Do NOT stamp router_slug → bare canonical name. Resolve the
-            # default visibility the same way ``Router.__init__`` does.
-            if meta.extras.visibility is None:
-                meta.extras.visibility = "all"  # noqa: AK208
+            # Do NOT stamp router_slug → bare canonical name. Surface
+            # placement is per-verb ``surfaces=`` (default LISTED everywhere).
             bound.append(method)
         self._tools = bound
         self._enrichers = []

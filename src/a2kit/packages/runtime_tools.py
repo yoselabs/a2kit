@@ -3,8 +3,9 @@
 A first-class operator surface for "expose only these tools on this server."
 Resolved once at server-build / CLI-build time, never per-request. Filters
 the descriptor set BEFORE MCP server registration and Click subcommand
-registration; cannot re-enable tools filtered out at compile time by
-``visibility="hidden"`` — it is a SUBSET selector, not an override.
+registration; cannot re-enable tools filtered out at compile time by an
+unlisted surface state (``surfaces={...: "unlisted"}``) — it is a SUBSET
+selector, not an override.
 
 When both env var and CLI flag are set, the **intersection** wins (the
 more restrictive set survives). When neither is set, every
@@ -89,10 +90,10 @@ def validate_selector(
     in ``available``. The message names the unknown(s) and lists valid names.
 
     ``available`` is the set of tool names that would be exposed without
-    any selector — i.e. compile-time-visible tools only. Hidden tools
-    (``visibility="hidden"``) MUST be excluded from ``available`` before
-    calling; that's how the selector "cannot re-enable a hidden tool"
-    invariant is enforced.
+    any selector — i.e. compile-time-visible tools only. Unlisted tools
+    (``surfaces={...: "unlisted"}``) MUST be excluded from ``available``
+    before calling; that's how the selector "cannot re-enable a hidden
+    tool" invariant is enforced.
     """
     avail_set = frozenset(available)
     unknown = selector - avail_set

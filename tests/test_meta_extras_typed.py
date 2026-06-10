@@ -16,18 +16,18 @@ def test_default_extras_has_all_fields_none() -> None:
     assert extras.report_type is None
     assert extras.report_schema is None
     assert extras.router_slug is None
-    assert extras.visibility is None
+    assert extras.surfaces is None
     assert extras.list_view is None
 
 
-def test_verb_decorator_stamps_visibility() -> None:
-    @a2kit.read(visibility="cli")
+def test_verb_decorator_stamps_surfaces() -> None:
+    @a2kit.read(surfaces=("cli",))
     async def f() -> dict[str, int]:
         return {"k": 1}
 
     meta = _get_meta(f)
     assert meta is not None
-    assert meta.extras.visibility == "cli"
+    assert meta.extras.surfaces == {"mcp": "absent", "api": "absent", "cli": "listed"}
 
 
 def test_list_decorator_stamps_list_view() -> None:

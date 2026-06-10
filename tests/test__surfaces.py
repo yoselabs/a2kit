@@ -59,14 +59,6 @@ def test_dict_escape_unlisted() -> None:
     assert not mounted_on(m, "mcp")
 
 
-def test_surfaces_with_legacy_kwargs_raises() -> None:
-    with pytest.raises(TypeError, match="surfaces="):
-
-        @a2kit.read(surfaces=("mcp",), expose=("api",))
-        def bad(self) -> dict:  # noqa: ANN001
-            return {}
-
-
 def test_empty_surfaces_tuple_raises() -> None:
     with pytest.raises(ValueError, match="empty"):
 

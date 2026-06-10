@@ -36,11 +36,11 @@ def test_prompt_and_resource() -> None:
     assert kinds == ["prompt", "resource"]
 
 
-def test_expose_kwarg_rejected() -> None:
+def test_surfaces_kwarg_rejected() -> None:
     surface = McpSurface()
-    with pytest.raises(TypeError, match=r"expose="):
+    with pytest.raises(TypeError, match=r"surfaces="):
 
-        @surface.tool(expose=["mcp"])
+        @surface.tool(surfaces=["mcp"])
         async def _h() -> None:
             return None
 

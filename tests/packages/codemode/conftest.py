@@ -18,7 +18,7 @@ class GateRouter(a2kit.Router):
         """Non-destructive read."""
         return {"msg": "pong"}
 
-    @a2kit.read(visibility="cli")
+    @a2kit.read(surfaces=("cli",))
     async def cli_only(self) -> dict[str, str]:
         """CLI-tier read — never registered on the MCP surface."""
         return {"msg": "cli-secret"}

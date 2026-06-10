@@ -44,21 +44,16 @@ UNSET: object = object()
 def resolve_surfaces(
     surfaces: object = UNSET,
     *,
-    legacy_expose: tuple[str, ...] | None = None,
-    legacy_visibility: str | None = None,
     registered: tuple[str, ...] = DEFAULT_SURFACES,
 ) -> dict[str, SurfaceState]:
     """Resolve an authoring spec to a full per-surface state matrix.
 
-    ``surfaces`` is the new ``surfaces=`` kwarg (tuple, dict, or UNSET).
-    When it is UNSET, ``legacy_expose`` / ``legacy_visibility`` (the
-    deprecated ``expose=`` / ``visibility=`` kwargs) are mapped forward;
-    if those are also unset the default is LISTED on every surface.
+    ``surfaces`` is the ``surfaces=`` kwarg (tuple, dict, or UNSET). When
+    it is UNSET the default is LISTED on every registered surface — a verb
+    is available on all surfaces unless it opts out.
     """
     if surfaces is not UNSET:
         return _resolve_explicit(surfaces, registered)
-    if legacy_expose is not None or legacy_visibility is not None:
-        return _resolve_legacy(legacy_expose, legacy_visibility, registered)
     return dict.fromkeys(registered, LISTED)
 
 
@@ -83,52 +78,19 @@ def _resolve_explicit(surfaces: object, registered: tuple[str, ...]) -> dict[str
     raise TypeError(msg)
 
 
-def _resolve_legacy(
-    expose: tuple[str, ...] | None,
-    visibility: str | None,
-    registered: tuple[str, ...],
-) -> dict[str, SurfaceState]:
-    """Map the deprecated ``expose=`` + ``visibility=`` pair forward."""
-    expose = expose if expose is not None else ("mcp", "api")
-    vis = visibility or "all"
-    matrix: dict[str, SurfaceState] = dict.fromkeys(registered, ABSENT)
-    if vis == "cli":
-        # CLI-only operator intent (the overlap that leaked onto HTTP):
-        # network ABSENT, advertised on CLI.
-        if "cli" in registered:
-            matrix["cli"] = LISTED
-        return matrix
-    if vis == "hidden":
-        # Old "hidden": skipped on MCP/HTTP entirely (network ABSENT),
-        # mounted on the CLI but hidden from --help (UNLISTED).
-        if "cli" in registered:
-            matrix["cli"] = UNLISTED
-        return matrix
-    # "all": mounted + advertised on each exposed network surface, plus
-    # the CLI (which was always mounted, god-view).
-    for name in expose:
-        matrix[name] = LISTED
-    if "cli" in registered:
-        matrix["cli"] = LISTED
-    return matrix
-
-
 def matrix_for(extras: object) -> dict[str, SurfaceState]:
     """Resolve the surface matrix for a verb's ``A2KitMetaExtras``.
 
-    Uses the explicit ``surfaces`` matrix when the author wrote
-    ``surfaces=``; otherwise maps the legacy ``expose`` + ``visibility``
-    pair forward (lazily, so a Router's class-level ``visibility`` default
-    applied after decoration is reflected). Duck-typed on ``extras`` to
-    avoid importing :mod:`a2kit.metadata` here.
+    ``surfaces=`` is the only placement axis: every verb carries a fully
+    resolved ``extras.surfaces`` matrix (stamped at decoration time). This
+    returns it, falling back to the LISTED-everywhere default only for the
+    defensive case where a descriptor predates the matrix. Duck-typed on
+    ``extras`` to avoid importing :mod:`a2kit.metadata` here.
     """
     explicit = getattr(extras, "surfaces", None)
     if explicit is not None:
         return explicit
-    return resolve_surfaces(
-        legacy_expose=tuple(getattr(extras, "expose", ("mcp", "api"))),
-        legacy_visibility=getattr(extras, "visibility", None),
-    )
+    return resolve_surfaces()
 
 
 def resolve_canonical_name(

@@ -88,9 +88,9 @@ class McpSurface(DecoratorSurface[McpRegistration]):
         return fastmcp_reserved()
 
     def _decorator(self, kind: McpFeatureKind, **fastmcp_kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        if "expose" in fastmcp_kwargs:
+        if "surfaces" in fastmcp_kwargs:
             msg = (
-                f"@app.mcp.{kind}(expose=...): expose= is only valid on "
+                f"@app.mcp.{kind}(surfaces=...): surfaces= is only valid on "
                 f"projection decorators (@app.read/list/write). @app.mcp.* "
                 f"is single-surface by construction."
             )

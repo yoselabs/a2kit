@@ -43,21 +43,18 @@ class A2KitMetaExtras(BaseModel):
     report_type: type | None = None
     report_schema: dict[str, Any] | None = None  # noqa: AK214 -- JSON Schema dict shape (free-form by spec)
     router_slug: str | None = None
-    visibility: str | None = None
     list_view: ListViewSettings | None = None
     timeout_seconds: float | None = None
-    # Multi-surface authoring (ADR 0020). ``expose`` carries the
-    # substrates the projection tool registers on; ``authorize``
-    # captures the optional per-tool auth gate (enforcement lands in
-    # ``add-auth``). Stored on extras (not the top-level frozen
-    # dataclass) to avoid breaking the pinned shape of ``A2KitMeta``.
+    # ``expose`` carries the substrates the projection tool registers on
+    # (the LISTED surfaces of the resolved matrix); ``authorize`` captures
+    # the optional per-tool auth gate. Stored on extras (not the top-level
+    # frozen dataclass) to avoid breaking the pinned shape of ``A2KitMeta``.
     expose: tuple[str, ...] = ("mcp", "api")
-    # Surface projection matrix (ADR 0028 Wave 2). When the author wrote
-    # ``surfaces=``, this holds the fully-resolved per-surface state
-    # ({mcp,api,cli} → absent|listed|unlisted) and is authoritative.
-    # ``None`` means "author used legacy expose=/visibility=" — the matrix
-    # is then derived lazily via ``a2kit._surfaces.matrix_for``. ``expose``
-    # is kept as the mounted-surfaces compat tuple for membership reads.
+    # Surface projection matrix (ADR 0028 Wave 2) — the single placement
+    # axis. Holds the fully-resolved per-surface state ({mcp,api,cli} →
+    # absent|listed|unlisted), stamped from ``surfaces=`` at decoration time
+    # (LISTED-everywhere when ``surfaces=`` is omitted). ``expose`` is the
+    # derived mounted-surfaces tuple for membership reads.
     surfaces: dict[str, str] | None = None
     # Verbatim canonical-name pin (ADR 0028 Wave 2). When set, it is the
     # tool's name on every surface with no slug prefix; otherwise the

@@ -19,6 +19,6 @@ class Vault:
 class VaultRouter(a2kit.Router):
     slug = "ops"
 
-    @a2kit.write(visibility="cli")
+    @a2kit.write(surfaces=("cli",))
     async def trust_vault(self, *, path: str, vault: Vault) -> dict[str, Any]:
         return {"path": path, "tag": vault.tag}

@@ -101,13 +101,13 @@ class ApiSurface(DecoratorSurface[ApiRoute]):
         """Build a single ``(path, **kwargs)`` decorator for ``method``.
 
         Pops ``authorize`` from ``fastapi_kwargs`` so it does not leak
-        into FastAPI's route-construction kwargs. ``expose`` is rejected
-        here — the projection family owns multi-surface exposure; on
+        into FastAPI's route-construction kwargs. ``surfaces`` is rejected
+        here — the projection family owns multi-surface placement; on
         ``@app.api.*`` it is always FastAPI-only.
         """
-        if "expose" in fastapi_kwargs:
+        if "surfaces" in fastapi_kwargs:
             msg = (
-                f"@app.api.{method.lower()}({path!r}, expose=...): expose= is "
+                f"@app.api.{method.lower()}({path!r}, surfaces=...): surfaces= is "
                 f"only valid on projection decorators (@app.read/list/write). "
                 f"@app.api.* is single-surface by construction."
             )
