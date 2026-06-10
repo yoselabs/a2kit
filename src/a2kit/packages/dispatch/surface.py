@@ -142,9 +142,9 @@ class SurfaceRegistry:
 # --- Active-registry binding -------------------------------------------------
 #
 # `runtime.build()` creates a per-runtime `SurfaceRegistry` and binds it as
-# the active registry for the process via `bind_active_registry`. The legacy
-# `SURFACE_REGISTRY` proxy below routes its reads/writes through whatever's
-# bound. The binding is process-global (not async-scoped) because a2kit's
+# the active registry for the process via `bind_active_registry`;
+# `current_registry()` returns whatever's bound. The binding is process-global
+# (not async-scoped) because a2kit's
 # typical deployment runs one `AppRuntime` per process; if multi-tenant
 # parallel runtimes ever become a real case, swap to a ContextVar with
 # `.set()`/`.reset()` discipline at the build boundary.

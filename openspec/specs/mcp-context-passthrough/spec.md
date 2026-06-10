@@ -342,7 +342,7 @@ The check is framework-internal: user code cannot cause it to fire. Its purpose 
 #### Scenario: App fails to build when wrapper chain drops ctx
 
 - **GIVEN** a hypothetical regression in `_wrap_with_dispatch_hook` that produces a rewritten signature missing the ctx parameter
-- **WHEN** `App.add_router` runs and the MCP wrapper chain is assembled for a tool with `ctx: a2kit.ToolContext`
+- **WHEN** router registration runs (the App composes a router whose tool has `ctx: a2kit.ToolContext`) and the MCP wrapper chain is assembled for that tool
 - **THEN** the call raises `A2KitContextBindingBroken` with `fn_name` and `ctx_param_name` attributes
 - **AND** the error message identifies the regression as framework-internal and instructs the user to file an issue
 

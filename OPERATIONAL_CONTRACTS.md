@@ -353,19 +353,17 @@ it transitively calls) is currently running under a
 `bind_call_scope(ctx=...)` scope that the framework opened around
 the dispatch. The dispatcher synthesizes a non-None ambient `ctx` for
 **every** framework-dispatched tool, regardless of whether the tool's
-body declares `ctx: ToolContext` in its signature. Calling from
-module-level code or a warm-up script — any pre-dispatch context —
-raises `a2kit.exceptions.AmbientContextMissing`
-(Mode A — "no active dispatch"). Calling from inside a tool that
-omitted its `ctx` declaration **does not raise** — the framework's
-synthesized ambient ctx handles it (relax-ldd-ambient-requirement,
-2026-05-15).
+body declares `ctx: ToolContext` in its signature. Calling the emission
+primitives from module-level code, a warm-up script, or any other
+pre-dispatch context raises
+`a2kit.packages.context.request_scope.RequestScopeMissing` (a
+`LookupError`). Calling from inside a tool that omitted its `ctx`
+declaration **does not raise** — the framework's synthesized ambient ctx
+handles it (relax-ldd-ambient-requirement, 2026-05-15).
 
-Mode B (`MODE_MISSING_CTX_PARAM`) is retained as defense-in-depth but
-is unreachable from framework code paths. The raise still fires for
-external misuse, e.g. manually constructing `bind_call_scope(ctx=None)`
-and then calling a log primitive — that's documented misuse, not a
-normal path.
+The raise also fires for external misuse, e.g. manually constructing
+`bind_call_scope(ctx=None)` and then calling a log primitive — that's
+documented misuse, not a normal path.
 
 Lazy singleton factories instantiated **during** a dispatch are
 reachable from the active scope and may call LDD primitives. The

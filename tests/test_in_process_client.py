@@ -243,17 +243,14 @@ def test_connection_passthrough_tracker() -> None:
         pass
 
 
-# --- Migration-hint guards (loud-error-on-renamed-test-client-method) --- #
+# --- Removed-method guards (old names raise the language-default error) --- #
 
 
-def test_call_raises_with_migration_hint() -> None:
-    """The pre-v0.33 ``client.call(...)`` shape now raises with hint."""
+def test_removed_call_raises_attribute_error() -> None:
+    """The pre-v0.33 ``client.call(...)`` name is gone — plain AttributeError."""
     from a2kit.packages.testing.client import TestClient
 
     app = _build_app()
     c = TestClient(app)
-    with pytest.raises(TypeError) as ei:
-        _ = c.call  # noqa: B018 -- accessing the attribute is the trigger
-    msg = str(ei.value)
-    assert "renamed" in msg
-    assert "invoke" in msg
+    with pytest.raises(AttributeError):
+        getattr(c, "call")  # noqa: B009 -- dynamic access is the trigger

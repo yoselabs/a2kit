@@ -25,51 +25,6 @@ class InvalidToolReturnTypeError(A2KitError, TypeError):
         super().__init__(message if message is not None else default)
 
 
-class AmbientContextMissing(A2KitError, RuntimeError):
-    """Raised when an a2kit.log emission cannot find a usable ambient ``ctx``.
-
-    Two failure modes share this class (v0.33 splits the message):
-
-    - **Mode A — no active dispatch.** No ``_CallScope`` is published on
-      the request-scope bridge. Happens when emission primitives are called
-      from module-import-time code, lifecycle hooks, or any pre-dispatch
-      context. The raised instance chains from
-      :class:`a2kit.packages.dispatch.request_scope.RequestScopeMissing`
-      via ``__cause__``.
-    - **Mode B — dispatch active, tool missing ``ctx`` parameter.** A call
-      scope IS published (the dispatcher entered a scope), but the running
-      tool's signature does not declare ``ctx: a2kit.ToolContext``, so
-      ``scope.ctx is None``.
-
-    The message identifies which mode fired and points at the actionable
-    fix at the call site. Post ``generalise-context-bridges`` this class
-    is a deprecation-shim retained for one release; new code SHOULD
-    catch ``request_scope.RequestScopeMissing`` instead.
-    """
-
-    MODE_NO_DISPATCH = "no_dispatch"
-    MODE_MISSING_CTX_PARAM = "missing_ctx_param"
-
-    def __init__(self, fn_name: str, *, mode: str = MODE_NO_DISPATCH) -> None:
-        self.fn_name = fn_name
-        self.mode = mode
-        if mode == self.MODE_MISSING_CTX_PARAM:
-            super().__init__(
-                f"{fn_name} called from a tool body that did not declare "
-                "`ctx: a2kit.ToolContext` as a parameter. Add the parameter "
-                "to the tool signature (the dispatcher will bind it ambient), "
-                "or remove the emission call."
-            )
-        else:
-            super().__init__(
-                f"{fn_name} called outside an active tool dispatch. The emission "
-                "primitives only work inside a tool body (or any code "
-                "reached from one). Move the call into a tool, use the "
-                "test harness's ldd_state_for_call(ctx=...) context manager, "
-                "or remove the call."
-            )
-
-
 class A2KitContextBindingBroken(A2KitError, RuntimeError):
     """Raised at App-construction time when the MCP wrapper chain's
     rewritten signature does not contain a tool's ``ctx`` parameter.

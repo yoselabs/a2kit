@@ -13,8 +13,8 @@ it is one of:
   ``@``-prefixed);
 - an attribute access on a canonical type — ``App.x`` / ``app.x`` /
   ``Router.x`` / ``Container.x`` (optionally ``@``-prefixed);
-- an a2kit lint-rule code — ``AK###`` / ``AKR###`` / ``RG###`` or a legacy
-  ``A2K-*`` / ``REGO-*`` dashed spelling (resolved via ``normalize_code``).
+- an a2kit lint-rule code — ``AK###`` / ``AKR###`` / ``RG###`` (legacy
+  dashed / ``A2K###`` spellings are no longer recognized).
 
 Bare words, string literals, paths, shell, type-annotation fragments, and
 third-party dotted names are not checkable and are skipped by construction
@@ -28,19 +28,17 @@ import re
 
 import a2kit
 from a2kit.packages.di.container import Container
+from a2kit.packages.lint.rego import REGO_RULE_CODES
 from a2kit.packages.lint.runtime import ALL_CHECKS
-from a2kit.packages.lint.static import ALL_RULES, LEGACY_CODE_ALIASES, normalize_code
+from a2kit.packages.lint.static import ALL_RULES
 from a2kit.routers import Router
 from a2kit.runtime import build
 from a2kit.testing import app_of
 
 #: Live a2kit lint-rule codes — the resolution target for code-font lint-rule
 #: symbols. Covers static ``AK*``, runtime ``AKR*``, and the rego ``RG*``
-#: family (sourced from the alias-table values, since RG codes live in the
-#: .rego bundle). A legacy spelling resolves via :func:`normalize_code`.
-_LINT_RULE_CODES: frozenset[str] = frozenset(
-    set(ALL_RULES) | set(ALL_CHECKS) | {new for new in LEGACY_CODE_ALIASES.values() if new.startswith("RG")}
-)
+#: family (sourced from the bundled ``.rego`` policies).
+_LINT_RULE_CODES: frozenset[str] = frozenset(set(ALL_RULES) | set(ALL_CHECKS) | set(REGO_RULE_CODES))
 
 _FENCED_RE = re.compile(r"```[a-zA-Z]*\n(.*?)```", re.DOTALL)
 _INLINE_RE = re.compile(r"`([^`\n]+)`")
@@ -53,12 +51,10 @@ _DOTTED_A2KIT = re.compile(r"(?<![\w.])@?a2kit(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
 # ``AppRuntime`` precedes ``App`` in the alternation so the longer token
 # wins — ordered alternation would otherwise match the ``App`` prefix.
 _CANONICAL = re.compile(r"(?:^|[^A-Za-z0-9_])@?(AppRuntime|App|app|Router|Container)\.([A-Za-z_][A-Za-z0-9_]*)")
-# New-shape codes (`AK###` / `AKR###` / `RG###`) plus legacy *dashed* spellings
-# (`A2K-*` / `REGO-*`), which resolve through the deprecation window via
-# ``normalize_code``. Bare numeric legacy codes (`A2K014`) are intentionally NOT
-# matched — they were never validated by this gate and reading them now would
-# surface long-standing illustrative refs; specs cite the new `AK###` form.
-_LINT_CODE = re.compile(r"A2K-[A-Z0-9-]+|REGO-[A-Z0-9-]+|AKR?[0-9]+|RG[0-9]+")
+# New-shape codes only (`AK###` / `AKR###` / `RG###`). Legacy dashed
+# (`A2K-*` / `REGO-*`) and bare-numeric (`A2K014`) spellings are no longer
+# recognized — there is no alias resolution; specs cite the new `AK###` form.
+_LINT_CODE = re.compile(r"AKR?[0-9]+|RG[0-9]+")
 
 # Live instance probes — resolving attribute accesses against an instance
 # catches attributes set in ``__init__`` (e.g. ``app.ldd``) that a
@@ -145,10 +141,10 @@ def _resolve_canonical(type_name: str, attr: str, symbol: str, allowlist: frozen
 
 
 def _resolve_lint_code(code: str, allowlist: frozenset[str]) -> tuple[bool, str]:
-    """Resolve a lint-rule code against the live registry (legacy via alias)."""
+    """Resolve a lint-rule code against the live registry."""
     if code in allowlist:
         return True, ""
-    return (True, "") if normalize_code(code) in _LINT_RULE_CODES else (False, "not in the a2kit lint-rule registry")
+    return (True, "") if code in _LINT_RULE_CODES else (False, "not in the a2kit lint-rule registry")
 
 
 def _drift_in_span(span: str, line_no: int, allowlist: frozenset[str]) -> list[tuple[str, int, str]]:

@@ -158,7 +158,7 @@ class ApiSurface(DecoratorSurface[ApiRoute]):
         Reads ``runtime.api_surface`` for author-written routes: each
         App carries its own ``ApiSurface`` instance (the accumulator)
         which is what holds the registrations. The Surface registered
-        in :data:`SURFACE_REGISTRY` (``self``) is a class-level identity
+        in the active ``SurfaceRegistry`` (``self``) is a class-level identity
         used by the dispatch-layer signature splitter; it is NOT the
         per-App accumulator. ``descriptors`` is accepted for Protocol
         uniformity; the underlying builder walks ``runtime.tools()``

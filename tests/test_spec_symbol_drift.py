@@ -41,6 +41,8 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "a2kit.tool",  # removed v0.33 — split into read/write/list_ verbs
         "Container.dispatch",  # renamed to call_scope (d1dddb7); the spec
         # scenario cites the absent symbol as proof the rename is loud
+        "Container.register",  # removed in purge-compat-debt; the di-container
+        # spec scenario cites the absent name as proof it is gone (AttributeError)
         "a2kit.packages.cli.context",  # tombstone module swept in
         # prune-stale-tombstones; import-acyclicity spec cites the old path
         # to document the relocation to a2kit.packages.context
@@ -111,9 +113,9 @@ def test_dead_canonical_access_is_caught() -> None:
 
 
 def test_dead_lint_rule_code_is_caught() -> None:
-    drift = _collect_drift("Enforced by `A2K-NONEXISTENT-RULE` at lint time.", label="fixture")
-    assert drift, "a dead A2K- lint-rule code must fail the gate"
-    assert "A2K-NONEXISTENT-RULE" in drift[0][0]
+    drift = _collect_drift("Enforced by `AK999` at lint time.", label="fixture")
+    assert drift, "a dead lint-rule code must fail the gate"
+    assert "AK999" in drift[0][0]
 
 
 def test_allowlisted_name_passes() -> None:

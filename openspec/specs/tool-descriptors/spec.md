@@ -5,7 +5,7 @@ TBD - created by archiving change type-driven-format-routing. Update Purpose aft
 ## Requirements
 ### Requirement: `App.tools()` returns typed `ToolDescriptor` objects
 
-`App` SHALL expose a single tool-introspection accessor `tools() -> list[ToolDescriptor]`. Each descriptor SHALL carry, at minimum, `name: str`, `router: Router`, `fn: Callable`, `return_type: type | None`, and `format_hint: Literal["tsv", "json", "page-tsv"]`. Descriptors SHALL be materialized inside `App.add_router(...)` (or equivalent registration path), not lazily on first access. Consumers that need bound callables SHALL derive them via `[d.fn for d in app.tools()]`.
+`App` SHALL expose a single tool-introspection accessor `tools() -> list[ToolDescriptor]`. Each descriptor SHALL carry, at minimum, `name: str`, `router: Router`, `fn: Callable`, `return_type: type | None`, and `format_hint: Literal["tsv", "json", "page-tsv"]`. Descriptors SHALL be materialized at router-registration time (when the App composes its routers via the `routers` ClassVar / `a2kit.testing.app_of(...)`), not lazily on first access. Consumers that need bound callables SHALL derive them via `[d.fn for d in app.tools()]`.
 
 #### Scenario: Descriptor for a typed tool
 

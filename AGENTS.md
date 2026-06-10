@@ -12,40 +12,33 @@ AGENTS.md wins and CLAUDE.md gets corrected.
 
 ## Core principles
 
-### 1. No backward compatibility shims
+### 1. No backward compatibility, no migration hints
 
-When a surface is renamed, removed, or restructured: the old surface
-crashes loudly with an embedded migration hint. No aliases, no
-`DeprecationWarning`, no transitional period.
+When a surface is renamed, removed, or restructured, it is
+**deleted**. The old name raises the **language-default** error
+(`AttributeError` / `TypeError` / `ImportError`) — nothing more. No
+alias, no `DeprecationWarning`, no transitional period, no tombstone,
+and **no embedded migration hint**. Do not catch removed kwargs via
+`**_kw` to re-raise a recipe; do not intercept old attribute names in
+`__getattr__`; do not keep a "removed" hint table.
 
-- Renames: the old name raises `TypeError` (or `AttributeError` with
-  a substantive message) referencing the new name.
-- Removed kwargs: catch them via `**_kw`, raise `TypeError` with the
-  migration recipe.
-- Renamed methods on canonical types (e.g. `TestClient`): override
-  `__getattr__` to intercept known-old names and raise with hint.
+The migration recipe lives in **one** place: the `CHANGELOG.md`
+`Unreleased` section (promoted to the version on release). Every
+breaking change adds a migration-table row there. That is the entire
+consumer contract — a2kit does not spend code on guiding consumers
+through a removal.
 
-**Reason**: graceful migration paths hide drift from consumer read
-paths. Hard crashes force the migration into consumers' commit
-history. v0.33 prettification established this pattern; subsequent
-releases reinforce it.
+**The only carve-out** is a deletion that would otherwise *silently
+misbehave* — a load-bearing invariant, not a compat shim. There, keep
+a plain guard with a terse, present-tense message stating the rule
+(e.g. "`a2kit.App` is abstract; subclass it"). Never a versioned
+migration story; never an ADR citation in a runtime error.
 
-**Tombstone sunset.** A migration-hint tombstone is a *transition
-aid, not a permanent surface.* §1 forbids a transitional *behavior*
-(the old path never works) but the hint itself is kept only until the
-live downstream consumer has migrated past the removal — the
-**migration horizon**. After that, delete the tombstone: the swept
-name then raises the language-default `AttributeError` / `TypeError`
-(still loud, no alias, still no transitional period — just no bespoke
-hint). The migration recipe survives in the CHANGELOG and git history.
-Do not let tombstones accumulate across the horizon; a permanent
-monument to every past rename is the redundancy §2 forbids. The
-horizon is not machine-knowable, so sweeping is a deliberate review
-step, gated by an OpenSpec change (see `prune-stale-tombstones`, the
-first sweep). The current in-flight cluster deliberately retained
-until a2web migrates: positional `a2kit.App(...)` and `App.add_router`
-(ADR 0028), the refound-ldd surface, and the v0.40 `TestClient`
-renames.
+**Reason**: transitional machinery (hints, aliases, tombstones) is
+standing code that documents the past. It hides drift, invites
+re-accumulation, and duplicates what the CHANGELOG already records.
+The consumer is assumed to read release notes; the codebase stays in
+the present tense.
 
 ### 2. No redundancy / no multiple ways of doing the same thing
 
@@ -87,9 +80,11 @@ Specifically forbidden:
   when `app: a2kit.App` is dead defense — `App` always has `.ldd`.
   Remove the branch.
 
-### 4. Errors carry migration hints
+### 4. Errors are clear and action-oriented
 
-When the framework crashes, the message includes the fix:
+When the framework crashes on misuse a consumer can fix *now* (a bad
+argument, a missing provider, a malformed input), the message names
+what was wrong and what shape is expected:
 
 ```python
 # bad
@@ -97,13 +92,15 @@ raise TypeError("invalid kwarg")
 
 # good
 raise TypeError(
-    "App(health_tool=...) was removed in v0.34. Register a check "
-    "with @app.health_check to auto-install the _meta.health tool."
+    f"{fn.__name__}() received unexpected keyword arguments: "
+    f"{sorted(unknown)}. Expected: {sorted(declared)}."
 )
 ```
 
-The pattern: name the removed surface, name the replacement, name
-the version (so consumers can grep release notes).
+This is about *present-tense* misuse, not migration. A removed
+surface gets the bare language-default error (§1) — the error does
+**not** narrate the removal, name a replacement, or cite a version.
+That recipe lives only in the CHANGELOG.
 
 ## Patterns to use
 
@@ -164,22 +161,6 @@ Adding a new sub-config means: (1) define the pydantic model under
 provider registration in `App.__init__`. The `app.config.<sub>`
 attribute-walk path is reserved for consumer-side introspection,
 not subsystem-side reads.
-
-### `__getattr__` migration hints
-
-```python
-class TestClient:
-    _MIGRATED_NAMES: ClassVar[dict[str, str]] = {"call": "invoke"}
-    def __getattr__(self, name: str) -> Any:
-        if name in self._MIGRATED_NAMES:
-            new = self._MIGRATED_NAMES[name]
-            raise TypeError(
-                f"TestClient.{name}(...) was renamed to "
-                f"TestClient.{new}(...). Update the call site; "
-                f"no alias is provided."
-            )
-        raise AttributeError(f"'TestClient' object has no attribute {name!r}")
-```
 
 ### Validate kwargs against signature
 
@@ -287,7 +268,7 @@ Mitigations:
 
 - BDD-first: write the failing test (Gherkin-style or `pytest`-
   parametrised) before the implementation.
-- Test names spell the contract: `test_call_raises_with_migration_hint`,
+- Test names spell the contract: `test_removed_call_raises_attribute_error`,
   not `test_call_error`.
 - Real-transport tests (driving `fastmcp.Client(transport=...)`)
   catch wrapper-chain regressions that the in-process test client

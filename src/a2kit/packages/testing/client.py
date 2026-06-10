@@ -44,7 +44,7 @@ Tests asserting on Python exception classes parse the JSON envelope.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from a2kit.packages.formatter import FormatHint, format_response
 from a2kit.packages.mcp import build_mcp_server
@@ -63,34 +63,6 @@ class TestClient:
     the server's lifespan, so the App's ``async with app:`` lifecycle
     enters automatically.
     """
-
-    #: Methods renamed in prior releases. Accessing the old name raises
-    #: ``TypeError`` with an embedded migration hint via
-    #: :meth:`__getattr__`. No alias is provided.
-    _MIGRATED_NAMES: ClassVar[dict[str, str]] = {"call": "invoke"}
-
-    #: Methods removed outright (no rename target). Accessing the old
-    #: name raises ``TypeError`` with the full migration recipe.
-    _REMOVED_NAMES: ClassVar[dict[str, str]] = {
-        "override": (
-            "TestClient.override(T, fake) was removed in v0.40. Test overrides "
-            "are re-build, not post-seal mutation: construct a fresh a2kit.App "
-            "and provide the fake last (provide is last-write-wins) — "
-            "`app = a2kit.App(name).provide(T, fake)`. "
-            "See ADR 0017 / CHANGELOG: internalize-app-runtime."
-        ),
-    }
-
-    def __getattr__(self, name: str) -> Any:
-        cls = type(self)
-        migrated = cls._MIGRATED_NAMES
-        if name in migrated:
-            new = migrated[name]
-            raise TypeError(f"TestClient.{name}(...) was renamed to TestClient.{new}(...). Update the call site; no alias is provided.")
-        removed = cls._REMOVED_NAMES
-        if name in removed:
-            raise TypeError(removed[name])
-        raise AttributeError(f"'TestClient' object has no attribute {name!r}")
 
     def __init__(self, app: App) -> None:
         self.app = app

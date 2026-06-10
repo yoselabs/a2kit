@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.43.0 — 2026-06-11
+
+### Changed — Purged all backward-compat machinery: tombstones, aliases, migration hints (BREAKING)
+
+`AGENTS.md` §1 is rewritten ("No backward compatibility, no migration hints").
+A removed surface now raises the **language-default** error
+(`AttributeError` / `TypeError` / `ImportError`) and nothing more: no alias, no
+`DeprecationWarning`, no tombstone, **no embedded migration hint**. The
+migration recipe lives in exactly one place — this CHANGELOG. The lone
+carve-out is a deletion that would otherwise *silently misbehave* (a
+load-bearing invariant), which keeps a terse present-tense guard.
+
+This release deletes every remaining instance of that machinery. Behavioral
+note: the tombstoned names below were already non-functional; what changes is
+that they now raise the **plain** error instead of a hinted one (and the DI /
+`TestClient` names change from `TypeError` to `AttributeError`).
+
+**Removed tombstones** (old name → raises plain error; use the replacement):
+
+| Removed surface | Now raises | Replacement |
+|---|---|---|
+| `App.add_router(r)` | `AttributeError` | compose declaratively: `class Kay(a2kit.App): routers = (R, ...)`, or `a2kit.testing.app_of(name, R())` in tests |
+| `a2kit.App(...)` direct construction | `TypeError` ("App is abstract") | subclass `a2kit.App` (or `app_of(...)` in tests) — message no longer cites ADR/version |
+| `Container.register(T, f)` | `AttributeError` | `Container.provide(T, f)` |
+| `Container.register_singleton(T, f)` | `AttributeError` | `Container.provide(T, f, scope=Scope.SINGLETON)` |
+| `Container.resolve(T)` / `aresolve(T)` | `AttributeError` | `await Container.get(T)` |
+| `Container.has(T)` | `AttributeError` | `Container.has_provider(T)` |
+| `Container.has_async_singleton` / `has_any_async_singletons` | `AttributeError` | no replacement (sync/async factories no longer distinguished) |
+| `TestClient.call(...)` | `AttributeError` | `TestClient.invoke(...)` |
+| `TestClient.override(T, fake)` | `AttributeError` | re-build: `app_of(name, ...).provide(T, fake)` (last-write-wins), then a fresh `TestClient` |
+
+**Removed silent aliases** (these were still WORKING — removing them is a
+behavior change):
+
+| Removed | Effect | Replacement |
+|---|---|---|
+| `LEGACY_CODE_ALIASES` + `normalize_code` (lint) | old `# noqa: A2K-LAYER` / `A2K014` and `[tool.a2kit.lint] disabled=["A2K014"]` no longer resolve | use the new codes (`AK###` / `AKR###` / `RG###`); e.g. `A2K-LAYER`→`AK200`, `A2K014`→`AK014`, `A2KR001`→`AKR001`, `REGO-NAME-COLLISION`→`RG002` |
+| `_REGO_LEGACY_ALIASES` (rego extractor) | old `# noqa: REGO-BODY-DUP` no longer recognized as a rego rule | spell rego suppressions `# noqa: RG001 -- <reason>` |
+| `a2kit.exceptions.AmbientContextMissing` | the deprecation-shim exception is gone | catch `a2kit.packages.context.request_scope.RequestScopeMissing` (a `LookupError`); the `MODE_*` constants no longer exist |
+| `a2kit._lazy_module.lazy_attr(removed=…)` plumbing | dead `removed=` param / `RemovedHints` type / `_REMOVED` branch deleted | n/a (was unused) |
+
+**Other:** stale `SURFACE_REGISTRY`-proxy doc references (the proxy itself was
+already gone) are scrubbed; readers use `current_registry()` / the active
+`SurfaceRegistry`. New `a2kit.packages.lint.rego.REGO_RULE_CODES` (the RG rule
+set, sourced from the bundled `.rego` policies) is the canonical RG-code source.
+
 ## 0.42.1 — 2026-06-11
 
 ### Changed — Removed the legacy `expose=` / `visibility=` kwargs outright (BREAKING)

@@ -24,10 +24,8 @@ The inline suppression grammar is a strict superset of ruff's:
 neither parser breaks on the other's codes (``parse_noqa`` ignores foreign
 codes; ruff treats ``AK*``/``AKR*``/``RG*`` as unknown-but-well-formed). The
 ``-- reason`` suffix is conventional for most rules, mandatory for ``RG*``.
-Pre-rename spellings (dashed ``A2K-*`` / ``REGO-*``, numeric ``A2K###`` /
-``A2KR###``) resolve through the deprecation window via ``LEGACY_CODE_ALIASES``
-(``parse_noqa`` and the disable-list reader normalize them); every emitted
-finding carries the new code.
+Codes are matched in their canonical spelling only; there is no legacy-alias
+resolution. Every emitted finding carries the new code.
 """
 
 from __future__ import annotations
@@ -48,9 +46,7 @@ if TYPE_CHECKING:
 # reserved `AK` static prefix (ruff-compatible-lint-codes, ADR 0028). The Python
 # identifier keeps its historical `A2K*` name (pure internal wiring); only the
 # emitted string changed. Numeric codes keep their number under `AK`; the former
-# dashed codes carry stable `AK2xx` numbers. Old spellings resolve via
-# ``LEGACY_CODE_ALIASES`` during the deprecation window — ``parse_noqa``
-# normalizes them, and every emitted finding carries the new code.
+# dashed codes carry stable `AK2xx` numbers.
 A2K002 = "AK002"
 A2K003 = "AK003"
 A2K006 = "AK006"
@@ -77,77 +73,6 @@ A2K_SURFACE_EXPLICIT = "AK211"
 A2K_SURFACE_REGISTRY = "AK212"  # Surface subclass without MANIFEST
 A2K_SUBSTRATE_DEP = "AK213"
 A2K_NO_DICT_STR_ANY = "AK214"  # dict[str, Any] on internal dataclass field
-
-# --------------------------------------------------------------------------- #
-# Legacy code aliases (deprecation window)
-# --------------------------------------------------------------------------- #
-#
-# Maps every pre-rename spelling (dashed `A2K-*` / `A2K###` / `A2KR###` /
-# `REGO-*`) to its ruff-safe successor. ``parse_noqa`` normalizes recognized
-# legacy codes to the new code so old `noqa` suppressions and old
-# `[tool.a2kit.lint] disabled` entries keep resolving during the window. The
-# table is the single source of truth for the rename and MUST be lossless
-# (every legacy code present) and injective (no two legacy codes share a new
-# code). Runtime (`AKR*`) and rego (`RG*`) families are included so a single
-# normalizer covers all three. Emitted findings always carry the NEW code.
-LEGACY_CODE_ALIASES: dict[str, str] = {
-    # Static numeric — re-stamped onto AK, number preserved.
-    "A2K002": "AK002",
-    "A2K003": "AK003",
-    "A2K006": "AK006",
-    "A2K008": "AK008",
-    "A2K011": "AK011",
-    "A2K013": "AK013",
-    "A2K014": "AK014",
-    "A2K015": "AK015",
-    "A2K016": "AK016",
-    "A2K017": "AK017",
-    # Static dashed — assigned stable AK2xx numbers.
-    "A2K-LAYER": "AK200",
-    "A2K-IMPORT-DISCIPLINE": "AK201",
-    "A2K-PKG-INIT-IMPORT": "AK202",
-    "A2K-PKG-INIT-IMPL": "AK203",
-    "A2K-PKG-INIT-PURITY": "AK204",
-    "A2K-PKG-FRONT-DOOR": "AK205",
-    "A2K-CONN-LIST-PLACEHOLDER": "AK206",
-    "A2K-LOCAL-RETURN-MODEL": "AK207",
-    "A2K-EXTRA-NAMESPACE": "AK208",
-    "A2K-TEST-MIRROR": "AK209",
-    "A2K-METADATA-PRIVATE": "AK210",
-    "A2K-SURFACE-EXPLICIT": "AK211",
-    "A2K-SURFACE-REGISTRY": "AK212",
-    "A2K-SUBSTRATE-DEP": "AK213",
-    "A2K-NO-DICT-STR-ANY": "AK214",
-    # A2K-LDD-REPORT-TYPE: the LDD reports= type-check rule was retired; the
-    # spelling survives only as a dormant suppression. Mapped 1:1 so the
-    # no-silent-truncation sweep stays purely mechanical.
-    "A2K-LDD-REPORT-TYPE": "AK215",
-    # Runtime checks — re-stamped onto AKR.
-    "A2KR001": "AKR001",
-    "A2KR002": "AKR002",
-    "A2KR003": "AKR003",
-    "A2KR004": "AKR004",
-    # Rego policy rule-IDs — dashed REGO-* renamed to RG###.
-    "REGO-BODY-DUP": "RG001",
-    "REGO-NAME-COLLISION": "RG002",
-    "REGO-ALLOWLIST": "RG003",
-    "REGO-PYPROJECT-UPPER-BOUND": "RG004",
-    "REGO-GHA-PIN-SHA": "RG005",
-    "REGO-GHA-PERMISSIONS": "RG006",
-    "REGO-GHA-VENDOR-ALLOW": "RG007",
-    "REGO-UNKNOWN": "RG000",
-}
-
-
-def normalize_code(code: str) -> str:
-    """Resolve a legacy lint code to its ruff-safe successor (else verbatim).
-
-    New-shape codes and foreign (ruff) codes pass through unchanged; only a
-    recognized legacy spelling is rewritten. Used by ``parse_noqa`` and the
-    disable-list reader so old suppressions/config keep resolving.
-    """
-    return LEGACY_CODE_ALIASES.get(code, code)
-
 
 ALL_RULES = (
     A2K002,
@@ -217,7 +142,7 @@ def parse_noqa(source: str) -> dict[int, set[str]]:
             reason_idx = payload.find(" -- ")
             if reason_idx != -1:
                 payload = payload[:reason_idx]
-            codes = {normalize_code(c.strip()) for c in payload.split(",") if c.strip()}
+            codes = {c.strip() for c in payload.split(",") if c.strip()}
             out[i] = codes
         else:
             out[i] = {"*"}
@@ -324,9 +249,7 @@ def run_static_rules(paths: Iterable[Path], *, disabled: Iterable[str] = ()) -> 
     from a2kit.packages.lint.rules.importing import collect_layer_imports, rule_a2k_layer_cross
 
     rules_table = _build_rules_table()
-    # Normalize legacy disable-list entries (e.g. `disabled=["A2K014"]`) to the
-    # new code so old config keeps disabling the renamed rule.
-    disabled_set = {normalize_code(c) for c in disabled}
+    disabled_set = set(disabled)
     paths_list = list(paths)
     results: list[LintMessage] = []
     per_file_a2k006: dict[str, dict[str, list[str]]] = {}
@@ -383,10 +306,8 @@ __all__ = [
     "A2K_TEST_MIRROR",
     "ALL_RULES",
     "BUILTIN_CAPS",
-    "LEGACY_CODE_ALIASES",
     "LintMessage",
     "is_fixture_path",
-    "normalize_code",
     "parse_noqa",
     "run_static_rules",
     "suppressed",

@@ -59,7 +59,8 @@ The internals (`_providers`, `_scope_metadata`, `_scoped_cache`,
 adapters touching them are accepted technical debt to be migrated
 to documented APIs over time.
 
-Sync `Container.resolve(t)` SHALL remain for the hot path within a scope but SHALL raise `ValueError` if asked to resolve an async-factory app-scope type whose factory has not yet been awaited.
+Async `Container.get(t)` is the single resolution path; there is no
+sync resolution method.
 
 #### Scenario: `seed_scoped` appears in the package's exported surface
 
@@ -74,12 +75,6 @@ Sync `Container.resolve(t)` SHALL remain for the hot path within a scope but SHA
 - **THEN** the result is `True`
 - **AND** `Container.get(T)` may invoke `__aenter__` on the resolved instance and record cleanup on the scope's cleanup stack
 
-#### Scenario: Sync `resolve` available for hot path
-
-- **WHEN** `inspect.iscoroutinefunction(Container.resolve)` is checked
-- **THEN** the result is `False`
-- **AND** `resolve` is callable from sync code paths that operate within a single already-warmed scope
-
 #### Scenario: `Scope` enum has the three documented values
 
 - **WHEN** `list(Scope)` is enumerated
@@ -88,8 +83,8 @@ Sync `Container.resolve(t)` SHALL remain for the hot path within a scope but SHA
 
 #### Scenario: `register` is not a callable resolution method
 
-- **WHEN** `Container.register` is invoked
-- **THEN** it raises `TypeError` (a retired-name stub, per `request-scoped-di`) — it is not the registration path; `provide` is
+- **WHEN** `Container.register` is accessed
+- **THEN** it raises `AttributeError` (the name is removed, per `request-scoped-di`) — it is not the registration path; `provide` is
 
 #### Scenario: `dispatch` is not a callable method
 

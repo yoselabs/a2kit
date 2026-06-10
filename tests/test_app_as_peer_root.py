@@ -5,8 +5,8 @@ Covers the transition-tolerant core: an ``App`` subclass collects app-level
 via the ``routers`` ClassVar (reference-composition, replacing
 ``add_router``), installs the ``providers`` ClassVar, collects class-body
 ``@a2kit.enricher`` methods, and reads per-surface config from a ``config``
-class attr. The imperative ``App("svc").add_router(...)`` form stays working
-during the transition.
+class attr. ``App`` is abstract; the imperative ``App(...)`` /
+``add_router(...)`` forms are removed.
 
 Gherkin (mirrors `openspec/changes/app-as-peer-root`):
 

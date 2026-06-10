@@ -4,12 +4,11 @@
 is no DI-swap helper — tests construct routers with fake factories
 directly and hand the App to a finisher:
 
-    app = a2kit.App("test")
-    app.add_router(TasksRouter(fake_get_store))
+    app = a2kit.testing.app_of("test", TasksRouter(fake_get_store))
 
 `ambient_for_tests` establishes an call scope so tests that call
 orchestrator / phase functions directly (bypassing
-``TestClient.invoke``) don't trip :class:`AmbientContextMissing`.
+``TestClient.invoke``) don't trip :class:`RequestScopeMissing`.
 `ambient_for_tests_autouse` is the pre-decorated autouse peer for
 consumers that want project-wide binding via a single import.
 
@@ -52,8 +51,8 @@ def app_of(name: str, *routers: Any, **kwargs: Any) -> a2kit.App:
     """Build and instantiate an anonymous class-authored ``App``.
 
     Test-namespace convenience for the class-authored App shape (ADR 0028
-    Wave 2, app-as-peer-root): ``app_of("t", Entity(), Other())`` replaces
-    the imperative ``a2kit.App("t").add_router(Entity()).add_router(Other())``.
+    Wave 2, app-as-peer-root): ``app_of("t", Entity(), Other())`` composes an
+    anonymous ``App`` subclass with ``routers = (Entity(), Other())``.
     Each ``routers`` entry may be a Router *class* (instantiated zero-arg) or
     a pre-built Router *instance* (passed through), matching the ``routers=``
     ClassVar contract. Extra kwargs (e.g. ``config=``) forward to

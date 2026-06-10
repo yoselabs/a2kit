@@ -64,7 +64,7 @@ def connections_cli(*conn_types: type[ConnectionConfig]) -> click.Group:
     Pairs with :func:`a2kit.packages.connections.connections` (the Router
     factory). The two installs are explicit and independent::
 
-        app.add_router(connections(TrackerConn))     # dispatch hook + wire scope
+        routers = (connections(TrackerConn),)        # dispatch hook + wire scope (ClassVar)
         app.add_cli(connections_cli(TrackerConn))    # login/logout/list/show/delete
     """
     registry = _build_registry(conn_types)

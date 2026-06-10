@@ -7,7 +7,7 @@ mounts each populated surface as an independent sub-app via the
 build path and is mounted at ``/{surface.name}``.
 
 **Auto-mount** (post-add-multi-surface + remove-substrate-literal):
-each registered :data:`SURFACE_REGISTRY` surface mounts only when the
+each surface in the active :class:`SurfaceRegistry` mounts only when the
 runtime carries registrations for it. The bundled surfaces (``mcp``,
 ``api``) self-register at lazy front-door load; future surfaces register
 the same way and mount here without serve-side edits. Projection tools
@@ -71,8 +71,8 @@ def _surface_has_registrations(runtime: AppRuntime, surface_name: str) -> bool:
 def build_parent_app(app: App | AppRuntime) -> Starlette:
     """Build the multiplex parent app, auto-mounting populated surfaces.
 
-    Walks :data:`SURFACE_REGISTRY` (preserving registration order) and
-    mounts each surface with non-empty registrations at `/{surface.name}`
+    Walks the active :class:`SurfaceRegistry` (preserving registration
+    order) and mounts each surface with non-empty registrations at `/{surface.name}`
     via `surface.bind(runtime, ...)`. The App is built into a single
     `AppRuntime` once; the parent's lifespan enters that runtime
     exactly once and forwards every mounted surface's lifespan.

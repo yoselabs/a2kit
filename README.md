@@ -14,7 +14,7 @@ A single console script handles every mode — tool subcommands, connection
 management, schema dump, and `serve`:
 
 ```python
-# tracker/server.py — canonical imperative composition
+# tracker/server.py — canonical declarative composition
 import a2kit
 from a2kit.packages.connections import connections_cli, install_connections
 
@@ -22,9 +22,13 @@ from .connection import TrackerConn
 from .routers import ProjectsRouter, TasksRouter
 from .store import TrackerStore
 
-app = a2kit.App("tracker")
-app.add_router(ProjectsRouter())
-app.add_router(TasksRouter())
+
+class Tracker(a2kit.App):
+    name = "tracker"
+    routers = (ProjectsRouter, TasksRouter)  # Router classes, instantiated zero-arg
+
+
+app = Tracker()
 install_connections(app, TrackerConn)      # dispatch hook + typed wire scope
 app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
 app.provide(TrackerStore)                  # class-as-factory; container reads __init__
@@ -35,18 +39,21 @@ def main() -> None:
 ```
 
 > **One App, built by the finisher.** `a2kit.App` is the single public
-> type — the mutable composition surface (`add_router`, `add_cli`,
-> `add_mcp_middleware`, `provide`, `health_check`). Hand it to a finisher
-> (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`) and the
-> finisher builds it into a sealed internal runtime: snapshots the
-> composition into a fresh container, validates the provider graph, owns
-> the lifecycle. The fluent chain
-> (`a2kit.App(...).add_router(...).provide(...)`) works as a shorthand
-> for compact composition in tests and small scripts; prefer the
-> imperative form in real apps — each line names one subsystem, grep
-> finds every install. There is no public `build()`; `App` is a pure,
-> reusable builder — a composition verb after a finisher has built a
-> runtime affects only the next build. See ADR 0019.
+> type. It is abstract: author your app by subclassing it and naming the
+> Router classes in a `routers` ClassVar (`class Tracker(a2kit.App): name
+> = "tracker"; routers = (ProjectsRouter, TasksRouter)`), then add the
+> remaining subsystems on the instance via the mutable composition
+> surface (`add_cli`, `add_mcp_middleware`, `provide`, `health_check`).
+> Hand the instance to a finisher (`a2kit.run`, `build_mcp_server`,
+> `a2kit.testing.client`) and the finisher builds it into a sealed
+> internal runtime: snapshots the composition into a fresh container,
+> validates the provider graph, owns the lifecycle. For tests and small
+> scripts, `a2kit.testing.app_of("name", ProjectsRouter(), TasksRouter())`
+> composes an App from Router classes or instances without a subclass;
+> the verbs chain (`app.provide(...).provide(...)`) for compact wiring.
+> There is no public `build()`; `App` is a pure, reusable builder — a
+> composition verb after a finisher has built a runtime affects only the
+> next build. See ADR 0019.
 
 ```toml
 [project.scripts]
@@ -73,8 +80,8 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App(name, *, config=None, user_config=None)` | The single public type — a compose-phase builder. Three named verbs: `add_router(r)`, `add_cli(group)`, `add_mcp_middleware(m)`. Plus `provide(T, factory=None, *, per_call=False)` for typed DI and `health_check` for readiness probes. Each verb returns the App for chaining. Introspection surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). `add_router(r)` is the canonical install verb — a Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher builds it into a sealed internal runtime (snapshots the composition into a fresh container, validates the provider graph, owns the async-CM lifecycle). There is no public `build()`. `App` is a pure, reusable builder — composition verbs stay callable, and a verb called after a finisher has built a runtime affects only the next build. Debug mode and other runtime knobs are consumer-owned, set via env (`A2KIT_*`) or `A2kitConfig(...)` per ADR 0022 — see [Configuration](#configuration). |
-| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed by `add_router`), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
+| `a2kit.App` | The single public type — an abstract compose-phase builder. You author an app by subclassing it (`class Tracker(a2kit.App): name = "tracker"; routers = (ProjectsRouter, TasksRouter)`); a bare `a2kit.App("name")` raises `TypeError`. Routers are composed declaratively via the `routers` ClassVar — each entry is a Router class (instantiated zero-arg) or a pre-built instance. For tests, `a2kit.testing.app_of("name", ProjectsRouter(), TasksRouter())` composes an App from Router classes or instances without a subclass. The remaining named verbs run on the instance: `add_cli(group)`, `add_mcp_middleware(m)`, `provide(T, factory=None, *, per_call=False)` for typed DI, and `health_check` for readiness probes. Each verb returns the App for chaining. Introspection surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). A composed Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher builds it into a sealed internal runtime (snapshots the composition into a fresh container, validates the provider graph, owns the async-CM lifecycle). There is no public `build()`. `App` is a pure, reusable builder — composition verbs stay callable, and a verb called after a finisher has built a runtime affects only the next build. Debug mode and other runtime knobs are consumer-owned, set via env (`A2KIT_*`) or `A2kitConfig(...)` per ADR 0022 — see [Configuration](#configuration). |
+| `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed when the router is composed), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `visibility=` kwarg | Verb decorators accept `visibility: Literal["hidden", "cli", "all"]`. Defaults to inherit from the Router's `visibility` class attribute (default `"all"`). Tier semantics: `"hidden"` — CLI-invokable but absent from `--help` and not on programmatic transports; `"cli"` — visible in `--help`, not on MCP / future REST; `"all"` — registered everywhere. Credential-management tools should declare `visibility="cli"` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
 | `@a2kit.read` | Read-shaped verb. Kwargs: `open_world?, title?, visibility?, reports?, annotations?`. Reads are spec-idempotent and non-destructive — `idempotent=` and `destructive=` raise `TypeError`. |
@@ -107,8 +114,6 @@ mechanism so a2kit DI stays type-driven (no `Depends(...)` in author code).
 ```python
 import a2kit
 
-app = a2kit.App("memory").provide(Database, ...)
-
 class R(a2kit.Router):
     slug = "memory"
 
@@ -123,7 +128,11 @@ class R(a2kit.Router):
 
     tools = (fetch, llm_fetch, admin_upsert)
 
-app.add_router(R())
+class MemoryApp(a2kit.App):
+    name = "memory"
+    routers = (R,)
+
+app = MemoryApp().provide(Database, ...)
 
 # FastAPI-native — full @app.api.<method>(path, **fastapi_kwargs) surface
 @app.api.get("/version", response_model=Version)
@@ -185,8 +194,12 @@ class TasksRouter(a2kit.Router):
         return store.get(task_id)
 
 
-app = a2kit.App("tracker")
-app.add_router(TasksRouter())
+class Tracker(a2kit.App):
+    name = "tracker"
+    routers = (TasksRouter,)
+
+
+app = Tracker()
 install_connections(app, TrackerConn)      # dispatch hook + typed wire scope
 app.add_cli(connections_cli(TrackerConn))  # adds the connections CLI subcommands
 app.provide(TrackerStore)                  # class-as-factory (introspects __init__)
@@ -261,7 +274,11 @@ def build_state(settings: AppSettings) -> AppState:    # sync!
     )
 
 
-app = a2kit.App("my-app").provide(AppState, build_state)
+class MyApp(a2kit.App):
+    name = "my-app"
+
+
+app = MyApp().provide(AppState, build_state)
 ```
 
 What you get:
@@ -280,7 +297,7 @@ lazily on first use, auto-detecting the cleanup protocol on each
 resolved instance (`__aexit__` paired with `__aenter__`). Routers opt
 into lifecycle by implementing `__aenter__` / `__aexit__` and enter
 lazily on first dispatch of any of their tools. Composition
-(`add_router`, `provide`, ...) is pure — useful for tests that
+(`routers` ClassVar, `provide`, ...) is pure — useful for tests that
 introspect wiring without running anything.
 
 ```python
@@ -293,7 +310,11 @@ class DB:
         await self.pool.close()
 
 
-app = a2kit.App("my-app").provide(DB)
+class MyApp(a2kit.App):
+    name = "my-app"
+
+
+app = MyApp().provide(DB)
 
 
 def main() -> None:
@@ -391,7 +412,11 @@ models, `Field(description=...)` already works inside the model declaration.
 ### Health probe
 
 ```python
-app = a2kit.App("my-app")
+class MyApp(a2kit.App):
+    name = "my-app"
+
+
+app = MyApp()
 
 @app.health_check
 async def _sqlite() -> a2kit.HealthResult:
@@ -530,7 +555,8 @@ router = MyRouter()
 def pg_enricher(exc: asyncpg.PostgresError) -> UpstreamUnavailable | None:
     return UpstreamUnavailable(str(exc))
 
-app.add_router(router)
+# Compose the configured instance (app_of and `routers` both accept instances).
+app = a2kit.testing.app_of("my-app", router)
 ```
 
 See [`packages/a2effect/README.md`](packages/a2effect/README.md) for
@@ -660,8 +686,7 @@ def test_get_task() -> None:
         return FakeStore()
 
     app = (
-        a2kit.App("test")
-        .add_router(TasksRouter())
+        a2kit.testing.app_of("test", TasksRouter())
         .provide(TrackerConn, lambda connection: TrackerConn(key=(connection,), db_path="/tmp/x"))
         .provide(TrackerStore, fake_store_factory)
     )
@@ -671,7 +696,7 @@ def test_get_task() -> None:
 
 Provider override is just `app.provide(T, fake)` — last-write-wins. No
 `dependency_overrides` map, no `make_test_app` helper. The `app` pytest
-fixture in `a2kit.packages.testing` returns a fresh `a2kit.App("test")`.
+fixture in `a2kit.packages.testing` returns a fresh `app_of("test")`.
 
 ### Full-dispatch tests with `a2kit.testing.client`
 
@@ -686,8 +711,7 @@ from a2kit.testing import client
 async def test_full_dispatch() -> None:
     # Override a DI binding on a fresh App with the fake provided last.
     app = (
-        a2kit.App("test")
-        .add_router(TasksRouter())
+        a2kit.testing.app_of("test", TasksRouter())
         .provide(TrackerStore, FakeStore)
     )
     async with client(app) as c:

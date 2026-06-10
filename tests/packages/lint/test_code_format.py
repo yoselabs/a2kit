@@ -2,9 +2,8 @@
 
 a2kit lint codes must fit ruff's `# noqa` grammar `[A-Z]+[0-9]+` under reserved
 vendor prefixes (`AK` static, `AKR` runtime, `RG` rego) so a2kit codes and ruff
-codes co-suppress on one line without either parser breaking. A frozen
-`LEGACY_CODE_ALIASES` table resolves old dashed/`A2K###` codes during the
-deprecation window; emitted findings always carry the new code.
+codes co-suppress on one line without either parser breaking. Codes are emitted
+in their canonical new-shape spelling; there is no legacy-alias resolution.
 """
 
 from __future__ import annotations
@@ -25,10 +24,10 @@ def _all_a2kit_codes() -> set[str]:
 
 
 def _rego_codes() -> set[str]:
-    """The rego rule-IDs the alias table maps to (RG family)."""
-    from a2kit.packages.lint.static import LEGACY_CODE_ALIASES
+    """The rego rule-IDs (RG family), sourced from the bundled policies."""
+    from a2kit.packages.lint.rego import REGO_RULE_CODES
 
-    return {new for old, new in LEGACY_CODE_ALIASES.items() if new.startswith("RG")}
+    return set(REGO_RULE_CODES)
 
 
 # --------------------------------------------------------------------------- #
@@ -101,55 +100,8 @@ def test_mixed_line_a2kit_code_is_ruff_parseable() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# §3.1 — the legacy alias table is complete, ruff-shaped, and injective.
+# §3.1 — no legacy spelling survives in the live rule registries.
 # --------------------------------------------------------------------------- #
-
-
-def test_legacy_alias_table_complete_and_injective() -> None:
-    from a2kit.packages.lint.static import LEGACY_CODE_ALIASES
-
-    # Every value is a new-shape code.
-    bad = sorted(v for v in LEGACY_CODE_ALIASES.values() if not RUFF_CODE.match(v))
-    assert bad == [], f"alias targets not ruff-shaped: {bad}"
-
-    # Injective: no two legacy codes map to the same new code.
-    values = list(LEGACY_CODE_ALIASES.values())
-    assert len(values) == len(set(values)), "alias table is not injective"
-
-    # Every known legacy dashed / A2K### / A2KR### / REGO- code is covered.
-    for legacy in ("A2K-LAYER", "A2K014", "A2KR001", "REGO-NAME-COLLISION", "A2K-METADATA-PRIVATE"):
-        assert legacy in LEGACY_CODE_ALIASES, f"{legacy} missing from alias table"
-
-
-# --------------------------------------------------------------------------- #
-# §3.2 — a legacy suppression still resolves to the renamed rule.
-# --------------------------------------------------------------------------- #
-
-
-def test_legacy_noqa_resolves_to_new_code() -> None:
-    from a2kit.packages.lint.static import LEGACY_CODE_ALIASES, parse_noqa, suppressed
-
-    new = LEGACY_CODE_ALIASES["A2K-LAYER"]
-    src = "import x  # noqa: A2K-LAYER\n"
-    noqa = parse_noqa(src)
-    # The legacy code is normalized to the new code on parse.
-    assert suppressed(noqa, new, 1) is True
-
-
-# --------------------------------------------------------------------------- #
-# §3.3 — emitted findings always carry the NEW code, never a legacy spelling.
-# --------------------------------------------------------------------------- #
-
-
-def test_anchored_renames_match_proposal() -> None:
-    from a2kit.packages.lint.static import LEGACY_CODE_ALIASES
-
-    # The proposal anchors these specific renames.
-    assert LEGACY_CODE_ALIASES["A2K-LAYER"] == "AK200"
-    assert LEGACY_CODE_ALIASES["A2K-METADATA-PRIVATE"] == "AK210"
-    assert LEGACY_CODE_ALIASES["A2K014"] == "AK014"
-    assert LEGACY_CODE_ALIASES["A2KR001"] == "AKR001"
-    assert LEGACY_CODE_ALIASES["REGO-NAME-COLLISION"] == "RG002"
 
 
 @pytest.mark.parametrize("legacy", ["A2K-LAYER", "A2K014", "REGO-BODY-DUP"])

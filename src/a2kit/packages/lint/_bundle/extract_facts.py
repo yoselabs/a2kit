@@ -47,10 +47,10 @@ commit 83819db):
 The separator is exactly ``" -- "`` (space-dash-dash-space). The reason is
 free text after.
 
-**REGO-* rules upgrade the convention to required.** A bare ``# noqa:
-REGO-*`` without a ``" -- "`` reason raises ``NoqaError`` and the
+**RG* rules upgrade the convention to required.** A bare ``# noqa:
+RG###`` without a ``" -- "`` reason raises ``NoqaError`` and the
 extractor exits non-zero. Rego policies enforce architectural invariants;
-every suppression must be justified inline. A2K-* rules retain the
+every suppression must be justified inline. AK* rules retain the
 existing tolerance (reason is conventional, not enforced).
 """
 
@@ -79,13 +79,8 @@ SENTINEL_LIT = "_LIT_"
 NOQA_PREFIX = "# noqa"
 NOQA_REASON_SEP = " -- "
 # Rego rule-IDs are ruff-`noqa`-grammar-safe `RG###` (ruff-compatible-lint-codes,
-# ADR 0028). This bundle ships standalone (stdlib + click only — see rego.py),
-# so it carries its OWN copy of the legacy→new aliases for the two function-level
-# rego rules that are suppressible via a Python `noqa` (the GHA / pyproject /
-# allowlist rules fire on YAML / TOML, not Python source). Keep in sync with
-# a2kit.packages.lint.static.LEGACY_CODE_ALIASES.
+# ADR 0028). Rego rule-IDs are spelled in their canonical `RG###` form.
 REGO_RULE_PREFIX = "RG"
-_REGO_LEGACY_ALIASES = {"REGO-BODY-DUP": "RG001", "REGO-NAME-COLLISION": "RG002"}
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _UPPER_BOUND_RE = re.compile(r"(<=|<|~=)")
@@ -381,10 +376,7 @@ def extract_suppressions(source: str, filepath: str) -> list[dict[str, Any]]:
             codes_str = payload[:reason_idx]
             reason = payload[reason_idx + len(NOQA_REASON_SEP) :].strip()
         codes = [c.strip() for c in codes_str.split(",") if c.strip()]
-        for raw_code in codes:
-            # Normalize a legacy REGO-* spelling to its RG### successor so old
-            # suppressions keep resolving during the deprecation window.
-            code = _REGO_LEGACY_ALIASES.get(raw_code, raw_code)
+        for code in codes:
             if code.startswith(REGO_RULE_PREFIX) and not reason:
                 raise NoqaError(
                     f"{filepath}:{lineno}: # noqa: {code} requires a reason "

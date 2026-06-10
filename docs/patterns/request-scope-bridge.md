@@ -60,9 +60,8 @@ expected (anonymous requests, optional features).
   `request_scope.all_seeds()` to thread framework-tier seeds into
   `Container.call_scope(framework_seeds=...)`.
 - **LDD primitives** (`event`, `report`, `log`) read `_LddState` via
-  `request_scope.try_get(_LddState)`, raising `AmbientContextMissing`
-  (a deprecation-shim subclass of `RequestScopeMissing(_LddState)`)
-  when absent.
+  `request_scope.try_get(_LddState)`, raising `RequestScopeMissing`
+  (a `LookupError`) when absent.
 - **FastAPI bridge** reads the per-request `Container` via the
   DI-package-local `_a2kit_request_scope` ContextVar (kept inside the
   DI package for standalone-shippability; the http middleware

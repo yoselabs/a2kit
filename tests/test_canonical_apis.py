@@ -105,14 +105,14 @@ def test_testclient_tools_listing() -> None:
     assert "x_echo" in names
 
 
-def test_testclient_renamed_call_raises_typeerror() -> None:
-    """v0.33 rename: ``c.call`` is gone; access raises TypeError with hint."""
+def test_testclient_removed_call_raises_attribute_error() -> None:
+    """``c.call`` is gone; access raises the language-default AttributeError."""
     from a2kit.packages.testing.client import TestClient  # noqa: N814,F401 -- canonical type name
 
     app = _build_app()
     c = TestClient(app)
-    with pytest.raises(TypeError):
-        _ = c.call  # noqa: B018
+    with pytest.raises(AttributeError):
+        getattr(c, "call")  # noqa: B009
 
 
 # --- App call shapes --- #

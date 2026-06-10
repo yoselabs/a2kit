@@ -7,7 +7,7 @@ TBD - created by archiving change app-lifecycle-and-di-ergonomics. Update Purpos
 
 The sealed-runtime **`AppRuntime`** class SHALL implement `__aenter__` and `__aexit__`. `AppRuntime` is internal: it is produced by a finisher's internal `build(app)` step and is never exported on the `a2kit.*` surface. The compose-phase `a2kit.App` SHALL NOT implement the async context manager protocol. A finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`) SHALL be the canonical consumer entry point; consumers SHALL NOT construct or enter an `AppRuntime` directly.
 
-App construction (`a2kit.App(...)` plus subsequent `add_router(...)` / `provide(...)` calls) SHALL be pure: no async work, no resource entry, no factory invocation.
+App authoring (subclassing `a2kit.App` with a `routers` ClassVar plus subsequent `provide(...)` calls, or `a2kit.testing.app_of(...)` in tests) SHALL be pure: no async work, no resource entry, no factory invocation.
 
 A finisher's `build(app)` step SHALL:
 
@@ -23,7 +23,7 @@ The first `__aenter__` invocation on the `AppRuntime` SHALL NOT enter any regist
 
 #### Scenario: Construction is pure
 
-- **GIVEN** `app = a2kit.App("api")` followed by `app.provide(DB)` and `app.add_router(Github())`
+- **GIVEN** `app = a2kit.testing.app_of("api", Github())` followed by `app.provide(DB)`
 - **WHEN** the constructor and registration calls return
 - **THEN** no `__aenter__` method on any resource or Router has been invoked
 - **AND** no factory has been called

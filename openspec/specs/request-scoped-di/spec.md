@@ -170,29 +170,6 @@ Apps that install no dispatch hook (no connections, no custom hook) SHALL still 
 - **THEN** the wrapper opens `app._resolver.call_scope(fn, wire)` without `pre_hook`
 - **AND** the tool body sees DI-resolved kwargs merged with wire kwargs
 
-### Requirement: Legacy DI methods raise `TypeError` with migration hints
-
-`Container.register`, `Container.register_singleton`, `Container.resolve`, `Container.aresolve`, `Container.has`, `Container.has_async_singleton`, and `Container.has_any_async_singletons` SHALL raise `TypeError` when called. The error message MUST name the v0.38 replacement (`provide`, `get`, `has_provider`) and reference the CHANGELOG entry.
-
-#### Scenario: legacy `register` raises with hint
-
-- **GIVEN** a `Container` instance
-- **WHEN** test code calls `container.register(MyClass)`
-- **THEN** `TypeError` is raised
-- **AND** the message contains `"v0.38"` and names `"Container.provide"`
-
-#### Scenario: legacy `resolve` raises with hint
-
-- **WHEN** test code calls `container.resolve(MyClass)`
-- **THEN** `TypeError` is raised
-- **AND** the message contains `"v0.38"` and names `"await Container.get"`
-
-#### Scenario: legacy `has` raises with hint
-
-- **WHEN** test code calls `container.has(MyClass)`
-- **THEN** `TypeError` is raised
-- **AND** the message contains `"v0.38"` and names `"Container.has_provider"`
-
 ### Requirement: Container exposes the v0.36+ resolution surface
 
 The `Container` class SHALL provide this resolution + registration surface as the only callable path for new code:
@@ -207,7 +184,7 @@ The `Container` class SHALL provide this resolution + registration surface as th
 - async `aclose()`
 - async `__aenter__` / `__aexit__`
 
-The legacy method names (`register`, `register_singleton`, `resolve`, `aresolve`, `has`, `has_async_singleton`, `has_any_async_singletons`) remain as attribute stubs that raise `TypeError` with migration hints. The test-only `_override` / `_snapshot` / `_restore` seam does NOT exist — it was deleted. Test-time dependency swaps are done by composition-root re-registration (constructing a fresh `App` and calling `provide` with the fake), not by mutating a sealed container.
+The legacy method names (`register`, `register_singleton`, `resolve`, `aresolve`, `has`, `has_async_singleton`, `has_any_async_singletons`) are removed — they do not resolve to any attribute and accessing one raises `AttributeError`. The test-only `_override` / `_snapshot` / `_restore` seam does NOT exist — it was deleted. Test-time dependency swaps are done by composition-root re-registration (constructing a fresh `App` and calling `provide` with the fake), not by mutating a sealed container.
 
 #### Scenario: new surface is callable
 
@@ -220,7 +197,6 @@ The legacy method names (`register`, `register_singleton`, `resolve`, `aresolve`
 - **WHEN** `packages/di/container.py` is inspected for `_override`, `_snapshot`, `_restore`
 - **THEN** no such member is defined on `Container`
 
-
 ### Requirement: `Principal` is a SCOPED provider when present
 
 The active `call_scope` SHALL carry the request's `Principal` as a SCOPED provider whenever a substrate produces one. Tool bodies and `authorize=` callables SHALL resolve `principal: Principal` by type annotation alone. The provider SHALL be written by the substrate adapter, not by author code. When no `Principal` is produced (unauthenticated path), the framework-installed placeholder provider SHALL raise `RuntimeError` if a body actually depends on `Principal`.
@@ -230,3 +206,26 @@ The active `call_scope` SHALL carry the request's `Principal` as a SCOPED provid
 - **GIVEN** an authenticated request producing `Principal(subject="u1", ...)`
 - **WHEN** the dispatch wrapper enters `call_scope`
 - **THEN** `scope.get(Principal).subject == "u1"`
+
+### Requirement: Legacy DI method names are removed
+
+The legacy DI method names SHALL be removed from `Container`: `register`, `register_singleton`, `resolve`, `aresolve`, `has`, `has_async_singleton`, and `has_any_async_singletons`. The names SHALL NOT resolve to any attribute; accessing one raises the language-default `AttributeError` with no embedded migration hint and no alias. The replacements (`provide`, `get`, `has_provider`) are documented in the CHANGELOG.
+
+#### Scenario: legacy `register` is gone
+
+- **GIVEN** a `Container` instance
+- **WHEN** test code accesses `container.register`
+- **THEN** `AttributeError` is raised
+
+#### Scenario: legacy `resolve` is gone
+
+- **GIVEN** a `Container` instance
+- **WHEN** test code accesses `container.resolve`
+- **THEN** `AttributeError` is raised
+
+#### Scenario: legacy `has` is gone
+
+- **GIVEN** a `Container` instance
+- **WHEN** test code accesses `container.has`
+- **THEN** `AttributeError` is raised
+

@@ -50,9 +50,8 @@ def compose_default_surfaces() -> Any:
     Per `bootstrap-surfaces-explicit` (2026-05-26): surfaces are no
     longer self-registered as import side effects. The facade (this
     function) composes the default surface set and binds it as the
-    process's active registry so the deprecated module-level
-    `SURFACE_REGISTRY` proxy + every `runtime.surfaces` reader sees a
-    populated registry.
+    process's active registry so every `current_registry()` /
+    `runtime.surfaces` reader sees a populated registry.
 
     Idempotent: if surfaces are already composed (e.g. on a second
     `compose_default_surfaces()` call within the same process) the

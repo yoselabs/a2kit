@@ -5,7 +5,7 @@ TBD - created by archiving change de-magic. Update Purpose after archive.
 ## Requirements
 ### Requirement: App composition uses three named verbs
 
-The `a2kit.App` class SHALL expose exactly three composition verbs: `add_router(router)`, `add_cli(group_or_command)`, and `add_mcp_middleware(middleware)`. Each verb SHALL accept exactly one kind of thing and return the `App` for chaining. The `App` MUST NOT expose any polymorphic-dispatch verb, MUST NOT expose a class-claim shim (no `connect(C)`), and MUST NOT expose a factory-registration verb beyond `provide(...)`.
+Routers SHALL be composed declaratively: an `App` subclass SHALL name its Router classes in a `routers` ClassVar (`class Kay(a2kit.App): name = "kay"; routers = (TasksRouter, ProjectsRouter)`), and tests MAY use `a2kit.testing.app_of(name, *routers)` (which accepts Router classes or instances). The `a2kit.App` class SHALL expose exactly two non-router composition verbs: `add_cli(group_or_command)` and `add_mcp_middleware(middleware)`. Each verb SHALL accept exactly one kind of thing and return the `App` for chaining. The `App` MUST NOT expose any polymorphic-dispatch verb, MUST NOT expose a class-claim shim (no `connect(C)`), and MUST NOT expose a factory-registration verb beyond `provide(...)`.
 
 `a2kit.App` SHALL be a pure compose-phase builder with no sealed mode. Composition verbs SHALL remain callable at any time, including after the App has been handed to a finisher. A finisher's internal `build(app)` step snapshots the App's current composition into an `AppRuntime`; a composition verb called after `build()` SHALL affect only subsequent builds and SHALL NOT mutate any already-produced `AppRuntime`. There SHALL be no `_sealed` flag and no `TypeError` raised by a composition verb on the basis of App lifecycle state.
 
@@ -21,9 +21,9 @@ A finisher's internal `build(app)` step SHALL invoke `validate_composition(app)`
 
 #### Scenario: Adding a Router
 
-- **WHEN** user calls `app.add_router(TasksRouter(get_store))`
+- **WHEN** user authors `class Kay(a2kit.App): name = "kay"; routers = (TasksRouter,)` and constructs `Kay()`
 - **THEN** the `App` registers the router for tool collection and CLI
-  subcommand mounting, and returns the `App`
+  subcommand mounting
 
 #### Scenario: Adding a CLI group
 
@@ -40,11 +40,11 @@ A finisher's internal `build(app)` step SHALL invoke `validate_composition(app)`
 #### Scenario: Only three named verbs exist
 
 - **WHEN** user inspects the `App` composition surface
-- **THEN** exactly `add_router`, `add_cli`, and `add_mcp_middleware` are present, with no polymorphic-dispatch verb alongside them
+- **THEN** routers are composed via the `routers` ClassVar, and exactly `add_cli` and `add_mcp_middleware` are present as verbs, with no polymorphic-dispatch verb alongside them
 
 #### Scenario: Composition after build affects only future builds
 
-- **WHEN** a finisher has built an `AppRuntime` from an `App` and user code then calls `app.add_router(another)`
+- **WHEN** a finisher has built an `AppRuntime` from an `App` and user code then composes another router (a fresh subclass or `app_of` with the added router)
 - **THEN** no `TypeError` is raised
 - **AND** the already-built `AppRuntime` does not observe `another`
 - **AND** a subsequent `build(app)` produces an `AppRuntime` that does include `another`
@@ -199,12 +199,12 @@ decorator and `a2effect-foundation` for the rationale.
 
 ### Requirement: Tracker example demonstrates constructor injection
 
-The `examples/tracker/` example SHALL use constructor injection throughout. The combined LOC of `examples/tracker/server.py + examples/tracker/routers.py + examples/tracker/store.py` SHALL be ≤ 50 lines (excluding blank lines, imports, and comments). The example MUST NOT use `Depends(<class>)`, MUST NOT use `Store[ConnT]`, and MUST NOT reference any `Plugin` class. The example SHALL compose exclusively through the three named verbs.
+The `examples/tracker/` example SHALL use constructor injection throughout. The combined LOC of `examples/tracker/server.py + examples/tracker/routers.py + examples/tracker/store.py` SHALL be ≤ 50 lines (excluding blank lines, imports, and comments). The example MUST NOT use `Depends(<class>)`, MUST NOT use `Store[ConnT]`, and MUST NOT reference any `Plugin` class. The example SHALL compose exclusively through the `routers` ClassVar and the named verbs.
 
-#### Scenario: Tracker server composes with three named verbs
+#### Scenario: Tracker server composes with the routers ClassVar and named verbs
 
 - **WHEN** a reader opens `examples/tracker/server.py`
-- **THEN** they see `app.add_router(...)` and (optionally) `app.add_cli(connections_cli(...))` and nothing else
+- **THEN** they see the routers declared via the `routers` ClassVar and (optionally) `app.add_cli(connections_cli(...))` and nothing else
 
 #### Scenario: Tracker tools use self-attribute access
 
@@ -227,11 +227,11 @@ The `examples/tracker/` example SHALL use constructor injection throughout. The 
 
 ### Requirement: No test-app helper
 
-The `make_test_app(...)` helper SHALL NOT exist. Tests SHALL construct an `App` directly using the same composition verbs as production code. The `a2kit.packages.testing` module MUST NOT export `make_test_app`.
+The `make_test_app(...)` helper SHALL NOT exist. Tests SHALL construct an `App` using the same composition the production code uses — an `App` subclass with a `routers` ClassVar, or `a2kit.testing.app_of(...)`. The `a2kit.packages.testing` module MUST NOT export `make_test_app`.
 
 #### Scenario: Tests construct App directly
 
-- **WHEN** a test writes `app = a2kit.App("test"); app.add_router(TasksRouter(fake_get_store))`
+- **WHEN** a test writes `app = a2kit.testing.app_of("test", TasksRouter(fake_get_store))`
 - **THEN** the App invokes the router's tools with the fake factory
 - **AND** no helper or override map exists in the framework
 

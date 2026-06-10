@@ -101,7 +101,7 @@ def mem_404_enricher(exc: LookupError) -> NotFound | None:
     # Narrow form: framework dispatches only on isinstance(LookupError)
     return NotFound(f"memory not found: {exc}", details={"key": str(exc)})
 
-app.add_router(router)
+app = a2kit.testing.app_of("memory", router)
 ```
 
 Or, if you need to inspect many exception types inside one

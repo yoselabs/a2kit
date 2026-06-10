@@ -50,8 +50,8 @@ class App:
     instance, then it is handed to a *finisher* — :func:`a2kit.run` (or
     ``Kay().serve()``), :func:`a2kit.packages.mcp.build_mcp_server`, or
     :func:`a2kit.testing.client`. Tests use
-    :func:`a2kit.testing.app_of`. Direct ``App(...)`` construction and
-    ``add_router`` were removed in Wave 2.
+    :func:`a2kit.testing.app_of`. ``App`` is abstract: it is authored by
+    subclassing and composes routers via the ``routers`` ClassVar.
 
     ``App`` is a pure, reusable builder. It carries no sealed mode and no
     lifecycle: a finisher's internal ``build(app)`` step (see
@@ -108,15 +108,15 @@ class App:
         user_config: Any = None,
         **_kw: Any,
     ) -> None:
-        # The imperative instance form is removed (ADR 0028 Wave 2): ``App``
-        # is authored by subclassing (``class Kay(a2kit.App): ...``), or via
-        # ``a2kit.testing.app_of(...)`` in tests. Base ``App(...)`` is gone.
+        # ``App`` is abstract: it is authored by subclassing, never built
+        # directly. (Without this guard a bare ``App(...)`` would compose a
+        # routerless app and silently do nothing — §1 silent-misbehavior
+        # carve-out.)
         if type(self) is App:
             msg = (
-                "a2kit.App(...) direct construction was removed in ADR 0028 "
-                "Wave 2. Author an App by subclassing — `class Kay(a2kit.App): "
-                "name = 'kay'; routers = (Entity, ...)` then `Kay()` — or use "
-                "`a2kit.testing.app_of(name, *routers)` in tests."
+                "a2kit.App is abstract — author by subclassing "
+                "(`class Kay(a2kit.App): name = 'kay'; routers = (Entity, ...)` "
+                "then `Kay()`), or use `a2kit.testing.app_of(name, *routers)` in tests."
             )
             raise TypeError(msg)
         if name is None:
@@ -300,28 +300,12 @@ class App:
         self._enrichers.append((filter_type, fn))
         return fn
 
-    def add_router(self, router: Router) -> App:
-        """Removed in ADR 0028 Wave 2 — use the ``routers`` ClassVar.
-
-        Reference-composition replaces imperative registration: name the
-        Router *classes* in ``routers = (Entity, Ontology)`` on the App
-        subclass, or pass them to ``a2kit.testing.app_of(name, *routers)``
-        in tests.
-        """
-        msg = (
-            "App.add_router(...) was removed in ADR 0028 Wave 2. Compose "
-            "routers declaratively: `class Kay(a2kit.App): routers = "
-            f"({type(router).__name__}, ...)`, or `app_of(name, "
-            f"{type(router).__name__}())` in tests."
-        )
-        raise AttributeError(msg)
-
     def _register_router(self, router: Router) -> None:
         """Register one Router instance: dup-slug guard, descriptors, providers.
 
-        The single registration seam — used by ``add_router`` (transition),
-        the ``routers`` ClassVar composition, the synthetic ``_AppRootRouter``
-        for app-level verbs, and the internal ``_meta`` health router.
+        The single registration seam — used by the ``routers`` ClassVar
+        composition, the synthetic ``_AppRootRouter`` for app-level verbs,
+        and the internal ``_meta`` health router.
         """
         slug = router.slug
         existing = next((r for r in self._routers.all() if r.slug == slug), None)
@@ -546,7 +530,7 @@ class App:
         return self._routers.all()
 
     def tools(self) -> list[ToolDescriptor]:
-        """Typed descriptors materialized at ``add_router`` time. One per tool."""
+        """Typed descriptors materialized at router-registration time. One per tool."""
         return list(self._descriptors)
 
 

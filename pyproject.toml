@@ -1,6 +1,6 @@
 [project]
 name = "a2kit"
-version = "0.42.1"
+version = "0.43.0"
 description = "Fat tool decorator on top of FastMCP — protocol-agnostic core, opt-in plugin packages."
 readme = "README.md"
 authors = [{name = "Denis Tomilin"}]

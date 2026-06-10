@@ -48,7 +48,7 @@ async def test_no_signature_declaration_still_binds_ambient() -> None:
     """The test body emits an LDD event without declaring any fixture
     parameter. With ``ambient_for_tests_autouse`` imported at module
     scope, the call completes; without it, this would raise
-    ``AmbientContextMissing``."""
+    ``RequestScopeMissing``."""
     await a2kit.log.info("evt", k=1)
 
 

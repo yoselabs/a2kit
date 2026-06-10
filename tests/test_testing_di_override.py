@@ -89,13 +89,13 @@ def test_fake_for_an_async_factory_registration() -> None:
     asyncio.run(go())
 
 
-def test_testclient_override_raises_migration_hint() -> None:
-    """The removed `TestClient.override` raises with the re-build recipe."""
+def test_testclient_override_is_removed() -> None:
+    """The removed `TestClient.override` is gone — plain AttributeError."""
     app = app_of("t", _SingletonRouter()).provide(_LLM, lambda: _LLM("real"))
 
     async def go() -> None:
         async with client(app) as c:
-            with pytest.raises(TypeError, match=r"re-build|fresh a2kit\.App"):
-                c.override(_LLM, _FakeLLM())  # the removed seam — TestClient.__getattr__ raises
+            with pytest.raises(AttributeError):
+                getattr(c, "override")  # noqa: B009 -- dynamic access is the trigger
 
     asyncio.run(go())

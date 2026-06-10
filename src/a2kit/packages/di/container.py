@@ -22,7 +22,7 @@ import contextlib
 import inspect
 import logging
 import weakref
-from typing import TYPE_CHECKING, Any, NoReturn, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from a2kit.packages.di._cleanup_stack import CleanupStack
 from a2kit.packages.di._helpers import (
@@ -48,14 +48,6 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-
-_RETIRED_V038 = "v0.38 (see CHANGELOG retire-legacy-di-surface)"
-
-
-def _retired(old: str, replacement: str) -> NoReturn:
-    msg = f"Container.{old} was retired in {_RETIRED_V038}. Replacement: {replacement}."
-    raise TypeError(msg)
 
 
 class Container:
@@ -100,29 +92,6 @@ class Container:
         # Per-type async locks for lifecycle-aware ``get(T)`` so concurrent
         # first-touches coalesce.
         self._get_locks: dict[type, asyncio.Lock] = {}
-
-    # -- retired surface (loud-crash shims; see CHANGELOG) ---------------- #
-
-    def register(self, type_: type, factory: Factory | None = None) -> NoReturn:  # noqa: ARG002
-        _retired("register(T, factory)", "Container.provide(T, factory)")
-
-    def register_singleton(self, type_: type, factory: Factory) -> NoReturn:  # noqa: ARG002
-        _retired("register_singleton(T, factory)", "Container.provide(T, factory, scope=Scope.SINGLETON)")
-
-    def resolve(self, type_: type, *, cache: Any = None, chain: Any = None) -> NoReturn:  # noqa: ARG002
-        _retired("resolve(T)", "await Container.get(T)")
-
-    async def aresolve(self, type_: type, *, cache: Any = None, chain: Any = None) -> NoReturn:  # noqa: ARG002
-        _retired("aresolve(T)", "await Container.get(T)")
-
-    def has(self, type_: Any) -> NoReturn:  # noqa: ARG002
-        _retired("has(T)", "Container.has_provider(T)")
-
-    def has_async_singleton(self, type_: type) -> NoReturn:  # noqa: ARG002
-        _retired("has_async_singleton(T)", "no replacement — provide(scope=SINGLETON) takes sync or async factories")
-
-    def has_any_async_singletons(self) -> NoReturn:
-        _retired("has_any_async_singletons()", "no replacement — async/sync factories no longer distinguished")
 
     # -- registration --------------------------------------------------- #
 

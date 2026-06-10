@@ -74,8 +74,13 @@ The composition root does not change. This is the canonical
 ```python
 import a2kit
 
-app = a2kit.App("tracker")
-app.add_router(TasksRouter())
+
+class Tracker(a2kit.App):
+    name = "tracker"
+    routers = (TasksRouter,)
+
+
+app = Tracker()
 # the author has written zero transport code
 ```
 

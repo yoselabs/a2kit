@@ -243,36 +243,6 @@ The test client SHALL re-enable the `_meta` tag on the server it builds so hidde
 - **WHEN** the test calls `await client.invoke("_meta.health")`
 - **THEN** the call succeeds and the result includes the aggregated health payload
 
-### Requirement: TestClient SHALL surface renamed method names with embedded migration hints
-
-The `TestClient` class SHALL intercept attribute access on names that correspond to methods renamed in a prior release and raise `TypeError` (not `AttributeError`) with an error message that includes the new method name and an explicit "no alias is provided" note. Genuinely-unknown attribute names SHALL continue to raise the
-standard `AttributeError`.
-
-The framework SHALL NOT host backward-compat aliases for renamed
-surfaces. Aliases hide migrations from consumers' read paths.
-Renames are effective immediately; the only contract is that the
-error message names the new attribute.
-
-#### Scenario: Renamed `.call` raises TypeError with hint
-
-- **GIVEN** a v0.32-style call shape `await client.call("demo.ping", msg="hi")`
-- **WHEN** the call is awaited against v0.33+
-- **THEN** `TypeError` is raised
-- **AND** the message contains `"renamed"` and `"invoke"`
-
-#### Scenario: Genuinely unknown attribute falls through to AttributeError
-
-- **GIVEN** an access `client.completely_unknown_method`
-- **WHEN** the attribute resolves
-- **THEN** `AttributeError` is raised (not `TypeError`)
-- **AND** the message names the missing attribute
-
-#### Scenario: Canonical name still works
-
-- **GIVEN** `await client.invoke("demo.ping", msg="hi")`
-- **WHEN** the call is awaited
-- **THEN** the tool dispatches and returns its payload (no `TypeError`)
-
 ### Requirement: Async DI resolution test seam
 
 The system SHALL provide `a2kit.testing.resolve(app, type_)` — an
@@ -369,12 +339,12 @@ The system SHALL provide `a2kit.testing.ambient_for_tests` — a
 `pytest.fixture` that wraps test execution in an active LDD ambient
 state, allowing tests to call orchestrator or phase functions
 directly (bypassing `TestClient.invoke`) without raising
-`AmbientContextMissing`.
+`RequestScopeMissing`.
 
 The fixture SHALL be opt-in (not `autouse=True` at the framework
 level). Consumers requiring project-wide ambient state SHALL
 re-export it with `autouse=True` in their own `conftest.py`. This
-preserves the loud-by-default contract of `AmbientContextMissing`
+preserves the loud-by-default contract of `RequestScopeMissing`
 outside test contexts that explicitly request the ambient.
 
 The fixture SHALL default to:
@@ -393,15 +363,14 @@ framework SHALL NOT expose parametric variants of
   in its signature
 - **WHEN** the test body calls `await a2kit.log.info("evt", k=1)`
 - **THEN** the call completes without raising
-  `AmbientContextMissing`
+  `RequestScopeMissing`
 
 #### Scenario: tests not using the fixture still fail loud
 
 - **GIVEN** a pytest test function that does NOT depend on
   `ambient_for_tests` and is not under an autouse re-export
 - **WHEN** the test body calls `await a2kit.log.info("evt", k=1)`
-- **THEN** the call raises `AmbientContextMissing` with the v0.33
-  hint message
+- **THEN** the call raises `RequestScopeMissing`
 
 #### Scenario: default flags suppress event/report emission
 
@@ -449,7 +418,7 @@ consumers import the bare `ambient_for_tests`.
 - **WHEN** a pytest test in that project calls
   `await a2kit.log.info("evt", k=1)` without declaring any fixture
   in its signature
-- **THEN** the call completes without raising `AmbientContextMissing`
+- **THEN** the call completes without raising `RequestScopeMissing`
 
 #### Scenario: autouse variant exposes pytest fixture metadata
 
@@ -465,15 +434,32 @@ consumers import the bare `ambient_for_tests`.
   `ambient_for_tests` fixture (no autouse re-export)
 - **WHEN** a pytest test that does NOT declare `ambient_for_tests`
   in its signature calls `await a2kit.log.info("evt", k=1)`
-- **THEN** the call raises `AmbientContextMissing` with the v0.33
-  hint message, exactly as before this change
+- **THEN** the call raises `RequestScopeMissing`, exactly as before this change
 
-#### Scenario: both flavors share default flag values
+### Requirement: TestClient removed method names raise `AttributeError`
 
-- **GIVEN** a test running under `ambient_for_tests_autouse`
-- **WHEN** the test body calls `await a2kit.log.info("evt")` and
-  `await a2kit.log.info(SomeReport(...))`
-- **THEN** neither emission produces a wire-side effect (no sinks
-  fire), matching the bare fixture's
-  `events_enabled=False` / `reports_enabled=False` defaults
+The `TestClient` class SHALL NOT intercept attribute access for renamed or
+removed method names. Accessing a removed name (e.g. the pre-v0.33 `call`, the
+removed `override`) raises the standard `AttributeError` with no embedded
+migration hint and no alias. The canonical names (`invoke`, `call_wire`)
+remain the only callable surface. The migration recipe lives only in the
+CHANGELOG.
+
+#### Scenario: removed `.call` raises AttributeError
+
+- **GIVEN** a `TestClient` instance
+- **WHEN** test code accesses `client.call`
+- **THEN** `AttributeError` is raised (not `TypeError`, no migration hint)
+
+#### Scenario: removed `.override` raises AttributeError
+
+- **GIVEN** a `TestClient` instance
+- **WHEN** test code accesses `client.override`
+- **THEN** `AttributeError` is raised
+
+#### Scenario: Canonical name still works
+
+- **GIVEN** `await client.invoke("demo.ping", msg="hi")`
+- **WHEN** the call is awaited
+- **THEN** the tool dispatches and returns its payload (no `TypeError`)
 

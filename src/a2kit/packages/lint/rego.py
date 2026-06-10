@@ -29,6 +29,7 @@ no fastmcp, no a2kit runtime concepts. Mirrors
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,23 @@ BUNDLED_EXTRACT_SCRIPT = _BUNDLE_DIR / "extract_facts.py"
 
 PROJECT_DATA_PATH = Path("policies/data.json")
 OPA_QUERY = "data.a2kit.deny"
+
+
+def _bundled_rego_codes() -> frozenset[str]:
+    """Scan the bundled ``.rego`` policies for the ``RG###`` rule-IDs they emit.
+
+    The policy files are the single source of truth for the rego rule set —
+    every ``RG###`` literal in a bundled policy is a code the wrapper can emit.
+    """
+    pattern = re.compile(r"\bRG[0-9]{3}\b")
+    found: set[str] = set()
+    for policy in sorted(BUNDLED_POLICIES_DIR.glob("*.rego")):
+        found.update(pattern.findall(policy.read_text(encoding="utf-8")))
+    return frozenset(found)
+
+
+#: Canonical rego rule-ID set (RG family), sourced from the bundled policies.
+REGO_RULE_CODES: frozenset[str] = _bundled_rego_codes()
 
 
 class RegoWrapperError(Exception):
@@ -213,6 +231,7 @@ def rego_cmd(
 __all__ = [
     "BUNDLED_EXTRACT_SCRIPT",
     "BUNDLED_POLICIES_DIR",
+    "REGO_RULE_CODES",
     "RegoWrapperError",
     "rego_cmd",
     "run_rego_policies",

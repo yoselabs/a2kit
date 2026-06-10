@@ -57,7 +57,7 @@ Tool methods SHALL receive request-scoped dependencies as typed keyword argument
 
 #### Scenario: Singleton via __init__ remains supported
 - **GIVEN** a router that needs a process-wide logger via `__init__(self, logger)`
-- **WHEN** the app is built with `app.add_router(TasksRouter(logger=my_logger))`
+- **WHEN** the app is built with `a2kit.testing.app_of("app", TasksRouter(logger=my_logger))`
 - **THEN** the router holds the logger as instance state and the framework does not attempt to inject it
 
 ### Requirement: Router tool methods may rely on the docstring for parameter descriptions
@@ -113,7 +113,7 @@ Auto-collect removes the decorated-but-unlisted drift class by construction: the
 #### Scenario: Decorated methods are collected without a tuple
 
 - **GIVEN** a Router subclass with two `@a2kit.read()`-decorated methods and no `tools` tuple
-- **WHEN** `App("a").add_router(R())` is called
+- **WHEN** `a2kit.testing.app_of("a", R())` is composed
 - **THEN** the call succeeds and both methods are registered as tools
 
 #### Scenario: Plain helper methods are not collected
@@ -125,17 +125,17 @@ Auto-collect removes the decorated-but-unlisted drift class by construction: the
 #### Scenario: Inherited decorated methods are collected
 
 - **GIVEN** a base Router `B` with a decorated method `b_tool` and a subclass `S(B)` adding a decorated method `s_tool`
-- **WHEN** `App("a").add_router(S())` is called
+- **WHEN** `a2kit.testing.app_of("a", S())` is composed
 - **THEN** both `b_tool` and `s_tool` are registered (auto-collect walks the MRO)
 
 ### Requirement: Routers SHALL express lifecycle via `__aenter__` / `__aexit__`
 
-A `Router` subclass MAY opt into lifecycle by implementing the async context manager protocol on the instance: `async def __aenter__(self): ...` and `async def __aexit__(self, exc_type, exc, tb): ...`. The base `a2kit.Router` SHALL NOT declare either method. `App.add_router(instance)` SHALL detect the protocol on the instance via `hasattr(instance, "__aenter__")` and register the instance for lazy entry on first tool dispatch from that router.
+A `Router` subclass MAY opt into lifecycle by implementing the async context manager protocol on the instance: `async def __aenter__(self): ...` and `async def __aexit__(self, exc_type, exc, tb): ...`. The base `a2kit.Router` SHALL NOT declare either method. When an App composes a router instance, the framework SHALL detect the protocol on the instance via `hasattr(instance, "__aenter__")` and register the instance for lazy entry on first tool dispatch from that router.
 
-#### Scenario: Router with `__aenter__` is detected by `add_router`
+#### Scenario: Router with `__aenter__` is detected at composition
 
 - **GIVEN** `class Github(a2kit.Router): slug = "gh"; tools = (...); async def __aenter__(self): ...; async def __aexit__(self, *exc): ...`
-- **WHEN** `app.add_router(Github())` is called
+- **WHEN** the App composes `Github()` (via the `routers` ClassVar or `a2kit.testing.app_of("app", Github())`)
 - **THEN** the router is registered with lazy-entry tracking
 - **AND** neither `__aenter__` nor `__aexit__` has been invoked yet (construction is pure)
 

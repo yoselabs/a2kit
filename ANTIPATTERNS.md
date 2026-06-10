@@ -323,7 +323,7 @@ async def get_store(connection: str) -> TrackerStore:
     return TrackerStore(conn)
 
 
-app.add_router(TasksRouter(get_store))
+app = a2kit.testing.app_of("tracker", TasksRouter(get_store))
 ```
 
 The "store" is a plain class with a constructor. The "factory" is a plain
@@ -483,8 +483,7 @@ class TasksRouter(a2kit.Router):
         return store.get(task_id)
 
 app = (
-    a2kit.App("t")
-    .add_router(TasksRouter())
+    a2kit.testing.app_of("t", TasksRouter())
     .provide(TrackerStore)                   # class-as-factory
     .add_cli(connections_cli(TrackerConn))   # auto-installs TrackerConn
 )
@@ -866,8 +865,12 @@ the canonical violation: it locked the consumer out of disabling
 debug at deploy time. It is gone.
 
 ```python
-# Do (developer side — suggest a default):
-app = a2kit.App("svc", config=A2kitConfig(debug=True))
+# Do (developer side — suggest a default via the config class attr):
+class Svc(a2kit.App):
+    name = "svc"
+    config = A2kitConfig(debug=True)
+
+app = Svc()
 
 # Do (consumer side — override at deploy time):
 # A2KIT_DEBUG=false  (in .env, env, or process invocation)

@@ -30,12 +30,6 @@ def test_lazy_attr_resolves_module_alias():
     assert getter("alias").marker == "ok"
 
 
-def test_lazy_attr_raises_removed_hint():
-    getter = lazy_attr("a2kit._lz_pkg", {}, removed={"old": "use new"})
-    with pytest.raises(AttributeError, match="use new"):
-        getter("old")
-
-
 def test_lazy_attr_raises_default_for_unknown():
     getter = lazy_attr("a2kit._lz_pkg", {})
     with pytest.raises(AttributeError, match="has no attribute 'missing'"):
