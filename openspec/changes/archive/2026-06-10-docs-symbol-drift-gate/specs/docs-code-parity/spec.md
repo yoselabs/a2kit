@@ -28,7 +28,7 @@ allowlist entry to add.
 
 #### Scenario: Stale symbol in a living doc is caught
 
-- **GIVEN** `OPERATIONAL_CONTRACTS.md` cites `a2kit.ldd.event` after the surface renamed it to `a2kit.log`
+- **GIVEN** `OPERATIONAL_CONTRACTS.md` cites a removed `a2kit.<old>` emission symbol after the surface moved it to `a2kit.log`
 - **WHEN** the gate runs
 - **THEN** it fails with a message naming the symbol, the doc and line, and the missing resolution
 
