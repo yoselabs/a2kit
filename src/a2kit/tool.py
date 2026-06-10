@@ -23,7 +23,7 @@ _EMPTY_VIEW: Mapping[str, Any] = MappingProxyType({})
 class ToolDescriptor:
     """Typed introspection record for a registered tool.
 
-    Materialized by ``App.add_router`` once per tool. ``format_hint`` is
+    Materialized at router-registration time, once per tool. ``format_hint`` is
     pre-computed from the tool's resolved return type so the CLI runtime can
     skip per-call format heuristics — see
     ``a2kit.packages.formatter.inference.infer_format_hint``.
@@ -115,7 +115,7 @@ def _build_descriptors(router: Router, container: Container | None = None) -> li
 
     When ``container`` is supplied (typically at ``runtime.build`` time),
     populates ``wire_param_names`` and ``lazy_param_names``. Without a
-    container (``add_router`` time), those sentinel fields stay ``None``
+    container (router-registration time), those sentinel fields stay ``None``
     and substrate adapters that need them MUST read via
     ``AppRuntime.descriptor_for(name)``.
     """

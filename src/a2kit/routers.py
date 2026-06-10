@@ -85,12 +85,12 @@ class Router:
     Helper methods carry no marker and are never collected; this is
     marker-collection, NOT a ``dir()`` walk.
 
-    Optional class-level extension points (read by ``App.add_router``):
+    Optional class-level extension points (read at router-registration time):
 
     - ``providers: ClassVar[tuple[type | tuple[type, Callable], ...]]`` —
       each entry is either a type (registered as its own factory) or a
-      ``(type, factory)`` tuple. Installed onto the App during
-      ``add_router``.
+      ``(type, factory)`` tuple. Installed onto the App when the router is
+      composed.
     - ``__aenter__`` / ``__aexit__`` instance methods (Python's
       async-CM protocol). Subclasses opt in by implementing both. When
       present, ``__aenter__`` runs lazily on first dispatch of any

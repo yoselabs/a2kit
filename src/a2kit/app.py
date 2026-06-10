@@ -80,8 +80,8 @@ class App:
     """
 
     #: Authoring class attributes (subclass form). ``routers`` names Router
-    #: *classes* (reference-composition, replaces ``add_router``);
-    #: ``providers`` mirrors ``Router.providers``. ``name`` is a plain
+    #: *classes* (reference-composition); ``providers`` mirrors
+    #: ``Router.providers``. ``name`` is a plain
     #: subclass attribute (``name = "kay"``) read in ``__init__`` — not a
     #: ClassVar, so the per-instance ``self.name`` assignment is clean.
     routers: ClassVar[tuple[type[Router], ...]] = ()
@@ -221,8 +221,8 @@ class App:
         """Install the subclass's class-attr authoring (no-op for base ``App``).
 
         ``providers`` ClassVar installs the same way Router providers do;
-        ``routers`` names Router *classes* (reference-composition, replaces
-        ``add_router``); app-level ``@a2kit`` verbs register on a synthetic
+        ``routers`` names Router *classes* (reference-composition);
+        app-level ``@a2kit`` verbs register on a synthetic
         slug-less root router so their canonical names stay bare, and
         class-body ``@a2kit.enricher`` methods join the app enricher chain.
         """
