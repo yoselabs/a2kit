@@ -66,16 +66,16 @@ async def test_user_provide_overrides_lddconfig_default() -> None:
     assert resolved is not app.config.log
 
 
-def test_app_debug_attribute_raises_with_migration_hint() -> None:
-    """`App.debug` is removed; access raises with hint pointing at both
-    the consumer (`app.config.debug`) and subsystem (DI) replacements."""
+def test_app_debug_attribute_raises_plain_attributeerror() -> None:
+    """`App.debug` is removed; access raises the language-default
+    `AttributeError` (tombstone sunset — no bespoke hint). Consumers read
+    `app.config.debug`; subsystems resolve `A2kitConfig` via DI."""
     app = app_of("svc")
     with pytest.raises(AttributeError) as ei:
         _ = app.debug  # type: ignore[attr-defined]
     msg = str(ei.value)
-    assert "App.debug was removed" in msg
-    assert "app.config.debug" in msg
-    assert "A2kitConfig" in msg
+    assert "debug" in msg
+    assert "App.debug was removed" not in msg
 
 
 def test_app_config_remains_public_attribute() -> None:

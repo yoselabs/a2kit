@@ -101,24 +101,3 @@ async def test_unused_router_never_enters_and_never_exits() -> None:
 
     assert entered == ["gh"]
     assert exited == ["gh"]
-
-
-@pytest.mark.asyncio
-async def test_router_lifespan_classmethod_rejected_at_add_router() -> None:
-    """Subclasses still using the pre-v0.35 ``lifespan`` classmethod fail loud."""
-
-    class _Legacy(a2kit.Router):
-        slug = "leg"
-
-        async def lifespan(self) -> None:  # type: ignore[override]  # ty: ignore[invalid-return-type]  # why: test fixture deliberately returns mismatched shape to exercise downstream branching
-            yield
-
-        @a2kit.read()
-        async def x(self) -> dict:
-            return {}  # type: ignore[override]
-
-    with pytest.raises(TypeError) as ei:
-        app_of("x", _Legacy())
-    msg = str(ei.value)
-    assert "lifespan" in msg
-    assert "__aenter__" in msg

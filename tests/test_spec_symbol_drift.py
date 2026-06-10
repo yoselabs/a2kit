@@ -41,9 +41,9 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "a2kit.tool",  # removed v0.33 — split into read/write/list_ verbs
         "Container.dispatch",  # renamed to call_scope (d1dddb7); the spec
         # scenario cites the absent symbol as proof the rename is loud
-        "a2kit.packages.dispatch.substrate.Substrate",  # removed in
-        # remove-substrate-literal; surface-protocol spec cites it in the
-        # migration-hint scenario
+        "a2kit.packages.cli.context",  # tombstone module swept in
+        # prune-stale-tombstones; import-acyclicity spec cites the old path
+        # to document the relocation to a2kit.packages.context
         "App.debug",  # removed in di-for-sub-configs (2026-05-25); the
         "app.debug",  # core-composition + runtime-config specs cite the
         # name in their tombstone / migration-hint paragraphs.

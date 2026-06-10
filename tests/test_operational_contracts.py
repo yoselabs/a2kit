@@ -136,13 +136,16 @@ def test_app_debug_attribute_removed_with_migration_hint() -> None:
     assert "A2kitConfig" in msg
 
 
-def test_app_debug_kwarg_raises_with_migration_hint() -> None:
-    """`App(debug=True)` (the removed kwarg) raises TypeError per ADR 0022."""
+def test_app_debug_kwarg_raises_generic_unexpected_kwarg() -> None:
+    """`App(debug=True)` (the removed kwarg) raises the generic
+    unexpected-kwarg TypeError — the bespoke ADR-0022 hint is swept under
+    the tombstone sunset rule (`AGENTS.md` §1)."""
     with pytest.raises(TypeError) as ei:
         app_of("legacy", debug=True)  # type: ignore[call-arg]
     msg = str(ei.value)
-    assert "A2KIT_DEBUG" in msg
-    assert "A2kitConfig" in msg
+    assert "unexpected keyword" in msg
+    assert "debug" in msg
+    assert "A2KIT_DEBUG" not in msg
 
 
 def test_env_debug_beats_config_kwarg(monkeypatch: pytest.MonkeyPatch) -> None:

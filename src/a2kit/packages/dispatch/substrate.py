@@ -553,26 +553,6 @@ def _build_wrapper_annotations(
     return out
 
 
-def __getattr__(name: str) -> Any:
-    """Raise with a migration hint on `Substrate` access.
-
-    `Substrate = Literal["fastapi", "fastmcp"]` was retired by the
-    `remove-substrate-literal` change. Surface identity now flows
-    through `Surface` objects from `a2kit.packages.dispatch.surface`.
-    """
-    if name == "Substrate":
-        msg = (
-            "`Substrate` Literal was removed in remove-substrate-literal. "
-            "Surface identity now flows through `Surface` objects: import "
-            "`Surface` from `a2kit.packages.dispatch` and pass a Surface "
-            "instance (e.g. `SURFACE_REGISTRY.get('api')`) to "
-            "`split_signature` / `install_substrate_signature`."
-        )
-        raise AttributeError(msg)
-    msg = f"module {__name__!r} has no attribute {name!r}"
-    raise AttributeError(msg)
-
-
 __all__ = [
     "_FASTAPI_DEP_MARKER_SPECS",
     "_FASTAPI_RESERVED_SPECS",

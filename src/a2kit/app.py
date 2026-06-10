@@ -17,20 +17,6 @@ if TYPE_CHECKING:
     from a2kit.packages.di import Resolver
 
 
-#: Removed instance attributes mapped to migration hints. Accessing any
-#: of these on an ``App`` raises ``AttributeError`` with a pointed
-#: message. Mirrors the module-level ``_REMOVED_IN_V033`` pattern in
-#: ``src/a2kit/__init__.py``.
-_REMOVED_ATTRS: dict[str, str] = {
-    "debug": (
-        "App.debug was removed (di-for-sub-configs). Read `app.config.debug` "
-        "for consumer introspection, or resolve `A2kitConfig` via DI in a "
-        "subsystem (`def factory(cfg: A2kitConfig): ...`). The shortcut "
-        "duplicated `app.config.debug` and fragmented the access path."
-    ),
-}
-
-
 def _default_dispatch_hook(
     fn: Callable[..., Any],
     wire_kwargs: dict[str, Any],
@@ -255,46 +241,20 @@ class App:
             self.enricher(getattr(self, name))
 
     def __getattr__(self, name: str) -> Any:
-        hint = _REMOVED_ATTRS.get(name)
-        if hint is not None:
-            raise AttributeError(hint)
         msg = f"'App' object has no attribute {name!r}"
         raise AttributeError(msg)
 
     @staticmethod
     def _raise_unexpected_kwargs(name: str, kw: dict[str, Any]) -> None:
-        """Raise ``TypeError`` for any kwarg removed in v0.35.
+        """Raise the standard unexpected-kwargs ``TypeError``.
 
-        Each known-removed kwarg gets a migration-hint message. Other
-        unknown kwargs raise the standard "unexpected kwargs" shape.
+        Core hygiene (`AGENTS.md` §3): any kwarg outside the declared set
+        is rejected loud, naming the offending keys + the CHANGELOG. Past
+        per-kwarg migration hints (``lifespan`` / ``debug`` / ``health_tool``)
+        were swept under the tombstone sunset rule; those kwargs now fall
+        through to this generic path.
         """
-        if "lifespan" in kw:
-            msg = (
-                f"App({name!r}, lifespan=...) was removed in v0.35. "
-                "Express imperative bookends as a marker singleton "
-                "(``class _Warmup: __aenter__/__aexit__``; "
-                "``app.provide(_Warmup)``) or move the work into "
-                "``main()`` before handing the App to a finisher. See CHANGELOG."
-            )
-            raise TypeError(msg)
-        if "debug" in kw:
-            msg = (
-                f"App({name!r}, debug=...) was removed (ADR 0022). "
-                "Debug mode is a consumer-owned concern — set it at deploy "
-                "time via env `A2KIT_DEBUG=true` or via "
-                "`A2kitConfig(debug=True)` passed as `config=`. The kwarg "
-                "locked consumers out of disabling debug at deploy time."
-            )
-            raise TypeError(msg)
-        if "health_tool" in kw:
-            msg = (
-                f"App({name!r}, health_tool=...) was removed in v0.35. "
-                "Register a probe with app.health_check to "
-                "auto-install the _meta.health tool, or omit the flag "
-                "entirely if you don't need health checks."
-            )
-            raise TypeError(msg)
-        msg = f"App({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for v0.35 removals."
+        msg = f"App({name!r}) received unexpected keyword arguments: {sorted(kw)}. See CHANGELOG.md for removals across versions."
         raise TypeError(msg)
 
     def _install_health_tool(self) -> None:
@@ -372,20 +332,6 @@ class App:
                 "its `slug` class attribute"
             )
             raise ValueError(msg)
-        # ``Router.lifespan`` classmethod is removed in v0.35
-        # (``consolidate-lifecycle-on-async-cm-protocol``). Subclasses
-        # must implement ``__aenter__``/``__aexit__`` on the instance
-        # instead. Raise loud with the migration hint per CLAUDE.md
-        # "no backward compat shims".
-        cls = type(router)
-        if "lifespan" in cls.__dict__:
-            msg = (
-                f"Router subclass {cls.__name__!r}: `lifespan` classmethod "
-                "was removed in v0.35. Implement `__aenter__` and "
-                "`__aexit__` on the Router instance instead (the framework "
-                "detects the async-CM protocol at add_router time)."
-            )
-            raise TypeError(msg)
         self._routers.add(router)
         self._descriptors.extend(_build_descriptors(router))
         # Install Router-declared providers.
@@ -453,14 +399,6 @@ class App:
         in a class with ``__aenter__``/``__aexit__`` or use
         ``@asynccontextmanager``.
         """
-        if "teardown" in _kw:
-            msg = (
-                "app.provide(..., teardown=...) was removed in v0.36. Move "
-                "cleanup onto the resource itself via __aexit__ — the framework "
-                "auto-detects __aenter__/__aexit__ and unwinds via the per-scope "
-                "cleanup stack."
-            )
-            raise TypeError(msg)
         if _kw:
             msg = f"App.provide() received unexpected keyword arguments: {sorted(_kw)}. Supported kwargs are `per_call`."
             raise TypeError(msg)

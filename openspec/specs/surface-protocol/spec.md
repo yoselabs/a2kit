@@ -67,15 +67,6 @@ Every class implementing the `Surface` Protocol SHALL be passive: importing its 
 - **THEN** `len(mcp.registrations) == 1` and `len(api.registrations) == 1` via the inherited accumulator
 - **AND** neither subclass defines its own `registrations` field
 
-### Requirement: `Substrate` Literal import SHALL raise with migration hint
-
-`a2kit.packages.dispatch.substrate.Substrate` SHALL no longer exist. Any attempt to import or attribute-access `Substrate` from that module SHALL raise with a hint pointing to `Surface` / `SURFACE_REGISTRY`.
-
-#### Scenario: Substrate import raises with migration hint
-
-- **WHEN** any module evaluates `from a2kit.packages.dispatch.substrate import Substrate`
-- **THEN** an `ImportError` (or attribute-access raise) fires with a message naming `Surface` as the replacement
-
 ### Requirement: `ToolDescriptor.expose` SHALL widen to `tuple[str, ...]`
 
 `ToolDescriptor.expose` SHALL be `tuple[str, ...]` (not `tuple[Literal["mcp", "api"], ...]`). The `Literal["mcp", "api"]` typing SHALL be removed from the public descriptor surface. Decoration-time validation in `a2kit._verbs._validate_expose` SHALL reject unknown surface names with a `ValueError` naming the bundled set `{"mcp", "api"}`.

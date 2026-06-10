@@ -30,6 +30,23 @@ paths. Hard crashes force the migration into consumers' commit
 history. v0.33 prettification established this pattern; subsequent
 releases reinforce it.
 
+**Tombstone sunset.** A migration-hint tombstone is a *transition
+aid, not a permanent surface.* §1 forbids a transitional *behavior*
+(the old path never works) but the hint itself is kept only until the
+live downstream consumer has migrated past the removal — the
+**migration horizon**. After that, delete the tombstone: the swept
+name then raises the language-default `AttributeError` / `TypeError`
+(still loud, no alias, still no transitional period — just no bespoke
+hint). The migration recipe survives in the CHANGELOG and git history.
+Do not let tombstones accumulate across the horizon; a permanent
+monument to every past rename is the redundancy §2 forbids. The
+horizon is not machine-knowable, so sweeping is a deliberate review
+step, gated by an OpenSpec change (see `prune-stale-tombstones`, the
+first sweep). The current in-flight cluster deliberately retained
+until a2web migrates: positional `a2kit.App(...)` and `App.add_router`
+(ADR 0028), the refound-ldd surface, and the v0.40 `TestClient`
+renames.
+
 ### 2. No redundancy / no multiple ways of doing the same thing
 
 If two surfaces do the same job, exactly one of them ships.

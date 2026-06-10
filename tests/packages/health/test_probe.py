@@ -61,13 +61,16 @@ def test_health_check_auto_enables_health_tool() -> None:
     assert HEALTH_TOOL_NAME in names
 
 
-def test_health_tool_kwarg_removed_raises_with_hint() -> None:
-    """v0.35: ``App(health_tool=True)`` raises TypeError with migration hint."""
+def test_health_tool_kwarg_removed_raises_generic_unexpected_kwarg() -> None:
+    """``App(health_tool=True)`` raises the generic unexpected-kwarg
+    TypeError — the bespoke ``@app.health_check`` hint is swept under the
+    tombstone sunset rule (`AGENTS.md` §1)."""
     with pytest.raises(TypeError) as ei:
         app_of("x", health_tool=True)  # type: ignore[call-arg]
     msg = str(ei.value)
+    assert "unexpected keyword" in msg
     assert "health_tool" in msg
-    assert "health_check" in msg
+    assert "health_check" not in msg
 
 
 def test_health_check_idempotent_with_explicit_install() -> None:

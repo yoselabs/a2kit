@@ -15,9 +15,9 @@ A finisher's internal `build(app)` step SHALL invoke `validate_composition(app)`
 - `config: A2kitConfig | None = None` — optional a2kit-owned configuration instance. When `None`, `App.__init__` SHALL construct a fresh `A2kitConfig()`, which picks up env / `.env` / defaults per the inverted source order. The resolved instance SHALL be exposed as `app.config`.
 - `user_config: Any = None` — opaque developer-owned configuration pass-through, exposed as `app.user_config`. a2kit MUST NOT introspect this value.
 
-`App.__init__` SHALL NOT accept a `debug` kwarg. Debug mode is a consumer-owned concern (ADR 0022) and SHALL be set via env `A2KIT_DEBUG=true` or via `A2kitConfig(debug=True)`. An attempt to construct `App("name", debug=True)` SHALL raise `TypeError` carrying a migration hint pointing at the env var and the config kwarg.
+`App.__init__` SHALL NOT accept a `debug` kwarg. Debug mode is a consumer-owned concern (ADR 0022) and SHALL be set via env `A2KIT_DEBUG=true` or via `A2kitConfig(debug=True)`. An attempt to construct `App("name", debug=True)` SHALL raise the standard unexpected-kwarg `TypeError` (naming the offending kwarg and the CHANGELOG); no bespoke `debug=`-specific migration hint is retained (tombstone sunset, `AGENTS.md` §1).
 
-`App` SHALL NOT expose a `debug` attribute. Consumer-side reads of debug mode SHALL use `app.config.debug`. Subsystem-side reads SHALL resolve `A2kitConfig` via DI (typed dependency). Access to `app.debug` SHALL raise `AttributeError` with a migration hint naming both replacement paths.
+`App` SHALL NOT expose a `debug` attribute. Consumer-side reads of debug mode SHALL use `app.config.debug`. Subsystem-side reads SHALL resolve `A2kitConfig` via DI (typed dependency). Access to `app.debug` SHALL raise the language-default `AttributeError`; no migration hint is retained.
 
 #### Scenario: Adding a Router
 
@@ -67,11 +67,11 @@ A finisher's internal `build(app)` step SHALL invoke `validate_composition(app)`
 - **AND** no `A2KIT_DEBUG` env var is set
 - **THEN** `app.config.debug` is `True`
 
-#### Scenario: App(debug=...) kwarg raises TypeError with migration hint
+#### Scenario: App(debug=...) kwarg raises the generic unexpected-kwarg TypeError
 
 - **WHEN** user attempts `App("name", debug=True)`
-- **THEN** `TypeError` is raised
-- **AND** the error message names `A2KIT_DEBUG` and `A2kitConfig(debug=True)` as the migration targets
+- **THEN** `TypeError` is raised naming `debug` as an unexpected kwarg and pointing at the CHANGELOG
+- **AND** no bespoke `A2KIT_DEBUG` / `A2kitConfig(debug=True)` hint string is required
 
 #### Scenario: env beats config kwarg for debug
 
@@ -79,11 +79,11 @@ A finisher's internal `build(app)` step SHALL invoke `validate_composition(app)`
 - **WHEN** user constructs `App("name", config=A2kitConfig(debug=True))`
 - **THEN** `app.config.debug` is `False` (env wins per ADR 0022)
 
-#### Scenario: app.debug attribute access raises AttributeError
+#### Scenario: app.debug attribute access raises a plain AttributeError
 
 - **WHEN** user constructs `App("name")` and reads `app.debug`
-- **THEN** `AttributeError` is raised
-- **AND** the message points at `app.config.debug` (consumer path) and `A2kitConfig` DI (subsystem path)
+- **THEN** the language-default `AttributeError` is raised
+- **AND** no migration-hint message content is required
 
 #### Scenario: App.user_config slot accepts arbitrary objects
 

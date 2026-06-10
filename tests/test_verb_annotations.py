@@ -208,8 +208,10 @@ def test_tool_function_removed() -> None:
         from a2kit.tool import tool  # noqa: F401  # ty: ignore[unresolved-import]  # why: test exercises a removed/migrated import path to assert it raises
 
 
-def test_a2kit_tool_attribute_in_subprocess_raises_with_hint() -> None:
-    """v0.33: a fresh `import a2kit` + `a2kit.tool` raises AttributeError with v0.33 hint.
+def test_a2kit_tool_attribute_in_subprocess_raises_plain_attributeerror() -> None:
+    """A fresh `import a2kit` + `a2kit.tool` raises the language-default
+    AttributeError. The bespoke v0.33 hint is swept under the tombstone
+    sunset rule (`AGENTS.md` §1) — still loud, just no hint.
 
     Uses subprocess isolation to bypass Python's module cache — in-process
     tests can't reliably check this because other tests may import the
@@ -226,5 +228,5 @@ def test_a2kit_tool_attribute_in_subprocess_raises_with_hint() -> None:
         check=False,
     )
     assert result.returncode != 0
-    assert "v0.33" in result.stderr
     assert "AttributeError" in result.stderr
+    assert "v0.33" not in result.stderr

@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Changed — Tombstone sunset: settled migration hints swept (prune-stale-tombstones)
+
+`AGENTS.md` §1 gains a **sunset clause**: a migration-hint tombstone is a
+transition aid, not a permanent surface. It is kept only until the live
+downstream consumer has migrated past the removal (the migration
+horizon), then deleted — the swept name raises the language-default
+`AttributeError` / `TypeError` (still loud, no alias, no transitional
+period, just no bespoke hint).
+
+The first sweep removes ~10 settled tombstones (v0.23–~v0.38, all past the
+horizon). The removed surfaces stay removed; only their *bespoke* hint
+strings go. The migration recipes remain in git history and the original
+removal's CHANGELOG row:
+
+- `@a2kit.tool` (v0.33) → `a2kit.tool` now raises a plain `AttributeError`.
+  Use `@a2kit.read` / `@a2kit.write` / `@a2kit.list_`.
+- `App(lifespan=)` / `App(health_tool=)` (v0.35), `App(debug=)` (ADR 0022)
+  → now the generic unexpected-kwarg `TypeError` (names the kwarg + the
+  CHANGELOG), not a per-kwarg hint.
+- `Router.lifespan` classmethod (v0.35) → no longer special-cased
+  (implement `__aenter__`/`__aexit__`); `app.provide(teardown=)` (v0.36)
+  → generic unexpected-kwarg `TypeError`.
+- `App.debug` / `app.debug` → plain `AttributeError`; read `app.config.debug`.
+- `Substrate` Literal (`a2kit.packages.dispatch.substrate`) → simply absent.
+- `a2kit.packages.cli.context` tombstone module → deleted; import the
+  relocated context types from `a2kit.packages.context`.
+- `TOONSnapshotExtension` (v0.23) → already gone; doc reference pruned.
+
+**Kept** (in-flight, a2web will hit them when it migrates): positional
+`a2kit.App(...)` + `App.add_router` (ADR 0028), the refound-ldd surface,
+the v0.40 `TestClient` renames.
+
 ### Changed — LDD refounded on stdlib `logging`; one surface `a2kit.log` (BREAKING)
 
 The bespoke LDD (Logging / Data / Diagnostics) channel is retired and

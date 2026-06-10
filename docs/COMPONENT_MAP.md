@@ -29,7 +29,7 @@ the lint's own view of the graph.
 | `connections` | 4 | 10 | 0 | 3 | `authoring`, `di`, `runtime` |
 | `dispatch` | 4 | 9 | 3 | 6 | `authoring`, `context`, `di`, `kernel`, `log`, `runtime` |
 | `auth` | 5 | 8 | 1 | 1 | `context` |
-| `cli` | 5 | 7 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
+| `cli` | 5 | 6 | 0 | 8 | `authoring`, `context`, `dispatch`, `formatter`, `health`, `kernel`, `mcp`, `runtime` |
 | `codemode` | 5 | 5 | 1 | 1 | `formatter` |
 | `http` | 5 | 5 | 0 | 7 | `auth`, `context`, `di`, `dispatch`, `health`, `kernel`, `runtime` |
 | `mcp` | 5 | 9 | 2 | 8 | `authoring`, `codemode`, `context`, `dispatch`, `formatter`, `kernel`, `runtime`, `select` |

@@ -45,6 +45,12 @@ lazy import of `a2kit.packages.log` (the `format_ldd_line` wire-format
 primitive, inside `_emit`), so a bare `import a2kit.packages.context`
 pulls no other a2kit package.
 
+The `a2kit.packages.cli.context` tombstone module (which raised a
+migration hint on the old import path) is swept under the tombstone
+sunset rule (`AGENTS.md` §1): the module is deleted, so
+`import a2kit.packages.cli.context` raises the language-default
+`ModuleNotFoundError`. The new home is recorded in the CHANGELOG.
+
 #### Scenario: mcp wrappers do not import cli
 
 - **WHEN** `a2kit.packages.mcp._wrappers` is imported
@@ -55,12 +61,6 @@ pulls no other a2kit package.
 - **WHEN** `a2kit.packages.context` is imported
 - **THEN** no `a2kit.packages.cli`, `a2kit.packages.mcp`, or
   `a2kit.packages.codemode` module is imported as a result
-
-#### Scenario: old StderrToolContext path raises a migration hint
-
-- **WHEN** code runs `from a2kit.packages.cli.context import StderrToolContext`
-- **THEN** it raises with a message naming `a2kit.packages.context` as
-  the new import home
 
 ### Requirement: run_code is owned by the CLI package
 

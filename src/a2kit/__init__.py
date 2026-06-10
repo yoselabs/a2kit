@@ -39,18 +39,7 @@ _LAZY_MODULES: dict[str, str] = {
     "schema": "a2kit.schema",
 }
 
-# Removed-in-v0.33 symbols mapped to migration hints. Accessing any of these
-# via `a2kit.<name>` raises AttributeError with a pointed message.
-_REMOVED_IN_V033: dict[str, str] = {
-    "tool": (
-        "`@a2kit.tool` was removed in v0.33. Choose `@a2kit.read` (read-shaped), "
-        "`@a2kit.write` (write-shaped), or `@a2kit.list_` (list-shaped) based on "
-        "the tool's semantics."
-    ),
-}
-
-
-__getattr__ = lazy_attr(__name__, _LAZY_ATTRS, modules=_LAZY_MODULES, removed=_REMOVED_IN_V033)
+__getattr__ = lazy_attr(__name__, _LAZY_ATTRS, modules=_LAZY_MODULES)
 __dir__ = lazy_dir(globals(), _LAZY_ATTRS, _LAZY_MODULES)
 del lazy_attr, lazy_dir
 
