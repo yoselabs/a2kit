@@ -1,6 +1,94 @@
 # Changelog
 
-## Unreleased
+## 0.42.0 — 2026-06-10
+
+### Changed — ADR 0028 unified surface: one typed verb projects to MCP/HTTP/CLI; App is authored by subclassing (BREAKING)
+
+The headline surface rewrite. A tool is now authored once as a typed verb
+and **projected** onto every surface (MCP / HTTP / CLI) from one
+definition, and the `App` is authored by **subclassing** rather than
+imperative composition. This is the largest break since v0.33 — read the
+migration table before upgrading.
+
+**App is now a subclass, not an imperatively-composed instance
+(app-as-peer-root).** Author by subclassing `a2kit.App` with class
+attributes; positional `a2kit.App("name")` construction and the public
+`App.add_router(...)` verb are **removed** (both raise with a `routers=`
+hint). App-level verbs (`@app.read`-decorated methods on the subclass)
+render BARE (no slug prefix).
+
+```python
+# before
+app = a2kit.App("kay")
+app.add_router(EntityRouter(get_store))
+app.add_router(OntologyRouter())
+a2kit.run(app)
+
+# after
+class Kay(a2kit.App):
+    name = "kay"
+    routers = (EntityRouter, OntologyRouter)   # Router *classes*, not instances
+    providers = (get_store,)                    # was add_router-time provide()
+
+Kay().serve()        # or a2kit.run(Kay()) / build_mcp_server(Kay())
+```
+
+**Routers auto-collect their verbs (router-class-auto-collect).** The
+`tools = (...)` tuple is **removed**; any method decorated with
+`@a2kit.read` / `@a2kit.write` / `@a2kit.list_` is collected via
+`__init_subclass__` (marker-walk, not a `dir()` walk). Drop the tuple.
+
+**Canonical tool names are now flat `{slug}_{leaf}`
+(native-tree-homomorphism).** A verb `search` on a Router with
+`slug = "jira"` registers on MCP/HTTP as `jira_search` (flat), not
+`jira.search` or a mounted prefix. This flat name is the single
+call-log / audit key and is identical on every surface; it fixed the
+**silent MCP tool-name collisions across routers**. The CLI still renders
+nested (`app jira search`). Pin a verbatim name with
+`canonical_name_override="..."` (used as-is, slug never re-applied). A new
+Tier-2 backstop `a2kit.runtime.validate_composition(app)` asserts global
+canonical-name uniqueness offline (also runs inside `build()`), failing
+loud and naming both offending verbs.
+
+**`surfaces=` projection axis replaced `expose=` / `visibility=`.** A
+verb's surface matrix is now `@a2kit.read(surfaces=...)` with
+`{absent, listed, unlisted}` semantics. The old `expose=` / `visibility=`
+pair still works transitionally via a `_resolve_legacy` shim that maps it
+forward with a `DeprecationWarning` — migrate to `surfaces=`.
+
+**Test authoring: `a2kit.testing.app_of(name, *RouterClasses, **kw)`.**
+Returns an anonymous `App` subclass instance for fixtures and throwaway
+apps — the replacement for `App(...) + add_router(...)` in tests.
+
+**Migration (consumer-facing):**
+
+| Old | New |
+|---|---|
+| `app = a2kit.App("n")` + `app.add_router(Foo())` | `class MyApp(a2kit.App): name = "n"; routers = (Foo,)` |
+| `a2kit.run(app)` / `build_mcp_server(app)` | `MyApp().serve()` / `a2kit.run(MyApp())` / `build_mcp_server(MyApp())` |
+| `class Foo(Router): tools = (x, y)` | drop `tools=`; `@a2kit.read/write/list_` methods auto-collect |
+| `@a2kit.read(expose=("mcp", "api"))` / `visibility=` | `@a2kit.read(surfaces=...)` (old pair maps via a `DeprecationWarning` shim) |
+| MCP tool name `jira.search` / mounted prefix | flat `jira_search` (`{slug}_{leaf}`); pin with `canonical_name_override=` |
+| test: build an `App` + `add_router(...)` | `a2kit.testing.app_of("n", FooRouter, BarRouter)` |
+
+**Also in this wave:** per-surface ctx identity — `a2kit.log.current_surface()`
+(`"mcp"`|`"api"`|`"cli"`) and `current_surface_client_id()` readable inside
+dispatch; `McpConfig.instructions` threaded into the FastMCP server
+(server-level instructions); the CLI is now a first-class `Surface`
+(`app.cli`); Wave 0 fixes — CLI vendored-click guard (typer ≥ 0.26) and an
+HTTP `visibility`-leak fix. See ADR 0028.
+
+### Changed — Lint codes are ruff-`noqa`-grammar-safe: `AK###` / `AKR###` / `RG###` (BREAKING for suppressions)
+
+a2kit lint codes were renamed so a2kit and ruff can co-suppress on one
+line: `A2K###` / `A2K-*` → `AK###` (static) / `AKR###` (runtime),
+`REGO-*` → `RG###` (rego), all matching `^[A-Z]+[0-9]+$`. Existing
+`# noqa: A2K-*` / bare-`A2K###` comments still resolve through a
+transitional `LEGACY_CODE_ALIASES` table (`normalize_code`), so nothing
+breaks immediately — but migrate suppressions to the new spellings
+(anchors: `AK014` SLOC, `AK200` layer, `AK210` metadata-private,
+`AKR001`, `RG002` name-collision). The alias table sunsets once no legacy
+`# noqa` comments remain.
 
 ### Changed — Tombstone sunset: settled migration hints swept (prune-stale-tombstones)
 
