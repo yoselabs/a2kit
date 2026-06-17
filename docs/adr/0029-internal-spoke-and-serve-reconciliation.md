@@ -118,10 +118,18 @@ gives the *handle*, not concurrency safety. a2kay MUST:
   surface-aware behavior (`Secret[str]` link-vs-inline). The spoke is a
   spoke, not a framework.
 - **Peer-cred hardening** (`SO_PEERCRED` / `getpeereid` on accept) —
-  belt-and-suspenders to the token, awkward to do cleanly under uvicorn
-  and marginal once `0600` + token are in place. The token is the
-  primary control; the `0600` socket is the secondary. Revisit if a
-  shared-host threat model demands it.
+  investigated and deferred. Two concrete blockers: (1) uvicorn's ASGI
+  abstraction does not expose the per-connection socket to middleware
+  (the ASGI `scope` carries only `client`, `None` for a UDS), so reading
+  peer creds needs a custom uvicorn `Protocol` subclass or a raw-asyncio
+  UDS server reimplementing ASGI — invasive and version-coupled; (2) no
+  clean cross-platform API (Linux `SO_PEERCRED` vs macOS `LOCAL_PEERCRED`
+  with no Python `getpeereid`, needing manual `getsockopt` + `xucred`
+  unpacking). And it is low-value: the `0600` socket is already a
+  **same-uid gate** (only same-user processes can connect) and the lease
+  token is the per-request primary control, so peer-cred only adds
+  pid-level discrimination for a same-user, same-host, first-party threat
+  model. Revisit only if a shared-host threat model demands it.
 
 ## Consequences
 
