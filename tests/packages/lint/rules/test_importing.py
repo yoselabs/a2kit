@@ -168,7 +168,7 @@ def test_layer_core_importing_kernel_is_clean(tmp_path: Path) -> None:
 
 def test_layer_same_layer_non_cycle_is_clean(tmp_path: Path) -> None:
     """A same-layer import that closes no cycle is allowed."""
-    body = "from a2kit.packages.ldd import format_ldd_line\n"
+    body = "from a2kit.packages.log import format_condensed_line\n"
     p = _write(tmp_path / "src" / "a2kit" / "packages" / "context" / "probe.py", body)
     findings = run_static_rules([p])
     assert A2K_LAYER not in _codes(findings)
@@ -247,7 +247,7 @@ def test_front_door_noqa_suppresses(tmp_path: Path) -> None:
 def test_init_impl_class_body_fires(tmp_path: Path) -> None:
     """A class defined in a package `__init__.py` is flagged."""
     body = "class Widget:\n    def go(self) -> int:\n        return 1\n"
-    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "log" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPL in _codes(findings)
 
@@ -263,15 +263,15 @@ def test_init_impl_function_body_fires(tmp_path: Path) -> None:
 def test_init_impl_async_function_body_fires(tmp_path: Path) -> None:
     """An `async def` in a package `__init__.py` is flagged too."""
     body = "async def emit(name: str) -> None:\n    print(name)\n"
-    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "log" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPL in _codes(findings)
 
 
 def test_init_impl_re_export_front_door_is_clean(tmp_path: Path) -> None:
     """An `__init__.py` of imports + re-exports + `__all__` + constants is clean."""
-    body = 'from .wire import format_ldd_line\n\nTEXT_CAP = 60\n\n__all__ = ["format_ldd_line", "TEXT_CAP"]\n'
-    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    body = 'from .wire import format_condensed_line\n\nTEXT_CAP = 60\n\n__all__ = ["format_condensed_line", "TEXT_CAP"]\n'
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "log" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPL not in _codes(findings)
 
@@ -295,14 +295,14 @@ def test_init_impl_lazy_getattr_facade_is_clean(tmp_path: Path) -> None:
 def test_init_impl_silent_in_submodule(tmp_path: Path) -> None:
     """A class in a named submodule (not `__init__.py`) is exactly the goal — clean."""
     body = "class Widget:\n    def go(self) -> int:\n        return 1\n"
-    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "wire.py", body)
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "log" / "wire.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPL not in _codes(findings)
 
 
 def test_init_impl_noqa_suppresses(tmp_path: Path) -> None:
     body = "class Widget:  # noqa: AK203\n    pass\n"
-    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "log" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_IMPL not in _codes(findings)
 
@@ -344,8 +344,8 @@ def test_init_purity_dunder_names_pass(tmp_path: Path) -> None:
 
 def test_init_purity_clean_init_passes(tmp_path: Path) -> None:
     """An `__init__.py` re-exporting only public names is clean."""
-    body = 'from .wire import format_ldd_line\n\n__all__ = ["format_ldd_line"]\n'
-    p = _write(tmp_path / "src" / "a2kit" / "packages" / "ldd" / "__init__.py", body)
+    body = 'from .wire import format_condensed_line\n\n__all__ = ["format_condensed_line"]\n'
+    p = _write(tmp_path / "src" / "a2kit" / "packages" / "log" / "__init__.py", body)
     findings = run_static_rules([p])
     assert A2K_PKG_INIT_PURITY not in _codes(findings)
 

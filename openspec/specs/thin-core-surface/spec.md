@@ -85,7 +85,7 @@ The top-level `a2kit/__init__.py` SHALL include `Lazy` in its `__all__`
 so it appears in `dir(a2kit)` alongside `App`, `Router`, `ToolContext`,
 `HealthResult`.
 
-(The former `LddEmission` top-level re-export was removed with the LDD
+(The former `logging.LogRecord` top-level re-export was removed with the log
 surface — sink authors now implement stdlib `logging.Handler` directly;
 there is no a2kit emission payload type.)
 

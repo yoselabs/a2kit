@@ -175,37 +175,37 @@ The `App.debug` shortcut attribute has been removed. Consumer-side code SHALL re
 - **THEN** the language-default `AttributeError` is raised
 - **AND** no migration-hint message content is required (consumers read `app.config.debug`)
 
-### Requirement: A2kitConfig.ldd.level is the consumer-owned LDD threshold
+### Requirement: A2kitConfig.log.level is the consumer-owned log threshold
 
-`A2kitConfig` SHALL expose a sub-model `log: LogConfig` with field `level: Literal["trace", "debug", "info", "warning", "error"]` defaulting to `"info"`. The field SHALL be settable via env var `A2KIT_LDD__LEVEL`, via `.env` file entry, or via `A2kitConfig(ldd=LddConfig(level="debug"))` kwarg. Per ADR 0022's inverted source order, env wins over kwargs. Invalid string values SHALL raise `pydantic.ValidationError` at `A2kitConfig` construction time.
+`A2kitConfig` SHALL expose a sub-model `log: LogConfig` with field `level: Literal["trace", "debug", "info", "warning", "error"]` defaulting to `"info"`. The field SHALL be settable via env var `A2KIT_LOG__LEVEL`, via `.env` file entry, or via `A2kitConfig(log=LogConfig(level="debug"))` kwarg. Per ADR 0022's inverted source order, env wins over kwargs. Invalid string values SHALL raise `pydantic.ValidationError` at `A2kitConfig` construction time.
 
 #### Scenario: default level is info
 
-- **GIVEN** no `A2KIT_LDD__LEVEL` env var is set and no `.env` file with that key exists
+- **GIVEN** no `A2KIT_LOG__LEVEL` env var is set and no `.env` file with that key exists
 - **WHEN** `A2kitConfig()` is constructed
 - **THEN** `cfg.log.level` is `"info"`
 
 #### Scenario: env sets level
 
-- **GIVEN** `A2KIT_LDD__LEVEL=debug` in process env
+- **GIVEN** `A2KIT_LOG__LEVEL=debug` in process env
 - **WHEN** `A2kitConfig()` is constructed
 - **THEN** `cfg.log.level` is `"debug"`
 
 #### Scenario: env beats kwarg
 
-- **GIVEN** `A2KIT_LDD__LEVEL=warning` in process env
+- **GIVEN** `A2KIT_LOG__LEVEL=warning` in process env
 - **WHEN** `A2kitConfig(log=LogConfig(level="trace"))` is constructed
 - **THEN** `cfg.log.level` is `"warning"` (env wins per ADR 0022)
 
 #### Scenario: invalid level raises at construction
 
-- **GIVEN** `A2KIT_LDD__LEVEL=verbose` in process env (not in the allowed set)
+- **GIVEN** `A2KIT_LOG__LEVEL=verbose` in process env (not in the allowed set)
 - **WHEN** `A2kitConfig()` is constructed
 - **THEN** a `pydantic.ValidationError` is raised
 
 #### Scenario: kwarg wins when env unset
 
-- **GIVEN** no `A2KIT_LDD__LEVEL` env var is set
+- **GIVEN** no `A2KIT_LOG__LEVEL` env var is set
 - **WHEN** `A2kitConfig(log=LogConfig(level="trace"))` is constructed
 - **THEN** `cfg.log.level` is `"trace"`
 
@@ -239,9 +239,9 @@ it.
 
 - **GIVEN** the framework needs `LogConfig` inside `CallScopeStage`
 - **WHEN** the stage is constructed
-- **THEN** `LddConfig` is supplied as a constructor argument resolved
+- **THEN** `LogConfig` is supplied as a constructor argument resolved
   from the container
-- **AND** the stage body MUST NOT read `app.config.ldd.<field>` at
+- **AND** the stage body MUST NOT read `app.config.log.<field>` at
   dispatch time
 
 ### Requirement: McpConfig.instructions sets the MCP server-level instructions

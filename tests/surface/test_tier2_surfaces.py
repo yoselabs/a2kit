@@ -1,7 +1,7 @@
 """Tier 2 public surfaces snapshot — ``a2kit.<domain>``.
 
 Tier 2 modules are the per-audience re-export facades (``a2kit.testing``,
-``a2kit.ldd``) plus lazy submodule exports (``a2kit.schema``). Each
+``a2kit.log``) plus lazy submodule exports (``a2kit.schema``). Each
 module gets its own expectation file at ``expected_tier_<domain>.txt``.
 """
 
@@ -22,6 +22,7 @@ TIER2_MODULES: dict[str, str] = {
     "a2kit.testing": "expected_tier_testing.txt",
     "a2kit.log": "expected_tier_log.txt",
     "a2kit.schema": "expected_tier_schema.txt",
+    "a2kit.spoke": "expected_tier_spoke.txt",
 }
 
 

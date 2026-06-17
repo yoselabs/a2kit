@@ -2,7 +2,7 @@
 
 ## Purpose
 Single typed substrate-to-dispatch bridge for per-request values
-(Principal, per-request DI Container, LDD state, future TenantId /
+(Principal, per-request DI Container, log state, future TenantId /
 TraceContext / RequestId). Replaces per-type ContextVar bridges with a
 uniform shape and a typed `RequestScopeMissing(T)` failure surface.
 
@@ -25,8 +25,8 @@ a2kit SHALL provide a module `a2kit.packages.context.request_scope` (re-exported
 #### Scenario: Variadic publish + atomic reset
 
 - **GIVEN** an open request scope
-- **WHEN** `token = publish(principal, ldd_state, container)`
-- **THEN** `get(Principal)`, `get(LddState)`, and `get(Container)` each return the corresponding value
+- **WHEN** `token = publish(principal, call_scope, container)`
+- **THEN** `get(Principal)`, `get(_CallScope)`, and `get(Container)` each return the corresponding value
 - **WHEN** `reset(token)` runs
 - **THEN** subsequent `get(...)` for each of those types raises `RequestScopeMissing`
 
@@ -61,9 +61,9 @@ a2kit SHALL provide a module `a2kit.packages.context.request_scope` (re-exported
 
 #### Scenario: all_seeds is a defensive copy
 
-- **GIVEN** `publish(principal, ldd_state)`
+- **GIVEN** `publish(principal, call_scope)`
 - **WHEN** `seeds = all_seeds(); seeds.clear()`
-- **THEN** subsequent `get(Principal)` and `get(LddState)` still succeed
+- **THEN** subsequent `get(Principal)` and `get(_CallScope)` still succeed
 
 ### Requirement: Concurrent request scopes are isolated
 

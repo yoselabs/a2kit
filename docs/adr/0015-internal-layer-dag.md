@@ -54,7 +54,7 @@ Why it wins: it reuses the harness the team already runs, it makes the regressio
 
 Units are the directories under `src/a2kit/packages/` plus one `core` pseudo-unit (the top-level `a2kit.*` modules). The manifest (`a2kit.packages.lint.layers.LAYER_MANIFEST`):
 
-- **L0 — kernel:** `di`, `formatter`, `ldd`, `select`, `lint`, `context`, `health`. Foundational; depend only on each other (acyclically) and on the foundational core modules below.
+- **L0 — kernel:** `di`, `formatter`, `log`, `select`, `lint`, `context`, `health`. Foundational; depend only on each other (acyclically) and on the foundational core modules below.
 - **L1 — core:** the `a2kit.*` composition modules (`app`, `tool`, `routers`, `signature`, `metadata`, ...). Imports kernel packages; imported by everything above.
 - **L2 —** `connections`, `dispatch`. Above core, below the transports.
 - **L3 — transports:** `cli`, `mcp`, `codemode`, `otel`.

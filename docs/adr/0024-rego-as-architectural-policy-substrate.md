@@ -160,10 +160,10 @@ Filed as `BACKLOG.md` entries (each becomes its own openspec change):
   required); the cost is one extra line per noqa, the benefit is
   every architectural-invariant suppression carries its justification
   inline.
-- Foundational `a2kit._ldd_wire` module added to break the layer
+- Foundational `a2kit._log_wire` module added to break the layer
   constraint that prevented the naive R6 fix (`packages/context/` is
-  L0 and cannot import from `packages/ldd/` directly without closing
-  the existing `ldd.ambient → context.request_scope` cycle).
+  L0 and cannot import from `packages/log/` directly without closing
+  the existing `log.ambient → context.request_scope` cycle).
   Foundational placement is the clean precedent extension; recorded
   in `packages/lint/layers.py::FOUNDATIONAL_CORE_MODULES`.
 

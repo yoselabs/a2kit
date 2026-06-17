@@ -3,7 +3,7 @@ fix-mcp-dispatch-strips-ctx.
 
 Mirror file per A2K-TEST-MIRROR — the consolidated exception tests
 for older classes live alongside the consumers that raise them
-(e.g. ``test_ambient_ldd_ctx.py``).
+(e.g. ``tests/packages/log/test_scope.py``).
 """
 
 from __future__ import annotations

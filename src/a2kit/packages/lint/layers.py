@@ -91,7 +91,7 @@ _RUNTIME_MODULES = frozenset(
 #: surface deeper layers as a flat public API and so import "upward" by
 #: design. Resolving to no unit keeps a facade out of the layer DAG both
 #: as an import source and as an import target.
-_FACADE_STEMS = frozenset({"__init__", "log", "testing"})
+_FACADE_STEMS = frozenset({"__init__", "log", "testing", "spoke"})
 
 #: Foundational core modules — leaf type/exception definitions that
 #: import nothing and that any unit may depend on. Treating them as

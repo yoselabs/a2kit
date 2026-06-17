@@ -121,7 +121,7 @@ flag; a future change may pick otherwise, and that freedom is the point.
 It carries the composition verbs (`add_router`, `add_cli`,
 `add_mcp_middleware`, `provide`, `health_check`, each chainable) and the
 runtime surface (`tools`, `routers`, `container`, the async-CM
-lifecycle, the LDD kill-switch). `a2kit.AppBuilder` is removed.
+lifecycle, the log kill-switch). `a2kit.AppBuilder` is removed.
 
 ### The sealed runtime is a private flag, not a type
 

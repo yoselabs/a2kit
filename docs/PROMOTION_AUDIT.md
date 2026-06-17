@@ -28,7 +28,7 @@ cross-confirmed across agents.
 | Package | Target name | Why |
 |---|---|---|
 | `a2kit/packages/formatter` | `a2format` | 745 LOC, **zero a2kit imports** — trivial detach. Solves real OSS gap (`Page[T]` + JSON/TSV/page-tsv routing not in FastAPI/FastMCP/Click/pydantic). |
-| `a2kit/packages/ldd` | `a2ldd` | 977 LOC, 2 exception types to inline. Tool-call telemetry with ambient context + MCP/CLI dual sinks is recurring reinvention. |
+| `a2kit/packages/log` | `a2log` | 977 LOC, 2 exception types to inline. Tool-call telemetry with ambient context + MCP/CLI dual sinks is recurring reinvention. |
 
 ### Tier 4 → Tier 3 (extract, but Article-III research required FIRST)
 
@@ -53,7 +53,7 @@ cross-confirmed across agents.
 
 | Package | LOC | Why |
 |---|---|---|
-| `a2kit/packages/dispatch` | 1553 | 8 stages where 3 self-skip — self-justifying complexity. Collapse `TimeoutStage`+`ErrorCaptureStage`+`LddStateStage` into one middleware; keep `EnricherStage`/`AuthorizeGateStage`/`DispatchHookStage` as the only polymorphic seams. |
+| `a2kit/packages/dispatch` | 1553 | 8 stages where 3 self-skip — self-justifying complexity. Collapse `TimeoutStage`+`ErrorCaptureStage`+`CallScopeStage` into one middleware; keep `EnricherStage`/`AuthorizeGateStage`/`DispatchHookStage` as the only polymorphic seams. |
 | `a2kit/packages/codemode` | 580 | Wrapper around FastMCP's own CodeMode + SandboxProvider protocol. Dissolve into ~50 lines in a2web; delete the wrapper. |
 
 ### HIGH Article-III DEBT (research before any move)
@@ -88,7 +88,7 @@ WAITS FOR 2ND PRODUCT MIGRATION
   - Promote proxy_routing → a2proxyroute (need 2nd consumer)
   - Promote connections → standalone (need a2atlassian to import)
   - Reconsider plugin / http / mcp / cli for Tier 5 (need ≥3 products)
-  - Extract a2format / a2ldd (extract AS SIDE EFFECT of 2nd-consumer
+  - Extract a2format / a2log (extract AS SIDE EFFECT of 2nd-consumer
     migration, not before — extraction's value materializes only when
     a2atlassian/a2db imports the standalone package instead of a2kit)
 ```

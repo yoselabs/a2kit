@@ -130,7 +130,7 @@ def test_ctx_call_shapes_bind_against_both_contexts() -> None:
     `(message, logger_name, extra)`).
 
     To add a new shape: append a tuple to CTX_CALL_SHAPES. If it doesn't bind
-    on both sides, either the call is wrong (use `a2kit.ldd.<level>` for
+    on both sides, either the call is wrong (use `a2kit.log.<level>` for
     field-bearing logging) or one of the impls drifted (fix the drift).
     """
     failures: list[str] = []
@@ -193,9 +193,9 @@ def test_stub_signature_matches_fastmcp() -> None:
     assert not failures, "Stub signature drift:\n  " + "\n  ".join(failures)
 
 
-def test_field_bearing_logging_is_only_on_ldd_not_on_ctx() -> None:
+def test_field_bearing_logging_is_only_on_log_not_on_ctx() -> None:
     """Kwarg-on-ctx is rejected by both Contexts; the field-bearing form
-    lives on ``a2kit.ldd.*`` free functions instead. Pins the architectural
+    lives on ``a2kit.log.*`` free functions instead. Pins the architectural
     invariant: if either Context starts accepting ``ctx.info("msg", k=v)``,
     the change is reverting design D-CTX-INFO and this test catches it."""
     for cls in (Context, StderrToolContext):
@@ -206,6 +206,6 @@ def test_field_bearing_logging_is_only_on_ldd_not_on_ctx() -> None:
             continue
         msg = (
             f"{cls.__name__}.info accepts arbitrary kwargs — design D-CTX-INFO violated. "
-            f"Field-bearing logging belongs on a2kit.ldd.info, not on ctx.info."
+            f"Field-bearing logging belongs on a2kit.log.info, not on ctx.info."
         )
         raise AssertionError(msg)

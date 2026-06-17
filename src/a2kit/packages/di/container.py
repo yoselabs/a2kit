@@ -320,7 +320,7 @@ class Container:
 
         Opens a child resolver, applies ``framework_seeds`` (explicit
         typed instances published on the child by framework-tier code —
-        Principal, LddState, per-request Container), optionally calls
+        Principal, log state, per-request Container), optionally calls
         ``pre_hook`` for wire-side resolution, resolves ``fn``'s
         injectable kwargs (including ``Lazy[T]`` closures), merges
         everything, yields the merged kwarg dict. On exit, unwinds the

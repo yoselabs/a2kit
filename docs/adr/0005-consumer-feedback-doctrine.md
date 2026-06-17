@@ -40,7 +40,7 @@ had two concrete failure modes that the existing CLAUDE.md core
 principles did not address:
 
 1. **Re-litigation without recorded answers.** Friction C
-   ("promote `Lazy` and `LddEmission` to top-level") was filed in
+   ("promote `Lazy` and `logging.LogRecord` to top-level") was filed in
    round 10, declined in conversation, and refiled identically in
    round 11. Nothing in the repo recorded why it was declined.
    Without a citable answer, every future round will refile the

@@ -63,12 +63,23 @@ def _http_mountable(desc: _Any) -> bool:
     return advertised_on(matrix_for(meta.extras), "api")
 
 
-def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -> FastAPI:
+def build_http_app(
+    runtime: AppRuntime,
+    api_surface: ApiSurface | None = None,
+    *,
+    auth_target: str = "api",
+) -> FastAPI:
     """Build the FastAPI sub-app for ``runtime``.
 
     ``api_surface``: when omitted, defaults to ``runtime.api_surface``
     (populated by ``build()`` from the source ``App``'s ``api`` property).
     Explicit passing is still supported for tests and ad-hoc tooling.
+
+    ``auth_target``: which auth-registry target to mount on this app.
+    Defaults to ``"api"`` (the public HTTP surface). The internal spoke
+    builds the same projection over a UDS with ``auth_target="internal"``
+    so it mounts ``TokenAuth`` instead of the public API-key / OAuth
+    strategies — same verb catalog, different edge auth.
 
     Each tool descriptor's ``fn`` is wrapped by
     ``install_substrate_signature`` so the FastAPI introspector sees
@@ -86,7 +97,7 @@ def build_http_app(runtime: AppRuntime, api_surface: ApiSurface | None = None) -
     _install_request_scope_middleware(app, container)
     _wire_container_depends_overrides(app, runtime, container)
     _install_typed_error_handlers(app)
-    _install_auth_middlewares(app, runtime)
+    _install_auth_middlewares(app, runtime, auth_target)
 
     # Default liveness — matches the existing rest.py stub's contract.
     # Liveness only; the `_meta.health` MCP tool covers degraded-state
@@ -229,30 +240,26 @@ def _wrap_with_pipeline(
     return install_substrate_signature(chained, surface, container)
 
 
-def _install_auth_middlewares(app: FastAPI, runtime: AppRuntime) -> None:
-    """Mount authentication middlewares from ``runtime.auth_registry``.
+def _install_auth_middlewares(app: FastAPI, runtime: AppRuntime, auth_target: str) -> None:
+    """Mount authentication middlewares for ``auth_target`` from the registry.
 
     No-op when the registry is empty / ``None``: an App with no
     ``App.auth(...)`` calls SHALL produce a middleware-free sub-app
-    (per ``http-surface`` capability). Middlewares mount in
-    registration order; the first to publish via the dispatch
-    principal bridge short-circuits subsequent authenticators.
+    (per ``auth-spec`` capability). Middlewares mount in registration
+    order; the first to publish via the dispatch principal bridge
+    short-circuits subsequent authenticators.
 
-    Only ``APIKeyAuth`` is wired today; ``JwtAuth`` is queued as a
-    follow-up in the ``add-auth`` change (heavy dep footprint:
-    JWKS fetcher + ``python-jose``).
+    Mount is **generic**: every spec whose ``target`` matches builds
+    its own middleware via ``spec.build_middleware()``. No per-class
+    ``isinstance`` branch, no hardcoded surface name — a new strategy
+    (``TokenAuth`` for the spoke, ``JwtAuth`` later) mounts here without
+    editing this loop.
     """
     registry = getattr(runtime, "auth_registry", None)
     if registry is None or len(registry) == 0:
         return
-    # Lazy import: the auth package is L5 like ``http``; not pulled
-    # unless the registry has content (the registry's existence is the
-    # signal). Same-layer import, no `A2K-LAYER` concern.
-    from a2kit.packages.auth import APIKeyAuth, build_api_key_middleware
-
-    for spec in registry.for_target("api"):
-        if isinstance(spec, APIKeyAuth):
-            app.add_middleware(_BareAsgiMiddleware, factory=build_api_key_middleware(spec))
+    for spec in registry.for_target(auth_target):
+        app.add_middleware(_BareAsgiMiddleware, factory=spec.build_middleware())
 
 
 class _BareAsgiMiddleware:

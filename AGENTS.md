@@ -76,8 +76,8 @@ Specifically forbidden:
   invariant. Use `hasattr` checks at protocol boundaries; for
   type-known objects, access directly and let `AttributeError`
   surface.
-- Defensive `hasattr` against types you control. `hasattr(app, "ldd")`
-  when `app: a2kit.App` is dead defense — `App` always has `.ldd`.
+- Defensive `hasattr` against types you control. `hasattr(app, "log")`
+  when `app: a2kit.App` is dead defense — `App` always has `.log`.
   Remove the branch.
 
 ### 4. Errors are clear and action-oriented
@@ -120,7 +120,7 @@ class App:
 ### Provider-chain configuration (ADR 0022)
 
 Consumer-owned concerns (debug verbosity, wire-format compatibility,
-transport bind addresses, secrets, telemetry endpoints, LDD level
+transport bind addresses, secrets, telemetry endpoints, log level
 threshold) escape source code via `A2kitConfig` (pydantic-settings)
 and the `A2KIT_*` env var convention. Precedence is **inverted** from
 the pydantic-settings default: env > .env > kwargs > defaults.
@@ -136,9 +136,9 @@ Worked examples currently in `A2kitConfig`:
 - `mcp.structured_output` → `A2KIT_MCP__STRUCTURED_OUTPUT=true`
   (strict structured-content mode; saves tokens on hosts that
   forward `structuredContent`).
-- `ldd.level` → `A2KIT_LDD__LEVEL=debug` (LDD threshold; default
+- `log.level` → `A2KIT_LOG__LEVEL=debug` (log threshold; default
   `info` drops `debug()` calls).
-- `ldd.enabled` → `A2KIT_LDD__ENABLED=false` (hard kill-switch).
+- `log.enabled` → `A2KIT_LOG__ENABLED=false` (hard kill-switch).
 
 When you add a new sub-config, the smell to watch for: if every
 emission ends up at the same level, the level isn't doing work —
@@ -146,14 +146,14 @@ promote consistently-noisy ones up, demote consistently-quiet ones
 down. Levels exist to separate signals, not to be uniformly applied.
 
 Sub-configs are DI-resolvable. `A2kitConfig` and each sub-model
-(`LddConfig`, `McpConfig`, `HttpConfig`, `CliConfig`) are registered
+(`LogConfig`, `McpConfig`, `HttpConfig`, `CliConfig`) are registered
 as singleton providers on every `App`. Subsystems consume them by
 typed parameter:
 
 ```python
 @app.provide
-def my_factory(ldd: LddConfig) -> MyService:
-    return MyService(level=ldd.level)
+def my_factory(log: LogConfig) -> MyService:
+    return MyService(level=log.level)
 ```
 
 Adding a new sub-config means: (1) define the pydantic model under
@@ -180,7 +180,7 @@ fn(**call_kwargs)
 Three legitimate cases:
 
 1. **Async fan-out where one consumer must not break others.** Example:
-   `ldd/__init__.py` sink dispatch — one bad sink is logged with
+   `log/__init__.py` sink dispatch — one bad sink is logged with
    `.exception(...)` and skipped; sibling sinks still fire.
 
 2. **Decoration-time must-not-raise.** Example: introspecting return

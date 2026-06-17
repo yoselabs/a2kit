@@ -1,8 +1,8 @@
-# Spike: LDD cancellation flush
+# Spike: log cancellation flush
 
 ## Question
 
-When `anyio.fail_after` raises mid-tool, do LDD events emitted before the
+When `anyio.fail_after` raises mid-tool, do log events emitted before the
 timeout land on the wire (CLI stderr, MCP notifications) and on any
 attached sinks? Or does cancellation propagation drop the most recent
 emit(s)?
@@ -22,7 +22,7 @@ landed in the 0.3s window, matching the expected emit cadence.
 ## Analysis
 
 - **CLI path.** `StderrToolContext._emit` uses `print(..., flush=True)`
-  on `sys.stderr` — a synchronous operation. Once the `await ldd_event(...)`
+  on `sys.stderr` — a synchronous operation. Once the `await log_event(...)`
   returns, the bytes have already left the process. There is nothing
   in-flight to lose. Future emits never start because the next
   `anyio.sleep(0.05)` raises CancelledError, but every emit that *did*
@@ -52,7 +52,7 @@ which is a stronger contract than any of the planned use cases require.
 
 The contract documented in OPERATIONAL_CONTRACTS Q6:
 
-> LDD events emitted at `t < timeout` arrive at sinks and the wire. The
+> log events emitted at `t < timeout` arrive at sinks and the wire. The
 > emission in-flight when cancellation fires may be dropped at the sink
 > that was mid-await. For guaranteed delivery, sinks should be
 > synchronous-fast (push to a queue, return immediately) and process

@@ -8,7 +8,7 @@ TBD - created by archiving change extract-dispatch-pipeline. Update Purpose afte
 The `a2kit.packages.dispatch` package MUST NOT import `fastmcp` in any
 form and MUST NOT appear on the `A2K-IMPORT-DISCIPLINE` fastmcp
 allowlist. The five transport-neutral dispatch concerns — enrichers,
-ldd-state with ctx synthesis, timeout, dispatch-hook, router-lazy-enter
+log-state with ctx synthesis, timeout, dispatch-hook, router-lazy-enter
 — MUST be defined there.
 
 #### Scenario: the dispatch package imports no fastmcp
@@ -49,7 +49,7 @@ The HTTP adapter SHALL fold the pipeline inside `packages/http/build.py:build_ht
 #### Scenario: no duplicated dispatch concern remains
 
 - **WHEN** `packages/cli`, `packages/mcp`, and `packages/http` are inspected
-- **THEN** none defines a timeout, ldd-state, enricher,
+- **THEN** none defines a timeout, log-state, enricher,
   dispatch-hook, router-lazy-enter, or authorize-gate wrapper of its own
 - **AND** `_apply_authorize_gate` is absent from `packages/http/build.py`
 
@@ -110,7 +110,7 @@ adapter — `ToolError(json)` for MCP, an exit-code mapping for the CLI.
 
 `DISPATCH_PIPELINE` SHALL include `AuthorizeGateStage` immediately after
 `DispatchHookStage` (so wire-side resolution and `call_scope` are both
-ready) and immediately before `LddStateStage`. The stage SHALL
+ready) and immediately before `CallScopeStage`. The stage SHALL
 self-skip when the descriptor's `authorize is None`. When `authorize` is
 set, the stage SHALL resolve the callable's parameters through
 `call_scope` and invoke it; a falsy return SHALL raise
@@ -121,7 +121,7 @@ set, the stage SHALL resolve the callable's parameters through
 - **GIVEN** any descriptor with `authorize=` set
 - **WHEN** `DISPATCH_PIPELINE` is inspected
 - **THEN** the position index of `AuthorizeGateStage` is greater than `DispatchHookStage`'s
-- **AND** strictly less than `LddStateStage`'s
+- **AND** strictly less than `CallScopeStage`'s
 
 #### Scenario: skip is zero-cost when authorize unset
 
@@ -131,7 +131,7 @@ set, the stage SHALL resolve the callable's parameters through
 
 ### Requirement: Dispatch stages read request-scoped values via `request_scope.get(T)`
 
-Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `LddStateStage`, and any future stage) SHALL read request-scoped values exclusively via `a2kit.packages.context.request_scope.get(T)` (or `try_get(T)` where absence is valid). The previous per-type bridge modules and named-API helpers (e.g. `_principal_bridge.set_request_principal`, `_LDD_STATE.get()`) have been removed. The FastAPI `Depends` bridge keeps reading from a DI-package-local ContextVar (the http middleware dual-writes) to preserve `di-container-package`'s standalone-shippability invariant.
+Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `CallScopeStage`, and any future stage) SHALL read request-scoped values exclusively via `a2kit.packages.context.request_scope.get(T)` (or `try_get(T)` where absence is valid). The previous per-type bridge modules and named-API helpers (e.g. `_principal_bridge.set_request_principal`, `_CallScope.get()`) have been removed. The FastAPI `Depends` bridge keeps reading from a DI-package-local ContextVar (the http middleware dual-writes) to preserve `di-container-package`'s standalone-shippability invariant.
 
 #### Scenario: DispatchHookStage reads Principal via request_scope
 
@@ -140,17 +140,17 @@ Stages in the dispatch pipeline (`DispatchHookStage`, `AuthorizeGateStage`, `Ldd
 - **THEN** the stage threads `Principal` into `Container.call_scope` via `framework_seeds=request_scope.all_seeds()`
 - **AND** the stage's source contains no `current_request_principal_seeds()` call
 
-#### Scenario: LddStateStage reads LddState via request_scope
+#### Scenario: CallScopeStage reads _CallScope via request_scope
 
 - **WHEN** a tool body calls `event(...)` inside a dispatched call
-- **THEN** the LDD primitive reads its state via `request_scope.try_get(_LddState)`
-- **AND** outside any dispatched call the primitive raises `AmbientContextMissing` chained from `RequestScopeMissing(_LddState)`
+- **THEN** the log primitive reads its state via `request_scope.try_get(_CallScope)`
+- **AND** outside any dispatched call the primitive raises `AmbientContextMissing` chained from `RequestScopeMissing(_CallScope)`
 
 ### Requirement: `Container.call_scope` accepts `framework_seeds=` (rename)
 
 `Container.call_scope` SHALL accept a `framework_seeds: dict[type, Any] | None = None` parameter sourced from `request_scope.all_seeds()`. The prior `scoped_seeds=` keyword has been removed.
 
-The rename clarifies the tier split: `framework_seeds` is for framework-tier published values (Principal, LddState, per-request Container). App-author seeds continue to flow through `pre_hook`'s `seed: SeedFn` parameter (the user tier).
+The rename clarifies the tier split: `framework_seeds` is for framework-tier published values (Principal, _CallScope, per-request Container). App-author seeds continue to flow through `pre_hook`'s `seed: SeedFn` parameter (the user tier).
 
 #### Scenario: framework_seeds is the documented parameter
 

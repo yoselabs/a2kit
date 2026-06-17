@@ -19,7 +19,7 @@ The system SHALL propagate `asyncio.CancelledError` from transport disconnect (M
 
 ### Requirement: Multi-App isolation
 
-The system SHALL allow multiple `App` instances to coexist in one process with fully isolated app-scope caches, lifecycle, containers, and LDD state.
+The system SHALL allow multiple `App` instances to coexist in one process with fully isolated app-scope caches, lifecycle, containers, and log state.
 
 #### Scenario: two Apps each have their own app-scope cache
 
@@ -144,18 +144,18 @@ The synthetic `_meta.health` tool exists only on Apps that have at least one `@a
 - **WHEN** a tool with a `_meta.*` name is presented to `build_mcp_server` without the a2kit-internal sentinel in its metadata
 - **THEN** `build_mcp_server` raises `ValueError` naming the reserved namespace and pointing at the documented contract
 
-### Requirement: LDD primitives require an active tool dispatch
+### Requirement: log primitives require an active tool dispatch
 
-LDD primitives (`a2kit.log.info` / `report` / `log` / `debug` / `info` / `warning` / `error` and `EventRegistry.emit_typed`) SHALL be callable from any code path reached during an active tool dispatch — that is, while the dispatcher's ambient `ldd_state_for_call` scope is in effect for the current task. This includes:
+log primitives (`a2kit.log.info` / `report` / `log` / `debug` / `info` / `warning` / `error` and `EventRegistry.emit_typed`) SHALL be callable from any code path reached during an active tool dispatch — that is, while the dispatcher's ambient `bind_call_scope` scope is in effect for the current task. This includes:
 
 - the tool body itself (whether or not it declares `ctx`),
 - helper functions and coroutines it calls directly or indirectly,
 - async tasks spawned via `asyncio.gather`, `create_task`, or `TaskGroup` (Python's `contextvars` copy-on-task semantics carry the ambient ctx into the spawned task), and
 - DI factories (including `app.provide` async factories) instantiated *lazily during dispatch* as a dependency of the running tool.
 
-The primitives SHALL NOT be callable from any pre-dispatch context: imperative startup code, module-import-time code, or any other code path running outside an active `ldd_state_for_call` scope. (There are no `on_startup` / `on_shutdown` lifecycle hooks — those decorators do not exist on `App`.) Violations SHALL raise `RequestScopeMissing` rather than silently no-op.
+The primitives SHALL NOT be callable from any pre-dispatch context: imperative startup code, module-import-time code, or any other code path running outside an active `bind_call_scope` scope. (There are no `on_startup` / `on_shutdown` lifecycle hooks — those decorators do not exist on `App`.) Violations SHALL raise `RequestScopeMissing` rather than silently no-op.
 
-The `OPERATIONAL_CONTRACTS.md` document SHALL include an explicit clause stating this rule, so downstream apps know where LDD telemetry is and is not legal.
+The `OPERATIONAL_CONTRACTS.md` document SHALL include an explicit clause stating this rule, so downstream apps know where log telemetry is and is not legal.
 
 #### Scenario: tool body usage is legal regardless of ctx declaration
 
@@ -166,7 +166,7 @@ The `OPERATIONAL_CONTRACTS.md` document SHALL include an explicit clause stating
 
 #### Scenario: pre-dispatch usage still raises
 
-- **GIVEN** imperative startup code calling `await a2kit.log.info("booting")` before any tool dispatch (outside any `ldd_state_for_call` scope)
+- **GIVEN** imperative startup code calling `await a2kit.log.info("booting")` before any tool dispatch (outside any `bind_call_scope` scope)
 - **WHEN** that code runs
 - **THEN** it surfaces `RequestScopeMissing`
 
@@ -175,5 +175,5 @@ The `OPERATIONAL_CONTRACTS.md` document SHALL include an explicit clause stating
 - **GIVEN** an async app-scope factory registered via `app.provide(Pool, async_factory)` where `async_factory` body calls `await a2kit.log.info("pool initializing")`
 - **AND** the resource has not yet been instantiated when a tool dispatch begins
 - **WHEN** the tool resolves `Pool` for the first time during its dispatch, causing `async_factory` to run inside the dispatch's ambient ctx scope
-- **THEN** the LDD primitive in the factory body SHALL succeed and emit the event normally
+- **THEN** the log primitive in the factory body SHALL succeed and emit the event normally
 

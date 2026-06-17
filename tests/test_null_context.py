@@ -4,7 +4,7 @@ Gherkin scenarios (mirroring `specs/in-process-test-client/spec.md` ADDED
 section "Null context shim for unit-testing internal functions"):
 
   Scenario: Null context can be passed to a function expecting ToolContext
-    GIVEN an async fn taking ctx: a2kit.ToolContext that calls ldd.event(...)
+    GIVEN an async fn taking ctx: a2kit.ToolContext that calls log.info(...)
     WHEN the fn is called with a2kit.testing.null_context()
     THEN no AttributeError, the call returns normally
 
@@ -18,8 +18,8 @@ section "Null context shim for unit-testing internal functions"):
   Scenario: request_id returns a fixed sentinel
     THEN ctx.request_id == "null-context"
 
-  Scenario: ldd.event accepts the null context
-    THEN await event(null_ctx, "x", k=1) raises nothing
+  Scenario: log.info accepts the null context
+    THEN await info("x", k=1) under bind_call_scope(ctx=null_ctx) raises nothing
 """
 
 from __future__ import annotations

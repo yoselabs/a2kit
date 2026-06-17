@@ -47,21 +47,67 @@ def register_serve(typer_app: Any, app: AppRuntime) -> None:
                 ),
             ),
         ] = None,
+        select: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--select",
+                help=(
+                    "Narrow the served surface (repeatable). Syntax "
+                    "'category=values' (verb|name|surface); e.g. "
+                    "--select 'surface=mcp' serves MCP alone, "
+                    "--select 'surface=api' serves the REST surface alone. "
+                    "Multiple --select flags AND together."
+                ),
+            ),
+        ] = None,
+        internal_uds: Annotated[
+            str | None,
+            typer.Option(
+                "--internal-uds",
+                help=(
+                    "Path for a co-resident internal spoke: a private "
+                    "Unix-domain-socket listener (0600) for first-party jobs "
+                    "to call verbs back into this process, authed via "
+                    "TokenAuth. Runs in parallel with the public listener, "
+                    "sharing one runtime. Off-host unreachable."
+                ),
+            ),
+        ] = None,
     ) -> None:
-        """Run as an MCP server (stdio or HTTP)."""
-        from a2kit.packages.mcp import build_mcp_server
+        """Run the a2kit server.
 
-        server = build_mcp_server(
-            app,
-            code_mode=not code_mode_off,
-            code_mode_allow_destructive=code_mode_allow_destructive,
-            compact=compact,
-            tool_selection=tools,
+        ``--transport=http`` runs the multiplex parent: MCP under ``/mcp``
+        and the REST surface under ``/api`` (narrow with ``--select``).
+        ``stdio`` (default) serves MCP only — a pipe carries one protocol.
+        ``--internal-uds PATH`` adds a private spoke listener in parallel,
+        in either transport mode.
+        """
+        from a2kit.packages.select import SelectorError, compile_selector
+        from a2kit.packages.serve import serve_process
+        from a2kit.runtime import build
+
+        select_list = list(select or ())
+        for expr in select_list:
+            try:
+                compile_selector(expr)
+            except SelectorError as exc:
+                raise typer.BadParameter(f"--select expression invalid: {exc}") from exc
+
+        runtime = build(app, select=select_list or None)
+        mcp_options = {
+            "code_mode": not code_mode_off,
+            "code_mode_allow_destructive": code_mode_allow_destructive,
+            "compact": compact,
+            "tool_selection": tools,
+        }
+        serve_process(
+            runtime,
+            transport=transport,
+            host=host,
+            port=port,
+            internal_uds=internal_uds,
+            mcp_options=mcp_options,
         )
-        if transport == "stdio":
-            server.run(transport="stdio")
-        else:
-            server.run(transport="http", host=host, port=port)
 
     typer_app.command(name="serve")(serve_cmd)
 

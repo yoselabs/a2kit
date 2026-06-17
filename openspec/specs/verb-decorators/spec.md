@@ -256,7 +256,7 @@ The verb decorators `@a2kit.read`, `@a2kit.write`, and `@a2kit.list_` SHALL acce
 
 The decorator SHALL parse the value at decoration time. Invalid string forms SHALL raise `TypeError` immediately, not at call time. The canonical normalized value (float seconds) SHALL be stored on `A2KitMetaExtras.timeout_seconds`.
 
-When `timeout_seconds` is set, the dispatcher (both MCP and CLI transports) SHALL wrap the tool body in an `anyio.fail_after(seconds)` cancel scope. The scope SHALL sit innermost in the wrapper chain — inside the LDD-state scope and the dispatch-hook DI resolution — so neither DI cost nor LDD scope setup counts against the budget. On timeout, the wrapper SHALL raise Python's built-in `TimeoutError`.
+When `timeout_seconds` is set, the dispatcher (both MCP and CLI transports) SHALL wrap the tool body in an `anyio.fail_after(seconds)` cancel scope. The scope SHALL sit innermost in the wrapper chain — inside the log-state scope and the dispatch-hook DI resolution — so neither DI cost nor log scope setup counts against the budget. On timeout, the wrapper SHALL raise Python's built-in `TimeoutError`.
 
 The MCP transport's structured error envelope SHALL serialize `TimeoutError` as `{"class": "TimeoutError", "message": ...}` per the `mcp-structured-wire-error-envelope` contract. The CLI transport SHALL surface `TimeoutError` via the existing non-zero-exit + stderr-traceback path.
 

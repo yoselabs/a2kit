@@ -1,7 +1,7 @@
 """1.2 — body_dup.rego catches cross-file body duplication.
 
 R6 (the historical motivation) is closed in the same change that lands
-this policy via the foundational `a2kit._ldd_wire` module — so the
+this policy via the foundational `a2kit._log_wire` module — so the
 real codebase no longer fires the finding. Instead, these tests use
 synthetic fixtures to exercise the policy behavior directly.
 """

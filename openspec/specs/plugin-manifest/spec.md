@@ -6,7 +6,7 @@ Declarative extension-point shape for the framework. One shape
 reflection) unifies registration, capability-aware configuration
 delivery, and unavailability handling for every extension surface
 (API-key auth providers today; connections, future auth providers,
-LDD sinks, code-mode tools, surface registry going forward).
+log sinks, code-mode tools, surface registry going forward).
 
 Ported verbatim from a2web ADR-0001 Pattern 2.
 

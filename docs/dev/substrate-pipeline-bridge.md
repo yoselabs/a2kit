@@ -20,7 +20,7 @@ Wire request
 │   │  DISPATCH_PIPELINE (transport-neutral)   │    │    │
 │   │  Timeout > Enricher > ErrorEnvelope >    │    │    │
 │   │  RouterLazyEnter > DispatchHook >        │    │    │
-│   │  AuthorizeGate > LddState > ErrorCapture │ ◄──┘    │
+│   │  AuthorizeGate > _CallScope > ErrorCapture │ ◄──┘    │
 │   │                                          │         │
 │   │  ErrorEnvelopeStage WRITES rendered      │         │
 │   │  prose+envelope into `_render_state` ────┐         │

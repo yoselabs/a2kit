@@ -26,12 +26,13 @@ from a2kit.packages.auth.spec import AuthSpec, AuthTarget
 if TYPE_CHECKING:
     from a2kit.packages.auth.api_key import ApiKey, APIKeyAuth
     from a2kit.packages.auth.testing import make_principal
+    from a2kit.packages.auth.tokenauth import TokenAuth
 
 
 _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "APIKeyAuth": ("a2kit.packages.auth.api_key", "APIKeyAuth"),
     "ApiKey": ("a2kit.packages.auth.api_key", "ApiKey"),
-    "build_api_key_middleware": ("a2kit.packages.auth.api_key", "build_api_key_middleware"),
+    "TokenAuth": ("a2kit.packages.auth.tokenauth", "TokenAuth"),
     "make_principal": ("a2kit.packages.auth.testing", "make_principal"),
     "discover_api_key_providers": ("a2kit.packages.auth.discovery", "discover_api_key_providers"),
 }
@@ -46,6 +47,7 @@ __all__ = [
     "AppAuthRegistry",
     "AuthSpec",
     "AuthTarget",
+    "TokenAuth",
     "discover_api_key_providers",
     "make_principal",
 ]

@@ -7,7 +7,7 @@ TBD - created by archiving change ctx-surface-identity. Update Purpose after arc
 
 The per-call `_CallScope` SHALL carry two new fields stamping the surface
 that dispatched the call. (It is the neutral per-call spine introduced by
-`refound-ldd-on-stdlib-logging`, published on `request_scope`.) The fields
+`the stdlib-logging refound (ADR 0027)`, published on `request_scope`.) The fields
 are:
 
 - `surface: str | None` — a short stable identifier of the invoking
@@ -21,7 +21,7 @@ are:
 Both fields SHALL default to `None`. This extension is additive: a scope
 constructed without surface arguments behaves exactly as before (both
 fields `None`). This requirement EXTENDS the `_CallScope` owned by
-`refound-ldd-on-stdlib-logging`; it does not redefine that scope's
+`the stdlib-logging refound (ADR 0027)`; it does not redefine that scope's
 existing `ctx` / `call_id` / `tool_name` / span fields.
 
 #### Scenario: scope defaults surface to None when unset
@@ -114,10 +114,10 @@ into `request_scope` internals.
 The per-call scope filter SHALL inject a `surface` attribute onto every
 `LogRecord` handled by the `a2kit` logger, equal to the active scope's
 `surface` (or `None` when no dispatch is active). (The filter is
-`_CallScopeFilter`, owned by `refound-ldd-on-stdlib-logging`.) The durable
+`_CallScopeFilter`, owned by `the stdlib-logging refound (ADR 0027)`.) The durable
 call-record / access-log row produced by the call-log SHALL carry the
 `surface` field for the invoking surface. This rides the EXISTING
-`CallRecord` / access-log row of `refound-ldd-on-stdlib-logging` — it adds
+`CallRecord` / access-log row of `the stdlib-logging refound (ADR 0027)` — it adds
 the `surface` field via the filter and does NOT introduce a new durable
 record concept.
 
@@ -144,7 +144,7 @@ record concept.
 Concurrent and nested dispatches SHALL each read only their own stamped
 surface, reusing the per-call isolation of `request_scope` (copy-on-write
 publish + per-task `copy_context`) established by
-`refound-ldd-on-stdlib-logging`. A nested dispatch SHALL report its own
+`the stdlib-logging refound (ADR 0027)`. A nested dispatch SHALL report its own
 dispatch surface; after the inner dispatch returns, the outer dispatch's
 surface SHALL be restored.
 

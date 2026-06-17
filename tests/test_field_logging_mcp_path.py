@@ -1,9 +1,9 @@
-"""Repro + acceptance test for the field-logging-via-ldd change.
+"""Repro + acceptance test for the field-logging-via-log change.
 
 Today: the kwarg-emit pattern (``await ctx.info("msg", k=v)``) crashes
 under the real MCP transport because fastmcp.Context.info doesn't
 accept arbitrary kwargs. This test is XFAIL on the old surface and
-XPASS once ``a2kit.ldd.log`` (with ``info``/``warning``/... aliases) lands.
+XPASS once ``a2kit.log`` (with ``info``/``warning``/... free functions) lands.
 
 The test invokes a tool through ``fastmcp.Client(transport=build_mcp_server(app))``
 so it exercises the real fastmcp.Context, not the CLI subclass that
@@ -25,7 +25,7 @@ from a2kit.testing import app_of
 
 
 def _build_app() -> a2kit.App:
-    """Construct an app whose tool calls ``a2kit.ldd.info`` with both
+    """Construct an app whose tool calls ``a2kit.log.info`` with both
     string and instance forms.
 
     The instance form is exercised here as well as the string form so the
@@ -61,14 +61,14 @@ async def _call(tool_name: str) -> Any:
 
 
 def test_string_form_round_trips_through_real_mcp() -> None:
-    """``a2kit.ldd.info("msg", **fields)`` must deliver through real MCP."""
+    """``a2kit.log.info("msg", **fields)`` must deliver through real MCP."""
     result = asyncio.run(_call("r_emit_string"))
     payload = result.data if hasattr(result, "data") else result.structured_content
     assert payload == {"ok": 1}
 
 
 def test_instance_form_round_trips_through_real_mcp() -> None:
-    """``a2kit.ldd.info(dataclass_instance)`` must deliver through real MCP."""
+    """``a2kit.log.info(dataclass_instance)`` must deliver through real MCP."""
     result = asyncio.run(_call("r_emit_instance"))
     payload = result.data if hasattr(result, "data") else result.structured_content
     assert payload == {"ok": 1}

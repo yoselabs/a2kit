@@ -130,7 +130,7 @@ Their public signatures are unchanged. Consumers never see `AppRuntime`.
 
 The layer manifest replaces the `core` pseudo-unit with `kernel` (1) <
 `authoring` (2) < `runtime` (3). `app` and `runtime` live in the
-`runtime` sub-unit. The re-export facades (`__init__.py`, `ldd.py`,
+`runtime` sub-unit. The re-export facades (`__init__.py`, `log.py`,
 `testing.py`) are a layer-exempt group. The flat "≤ 12 core files" cap
 is retired — the sub-unit manifest is the organizing principle.
 

@@ -45,7 +45,7 @@ def test_info_no_fields_emits_prefix_and_msg() -> None:
 
 def test_warning_with_extra_emits_kv() -> None:
     """Narrow stub matches fastmcp.Context: fields arrive via ``extra=``,
-    not as ``**kwargs``. Field-bearing kwargs form moved to ``a2kit.ldd.warning``."""
+    not as ``**kwargs``. Field-bearing kwargs form moved to ``a2kit.log.warning``."""
     ctx = StderrToolContext()
     out = _capture_stderr_async(lambda: ctx.warning("stuck", extra={"retry": 3, "where": "foo"}))
     assert "WARN" in out
