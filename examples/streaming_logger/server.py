@@ -1,4 +1,4 @@
-"""LDD example — composition root.
+"""log example — composition root.
 
 Run as a CLI::
 

@@ -39,7 +39,7 @@ is cancelled mid-await; the test asserts the `finally` block ran and
    `@a2kit.read(timeout=...)` accepts a number (seconds) or string with
    unit suffix (`"60s"`, `"2m"`, `"500ms"`). When set, the dispatcher
    wraps the tool body in `anyio.fail_after` at the innermost layer of
-   the wrapper chain — inside the LDD scope and dispatch-hook DI, so
+   the wrapper chain — inside the log scope and dispatch-hook DI, so
    neither counts against the budget. The same wrap fires on both MCP
    and CLI transports for transport parity. On timeout, Python's
    built-in `TimeoutError` is raised; the MCP envelope serializes it as
@@ -303,7 +303,7 @@ guaranteed delivery, write a fast handler that enqueues and processes
 out-of-band, and flush it from a resource's `__aexit__` (the per-scope
 cleanup stack runs on dispatch / App teardown).
 
-See `docs/SPIKE_LDD_CANCELLATION.md` for the spike that established
+See `docs/SPIKE_LOG_CANCELLATION.md` for the spike that established
 this contract.
 
 **Future plans.** Streaming output (e.g. `AsyncIterator[Chunk]` returns
@@ -359,14 +359,14 @@ pre-dispatch context raises
 `a2kit.packages.context.request_scope.RequestScopeMissing` (a
 `LookupError`). Calling from inside a tool that omitted its `ctx`
 declaration **does not raise** — the framework's synthesized ambient ctx
-handles it (relax-ldd-ambient-requirement, 2026-05-15).
+handles it (relax-log-ambient-requirement, 2026-05-15).
 
 The raise also fires for external misuse, e.g. manually constructing
 `bind_call_scope(ctx=None)` and then calling a log primitive — that's
 documented misuse, not a normal path.
 
 Lazy singleton factories instantiated **during** a dispatch are
-reachable from the active scope and may call LDD primitives. The
+reachable from the active scope and may call log primitives. The
 ContextVar is set before the dispatcher resolves DI kwargs, so a
 factory whose first resolution happens on a tool's call inherits the
 ambient ctx:
@@ -395,14 +395,14 @@ context the active transport provided (real `fastmcp.Context` for
 MCP / TestClient, `StderrToolContext` for CLI); the handler-side
 emission fires unconditionally inside any dispatch.
 
-Tests that want to exercise LDD primitives directly (without a full
+Tests that want to exercise log primitives directly (without a full
 tool dispatch) have two paths:
 
-1. **Wrap explicitly with `ldd_state_for_call(ctx=stub, ...)`** — same
+1. **Wrap explicitly with `bind_call_scope(ctx=stub, ...)`** — same
    seam the framework uses internally. Fine for one-off tests that
    want bespoke flag combinations.
 2. **Use one of the `a2kit.testing` ambient fixtures** — the 95%
-   case. Both wrap the test in an LDD ambient with
+   case. Both wrap the test in an log ambient with
    `ctx=null_context()`, `events_enabled=False`,
    `reports_enabled=False`. Decision rule:
    - **`ambient_for_tests`** — per-test opt-in. Declare it as a
@@ -786,7 +786,7 @@ the shared concerns need a transport-neutral home.
   This is the load-bearing constraint — the CLI consumer folds it.
 - **Six neutral stages, innermost-first:** `timeout`, `enricher`,
   `router-lazy-enter`, `dispatch-hook` (hook + per-call DI scope),
-  `ldd-state` (LDD ambient + ctx), `error-capture`. The order lives in
+  `log-state` (log ambient + ctx), `error-capture`. The order lives in
   exactly one module-level constant with its rationale documented.
 - **Conditional stages self-skip.** A stage whose concern does not apply
   to a tool returns the body unchanged. The pipeline is never filtered
@@ -806,7 +806,7 @@ the shared concerns need a transport-neutral home.
 
 - `CHANGELOG.md` — release-by-release history of behavioral changes.
 - `ANTIPATTERNS.md` — patterns that fail at decoration / lint time.
-- `examples/streaming_logger/` — LDD primitives in action.
+- `examples/streaming_logger/` — log primitives in action.
 - `examples/elicitation/` — `await ctx.elicit(...)` portability between
   CLI (stdin) and MCP (client elicitation handler).
 - `examples/sampling/` — `await ctx.sample(...)` works on MCP, raises

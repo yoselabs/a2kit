@@ -107,7 +107,7 @@ class TasksRouter(a2kit.Router):
         titles: list[str],
         batch_size: int = 5,
     ) -> dict[str, int]:
-        """Import a batch of tasks; demonstrates all four LDD channels."""
+        """Import a batch of tasks; demonstrates all four log channels."""
         await info("import.started", project_id=project_id, n=len(titles))
         projects, tasks = store.load_state()
         if not any(p.id == project_id for p in projects):

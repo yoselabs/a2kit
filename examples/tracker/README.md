@@ -6,10 +6,10 @@ when `a2kit` evolves, this folder evolves with it.
 | File              | Surface demonstrated                                                          |
 |-------------------|-------------------------------------------------------------------------------|
 | `connection.py`   | `ConnectionConfig` subclass; eager `${ENV}` / `op://` resolution              |
-| `models.py`       | Pydantic return models + `BatchReport` (typed LDD report shape)               |
+| `models.py`       | Pydantic return models + `BatchReport` (typed log report shape)               |
 | `store.py`        | Plain class; `__init__(self, conn: TrackerConn)` — class-as-factory ready     |
 | `enrichers.py`    | Pure `(exc) -> str \| None` enricher; class-attribute `enrichers` on routers  |
-| `routers.py`      | Typed kwargs `store: TrackerStore`, `enrichers = [...]`, four LDD channels    |
+| `routers.py`      | Typed kwargs `store: TrackerStore`, `enrichers = [...]`, four log channels    |
 | `server.py`       | Composition root: `class TrackerApp(a2kit.App)` + `provide` + `install_connections`, `a2kit.run(app)` |
 
 ## The author surface
@@ -118,7 +118,7 @@ Agents can override at call time:
 - `--page-size=5 --cursor=...` — paginate.
 - `--filter='priority=="high" && !done'` — narrow with CEL.
 
-## LDD — narrate what's happening, mid-flight
+## log — narrate what's happening, mid-flight
 
 `bulk_import_tasks` exercises all four `ToolContext` channels:
 
@@ -160,7 +160,7 @@ CLI invocation shows the four channels interleaved on stderr:
 ```
 
 Top-level flags `--no-reports` / `--no-events` silence those channels;
-`A2KIT_LDD=off` env disables both process-wide.
+`A2KIT_LOG__ENABLED=false` env disables both process-wide.
 
 ## Try it
 
@@ -177,7 +177,7 @@ uv run python -m examples.tracker.server projects create_project \
     --connection=default --name "Demo"
 uv run python -m examples.tracker.server projects list_projects --connection=default
 
-# LDD demo — interleaved stderr + final stdout
+# log demo — interleaved stderr + final stdout
 uv run python -m examples.tracker.server tasks bulk_import_tasks \
     --connection=default --project-id=<id> --titles='["a","b","c"]'
 

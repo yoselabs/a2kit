@@ -300,9 +300,9 @@ parsing the log line.
 
 Citation: `src/a2kit/packages/log/__init__.py`.
 
-## 15. ~~Don't rely on `A2KIT_LDD=off` env var inside test code~~ (RETIRED in v0.40)
+## 15. ~~Don't rely on `A2KIT_LOG__ENABLED=false` env var inside test code~~ (RETIRED in v0.40)
 
-The `A2KIT_LDD` env var and the `set_ldd` runtime kill-switch were removed
+The `A2KIT_LOG` env var and the `set_log` runtime kill-switch were removed
 by the stdlib-logging refounding (ADR 0027). Visibility is now controlled
 by per-handler levels (`A2KIT_LOG__WIRE_LEVEL`, `A2KIT_LOG__CALL_LOG_LEVEL`),
 read by stdlib logging — there is no per-App channel toggle to flip from
@@ -656,7 +656,7 @@ Citation: `src/a2kit/packages/mcp/_wrappers.py` (module-scope `App` /
 
 The mistake: a2kit has two consumers — the CLI and the MCP server — and
 both run the same per-tool dispatch concerns (timeout, enrichers, router
-lifecycle, the dispatch hook, the LDD ambient). The tempting move is to
+lifecycle, the dispatch hook, the log ambient). The tempting move is to
 implement each concern wherever it is first needed, so the CLI grows its
 copy in `cli/runtime.py` and the MCP server grows its copy in
 `mcp/_wrappers.py`. The two copies then drift silently: a2kit shipped
@@ -938,7 +938,7 @@ def current_tenant() -> TenantId | None: return _tenant.get()
 ```
 
 Three independent per-type bridges (`_request_principal`,
-`_a2kit_request_scope`, `_LDD_STATE`) used to live in the codebase,
+`_a2kit_request_scope`, `_CallScope`) used to live in the codebase,
 each with the same shape and the same silent-`None`-on-miss failure
 mode. `generalise-context-bridges` collapsed them into one
 `request_scope` module with `publish` / `get` / `try_get` /

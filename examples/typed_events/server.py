@@ -3,7 +3,7 @@
 Two ways to emit a structured event with a registered type:
 
 1. **Free-function form with an instance** (v0.26.1): pass the model
-   directly to ``a2kit.ldd.event``. The event name defaults to
+   directly to ``a2kit.log.event``. The event name defaults to
    ``type(instance).__name__``; payload serializes via ``model_dump``
    (pydantic) or ``dataclasses.asdict``. No registry needed when you
    don't also want progress reports.

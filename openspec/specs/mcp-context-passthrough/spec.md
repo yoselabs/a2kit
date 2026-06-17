@@ -542,7 +542,7 @@ the runtime type of the bound `ctx`.
 This is additive to the existing context binding: a tool that does not
 read the surface is unaffected, and the ctx passthrough contract is
 unchanged. The surface fields ride the per-call scope defined by
-`surface-identity-context` (which extends the `the stdlib-logging refound (ADR 0027)`
+`surface-identity-context` (which extends the ADR 0027
 `_CallScope`); this requirement only pins that the MCP/CLI bind sites are
 where the identity is stamped.
 

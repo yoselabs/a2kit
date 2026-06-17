@@ -170,7 +170,7 @@ runtime-evaluated-base-classes = ["a2kit.packages.connections.ConnectionConfig"]
 "bench/**" = ["T201", "BLE001", "S603", "ANN001", "ANN201", "PLR0915"]
 "examples/**" = [
     # Examples declare ``ctx: a2kit.ToolContext`` to opt into Context
-    # injection from the framework. After the ambient-LDD-ctx-binding
+    # injection from the framework. After the ambient-log-ctx-binding
     # change, primitive calls no longer take ``ctx`` explicitly, so the
     # parameter is declared but unused.
     "ARG002",

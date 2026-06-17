@@ -1,10 +1,10 @@
-"""LDD demo routers — stream progress through ``ctx: a2kit.ToolContext``.
+"""log demo routers — stream progress through ``ctx: a2kit.ToolContext``.
 
-Each tool emits ``a2kit.ldd.info`` / ``warning`` / ``error`` plus
+Each tool emits ``a2kit.log.info`` / ``warning`` / ``error`` plus
 ``ctx.report_progress`` calls as it executes. Same code paths over MCP
 (notifications) and CLI (stderr lines).
 
-Field-bearing logging lives on ``a2kit.ldd.*`` (third sibling of
+Field-bearing logging lives on ``a2kit.log.*`` (third sibling of
 ``event`` / ``report``); the plain ``ctx.info("msg")`` form is reserved
 for fastmcp's narrow signature and SHOULD NOT take field kwargs.
 """
@@ -34,7 +34,7 @@ class ImportComplete(BaseModel):
 
 
 class BatchReport(BaseModel):
-    """Typed mid-flight chunk emitted via ``a2kit.ldd.report``.
+    """Typed mid-flight chunk emitted via ``a2kit.log.report``.
 
     Distinct from ``ctx.info`` (free-form telemetry) — agents can
     pattern-match on the type and consume rows incrementally.
@@ -81,7 +81,7 @@ class TasksRouter(a2kit.Router):
     ) -> dict[str, int]:
         """Stream a CSV import in batches.
 
-        Demonstrates the LDD pattern: each milestone is an ``a2kit.ldd.info``
+        Demonstrates the log pattern: each milestone is an ``a2kit.log.info``
         call so the agent / CLI user sees the narrative interleaved
         with the final return value.
         """
@@ -107,7 +107,7 @@ class TasksRouter(a2kit.Router):
         attempts: int = 3,
         fail_after: int = 5,
     ) -> dict[str, int]:
-        """Showcase ``a2kit.ldd.warning`` on retryable issues, ``error`` before giving up.
+        """Showcase ``a2kit.log.warning`` on retryable issues, ``error`` before giving up.
 
         ``attempts`` retries are made; if all fail, the tool emits an
         ``error`` line then raises.
@@ -135,7 +135,7 @@ class TasksRouter(a2kit.Router):
         file: str,
         batch_size: int = 100,
     ) -> dict[str, int]:
-        """LDD with the four channels at once.
+        """log with the four channels at once.
 
         - ``await info(name, ...)`` for narrative milestones
           (``import.started``, ``import.complete``).
@@ -160,7 +160,7 @@ class TasksRouter(a2kit.Router):
 
     @a2kit.read()
     async def quick_status(self) -> dict[str, str]:
-        """Contrast: a tool with no ``ctx`` parameter — opting out of LDD entirely.
+        """Contrast: a tool with no ``ctx`` parameter — opting out of log entirely.
 
         Tools opt INTO context. There's no penalty for staying silent on
         fast operations.

@@ -242,12 +242,12 @@ removal's CHANGELOG row:
 - `TOONSnapshotExtension` (v0.23) → already gone; doc reference pruned.
 
 **Kept** (in-flight, a2web will hit them when it migrates): positional
-`a2kit.App(...)` + `App.add_router` (ADR 0028), the refound-ldd surface,
+`a2kit.App(...)` + `App.add_router` (ADR 0028), the refound-log surface,
 the v0.40 `TestClient` renames.
 
-### Changed — LDD refounded on stdlib `logging`; one surface `a2kit.log` (BREAKING)
+### Changed — log refounded on stdlib `logging`; one surface `a2kit.log` (BREAKING)
 
-The bespoke LDD (Logging / Data / Diagnostics) channel is retired and
+The bespoke log (Logging / Data / Diagnostics) channel is retired and
 re-founded on Python's stdlib `logging`. There is now exactly **one
 author concept: `a2kit.log`** — the four level methods (`debug` / `info`
 / `warning` / `error`), each accepting a message + fields OR a typed
@@ -260,27 +260,27 @@ opt-in JSONL with content-addressed body sidecars.
 
 **Removed (no aliases, clean break):**
 
-- `a2kit.ldd.event()`, `a2kit.ldd.report()`, the `@reports(T)` decorator,
-  `EventRegistry` + `emit_typed`, and the loose `a2kit.ldd.log()` verb.
+- `a2kit.log.event()`, `a2kit.log.report()`, the `@reports(T)` decorator,
+  `EventRegistry` + `emit_typed`, and the loose `a2kit.log.log()` verb.
   The typed-instance ergonomic survives: `a2kit.log.info(instance)`.
-- `app.ldd` / `_AppLdd`, `App.set_ldd(...)`, `app.ldd_reports` /
-  `app.ldd_events`, and the CLI `--no-reports` / `--no-events` flags.
-- `a2kit.LddEmission` / `LddSink` (→ stdlib `logging.LogRecord` /
+- `app.log` / `_AppLog`, `App.set_log(...)`, `app.log_reports` /
+  `app.log_events`, and the CLI `--no-reports` / `--no-events` flags.
+- `a2kit.logging.LogRecord` / `logging.Handler` (→ stdlib `logging.LogRecord` /
   `logging.Handler`), `ReportTypeNotDeclared` / `ReportTypeMismatch`, and
-  the 147-LOC `A2K-LDD-REPORT-TYPE` lint rule.
+  the 147-LOC `the removed report-type lint rule` lint rule.
 
 **Migration:**
 
 | Old | New |
 |---|---|
-| `a2kit.ldd` (module) | `a2kit.log` |
-| `a2kit.ldd.event(x)` / `app.ldd.events.emit_typed(x)` | `a2kit.log.info(x)` |
-| `a2kit.ldd.report(x)` | `a2kit.log.info(x)` (or `a2kit.log.debug(x)`) |
-| `a2kit.ldd.info/warning/error/debug` | `a2kit.log.info/warning/error/debug` |
-| `LddConfig` / `A2KIT_LDD__*` / `app.config.ldd` | `LogConfig` / `A2KIT_LOG__*` / `app.config.log` |
-| `app.ldd.add_sink(s)` | `app.log.add_handler(h)` (stdlib `logging.Handler`) |
-| `App.set_ldd(...)` / `--no-events` | `A2KIT_LOG__ENABLED=false` (kill-switch) |
-| `ldd_state_for_call(...)` (test SPI) | `bind_call_scope(...)` |
+| `a2kit.log` (module) | `a2kit.log` |
+| `a2kit.log.event(x)` / `app.log.events.emit_typed(x)` | `a2kit.log.info(x)` |
+| `a2kit.log.report(x)` | `a2kit.log.info(x)` (or `a2kit.log.debug(x)`) |
+| `a2kit.log.info/warning/error/debug` | `a2kit.log.info/warning/error/debug` |
+| `LogConfig` / `A2KIT_LOG__*` / `app.config.log` | `LogConfig` / `A2KIT_LOG__*` / `app.config.log` |
+| `app.log.add_sink(s)` | `app.log.add_handler(h)` (stdlib `logging.Handler`) |
+| `App.set_log(...)` / `--no-events` | `A2KIT_LOG__ENABLED=false` (kill-switch) |
+| `bind_call_scope(...)` (test SPI) | `bind_call_scope(...)` |
 
 The durable call-log is opt-in: `A2KIT_LOG__CALL_LOG=on` (off by
 default). structlog was evaluated and **rejected for core** (80ms+
@@ -363,8 +363,8 @@ consumer-facing concepts. PASS.
   filtered out at compile time by `visibility="hidden"`. Unknown
   names fail closed with a clear error listing valid names. Removes
   a2web's `ask_only` flag + constructor-time router-tools rebuild.
-- **`a2kit.Lazy` + `a2kit.LddEmission` top-level re-exports** — both
-  graduate from `a2kit.packages.di.Lazy` / `a2kit.packages.ldd.LddEmission`
+- **`a2kit.Lazy` + `a2kit.logging.LogRecord` top-level re-exports** — both
+  graduate from `a2kit.packages.di.Lazy` / `a2kit.packages.log.logging.LogRecord`
   to the top-level surface. The internal paths still work
   (back-compat). `a2kit.packages.*` is now documented as private
   scaffolding (stdlib `_thread` convention).
@@ -491,9 +491,9 @@ projection, deterministic JSON output). OPA pinned in `Makefile` via
 
 Worked-example fixes in the same change:
 
-- **R6** — LDD wire-format duplication across `packages/ldd/wire.py`
+- **R6** — log wire-format duplication across `packages/log/wire.py`
   and `packages/context/stderr.py` collapses to canonical
-  `a2kit._ldd_wire` foundational module (new entry in
+  `a2kit._log_wire` foundational module (new entry in
   `FOUNDATIONAL_CORE_MODULES`).
 - **R1** — `async def _call` × 2 in `packages/dispatch/` collapses to
   `packages/dispatch/_invoke.py`.
@@ -594,7 +594,7 @@ jscpd catches at any tuning, with no false positives.
   discovery contract `adopt-plugin-manifests` introduced for auth
   providers.
 
-### Breaking (internal) — Deprecation shims deleted; context↔ldd cycle broken
+### Breaking (internal) — Deprecation shims deleted; context↔log cycle broken
 
 Per the 2026-05-27 cleanup sweep:
 
@@ -616,44 +616,44 @@ Per the 2026-05-27 cleanup sweep:
   `surfaces=` is omitted (via the layer-exempt facade), so
   `runtime.surfaces` is never None and `expose=` validation always
   runs against the canonical registry.
-- The context↔ldd lazy-import cycle is broken: `context.stderr`
-  inlines a private copy of `format_ldd_line` (with a parity test
+- The context↔log lazy-import cycle is broken: `context.stderr`
+  inlines a private copy of `format_condensed_line` (with a parity test
   pinning byte-identical output), so `context` no longer imports
-  from `ldd`. The `# noqa: A2K-LAYER` GRANDFATHERED markers on
+  from `log`. The `# noqa: A2K-LAYER` GRANDFATHERED markers on
   both legs are gone.
 - Specs updated to the post-shim API: `principal-bridge` now points
   at `request-scope` as the canonical home; `tool-authorization`,
   `dispatch-pipeline`, and `serve-topology` rewritten.
 
-### Feature — Built-in LDD operator sinks + parallel fan-out
+### Feature — Built-in log operator sinks + parallel fan-out
 
-Per `reshape-ldd-operator-wire-fanout` (2026-05-27):
+Per `the log-handler fan-out work` (2026-05-27):
 
-- New `a2kit.packages.ldd.sinks` subpackage with four built-in
+- New `a2kit.packages.log.sinks` subpackage with four built-in
   operator sinks: `stderr_pretty_sink`, `stderr_json_sink`,
   `otel_sink`, and `live_sink` (with `make_live_sink(...)` for
   custom event-prefix filters + heartbeat).
 - Operator-sink fan-out now runs in parallel via
   `asyncio.gather(..., return_exceptions=True)`. Per-sink failures
-  are logged at WARN under `a2kit.ldd.sink_failed` and dropped,
+  are logged at WARN under `a2kit.log.sink_failed` and dropped,
   isolating the producer + sibling sinks + the wire path. Replaces
   the previous sequential `try / except` per sink.
-- `LddConfig` gains 5 knobs: `stderr_sink` (none | pretty | json,
+- `LogConfig` gains 5 knobs: `stderr_sink` (none | pretty | json,
   default none), `otel_sink` (auto | on | off, default auto),
   `live_sink` (off | on, default off), `live_heartbeat_seconds`,
-  `live_event_prefixes`. All available via `A2KIT_LDD__*` env.
+  `live_event_prefixes`. All available via `A2KIT_LOG__*` env.
 - The `auto` OTel heuristic registers the sink iff the
   `opentelemetry` SDK is importable AND at least one
   `OTEL_EXPORTER_*` env var is set — avoids the surprise of "I
-  imported the SDK for an unrelated reason and now my LDD output
+  imported the SDK for an unrelated reason and now my log output
   disappears."
-- App boot reads `LddConfig` and registers enabled built-in sinks
+- App boot reads `LogConfig` and registers enabled built-in sinks
   BEFORE any user-added sink (documented order: built-ins, then
   user-added in registration order).
 - No breaking change: default config preserves v0.x behaviour;
-  `app.ldd.add_sink(...)` keeps working; `LddEmission` shape and
+  `app.log.add_sink(...)` keeps working; `logging.LogRecord` shape and
   wire path are unchanged.
-- New capability spec `ldd-operator-sinks` ADDED; `ldd-level-threshold`
+- New capability spec `log-handlers` ADDED; `log-level-threshold`
   MODIFIED to clarify the single-threshold-before-fan-out invariant;
   `otel-adapter` MODIFIED with the drain-on-missing-SDK contract.
 
@@ -680,7 +680,7 @@ Per `adopt-plugin-manifests` (2026-05-27):
 - New capability spec `plugin-manifest` ADDED; `surface-protocol`
   MODIFIED with the forward-looking "new Surface implementations
   register via MANIFEST" requirement.
-- Remaining surfaces (connections, future auth providers, LDD sinks,
+- Remaining surfaces (connections, future auth providers, log sinks,
   code-mode tools, `expose=` validation) migrate in follow-up changes.
 
 ### Internal — Single typed request-scope bridge (`request_scope`)
@@ -695,7 +695,7 @@ Per `generalise-context-bridges` (2026-05-27):
 - Three pre-existing per-type ContextVar bridges collapsed into this
   one shape: the `Principal` bridge (`_request_principal`), the
   FastAPI per-request `Container` bridge (`_a2kit_request_scope`), and
-  the LDD ambient bridge (`_LDD_STATE`). All readers and writers now
+  the log ambient bridge (`_CallScope`). All readers and writers now
   route through `request_scope`.
 - `Container.call_scope` accepts `framework_seeds=` (new) sourced from
   `request_scope.all_seeds()`. The prior `scoped_seeds=` keyword is a
@@ -707,7 +707,7 @@ Per `generalise-context-bridges` (2026-05-27):
   function emits `DeprecationWarning`. New code SHOULD use
   `request_scope` directly.
 - `AmbientContextMissing` is now a deprecation-shim subclass whose
-  no-dispatch path chains from `RequestScopeMissing(_LddState)` via
+  no-dispatch path chains from `RequestScopeMissing(_CallScope)` via
   `__cause__`.
 - The FastAPI Depends bridge keeps reading from the DI-package-local
   `_a2kit_request_scope` ContextVar (the http middleware dual-writes
@@ -812,7 +812,7 @@ migrated in this change.
 ### Internal — dispatch stages no longer read the Principal contextvar
 
 Dispatch stages (`DispatchHookStage`, `AuthorizeGateStage`,
-`LddStateStage`) MUST resolve `Principal` via the per-call DI scope.
+`CallScopeStage`) MUST resolve `Principal` via the per-call DI scope.
 The substrate's `_a2kit_request_principal` contextvar is now read in
 exactly one place: `a2kit.packages.dispatch._principal_scope`, which
 seeds Principal into the per-call wire kwargs. Stage source is
@@ -836,15 +836,15 @@ with a migration hint.
 
 Added (additive on top of ADR 0022):
 
-- `A2kitConfig`, `LddConfig`, `McpConfig`, `HttpConfig`, and `CliConfig`
+- `A2kitConfig`, `LogConfig`, `McpConfig`, `HttpConfig`, and `CliConfig`
   are registered as singleton DI providers on every `App`. Subsystems
-  declare a typed parameter (`def factory(ldd: LddConfig): ...`) instead
-  of walking `app.config.ldd.<field>`. Per-test overrides use the
-  standard `app.provide(LddConfig, fake)` pattern (ADR 0006
+  declare a typed parameter (`def factory(log: LogConfig): ...`) instead
+  of walking `app.config.log.<field>`. Per-test overrides use the
+  standard `app.provide(LogConfig, fake)` pattern (ADR 0006
   last-write-wins).
-- `LddStateStage` captures `LddConfig` once at wrap time (per-tool,
+- `CallScopeStage` captures `LogConfig` once at wrap time (per-tool,
   per-runtime) and reads the threshold from the captured value. The
-  previous per-call attribute walk on `spec.app.config.ldd.level` is
+  previous per-call attribute walk on `spec.app.config.log.level` is
   retired.
 
 Internal: `mcp/server.py` and `http/build.py` now read
@@ -852,39 +852,39 @@ Internal: `mcp/server.py` and `http/build.py` now read
 defensive `getattr` chains; `AppRuntime` no longer carries a `debug`
 field.
 
-### Breaking — LDD level threshold; default silences `debug()` calls
+### Breaking — log level threshold; default silences `debug()` calls
 
-Adds a level-threshold filter for LDD emissions, configurable via
-`A2kitConfig.ldd.level` (env: `A2KIT_LDD__LEVEL`). The default is
+Adds a level-threshold filter for log emissions, configurable via
+`A2kitConfig.log.level` (env: `A2KIT_LOG__LEVEL`). The default is
 `info`, which means existing `debug()` calls **no longer reach any
 sink, ctx.log, or stderr**. To restore prior behaviour set
-`A2KIT_LDD__LEVEL=debug` (or `trace` to also see internal dispatch
+`A2KIT_LOG__LEVEL=debug` (or `trace` to also see internal dispatch
 traces).
 
 Other breaks bundled into this change:
 
-- The legacy `A2KIT_LDD=off` kill-switch env var is removed. It
-  collided with the new `A2KIT_LDD__*` namespace (pydantic-settings
-  parses `A2KIT_LDD` as JSON for the nested model). Replacement:
-  `A2KIT_LDD__ENABLED=false` (orthogonal to `level` — a hard off).
+- The legacy `A2KIT_LOG__ENABLED=false` kill-switch env var is removed. It
+  collided with the new `A2KIT_LOG__*` namespace (pydantic-settings
+  parses `A2KIT_LOG` as JSON for the nested model). Replacement:
+  `A2KIT_LOG__ENABLED=false` (orthogonal to `level` — a hard off).
 - `event(name, **fields)` and `report(payload)` gain a keyword-only
   `level` parameter (default `"info"`). Calling them positionally is
   unaffected. Hand-rolled subclasses or wrappers that proxy these
   signatures need to thread `level` through.
-- `a2kit.ldd.log()`'s `__level` literal widens to include `"trace"`
+- `a2kit.log.log()`'s `__level` literal widens to include `"trace"`
   alongside the existing `debug | info | warning | error`. Callers
   using `log("trace", ...)` now have a valid level below `debug`.
 
 Added:
 
-- `A2kitConfig.ldd.level: Literal["trace","debug","info","warning","error"]`
-  (default `info`). Env: `A2KIT_LDD__LEVEL`.
-- `A2kitConfig.ldd.enabled: bool` (default `True`). Env: `A2KIT_LDD__ENABLED`.
-- `a2kit.ldd.LDD_LEVEL_RANK` — numeric rank map (`trace=10`, `debug=20`,
+- `A2kitConfig.log.level: Literal["trace","debug","info","warning","error"]`
+  (default `info`). Env: `A2KIT_LOG__LEVEL`.
+- `A2kitConfig.log.enabled: bool` (default `True`). Env: `A2KIT_LOG__ENABLED`.
+- `a2kit.log.LOG_LEVEL_NUMBER` — numeric rank map (`trace=10`, `debug=20`,
   `info=30`, `warning=40`, `error=50`) exposed for sink authors and tests.
-- `a2kit.ldd.LddLevel` — re-export of the level Literal alias.
-- README config table rows for `A2KIT_LDD__LEVEL` and `A2KIT_LDD__ENABLED`.
-- AGENTS.md provider-chain block lists LDD as a worked example, with the
+- `a2kit.log.LogLevel` — re-export of the level Literal alias.
+- README config table rows for `A2KIT_LOG__LEVEL` and `A2KIT_LOG__ENABLED`.
+- AGENTS.md provider-chain block lists log as a worked example, with the
   "if every emission is the same level, the level isn't doing work" smell.
 
 ### Breaking — `App(debug=...)` kwarg removed (ADR 0022 worked example)
@@ -1018,7 +1018,7 @@ point; the finishers reach it via the internal `App._seal()`.
 The per-tool dispatch concerns are now a single transport-neutral
 pipeline. `a2kit.packages.dispatch` holds `DISPATCH_PIPELINE` — six
 `DispatchStage` objects (timeout, enrichers, router-lazy-enter,
-dispatch-hook + DI, LDD ambient, error-capture) — and both the CLI and
+dispatch-hook + DI, log ambient, error-capture) — and both the CLI and
 MCP adapters fold the same tuple. The package imports no `fastmcp`, so
 the CLI cold path is unaffected.
 
@@ -1181,7 +1181,7 @@ names the patterns.
 ### Declined
 
 - a2web round-11 Carry-over C (canonical surface promotion of
-  `a2kit.Lazy` / `a2kit.LddEmission`) and Carry-over D
+  `a2kit.Lazy` / `a2kit.logging.LogRecord`) and Carry-over D
   (`pydantic.Field` description sugar) remain parked in
   `A2KIT_WISHES_DEFERRED.md` entries 7 and 8 — no fresh signal
   this round.
@@ -1364,15 +1364,15 @@ generation (pydantic cannot schema-generate Protocols). Cold-start
 budget preserved — the Protocol lives in a2kit; bare `import a2kit`
 still leaves `fastmcp` absent from `sys.modules`.
 
-Companion: `ldd_state_for_call(ctx=...)` parameter is now typed
+Companion: `bind_call_scope(ctx=...)` parameter is now typed
 `ToolContext` (was `Any`). Static type checkers reject
-`ldd_state_for_call(ctx=None)`; the runtime Mode B raise remains a
+`bind_call_scope(ctx=None)`; the runtime Mode B raise remains a
 defense-in-depth backstop for code paths that bypass typing.
 `StderrToolContext` now exposes `request_id` (per-instance UUID4 hex)
 and `client_id` (`None` on CLI) so it structurally conforms to the
 Protocol.
 
-### Changed — LDD primitives work without `ctx` in tool signature
+### Changed — log primitives work without `ctx` in tool signature
 
 Closes a2web round-10 Friction B. The MCP wrapper now synthesizes a
 `_a2kit_ctx` parameter into the rewritten signature for every tool
@@ -1380,7 +1380,7 @@ whose body does not declare `ctx`, so FastMCP injects ctx
 unconditionally and a2kit extracts it for ambient binding. The CLI
 runtime mirrors the change: `StderrToolContext()` is synthesized for
 ambient binding even when the tool body doesn't declare ctx. Result:
-**ambient `ctx` is non-None inside any framework dispatch**, and LDD
+**ambient `ctx` is non-None inside any framework dispatch**, and log
 primitives no longer raise `AmbientContextMissing.MODE_MISSING_CTX_PARAM`
 from a dispatched tool body.
 
@@ -1391,11 +1391,11 @@ is gone.
 `MODE_MISSING_CTX_PARAM` constant is retained for backward
 compatibility but is now unreachable from framework code paths. The
 raise still fires for external misuse: manually entering
-`ldd_state_for_call(ctx=None)` and then calling an LDD primitive
+`bind_call_scope(ctx=None)` and then calling an log primitive
 preserves the loud-fail (this is the only documented misuse path).
 
-Why this aligns with LDD: LDD = Log-Driven Development. The primary
-audience for LDD output is a post-hoc reader (an AI agent diagnosing
+Why this aligns with log: log = Log-Driven Development. The primary
+audience for log output is a post-hoc reader (an AI agent diagnosing
 what happened from structured logs), not a live wire observer. Sink
 emission is the core value; wire emission is the secondary live-UX
 nicety. Gating sink emission on wire-side availability was incidental
@@ -1422,7 +1422,7 @@ A2, and A3):
   override into tools that declare `browser: Lazy[BrowserPool]`
   etc.
 - `a2kit.testing.ambient_for_tests` — pytest fixture that
-  establishes an LDD ambient with events + reports disabled so
+  establishes an log ambient with events + reports disabled so
   tests calling orchestrator or phase functions directly
   (bypassing `TestClient.invoke`) don't trip
   `AmbientContextMissing`. Opt-in (not autouse-by-default);
@@ -1742,7 +1742,7 @@ Behavioural changes for test authors:
   or via `model_dump()`.
 - Tool exceptions surface as `fastmcp.exceptions.ToolError`; parse
   the JSON envelope for class + message.
-- LDD internal extra-keys are prefixed with `a2kit_` on the wire
+- log internal extra-keys are prefixed with `a2kit_` on the wire
   (`a2kit_kind`, `a2kit_name`, `a2kit_payload`, `a2kit_elapsed_ms`,
   `a2kit_type`) to dodge Python `LogRecord` reserved-attribute
   collisions. The `TestClient` un-prefixes them when populating
@@ -1767,7 +1767,7 @@ async def fetch(*, url: str) -> dict: ...
 ```
 
 Framework-owned `anyio.fail_after` wraps the tool body, slotted
-outside the LDD scope (so teardown `event()` calls don't race the
+outside the log scope (so teardown `event()` calls don't race the
 deadline) and inside the dispatcher's lifecycle unwind (so resource
 cleanup still runs). Parses `int`/`float`/`"60s"`/`"500ms"`/`"5m"`.
 Surfaces on `A2KitMetaExtras.timeout_seconds` for callers and
@@ -1805,7 +1805,7 @@ stub. Calls of the shape `await ctx.info("msg", batch=2)` now raise
 work on CLI while crashing under MCP (a real client serialised the
 unknown kwarg into `LogRecord` constructor args).
 
-Field-bearing structured logging now lives on `a2kit.ldd.*` as a third
+Field-bearing structured logging now lives on `a2kit.log.*` as a third
 sibling alongside `event` and `report`:
 
 ```python
@@ -1814,19 +1814,19 @@ await ctx.info("starting", batch=2)
 
 # after
 import a2kit
-await a2kit.ldd.info(ctx, "starting", batch=2)
+await a2kit.log.info(ctx, "starting", batch=2)
 ```
 
-`a2kit.ldd.log(ctx, level, msg_or_instance, **fields)` plus the
+`a2kit.log.log(ctx, level, msg_or_instance, **fields)` plus the
 `info` / `warning` / `error` / `debug` convenience aliases accept both
 string and dataclass/pydantic instance forms (the same shape as
-`a2kit.ldd.event`). They round-trip identically on MCP (delivered as
+`a2kit.log.event`). They round-trip identically on MCP (delivered as
 `notifications/message` with structured `extra`) and CLI (rendered as
 `[ +s.mmm INFO    ] msg k=v`). The `--no-events` flag and
-`A2KIT_LDD=off` env var gate all three primitives.
+`A2KIT_LOG__ENABLED=false` env var gate all three primitives.
 
 Migration recipe:
-`s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.ldd.\1(ctx, "\2", \3)/`
+`s/await ctx\.(info|warning|error|debug)\("([^"]*)", ([^=)]+=.*)\)/await a2kit.log.\1(ctx, "\2", \3)/`
 catches the documented call shapes. `ctx.info("plain")` and
 `ctx.info("msg", extra={...})` continue to work unchanged.
 
@@ -1931,7 +1931,7 @@ Two distinct failure modes get distinct messages (same exception class):
 - **Mode B** — primitive called from a tool body whose signature omits
   `ctx: a2kit.ToolContext`: "called from a tool body that did not
   declare `ctx: a2kit.ToolContext` as a parameter; add the parameter to
-  the tool signature, or remove the LDD call."
+  the tool signature, or remove the log call."
 
 `AmbientContextMissing.mode` exposes
 `MODE_NO_DISPATCH` / `MODE_MISSING_CTX_PARAM` for programmatic checks.
@@ -1951,7 +1951,7 @@ Substantial rewrite: removed phantom `@app.on_startup` /
 `@app.on_shutdown` (use `App(lifespan=cm)`), removed the `Surface` enum
 claim (the code shape is `visibility: Literal["hidden", "cli", "all"]`),
 removed `@a2kit.tool` references, simplified the verb-decorator kwarg
-tables to reflect the v0.33 surface, spelled out the **LDD** acronym
+tables to reflect the v0.33 surface, spelled out the **log** acronym
 ("Logging / Data / Diagnostics") at first mention, documented the
 default connection-store path (`~/.config/a2kit/connections/` or
 `$A2KIT_CONFIG_HOME`), noted the `list_` trailing-underscore convention.
@@ -1980,7 +1980,7 @@ Migration table (alphabetical):
 | `from a2kit import Cap, capabilities` | removed — no replacement               |
 | `from a2kit import Surface`           | removed — `visibility` literal type    |
 | `from a2kit import ToolCallContamination` (+ 4 siblings) | `from a2kit.exceptions import ...` (A2KitError stays at top-level) |
-| `from a2kit.ldd import LddEmission, LddSink` | `from a2kit.packages.ldd import ...` |
+| `from a2kit.log import logging.LogRecord, logging.Handler` | `from a2kit.packages.log import ...` |
 | `install_connections(app, T); app.add_cli(connections_cli(T))` | `install_connections(app, T)` (one call) |
 
 ### Added — `visibility` tier on every verb decorator + `Router.visibility`
@@ -2044,10 +2044,10 @@ flag is deleted entirely; `src/a2kit/surface.py` removed.
 
 22 names → 10 names. Demoted symbols stay in their owning modules:
 `A2KitMeta`, `RouterRegistry`, `UNRESOLVED`, four non-umbrella exception
-subclasses, and the LDD sink-author types `LddEmission` / `LddSink`.
-`A2KitError` (umbrella exception) and the live LDD primitives
+subclasses, and the log sink-author types `logging.LogRecord` / `logging.Handler`.
+`A2KitError` (umbrella exception) and the live log primitives
 (`event`/`report`/`log`/`info`/`warning`/`error`/`debug`/`EventRegistry`/
-`format_ldd_line`/`ldd_state_for_call`) stay re-exported.
+`format_condensed_line`/`bind_call_scope`) stay re-exported.
 
 ### Changed — CLI builder rewritten on top of Typer (breaking shape for body-model tools)
 
@@ -2371,24 +2371,24 @@ Two paired cleanups against round-5/6 contracts (no new features).
 
 ### Changed
 
-- LDD ctx binding is uniform across MCP / CLI / TestClient: none of
+- log ctx binding is uniform across MCP / CLI / TestClient: none of
   them synthesize a fake context when a tool omits `ctx`. A no-ctx
-  tool that calls `await a2kit.ldd.event(...)` raises
+  tool that calls `await a2kit.log.event(...)` raises
   `AmbientContextMissing` identically on every dispatcher (previously
   worked silently on CLI and TestClient).
-- LDD shorthands (`a2kit.ldd.info/warning/error/debug`) surface their
+- log shorthands (`a2kit.log.info/warning/error/debug`) surface their
   own name in `AmbientContextMissing` instead of the delegated-to
-  `a2kit.ldd.log`.
+  `a2kit.log.log`.
 - `_docstring.extract_param_descriptions` and the `get_type_hints`
   call in `_augment_annotations_from_docstring` log one WARN per
   qualname on parse / resolution failure (was silent
   `contextlib.suppress(Exception)`). Decoration still never raises.
 - OPERATIONAL_CONTRACTS Q8 reworded: "active dispatch" is the
-  conjunction of an `ldd_state_for_call` scope **and** a declared ctx
+  conjunction of an `bind_call_scope` scope **and** a declared ctx
   param. Lazy singleton factories instantiated during dispatch may
-  call LDD primitives (new paragraph + example).
+  call log primitives (new paragraph + example).
 - README testing section updated: `TestClient.override`,
-  `call_wire`, async-singleton factories, ambient-LDD section,
+  `call_wire`, async-singleton factories, ambient-log section,
   docstring-pull note. Migration bullet points at `TestClient.override`
   as the preferred test path.
 
@@ -2424,27 +2424,27 @@ rounds 5 and 6. Two are breaking; the rest are additive.
   decoration time. Explicit `Annotated[T, a2kit.Param(...)]` /
   `pydantic.Field(...)` always wins. Numpy and Sphinx/reST formats
   are explicit non-goals.
-- **`a2kit.exceptions.AmbientContextMissing`** — raised when an LDD
+- **`a2kit.exceptions.AmbientContextMissing`** — raised when an log
   primitive is called outside an active tool dispatch.
 
 ### Changed (breaking)
 
-- **LDD primitives drop the `ctx` argument.** `a2kit.ldd.event`,
+- **log primitives drop the `ctx` argument.** `a2kit.log.event`,
   `report`, `log`, `info`, `warning`, `error`, `debug`, and
   `EventRegistry.emit_typed` no longer accept `ctx`. They read it
-  from the ambient `_LDD_STATE` ContextVar bound by the dispatcher
+  from the ambient `_CallScope` ContextVar bound by the dispatcher
   for the lifetime of one tool invocation. Migration: drop the
   first positional argument at every call site. Calling outside
   an active dispatch raises `AmbientContextMissing` — fail loud,
   no silent no-op fallback.
-- **`ldd_state_for_call(...)`** now takes a required keyword
-  `ctx=...` argument. Tests that exercise LDD primitives directly
+- **`bind_call_scope(...)`** now takes a required keyword
+  `ctx=...` argument. Tests that exercise log primitives directly
   (without a full tool dispatch) wrap with this — same seam the
   framework uses internally.
 
 ### Documentation
 
-- `OPERATIONAL_CONTRACTS.md` Q8: LDD primitives require an active
+- `OPERATIONAL_CONTRACTS.md` Q8: log primitives require an active
   tool dispatch.
 
 ## 0.28.1 — FastMCP 3 `_meta` disable fix — 2026-05-12
@@ -2471,7 +2471,7 @@ rounds 5 and 6. Two are breaking; the rest are additive.
   contract (closed namespace, MCP-hidden / CLI-visible split,
   rejection rule).
 
-## 0.28.0 — a2kit.ldd.log primitive (Context-shape divergence repair) — 2026-05-12
+## 0.28.0 — a2kit.log.log primitive (Context-shape divergence repair) — 2026-05-12
 
 `ctx.info("msg", k=v)` — the kwargs-emit pattern shown in
 `examples/streaming_logger` and `examples/tracker` — crashed under real
@@ -2481,12 +2481,12 @@ MCP transport with TypeError, masked as "Error calling tool 'X'" under
 widened it to `(msg, **fields)`, and the in-process test client hid the
 divergence from every test path.
 
-Repairs the contract by finishing the LDD free-function pattern that
+Repairs the contract by finishing the log free-function pattern that
 `event` / `report` already used:
 
 ### Added
 
-- **`a2kit.ldd.log(ctx, level, msg_or_instance, **fields)`** — plus
+- **`a2kit.log.log(ctx, level, msg_or_instance, **fields)`** — plus
   `info` / `warning` / `error` / `debug` aliases. Both forms (string +
   typed instance) share the `_typed_event_to_payload` helper with
   `event`, so coercion rules can't drift.
@@ -2494,7 +2494,7 @@ Repairs the contract by finishing the LDD free-function pattern that
 ### Changed (breaking)
 
 - **`StderrToolContext.info/warning/error/debug` narrowed** to fastmcp's
-  exact signature — kwargs form removed. Migrate to `a2kit.ldd.log(...)`
+  exact signature — kwargs form removed. Migrate to `a2kit.log.log(...)`
   or wrap kwargs in `extra=`.
 
 ### Test gate
@@ -2507,7 +2507,7 @@ Repairs the contract by finishing the LDD free-function pattern that
   `fastmcp.Client(transport=server)` — today's bug fails this; new code
   passes.
 - `ty check examples/` joins `make lint` (0 errors after migration, was 14).
-- 723 → 728 tests (+2 MCP-path probes, +1 ldd kwarg render, +2
+- 723 → 728 tests (+2 MCP-path probes, +1 log kwarg render, +2
   architectural invariants).
 
 Tier 2/3/4 of the Context-shape divergence (13 more drifting methods)
@@ -2610,7 +2610,7 @@ A2kit consumers (a2web etc.) migrate by:
 
 ### Added
 
-- **Typed `a2kit.ldd.event(ctx, instance)`** — the free function now accepts
+- **Typed `a2kit.log.event(ctx, instance)`** — the free function now accepts
   a class instance as its second positional argument. Name defaults to
   `type(instance).__name__`; payload derives via `model_dump(mode="json")`
   (pydantic), `dataclasses.asdict` (dataclass), or `vars(instance)` fallback.
@@ -2636,7 +2636,7 @@ A2kit consumers (a2web etc.) migrate by:
   events + reports" updated to document the new shapes. New "Null context
   for internal phase tests" subsection under Testing.
 
-## 0.26.0 — a2web feedback round 3 (router-as-plugin + Surface + LDD sinks) — 2026-05-11
+## 0.26.0 — a2web feedback round 3 (router-as-plugin + Surface + log sinks) — 2026-05-11
 
 ### Added
 
@@ -2657,14 +2657,14 @@ A2kit consumers (a2web etc.) migrate by:
 - **`A2K-SURFACE-EXPLICIT` lint rule** — fires when a credential-named
   tool (`login`, `logout`, `auth_*`, `rotate_key`, `issue_token`, etc.)
   defaults to `Surface.ALL`. Suppress with explicit `surfaces=` kwarg.
-- **`app.ldd.add_sink(sink)`** — register an in-process observer for
-  every LDD emission (events and reports), on every transport. Sinks
-  are async callables receiving an `LddEmission` payload (kind, name,
+- **`app.log.add_sink(sink)`** — register an in-process observer for
+  every log emission (events and reports), on every transport. Sinks
+  are async callables receiving an `logging.LogRecord` payload (kind, name,
   payload dict, elapsed_ms, tool_name, ctx). Fan-out is sequential and
-  best-effort; sink exceptions are caught and logged on `a2kit.ldd.sinks`.
+  best-effort; sink exceptions are caught and logged on `a2kit.log.sinks`.
   Replaces the double-emit pattern OTel/Datadog/audit-log integrations
   needed before.
-- **`a2kit.ldd.LddEmission`** + **`a2kit.ldd.LddSink`** — public types
+- **`a2kit.log.logging.LogRecord`** + **`a2kit.log.logging.Handler`** — public types
   for sink implementers.
 - **OPERATIONAL_CONTRACTS Q2** rewritten with four prescribed
   `anyio.fail_after` patterns (single-budget, nested multi-stage,
@@ -2672,7 +2672,7 @@ A2kit consumers (a2web etc.) migrate by:
 - **OPERATIONAL_CONTRACTS Q6** rewritten: heartbeat pattern for
   visibility during long phases, `add_sink` API documentation,
   cancellation contract for sinks. Cross-linked from
-  `docs/SPIKE_LDD_CANCELLATION.md`.
+  `docs/SPIKE_LOG_CANCELLATION.md`.
 
 ### Changed
 
@@ -2767,7 +2767,7 @@ A2kit consumers (a2web etc.) migrate by:
   produce a coroutine and log nothing — always `await` them.
 - **`ctx.event(...)` and `ctx.report(...)` removed from the Context API.**
   These moved off the Context class and live as free functions in
-  `a2kit.ldd`: `await event(ctx, "name", **payload)` /
+  `a2kit.log`: `await event(ctx, "name", **payload)` /
   `await report(ctx, payload)`. Per-call state (kill-switches, declared
   report type) flows through a `contextvars.ContextVar` set by the runtime
   dispatch site, so the free functions Just Work on either transport.
@@ -2784,7 +2784,7 @@ async def my_tool(*, ctx: a2kit.ToolContext) -> dict:
     await ctx.info("hello", count=3)      # after   (works on both transports)
 
 # --- ctx.event / ctx.report → free functions ---
-from a2kit.ldd import event, report
+from a2kit.log import event, report
 async def my_tool(*, ctx: a2kit.ToolContext) -> dict:
     await ctx.event("import.started", n=10)         # before
     await event(ctx, "import.started", n=10)        # after
@@ -2795,9 +2795,9 @@ async def my_tool(*, ctx: a2kit.ToolContext) -> dict:
 # --- typed event registry (new) ---
 class StepStarted(BaseModel):
     step: int; total: int
-app.ldd.events.register(StepStarted, progress=lambda e: (e.step, e.total))
+app.log.events.register(StepStarted, progress=lambda e: (e.step, e.total))
 async def run(*, ctx: a2kit.ToolContext):
-    await app.ldd.events.emit_typed(ctx, StepStarted(step=1, total=3))
+    await app.log.events.emit_typed(ctx, StepStarted(step=1, total=3))
 
 # --- a2web pattern (singletons + lifecycle) ---
 def register_state(app, *, settings=None):
@@ -2835,18 +2835,18 @@ async def _close_resources(app):
 
 ### Added
 
-- **`a2kit.ldd.event` / `a2kit.ldd.report`** — protocol-neutral free functions
+- **`a2kit.log.event` / `a2kit.log.report`** — protocol-neutral free functions
   replacing the deleted `ctx.event` / `ctx.report` methods. Take any
   `fastmcp.Context`-shaped object as the first arg; route via the per-call
-  `ldd_state_for_call` contextvar set by the dispatch site.
-- **`a2kit.ldd.EventRegistry`** + **`app.ldd.events`** — typed event registry.
+  `bind_call_scope` contextvar set by the dispatch site.
+- **`a2kit.log.EventRegistry`** + **`app.log.events`** — typed event registry.
   Register Pydantic event models once (optionally with a progress callback);
-  emit instances via `await app.ldd.events.emit_typed(ctx, evt)`. Handles
+  emit instances via `await app.log.events.emit_typed(ctx, evt)`. Handles
   `model_dump(mode="json")` (datetime → ISO etc.), routes through `event()`,
   forwards to `ctx.report_progress(...)` when a callback is registered.
   Re-registration is last-write-wins.
-- **`a2kit.ldd.format_ldd_line(level, msg, fields, elapsed_ms)`** — single
-  canonical LDD-line renderer used by both the CLI stub and any future
+- **`a2kit.log.format_condensed_line(level, msg, fields, elapsed_ms)`** — single
+  canonical log-line renderer used by both the CLI stub and any future
   transport. `TEXT_CAP=60` with `…` elision applied to `msg` on both CLI
   and the MCP `message` field.
 - **`a2kit.signature.resolve_hints(fn)`** — single fallback for
@@ -2912,7 +2912,7 @@ async def _close_resources(app):
 - **`Container.resolve(connection=...)` is now optional** (was required
   keyword) — connection-less apps no longer have to pass `connection=None`
   everywhere. No behavior change for connection-using apps.
-- **`a2kit.ldd.event` and `a2kit.ldd.report` first args are positional-only**
+- **`a2kit.log.event` and `a2kit.log.report` first args are positional-only**
   (`async def event(__ctx, __name, /, **payload)`). Lets typed event payloads
   include keys like `name` / `ctx` without colliding. All existing callers
   pass these positionally already.
@@ -2925,7 +2925,7 @@ async def _close_resources(app):
 - **`a2kit.packages.mcp.context`** module (`FastMCPContextAdapter`,
   `bind_context`).
 - **`ctx.event(...)` and `ctx.report(...)`** methods on the Context API. Use
-  `await event(ctx, ...)` / `await report(ctx, ...)` from `a2kit.ldd`.
+  `await event(ctx, ...)` / `await report(ctx, ...)` from `a2kit.log`.
 
 ## 0.23.0 — type-driven format routing: TSV / JSON / page-tsv (TOON dropped) — 2026-05-09
 
@@ -3099,7 +3099,7 @@ by a new lint rule (`A2K-CORE-CLEAN`) that runs in CI as a hard gate.
   `src/a2kit/*.py` outside `packages/`.
 - **`A2K-EXTRA-NAMESPACE`** (new, hard gate) — rejects `meta.extra[<key>] = ...`
   writes whose key isn't `a2kit.*` or a `<package>.*` prefix.
-- **`A2K-LDD-REPORT-TYPE`** rewritten to look for stacked `@reports(ReportT)`
+- **`the removed report-type lint rule`** rewritten to look for stacked `@reports(ReportT)`
   rather than the dropped `report=` kwarg.
 
 ### Migration from 0.20
@@ -3142,7 +3142,7 @@ imported. `import a2kit` measured at ~13 ms; FastMCP is confined to
 `a2kit.packages.mcp`.
 
 The release shipped through several intermediate spikes on `v1-thin-core`
-(protocol-agnostic core, LDD streaming reports, class-based DI, pluggable plugin
+(protocol-agnostic core, log streaming reports, class-based DI, pluggable plugin
 architecture). The final shape collapses those experiments into the simplest
 form that works: **constructor injection, three named composition verbs, no
 sentinels, no plugin protocol, no class-as-key DI**.
@@ -3182,7 +3182,7 @@ key=val` on stderr. MCP: `notifications/message` with `data.elapsed_ms: int`
 and a `data.a2kit_kind` discriminator.
 
 **Kill-switch.** `--no-reports` / `--no-events` flags per invocation;
-`app.set_ldd(reports=False, events=False)` programmatic; env `A2KIT_LDD=off`
+`app.set_log(reports=False, events=False)` programmatic; env `A2KIT_LOG__ENABLED=false`
 process-wide. Most-specific layer wins.
 
 ### Connections
@@ -3234,7 +3234,7 @@ process-wide. Most-specific layer wins.
 - **`a2kit lint static <path>`** — AST-only rules, no imports of user code.
   Active rules: `A2K002`, `A2K003`, `A2K006`, `A2K008`, `A2K009`, `A2K011`,
   `A2K012`, `A2K013`, `A2K014`, `A2K-CONN-LIST-PLACEHOLDER`,
-  `A2K-IMPORT-DISCIPLINE`, `A2K-LDD-REPORT-TYPE`.
+  `A2K-IMPORT-DISCIPLINE`, `the removed report-type lint rule`.
 - **`a2kit lint runtime --import pkg:server`** — duck-typed checks on a built
   server (snapshot presence, per-tool budgets, similar-name detection).
 - **`make lint` is a hard gate** for `ruff check`, `ruff format --check`,

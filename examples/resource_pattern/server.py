@@ -41,7 +41,7 @@ class FakeShopCounter:
     """Stand-in for an async resource (e.g. aiosqlite.Connection).
 
     The "open" is a small async sleep so you can observe the first-call
-    cost in the LDD output. Subsequent calls reuse the opened state.
+    cost in the log output. Subsequent calls reuse the opened state.
     """
 
     def __init__(self, initial: int = 0) -> None:

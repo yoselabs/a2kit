@@ -47,5 +47,5 @@ Constitution governs cross-cutting placement decisions.
 - `project_a2kit_design_state` — post-v0.33 surface
 - `feedback_no_prs` — solo repos merge to main directly
 - `feedback_bdd_first` — write the test first
-- `feedback_a2kit_ldd_wire_format` — LDD channels invariants
+- `feedback_a2kit_log_wire_format` — log channels invariants
 - `project_a2kit_format_routing` — JSON | TSV | page-tsv wire shapes

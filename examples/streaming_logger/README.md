@@ -1,20 +1,20 @@
 # streaming_logger — Logging-Driven Development with `ctx: a2kit.ToolContext`
 
-This example demonstrates **LDD** (Logging-Driven Development): a tool
+This example demonstrates **log** (Logging-Driven Development): a tool
 should *stream its narrative as it executes*, not just return a final
 value. Long-running operations narrate themselves through
-`await a2kit.ldd.info(ctx, ...)` / `warning` / `error` plus
+`await a2kit.log.info(ctx, ...)` / `warning` / `error` plus
 `await ctx.report_progress(...)`, and a2kit routes those updates to
 whichever protocol the user is on.
 
 > **API note.** `a2kit.ToolContext` is a direct re-export of
 > `fastmcp.Context` — its logging methods (`ctx.info` / `ctx.warning` /
 > etc.) match fastmcp's narrow signature `(message, logger_name=None,
-> extra=None)`. **Field-bearing narrative logging lives on `a2kit.ldd.*`
+> extra=None)`. **Field-bearing narrative logging lives on `a2kit.log.*`
 > free functions**, alongside `event` and `report`:
-> `await a2kit.ldd.info(ctx, "msg", k=v, ...)`. The kwarg-on-ctx form
+> `await a2kit.log.info(ctx, "msg", k=v, ...)`. The kwarg-on-ctx form
 > (`ctx.info("msg", k=v)`) is rejected at runtime on both transports —
-> use the `a2kit.ldd.*` alternative.
+> use the `a2kit.log.*` alternative.
 
 | Caller             | Where the stream lands                    |
 |--------------------|-------------------------------------------|
@@ -23,7 +23,7 @@ whichever protocol the user is on.
 
 The tool author writes the same code in both cases.
 
-## Why LDD
+## Why log
 
 A tool that runs for 30 seconds and only ever prints its return value
 *looks broken*. The agent has no idea whether you're stuck on row 1 of
@@ -34,12 +34,12 @@ Rules of thumb — pick the right channel for the right purpose:
 
 | Channel | Use when... | Example |
 |---|---|---|
-| `await info(ctx, msg, **kw)` (from `a2kit.ldd`) | free-form telemetry, ambient process noise | `await info(ctx, "processing batch", start=i)` |
-| `await warning(ctx, msg, **kw)` (from `a2kit.ldd`) | retryable issues, recoverable anomalies | `await warning(ctx, "transient failure", attempt=2)` |
-| `await error(ctx, msg, **kw)` (from `a2kit.ldd`) | genuine errors **before** raising | `await error(ctx, "giving up", attempts=N)` |
+| `await info(ctx, msg, **kw)` (from `a2kit.log`) | free-form telemetry, ambient process noise | `await info(ctx, "processing batch", start=i)` |
+| `await warning(ctx, msg, **kw)` (from `a2kit.log`) | retryable issues, recoverable anomalies | `await warning(ctx, "transient failure", attempt=2)` |
+| `await error(ctx, msg, **kw)` (from `a2kit.log`) | genuine errors **before** raising | `await error(ctx, "giving up", attempts=N)` |
 | `await ctx.report_progress(i, n)` | numeric progress an agent can show as a bar | `await ctx.report_progress(i, len(rows))` |
-| `await event(ctx, name, **kw)` (from `a2kit.ldd`) | typed narrative milestones the agent can pattern-match | `await event(ctx, "api.fetched", count=30)` |
-| `await report(ctx, payload)` (from `a2kit.ldd`) | typed mid-flight result chunks (declared via `@reports(...)`) | `await report(ctx, BatchReport(batch=4, accepted=12))` |
+| `await event(ctx, name, **kw)` (from `a2kit.log`) | typed narrative milestones the agent can pattern-match | `await event(ctx, "api.fetched", count=30)` |
+| `await report(ctx, payload)` (from `a2kit.log`) | typed mid-flight result chunks (declared via `@reports(...)`) | `await report(ctx, BatchReport(batch=4, accepted=12))` |
 
 **Events vs reports.** Events are free narrative — any tool can emit, no
 declaration required, payload is documentary. Reports are typed result
@@ -56,8 +56,8 @@ long log lines burn agent context tokens.
 
 **Kill-switch.** `--no-reports` / `--no-events` on any CLI invocation
 silences that channel for the call. Programmatic:
-`app.set_ldd(reports=False, events=False)`. Process-wide: env
-`A2KIT_LDD=off`. Disabled emissions still type-check (so test bugs are
+`app.set_log(reports=False, events=False)`. Process-wide: env
+`A2KIT_LOG__ENABLED=false`. Disabled emissions still type-check (so test bugs are
 caught). Most-specific layer wins: flag > app > env.
 
 ## The cross-protocol contract
@@ -83,7 +83,7 @@ async def import_csv(
 ```
 
 `ctx` is typed as `a2kit.ToolContext` — a re-export of `fastmcp.Context`.
-The fielded-narrative form lives on `a2kit.ldd.{info,warning,error,debug}`
+The fielded-narrative form lives on `a2kit.log.{info,warning,error,debug}`
 free functions; they branch internally on the live ctx type:
 
 - CLI: `a2kit.packages.cli.context.StderrToolContext` — backend prints
@@ -126,7 +126,7 @@ as JSON (`{"imported":5,"batches":3}`).
 ## Buffering & "snappy" feedback
 
 Stderr is line-buffered by default in Python. Each
-`a2kit.ldd.info(...)` flushes immediately — no `flush=True` needed.
+`a2kit.log.info(...)` flushes immediately — no `flush=True` needed.
 That means even a multi-minute import feels live to the user as long
 as you emit between milestones.
 
@@ -147,7 +147,7 @@ panels, audit trails).
 |----------------------------|--------------------------------------------------------------------|
 | `import_csv`               | Batched `report_progress` + per-batch `ctx.info`.                  |
 | `long_running`             | `ctx.warning` on retry, `ctx.error` before `raise`.                |
-| `quick_status`             | Tool with no `ctx` param — LDD is opt-in.                          |
+| `quick_status`             | Tool with no `ctx` param — log is opt-in.                          |
 | `import_csv_with_reports`  | All four channels: `ctx.event` + `ctx.report` + `info` + progress. |
 
 ## Try it

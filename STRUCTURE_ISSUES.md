@@ -28,7 +28,7 @@ audit findings:
 
 - **`body_dup.rego`** (`REGO-BODY-DUP`) — flags cross-file function
   body duplication using a normalized AST hash. Catches the
-  `_format_ldd_line`-style finding even when names differ.
+  `_format_condensed_line`-style finding even when names differ.
 - **`name_collision.rego`** (`REGO-NAME-COLLISION`) — flags cross-file
   `_`-prefixed (non-dunder) function name reuse outside the allowlist.
 
@@ -137,7 +137,7 @@ optional via a sibling `EnterableRouter`, or make `__aenter__` mandatory
 
 ### S9. Naming inconsistency on registration hooks — DEFERRED
 **Where**: `app.provide(T, factory)`, `app.add_router(r)`, `app.add_cli(cmd)`,
-`app.add_mcp_middleware(mw)`, `app.ldd.add_sink(s)`, `app.mcp.tool()`,
+`app.add_mcp_middleware(mw)`, `app.log.add_sink(s)`, `app.mcp.tool()`,
 `app.api.get(path)`, `app.health_check(fn)`, `app.enricher(fn)`, `app.auth(spec)`
 **Claim**: three verb shapes (`provide`, `add_*`, bare verb) for one
 concept (add to a registry).
@@ -236,15 +236,15 @@ stages import.
 
 **Resolution shape**: lift to `packages/lint/_import.py`.
 
-### R6. Two LDD line-formatter triples — ARCHIVED (2026-05-27, `adopt-rego-policy-layer`) — HIGH (drift-risk closed)
+### R6. Two log line-formatter triples — ARCHIVED (2026-05-27, `adopt-rego-policy-layer`) — HIGH (drift-risk closed)
 **Where**:
-- `src/a2kit/packages/ldd/wire.py:19-32` — `_cap_text`, `_format_kv`, `format_ldd_line`
-- `src/a2kit/packages/context/stderr.py:336-348` — `_cap_text`, `_format_kv`, `_format_ldd_line`
+- `src/a2kit/packages/log/wire.py:19-32` — `_cap_text`, `_format_kv`, `format_condensed_line`
+- `src/a2kit/packages/context/stderr.py:336-348` — `_cap_text`, `_format_kv`, `_format_condensed_line`
 
 **Trace**: same shapes, constant `TEXT_CAP` (wire) vs `_TEXT_CAP` (stderr)
-with the same value. Per the LDD wire-format invariant, drift between
+with the same value. Per the log wire-format invariant, drift between
 these two is a wire-shape bug.
-**Resolution shape**: canonical formatter in `packages/ldd/wire.py`;
+**Resolution shape**: canonical formatter in `packages/log/wire.py`;
 `stderr.py` imports it. Add a lint check (or property test) asserting the
 two output identically for the same input.
 
@@ -275,8 +275,8 @@ lint variants. Five → two.
 ### R9. Four verb-decorator detectors in lint — ARCHIVED (2026-05-27, `adopt-rego-policy-layer` Bundle A drain — verb-decorator detector collapsed to `detect.is_a2kit_verb_decorator`; AST `_is_basemodel_base` lifted to `packages/lint/rules/_ast_helpers.py`) — HIGH
 **Where**:
 - `src/a2kit/packages/lint/rules/detect.py:15` — `is_a2kit_tool_decorator(dec) -> bool` (public)
-- `src/a2kit/packages/lint/rules/ldd.py:29` — `_is_a2kit_verb_decorator(dec) -> bool`
-- `src/a2kit/packages/lint/rules/ldd.py:83` — `_has_a2kit_verb_decorator(fn) -> bool`
+- `src/a2kit/packages/lint/rules/log.py:29` — `_is_a2kit_verb_decorator(dec) -> bool`
+- `src/a2kit/packages/lint/rules/log.py:83` — `_has_a2kit_verb_decorator(fn) -> bool`
 - `src/a2kit/packages/lint/rules/surface.py:45` — `_is_a2kit_verb_decorator(dec) -> ast.Call | None`
 - `src/a2kit/packages/lint/rules/substrate_dep.py:28` — `_is_verb_decorator(node) -> tuple[bool, ast.Call | None]`
 
@@ -446,8 +446,8 @@ lands.
 ### P2. App vs AppRuntime mirrored read-side surface — DEFERRED
 **Where**: `App` and `AppRuntime` both expose ~10 mirrored properties
 (`routers`, `tools`, `cli_extras`, `mcp_middlewares`, `dispatch_hook`,
-`has_default_dispatch_hook`, `container`, `_resolver`, `ldd_reports`,
-`ldd_events`).
+`has_default_dispatch_hook`, `container`, `_resolver`, `log_reports`,
+`log_events`).
 **Claim**: a `RuntimeView` Protocol could de-dup the read-side surface.
 **Why deferred**: ADR-0019 explicitly accepts this as the price of "one
 public type" + sealed runtime. Low payoff vs amendment cost.
@@ -457,7 +457,7 @@ public type" + sealed runtime. Low payoff vs amendment cost.
 - `_request_scope` (`packages/context/request_scope.py`)
 - `_a2kit_request_scope` (`packages/di/_fastapi_bridge.py`)
 - `_render_state` (`packages/dispatch/_render_state.py`)
-- LDD ambient `_LddState` (`packages/ldd/ambient.py`)
+- log ambient `_CallScope` (`packages/log/ambient.py`)
 
 **Claim**: each is justified; the count and disjoint ownership warrant a
 map (who reads each, who writes, lifecycle order).
@@ -501,8 +501,8 @@ incidental fixes.
 These are in flight (as of 2026-05-27) — proposals here must not duplicate
 or contradict:
 
-- **`reshape-ldd-operator-wire-fanout`** — owns LDD-area concerns. R6
-  (LDD line-formatter consolidation) should coordinate with this change
+- **`the log-handler fan-out work`** — owns log-area concerns. R6
+  (log line-formatter consolidation) should coordinate with this change
   to avoid spec-delta conflict.
 - **`adopt-plugin-manifests`** — already partially on disk
   (`packages/_plugin.py`, `packages/auth/_providers/api_key.py`). S9
@@ -532,7 +532,7 @@ deeper. Cross-confirmed findings (≥2 agents), ranked:
 
 ### C1. `ToolBuildSpec` carries the concrete `AppRuntime` — OPEN — HIGH (3-agent confirmed)
 **Where**: `dispatch/spec.py:ToolBuildSpec.app`; read across `dispatch/stages.py`
-(`spec.app._resolver`, `spec.app._ensure_router_entered()`, `spec.app.config.ldd`,
+(`spec.app._resolver`, `spec.app._ensure_router_entered()`, `spec.app.config.log`,
 `spec.app.has_default_dispatch_hook()` — `# noqa: SLF001` seams).
 **Claim**: the transport-NEUTRAL dispatch pipeline (the crown-jewel abstraction,
 ADR 0019/0025) depends on the runtime-LAYER concrete type via PRIVATE attributes.
@@ -543,8 +543,8 @@ App/AppRuntime mirror surface P2, the `_resolver` back-door).
 **Resolution shape**: Dependency Inversion — shrink `ToolBuildSpec` to carry the
 narrow Protocols each stage declares (`Resolver`, a `RouterLifecycle` seam),
 not the whole `AppRuntime`. The Protocol is drawn; the stages just don't use it.
-**Note**: collides with `refound-ldd-on-stdlib-logging` (which rewrites
-`LddStateStage` + how config flows in). Sequencing: do C1's `LddConfig`-injection
+**Note**: collides with ADR 0027 (which rewrites
+`CallScopeStage` + how config flows in). Sequencing: do C1's `LogConfig`-injection
 slice WITH the refound (same code, avoids rewriting the stage twice).
 
 ### C2. The `Surface` Protocol is half-built — OPEN — MED (2-agent confirmed)
@@ -577,8 +577,8 @@ footgun surfacing. Revisit alongside C1/C3 if the seam is touched; otherwise
 ADR-0019-accepted.
 
 **Methodology note**: this audit was SCOPED by the user to inform the
-ldd/logging work first; C1's `LddConfig`-injection slice is folded into
-`refound-ldd-on-stdlib-logging`. C1 (full), C2, C3 are recorded here as
+log/logging work first; C1's `LogConfig`-injection slice is folded into
+ADR 0027. C1 (full), C2, C3 are recorded here as
 falsifiable findings, NOT yet proposed — pick up post-refound.
 
 ## 10. Maintenance
