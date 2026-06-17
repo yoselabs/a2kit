@@ -39,10 +39,7 @@ The previous behaviour of scraping the Principal from per-call kwargs inside `_a
 
 ### Requirement: Dispatch stages read Principal via `request_scope`
 
-Dispatch stages (`DispatchHookStage`, `AuthorizeGateStage`, future
-stages) SHALL thread `Principal` into `Container.call_scope` via
-`framework_seeds=request_scope.all_seeds()`. They SHALL NOT name a
-per-type Principal reader.
+Dispatch stages (`DispatchHookStage`, `AuthorizeGateStage`, future stages) SHALL thread `Principal` into `Container.call_scope` via `framework_seeds=request_scope.all_seeds()`. They SHALL NOT name a per-type Principal reader.
 
 #### Scenario: DispatchHookStage seeds Principal via framework_seeds
 
