@@ -1,6 +1,6 @@
 ---
 id: "0029"
-status: proposed
+status: accepted
 date: 2026-06-17
 last_reviewed: 2026-06-17
 supersedes: []
@@ -13,8 +13,9 @@ deciders: [Denis Tomilin]
 
 ## Status
 
-Proposed, 2026-06-17. Delivered by the OpenSpec change `add-internal-spoke`.
-Awaits human confirmation (Constitution Phase A). Touches the Tier-2
+Accepted, 2026-06-17. Delivered by the OpenSpec change `add-internal-spoke`
+(applied and archived as `2026-06-17-add-internal-spoke`); confirmed by the
+human (Constitution Phase A). Touches the Tier-2
 public surface (adds `a2kit.spoke`), so it **extends ADR 0004**'s tier
 list; it does not supersede it.
 
