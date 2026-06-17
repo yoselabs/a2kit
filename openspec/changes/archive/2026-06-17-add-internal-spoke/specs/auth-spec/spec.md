@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Auth specs declare their target surface and build their own middleware
+### Requirement: Build-time wiring is opt-in per registry contents
 
 `AuthSpec` subclasses SHALL declare the surface they apply to via the `target`
 ClassVar. `target` SHALL NOT be restricted to `Literal["api", "mcp"]`: it SHALL
@@ -27,6 +27,12 @@ produce a middleware-free sub-app.
 - **THEN** the HTTP surface mounts it via `build_middleware()` with the same
   request behavior (401 on missing/invalid key, `Principal` published on success)
   as before the generalization
+
+#### Scenario: No-auth App produces middleware-free FastAPI sub-app
+
+- **GIVEN** an App with no `App.auth(...)` calls
+- **WHEN** `build_http_app(runtime)` runs
+- **THEN** the resulting FastAPI app has no auth middleware in its middleware stack
 
 ## ADDED Requirements
 

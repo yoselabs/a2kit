@@ -21,40 +21,12 @@ When `serve` is invoked with `--transport=http`, the framework SHALL run a singl
 - **THEN** the MCP surface is the Starlette application returned by `build_mcp_server(app).http_app(...)`, mounted on the parent application
 - **AND** the parent application, not the FastMCP server, owns the uvicorn run
 
-### Requirement: Surface selection via `--mcp-only` and `--rest-only`
-
-The `serve` command SHALL accept two mutually exclusive flags, `--mcp-only` and `--rest-only`, both defaulting to off. With neither flag set, every surface applicable to the transport SHALL be served (opt-out, never opt-in). `--mcp-only` SHALL serve only the MCP surface; `--rest-only` SHALL serve only the REST surface. Passing both SHALL be rejected as a usage error.
-
-#### Scenario: Default serves all surfaces
-
-- **WHEN** the app is started with `serve --transport=http` and no surface flag
-- **THEN** both the MCP surface and the REST surface are mounted
-
-#### Scenario: `--mcp-only` serves MCP alone
-
-- **WHEN** the app is started with `serve --transport=http --mcp-only`
-- **THEN** the MCP surface is mounted
-- **AND** no REST surface is mounted
-
-#### Scenario: `--rest-only` serves REST alone
-
-- **WHEN** the app is started with `serve --transport=http --rest-only`
-- **THEN** the REST surface is mounted
-- **AND** no MCP surface is built or mounted
-
-#### Scenario: Both flags together is a usage error
-
-- **WHEN** the app is started with `serve --transport=http --mcp-only --rest-only`
-- **THEN** the command exits with a non-zero status and an error naming the conflict
-
 ### Requirement: stdio `serve` is a single-protocol MCP surface
 
-The default `serve` transport (stdio) SHALL serve the MCP surface only, because a stdio pipe cannot multiplex more than one protocol. `--rest-only` combined with stdio SHALL be rejected as a usage error. `--mcp-only` combined with stdio SHALL be accepted as a redundant no-op.
-
-#### Scenario: `--rest-only` is rejected on stdio
-
-- **WHEN** the app is started with `serve` (stdio, default transport) and `--rest-only`
-- **THEN** the command exits with a non-zero status and an error stating that REST cannot be served over stdio
+The default `serve` transport (stdio) SHALL serve the MCP surface only,
+because a stdio pipe cannot multiplex more than one protocol. Surface
+narrowing on the `http` transport is expressed with `--select 'surface=...'`
+(the `runtime-tool-selection` capability), not with dedicated surface flags.
 
 #### Scenario: stdio still serves MCP
 
@@ -121,4 +93,41 @@ The framework SHALL NOT expose a module-level `SURFACE_REGISTRY` global. The per
 - **WHEN** code does `from a2kit.packages.dispatch import SURFACE_REGISTRY`
 - **THEN** the import raises `ImportError`
 - **AND** the only canonical access paths are `runtime.surfaces` (per-runtime) and `current_registry()` (active binding)
+
+### Requirement: Co-resident loopback (UDS) listener shares the one runtime
+
+`serve` (http path) SHALL support an optional second listener bound to a **Unix
+domain socket** (the "spoke"), in addition to the public TCP listener. When the
+spoke is enabled, `serve` SHALL build the `AppRuntime` **exactly once** and serve
+**both** listeners from that single runtime, so they share the one DI root
+container and therefore the one `SINGLETON` store handle (single-writer
+preserved). The spoke socket SHALL be created with `0600` permissions.
+
+Both listeners' lifespans SHALL be entered under a single `async with runtime:`
+(the runtime entered once, exited last), as with the existing multi-surface
+parent. The public TCP listener and its mounted surfaces (MCP/HTTP) and their
+auth SHALL be unchanged whether or not the spoke is enabled.
+
+The spoke SHALL serve the dispatcher-backed verb surface (same dispatcher, same
+validation, audit, `authorize=`, `if_version`, typed errors as the public
+surfaces) and SHALL NOT expose a second tool catalog: projected verbs SHALL carry
+the identical canonical names served on the public API surface.
+
+#### Scenario: Spoke and public listener share one store handle
+
+- **WHEN** `serve` runs with the spoke enabled and a verb is invoked over the UDS
+- **THEN** the call resolves through the same `AppRuntime` and writes through the
+  same `SINGLETON` store instance that a TCP call resolves, with no second store
+  handle opened
+
+#### Scenario: Public surfaces unaffected by the spoke
+
+- **WHEN** the spoke is enabled
+- **THEN** the public TCP listener's MCP/HTTP mounts and their auth behave
+  identically to a spoke-disabled run
+
+#### Scenario: Spoke disabled by default
+
+- **WHEN** `serve` runs without the spoke option
+- **THEN** only the public TCP listener is started and no Unix socket is created
 
