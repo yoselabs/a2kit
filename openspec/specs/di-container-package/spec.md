@@ -192,13 +192,13 @@ registrations made via `app.provide(...)` SHALL win over framework
 defaults, per the standard last-write-wins semantics of the container
 (ADR 0006).
 
-#### Scenario: User override of LddConfig replaces framework default
+#### Scenario: User override of LogConfig replaces framework default
 
 - **GIVEN** a fresh `App`
-- **WHEN** the user calls `app.provide(LddConfig, lambda: custom)`
+- **WHEN** the user calls `app.provide(LogConfig, lambda: custom)`
 - **AND** the runtime is built
-- **THEN** resolving `LddConfig` from the container returns `custom`
-- **AND** does NOT return the App's `config.ldd`
+- **THEN** resolving `LogConfig` from the container returns `custom`
+- **AND** does NOT return the App's `config.log`
 
 #### Scenario: Framework providers are present even without user calls
 

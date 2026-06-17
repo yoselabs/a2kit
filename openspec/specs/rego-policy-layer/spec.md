@@ -62,9 +62,9 @@ Extract SHALL be a pure function of the input tree: same tree → same JSON, byt
 
 `policies/body_dup.rego` SHALL emit a `deny` finding for every pair of functions `(i, j)` such that: `i.file != j.file` AND `i.ast_hash_normalized == j.ast_hash_normalized` AND `i.body_stmt_count >= 3` AND neither name appears in any `policies/allowlist.json` `body_dup` entry.
 
-#### Scenario: R6 (LDD formatter dup) fires before resolution
+#### Scenario: R6 (log formatter dup) fires before resolution
 
-- **GIVEN** the current `packages/ldd/wire.py:21` and `packages/context/stderr.py:337` (both implementing `_cap_text` / `_format_kv` shape)
+- **GIVEN** the current `packages/log/wire.py:21` and `packages/context/stderr.py:337` (both implementing `_cap_text` / `_format_kv` shape)
 - **WHEN** `body_dup.rego` runs against extracted facts
 - **THEN** a `deny` finding names both locations with rule ID `REGO-BODY-DUP`
 

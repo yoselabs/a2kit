@@ -3,7 +3,7 @@
 `a2kit.packages.context.request_scope` (re-exported as
 `a2kit.packages.dispatch.request_scope`) is the single typed
 substrate→dispatch bridge for per-request values: Principal, the
-per-request DI container, LDD state, and any future request-scoped
+per-request DI container, log state, and any future request-scoped
 type the framework adopts.
 
 ## The shape
@@ -11,16 +11,16 @@ type the framework adopts.
 ```python
 from a2kit.packages.context import request_scope
 
-# Substrate (auth middleware, http middleware, LDD scope opener):
-token = request_scope.publish(principal, ldd_state, container)
+# Substrate (auth middleware, http middleware, log scope opener):
+token = request_scope.publish(principal, call_scope, container)
 try:
     # ... run the request
 finally:
     request_scope.reset(token)
 
-# Reader (dispatch stage, FastAPI bridge, LDD primitive):
+# Reader (dispatch stage, FastAPI bridge, log primitive):
 principal = request_scope.get(Principal)            # raises on miss
-maybe_ldd = request_scope.try_get(_LddState)        # returns None on miss
+maybe_scope = request_scope.try_get(_CallScope)        # returns None on miss
 ```
 
 Publish is variadic. Each value is keyed by `type(value)`. Last-write-wins
@@ -50,8 +50,8 @@ expected (anonymous requests, optional features).
   `_install_authorize_principal_bridge`) publishes the `Principal`.
 - **HTTP request middleware** (`packages/http/build.py`) publishes the
   per-request `Container` child.
-- **LDD scope opener** (`packages/ldd/ambient.py:ldd_state_for_call`)
-  publishes the `_LddState`. Every transport opens this scope around
+- **log scope opener** (`packages/log/ambient.py:bind_call_scope`)
+  publishes the `_CallScope`. Every transport opens this scope around
   the tool body.
 
 ## When to read
@@ -59,8 +59,8 @@ expected (anonymous requests, optional features).
 - **Dispatch stages** (`DispatchHookStage`, `AuthorizeGateStage`) call
   `request_scope.all_seeds()` to thread framework-tier seeds into
   `Container.call_scope(framework_seeds=...)`.
-- **LDD primitives** (`event`, `report`, `log`) read `_LddState` via
-  `request_scope.try_get(_LddState)`, raising `RequestScopeMissing`
+- **log primitives** (`event`, `report`, `log`) read `_CallScope` via
+  `request_scope.try_get(_CallScope)`, raising `RequestScopeMissing`
   (a `LookupError`) when absent.
 - **FastAPI bridge** reads the per-request `Container` via the
   DI-package-local `_a2kit_request_scope` ContextVar (kept inside the
@@ -80,8 +80,8 @@ is two lines plus a test.
 ## Layer placement
 
 `request_scope` lives in `packages/context/` (layer 0). Earlier drafts
-sketched it in `packages/dispatch/`, but the L0 LDD ambient module
-needs to publish to it, and `ldd→dispatch` would invert the layer DAG.
+sketched it in `packages/dispatch/`, but the L0 log ambient module
+needs to publish to it, and `log→dispatch` would invert the layer DAG.
 `packages/dispatch.request_scope` is a re-export of the canonical
 context home.
 

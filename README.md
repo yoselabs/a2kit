@@ -80,7 +80,7 @@ uv pip install a2kit
 
 | Symbol | Purpose |
 |---|---|
-| `a2kit.App` | The single public type — an abstract compose-phase builder. You author an app by subclassing it (`class Tracker(a2kit.App): name = "tracker"; routers = (ProjectsRouter, TasksRouter)`); a bare `a2kit.App("name")` raises `TypeError`. Routers are composed declaratively via the `routers` ClassVar — each entry is a Router class (instantiated zero-arg) or a pre-built instance. For tests, `a2kit.testing.app_of("name", ProjectsRouter(), TasksRouter())` composes an App from Router classes or instances without a subclass. The remaining named verbs run on the instance: `add_cli(group)`, `add_mcp_middleware(m)`, `provide(T, factory=None, *, per_call=False)` for typed DI, and `health_check` for readiness probes. Each verb returns the App for chaining. Introspection surface: `tools()`, `routers()`, `container()`, `set_ldd(...)` (LDD kill-switch). A composed Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher builds it into a sealed internal runtime (snapshots the composition into a fresh container, validates the provider graph, owns the async-CM lifecycle). There is no public `build()`. `App` is a pure, reusable builder — composition verbs stay callable, and a verb called after a finisher has built a runtime affects only the next build. Debug mode and other runtime knobs are consumer-owned, set via env (`A2KIT_*`) or `A2kitConfig(...)` per ADR 0022 — see [Configuration](#configuration). |
+| `a2kit.App` | The single public type — an abstract compose-phase builder. You author an app by subclassing it (`class Tracker(a2kit.App): name = "tracker"; routers = (ProjectsRouter, TasksRouter)`); a bare `a2kit.App("name")` raises `TypeError`. Routers are composed declaratively via the `routers` ClassVar — each entry is a Router class (instantiated zero-arg) or a pre-built instance. For tests, `a2kit.testing.app_of("name", ProjectsRouter(), TasksRouter())` composes an App from Router classes or instances without a subclass. The remaining named verbs run on the instance: `add_cli(group)`, `add_mcp_middleware(m)`, `provide(T, factory=None, *, per_call=False)` for typed DI, and `health_check` for readiness probes. Each verb returns the App for chaining. Introspection surface: `tools()`, `routers()`, `container()`. A composed Router carries tools and may also declare `providers = (...)` and `__aenter__`/`__aexit__` for router-scoped lifecycle. Hand the App to a finisher (`a2kit.run`, `build_mcp_server`, `a2kit.testing.client`); the finisher builds it into a sealed internal runtime (snapshots the composition into a fresh container, validates the provider graph, owns the async-CM lifecycle). There is no public `build()`. `App` is a pure, reusable builder — composition verbs stay callable, and a verb called after a finisher has built a runtime affects only the next build. Debug mode and other runtime knobs are consumer-owned, set via env (`A2KIT_*`) or `A2kitConfig(...)` per ADR 0022 — see [Configuration](#configuration). |
 | `a2kit.Router` | Subclass; decorate methods with `@a2kit.read/write/list_`. Subclasses MUST declare `slug: ClassVar[str]` and `tools: ClassVar[tuple]`. Optional class attributes: `enrichers = (...)` (exception → user message), `providers = (...)` (typed DI providers installed when the router is composed), `visibility = "..."` (default tier for tools). Optional `lifespan` classmethod composes into the App's lifespan. |
 | `a2kit.RouterRegistry` | Internal; collects `Router` instances. |
 | `visibility=` kwarg | Verb decorators accept `visibility: Literal["hidden", "cli", "all"]`. Defaults to inherit from the Router's `visibility` class attribute (default `"all"`). Tier semantics: `"hidden"` — CLI-invokable but absent from `--help` and not on programmatic transports; `"cli"` — visible in `--help`, not on MCP / future REST; `"all"` — registered everywhere. Credential-management tools should declare `visibility="cli"` — lint rule `A2K-SURFACE-EXPLICIT` flags forgotten declarations. |
@@ -429,69 +429,46 @@ tool (hidden from agent-facing
 code reflects aggregated status. The `_meta.*` namespace is reserved —
 user tools can't claim it.
 
-### Logging + progress + events + reports (`ToolContext`)
+### Logging + progress (`ToolContext`)
 
-`a2kit.ToolContext` is an alias for `fastmcp.Context`. All Context logging
-methods are async; field-bearing logging, events, and reports live as
-free functions in `a2kit.ldd` (three siblings, one dispatch shape).
-
-> **LDD** = *Logging / Data / Diagnostics* — the narrative-with-data
-> primitives bundled together because they share a dispatch shape and a
-> kill-switch.
+`a2kit.ToolContext` is a Protocol satisfied by `fastmcp.Context` (MCP) and
+the CLI / test-client stubs. Plain Context logging methods are async
+passthroughs; **fielded** structured logging lives as ambient free
+functions in `a2kit.log` (`info` / `debug` / `warning` / `error`) that
+render identically on CLI and MCP. The log surface is plain stdlib
+`logging` underneath (ADR 0027).
 
 | Channel | API | When to use |
 |---|---|---|
 | Plain logging (fastmcp passthrough) | `await ctx.info(msg)` / `ctx.info(msg, extra={"k": 1})` | Free-form messages to the MCP client; matches fastmcp's narrow signature |
-| **Fielded logging (a2kit.ldd)** | `await info(ctx, msg, **fields)` (also `warning` / `error` / `debug` / `log`) | Structured narrative-with-data; renders identically on CLI and MCP. **Don't** pass kwargs to `ctx.info` directly — it crashes on MCP transport. |
-| Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — for progress bars |
-| **Narrative events (kwargs)** | `await event(ctx, "name.string", **payload)` | Typed milestones agents pattern-match (e.g. `"api.fetched"`) |
-| **Narrative events (typed)** | `await event(ctx, MyEvent(...))` — instance second positional | Pass a dataclass / pydantic model directly; name defaults to class name, fields serialize via `dataclasses.asdict` / `model_dump`. Enum fields coerced via `.value`. |
-| **Typed reports** | `await report(ctx, payload)` (requires `reports=ReportT` kwarg on the verb decorator) | Mid-flight result chunks with a declared schema |
-| **Typed event registry** | `app.ldd.events.register(MyEvent, progress=fn)` then `await app.ldd.events.emit_typed(ctx, evt)` | One-call emit: dump → event → progress (use this when you also need progress reporting) |
+| **Fielded logging (`a2kit.log`)** | `await log.info("msg", **fields)` (also `debug` / `warning` / `error`) | Structured narrative-with-data; **ambient** (no `ctx` arg — the dispatcher binds the call scope). **Don't** pass kwargs to `ctx.info` directly — it crashes on MCP transport. |
+| Numeric progress | `await ctx.report_progress(i, n)` | "30 of 100" — progress bars (declare `ctx: a2kit.ToolContext`) |
 
-`info` / `warning` / `error` / `debug` / `log` also accept the instance
-form (`await info(ctx, MyEvent(...))`) — same coercion rules as `event`,
-shared helper so the two primitives can't drift.
+The level functions also accept a typed instance: `await log.info(MyEvent(...))`
+dumps it via `model_dump(mode="json")` / `dataclasses.asdict` (enum values
+unwrapped), with the message defaulting to the type name.
 
 ```python
-from pydantic import BaseModel
-from a2kit.ldd import event, info, report
+from a2kit import log
 
 
-class BatchReport(BaseModel):
-    batch: int
-    accepted: int
-
-
-@a2kit.write(reports=BatchReport)
-async def bulk_import(*, ctx: a2kit.ToolContext, file: str) -> dict:
-    await event(ctx, "import.started", file=file)
+@a2kit.write()
+async def bulk_import(*, file: str) -> dict:
+    await log.info("import.started", file=file)
     items = await load(file)
     for i, item in enumerate(items):
-        await ctx.report_progress(i, len(items))
-        await info(ctx, "processing", batch=i, count=len(items))
-        await report(ctx, BatchReport(batch=i, accepted=1))
-    # Typed form: pass an instance directly. Name = class name; payload serializes
-    # via model_dump / dataclasses.asdict.
-    await event(ctx, ImportComplete(count=len(items)))
+        await log.info("processing", batch=i, count=len(items))
     return {"imported": len(items)}
 ```
 
 **Wire format.** CLI: `[ +s.mmm LEVEL] msg key=val` lines on stderr.
-MCP: `notifications/message` with `data.elapsed_ms: int` and (for events
-/ reports) a `data.a2kit_kind` discriminator. Keep messages short
-(≤ 60 char guideline) — long lines burn agent context tokens.
+MCP: `notifications/message` carrying `data.elapsed_ms: int`. Keep messages
+short (≤ 60 char guideline) — long lines burn agent context tokens.
 
-**Kill-switch.** Top-level CLI flags `--no-reports` / `--no-events` per
-invocation; `app.set_ldd(reports=False, events=False)` programmatically;
-env `A2KIT_LDD=off` process-wide. Most-specific layer wins. Disabled
-emissions still type-validate `reports=` payloads — keeps tests
-deterministic.
-
-**Lint rule.** `A2K-LDD-REPORT-TYPE` fires when `report(ctx, ...)` is
-called without a `reports=ReportT` kwarg on the verb decorator, or when
-the declared type is defined inside a function (Pydantic forward-ref
-constraint).
+**Level + kill-switch.** `A2KIT_LOG__LEVEL` (`trace` / `debug` / `info` /
+`warning` / `error`, default `info`) drops emissions below the rank;
+`A2KIT_LOG__ENABLED=false` is the hard kill-switch. Both are consumer-owned
+config — see [Configuration](#configuration).
 
 The `ctx` parameter is stripped from the input schema and from CLI
 option generation.
@@ -598,13 +575,13 @@ single underscores stay part of the field name.
 |---|---|---|---|
 | `A2KIT_DEBUG` | `config.debug` | `false` | Adds `traceback` to the wire error envelope and prints tracebacks on CLI stderr. |
 | `A2KIT_MCP__STRUCTURED_OUTPUT` | `config.mcp.structured_output` | `false` | When `true`, the success-path MCP wire emits `structuredContent` + a short content marker (no duplicate JSON). Saves ~50% tokens on hosts that forward structuredContent (Anthropic, ChatGPT, Codex, Copilot). Degrades on Cursor, Hermes, OpenClaw, Kiro, Vercel-AI-SDK consumers. |
-| `A2KIT_LDD__LEVEL` | `config.ldd.level` | `info` | LDD level threshold. Emissions below the rank are dropped before any sink, ctx.log, or stderr write. Values: `trace`, `debug`, `info`, `warning`, `error`. Default `info` silences `debug()` calls; set `debug` or `trace` for fuller traces. |
-| `A2KIT_LDD__ENABLED` | `config.ldd.enabled` | `true` | Hard kill-switch for LDD emission (events + reports). Orthogonal to `level` — `enabled=false` suppresses everything regardless of threshold. Replaces the v0.x `A2KIT_LDD=off` legacy env. |
+| `A2KIT_LOG__LEVEL` | `config.log.level` | `info` | log level threshold. Emissions below the rank are dropped before any sink, ctx.log, or stderr write. Values: `trace`, `debug`, `info`, `warning`, `error`. Default `info` silences `debug()` calls; set `debug` or `trace` for fuller traces. |
+| `A2KIT_LOG__ENABLED` | `config.log.enabled` | `true` | Hard kill-switch for log emission (events + reports). Orthogonal to `level` — `enabled=false` suppresses everything regardless of threshold. Replaces the v0.x `A2KIT_LOG__ENABLED=false` legacy env. |
 
 ### Where it lives
 
 - `a2kit.config.A2kitConfig` — pydantic-settings root with sub-models for
-  `mcp`, `http`, `cli`, `ldd`, plus top-level cross-cutting fields.
+  `mcp`, `http`, `cli`, `log`, plus top-level cross-cutting fields.
 - `App.config` — the resolved instance. Read it from anywhere.
 - `App.user_config` — opaque slot for the developer's own pydantic-settings
   instance. a2kit does not introspect; you apply the same env-beats-code
@@ -621,7 +598,7 @@ Active rules:
 
 - `A2K-CONN-LIST-PLACEHOLDER` — `${VAR}` inside list/dict fields on `ConnectionConfig`.
 - `A2K-IMPORT-DISCIPLINE` — `fastmcp` imports outside `packages/mcp/` and the lazy-load lines in `packages/cli/builder.py`.
-- `A2K-LDD-REPORT-TYPE` — `report(ctx, ...)` without a `reports=ReportT` kwarg on the verb decorator, or report type defined inside a function.
+- `the removed report-type lint rule` — `report(ctx, ...)` without a `reports=ReportT` kwarg on the verb decorator, or report type defined inside a function.
 - `A2K-CORE-CLEAN` — feature identifiers (`connection`, `enricher`, `list_view`, `report_type`, `report_schema`, `router_slug`) in `src/a2kit/*.py` outside `packages/`. Same boundary keeps the DI container (`Container`, `partition_kwargs`, `apply_kwargs`) confined to `packages/connections`.
 - `A2K-EXTRA-NAMESPACE` — `meta.extra` keys must start with `a2kit.` or a `<package>.` prefix.
 
@@ -747,16 +724,15 @@ async def build_pool(settings: AppSettings) -> Pool:
 app.provide(Pool, build_pool)
 ```
 
-#### Ambient LDD context
+#### Ambient log context
 
-`a2kit.ldd.event` / `report` / `log` / `info` / `warning` / `error` /
-`debug` read their `ctx` from a `ContextVar` set by the dispatcher.
-Tool authors declare `ctx: a2kit.ToolContext` on the tool signature
-and call the primitives with no `ctx` argument. Calling a primitive
-outside an active dispatch (lifecycle hook, module-level code, or a
-tool that omitted `ctx`) raises
-`a2kit.exceptions.AmbientContextMissing`. See
-[OPERATIONAL_CONTRACTS.md](OPERATIONAL_CONTRACTS.md) Q8.
+`a2kit.log.info` / `debug` / `warning` / `error` are **ambient**: the
+dispatcher binds the per-call scope (`bind_call_scope`) for every tool
+invocation, so emissions automatically carry `call_id` / `tool_name` /
+`elapsed_ms` / `surface` — tool authors call them with no `ctx` argument.
+Numeric progress still flows through `ctx.report_progress(...)`, so declare
+`ctx: a2kit.ToolContext` when you need it. See
+[OPERATIONAL_CONTRACTS.md](OPERATIONAL_CONTRACTS.md).
 
 ## Migration from v0.x
 

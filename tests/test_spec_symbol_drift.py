@@ -76,7 +76,7 @@ _ALLOWLIST: frozenset[str] = frozenset(
         "RG010",  # `e.g. RG001, RG002, RG010` — illustrative RG example
         # --- string names cited in scenarios (logger names, span attrs)
         #     that look like dotted import paths but are not ---
-        "a2kit.log.sink_failed",  # logger name for the WARN-log on sink failures (refounded a2kit.ldd -> a2kit.log)
+        "a2kit.log.sink_failed",  # logger name for the WARN-log on sink failures (refounded onto a2kit.log)
         "a2kit.calls",  # dedicated non-streaming logger name for the call-log (call-log capability)
         "a2kit.dur_ms",  # OTel span attribute name
         # --- Rego data-namespace paths (policies/data.json keys, NOT Python

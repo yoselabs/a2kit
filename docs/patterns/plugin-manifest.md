@@ -18,7 +18,7 @@ when you're building a new extension surface where:
 
 Today's pilot is **API-key auth providers** under
 `packages/auth/_providers/`. Future candidates: connections (where
-credentials presence varies), LDD sinks (otel optional), code-mode
+credentials presence varies), log sinks (otel optional), code-mode
 tools, surface registry.
 
 ## The shape

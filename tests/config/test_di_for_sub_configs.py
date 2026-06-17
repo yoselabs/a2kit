@@ -1,7 +1,7 @@
 """BDD tests for config-DI provider registration (di-for-sub-configs change).
 
 Locks the config-di-providers + runtime-config + di-container-package +
-ldd-level-threshold delta scenarios. The contract: A2kitConfig and each
+log-level-threshold delta scenarios. The contract: A2kitConfig and each
 sub-config are DI-resolvable; resolution identity-matches `app.config.<sub>`;
 user `app.provide(LogConfig, fake)` wins last-write-wins per ADR 0006.
 """
@@ -24,12 +24,12 @@ async def test_a2kitconfig_resolves_via_di_to_appconfig_instance() -> None:
 
 
 @pytest.mark.asyncio
-async def test_lddconfig_resolves_via_di_to_appconfig_ldd() -> None:
+async def test_logconfig_resolves_via_di_to_appconfig_log() -> None:
     app = app_of("svc", config=A2kitConfig(log=LogConfig(level="debug")))
     async with app._container:
-        ldd = await app._container.get(LogConfig)
-    assert ldd is app.config.log
-    assert ldd.level == "debug"
+        log = await app._container.get(LogConfig)
+    assert log is app.config.log
+    assert log.level == "debug"
 
 
 @pytest.mark.asyncio
@@ -54,7 +54,7 @@ async def test_all_sub_configs_registered() -> None:
 
 
 @pytest.mark.asyncio
-async def test_user_provide_overrides_lddconfig_default() -> None:
+async def test_user_provide_overrides_logconfig_default() -> None:
     """ADR 0006 last-write-wins: a user `provide(LogConfig, ...)` after
     `App.__init__` MUST replace the framework-seeded provider."""
     fake = LogConfig(level="trace")

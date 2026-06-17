@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Added — Internal spoke: first-party jobs call verbs over a private UDS (`add-internal-spoke`, ADR 0029)
+
+`serve --internal-uds PATH` adds a co-resident **spoke** listener — a private
+Unix-domain-socket endpoint (created `0600`, off-host-unreachable) that runs in
+parallel with the public listener and shares the one runtime (one DI root
+container, one `SINGLETON` store). First-party sandboxed jobs reach the
+single-writer core over it without traversing the public network edge auth.
+
+- New `a2kit.TokenAuth(resolve=...)` (`target="internal"`): validates a lease
+  token **per request** against a consumer-owned live set — instant revocation,
+  no fixed TTL (survives day-long jobs). a2kit ships the mechanism; the runner
+  owns the lease table.
+- New `a2kit.spoke.client(socket_path, token)` → `invoke(name, **kwargs)`: the
+  supported client; carries no catalog of its own (reaches the API surface's
+  projected verbs by canonical name).
+
+### Changed — `serve --transport=http` now multiplexes MCP + API (BREAKING)
+
+The wired `serve` previously served **MCP only** over http (a `serve-topology`
+spec violation). It now runs the multiplex parent: MCP under `/mcp` **and** the
+REST surface under `/api`. Narrow to one with `--select 'surface=mcp'` /
+`--select 'surface=api'`. The `--compact` / `--tools` / code-mode knobs now
+thread into the multiplex MCP build. stdio is unchanged (MCP only).
+
+### Removed — orphaned serve command + redundant auth helper (BREAKING)
+
+| Removed surface | Now raises | Replacement |
+|---|---|---|
+| `a2kit.packages.mcp.cli` / `build_serve_command` | `ImportError` / `AttributeError` | the wired Typer `serve` (now the canonical multiplex); narrow with `--select` |
+| `a2kit.packages.auth.build_api_key_middleware` | `ImportError` / `AttributeError` | `APIKeyAuth(...).build_middleware()` |
+
+`auth.AuthTarget` is opened from `Literal["api", "mcp"]` to an open `str` so
+consumer/internal surface names (e.g. `"internal"`) can be auth targets;
+`AuthSpec` now requires `build_middleware()` (the substrate mount is generic —
+no `isinstance` chain).
+
 ## 0.43.0 — 2026-06-11
 
 ### Changed — Purged all backward-compat machinery: tombstones, aliases, migration hints (BREAKING)

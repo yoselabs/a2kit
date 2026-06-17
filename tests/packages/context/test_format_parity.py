@@ -1,5 +1,5 @@
 """Invariant: `context.stderr._format_line` (the inlined copy) and
-`ldd.wire.format_ldd_line` (the canonical home) produce byte-identical
+`log.wire.format_condensed_line` (the canonical home) produce byte-identical
 output. They diverge → operators see two different log shapes for the
 same emission.
 """

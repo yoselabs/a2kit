@@ -15,9 +15,9 @@ The 2026-05-27 structural audit (`STRUCTURE_ISSUES.md`) found 17
 redundancies and 13 smells, most of which are *invariants* about the
 codebase's shape, not authoring mistakes. Examples:
 
-- **R6** — `_cap_text` / `_format_kv` / `format_ldd_line` duplicated
-  across `packages/ldd/wire.py` and `packages/context/stderr.py`.
-  Drift here is a wire-format bug per the LDD invariant.
+- **R6** — `_cap_text` / `_format_kv` / `format_condensed_line` duplicated
+  across `packages/log/wire.py` and `packages/context/stderr.py`.
+  Drift here is a wire-format bug per the log invariant.
 - **R1** — two `async def _call` helpers with identical bodies in
   different modules of `packages/dispatch/`.
 - **R10** — lazy `__getattr__` pattern hand-rolled across 7 modules.

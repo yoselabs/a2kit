@@ -69,14 +69,14 @@ def _build_parity_app() -> a2kit.App:
 
         @a2kit.read()
         async def tool_ctx_emits_event(self, *, ctx: a2kit.ToolContext) -> dict[str, int]:
-            from a2kit.packages import ldd
+            from a2kit.packages import log
 
-            # Use ldd.info — exercises ambient ctx binding via the same
-            # LDD primitive surface as ldd.event but without the
-            # event-payload `name` field that collides with Python
-            # LogRecord's reserved `name` attribute (a pre-existing
-            # cross-transport issue, out of scope here).
-            await ldd.info("tick", n=1)  # type: ignore[attr-defined]
+            # Use log.info — exercises ambient ctx binding via the
+            # logging primitive surface (now `a2kit.packages.log`, ADR
+            # 0027) but without the event-payload `name` field that
+            # collides with Python LogRecord's reserved `name` attribute
+            # (a pre-existing cross-transport issue, out of scope here).
+            await log.info("tick", n=1)
             return {"ok": 1}
 
         @a2kit.read()
@@ -118,7 +118,7 @@ async def _call_cli_async(app: a2kit.App, tool_name: str, **kwargs: Any) -> Any:
     """Drive the tool via the in-process test client.
 
     The test client dispatches through the hook (DI resolution, ambient
-    LDD state binding) without rebuilding the MCP wrapper chain — which
+    log state binding) without rebuilding the MCP wrapper chain — which
     is the correct CLI-side reference for parity (CLI also lacks the
     MCP wrapper chain).
     """
@@ -200,7 +200,7 @@ def test_case6_missing_required_raises_on_both() -> None:
 
 
 def test_case7_ctx_emits_event_round_trips_both() -> None:
-    """Ambient ctx must be bound on both transports so LDD primitives work."""
+    """Ambient ctx must be bound on both transports so log primitives work."""
     app = _build_parity_app()
     expected = {"ok": 1}
     assert _call_cli(app, "tool_ctx_emits_event") == expected

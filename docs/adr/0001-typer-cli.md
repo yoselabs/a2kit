@@ -108,7 +108,7 @@ What Typer does not absorb:
   `src/a2kit/packages/cli/_field_to_typer.py`.
 - The body-model flattening UX. We decided to drop it (see The
   decision below).
-- Format routing, LDD wiring, enricher chain, dispatch hook. These
+- Format routing, log wiring, enricher chain, dispatch hook. These
   stay in the per-tool callback exactly as before. ~80 LOC, unchanged
   in shape.
 

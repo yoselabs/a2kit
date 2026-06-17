@@ -161,7 +161,7 @@ under `install_substrate_signature`. The existing
 (`Context` injection by author-declared name, connection-scope
 synthesis, return-annotation copy with `_WARN_ONCE`) and is folded
 into the dispatch pipeline (timeout, enricher, dispatch-hook with DI,
-LDD ambient, error-capture, error-render). Migrating it carried real
+log ambient, error-capture, error-render). Migrating it carried real
 regression risk for 200+ MCP tests under the "byte-for-byte" gate.
 
 **Option B was locked**: per-substrate emission, classifier shared.
@@ -170,7 +170,7 @@ regression risk for 200+ MCP tests under the "byte-for-byte" gate.
   `install_mcp_signature`. Unchanged.
 - Substrate-native (`@app.mcp.tool/.prompt/.resource`) →
   `install_substrate_signature`. Bypasses the dispatch pipeline (no
-  LDD ambient, no projection format routing) because that is the
+  log ambient, no projection format routing) because that is the
   whole point of the FastMCP-native family — authors who want
   framework-native behaviour use `@a2kit.read`.
 
@@ -248,6 +248,6 @@ The "`Substrate = Literal["fastapi", "fastmcp"]` discriminator" architecture thi
 
 ## Standing: "Two FastMCP code paths coexist by design" (2026-05-25)
 
-The Option-B clause in §Consequences (above) stands. [[unify-signature-installers]] was scoped, attempted, and dropped as SUPERSEDED-by-architecture: the two installers serve different layers — `install_mcp_signature` relabels `__signature__` on a prefolded dispatch pipeline, `install_substrate_signature` wraps a fn body from scratch. Naively replacing one with the other erases the folded pipeline from MCP (ldd ambient, format routing, error capture) — a regression, not a refactor.
+The Option-B clause in §Consequences (above) stands. [[unify-signature-installers]] was scoped, attempted, and dropped as SUPERSEDED-by-architecture: the two installers serve different layers — `install_mcp_signature` relabels `__signature__` on a prefolded dispatch pipeline, `install_substrate_signature` wraps a fn body from scratch. Naively replacing one with the other erases the folded pipeline from MCP (log ambient, format routing, error capture) — a regression, not a refactor.
 
-The honest unification path requires first folding the transport-neutral dispatch pipeline on the HTTP path (gaining ldd / format-routing / error-capture on FastAPI — actually desirable). Then both paths become "fold pipeline + relabel signature," which is a real consolidation. That work is gated as a separate future change; the §2-no-redundancy debt note here remains accurate but its discharge is deferred until HTTP folds the pipeline.
+The honest unification path requires first folding the transport-neutral dispatch pipeline on the HTTP path (gaining log / format-routing / error-capture on FastAPI — actually desirable). Then both paths become "fold pipeline + relabel signature," which is a real consolidation. That work is gated as a separate future change; the §2-no-redundancy debt note here remains accurate but its discharge is deferred until HTTP folds the pipeline.

@@ -4,8 +4,9 @@ Living-narrative-doc sibling of ``tests/test_readme_symbol_drift.py`` and
 ``tests/test_spec_symbol_drift.py``. Scans the human-readable docs that teach
 the current public surface and asserts every checkable code-font symbol
 resolves on the live ``a2kit`` surface — so a rename/removal in code fails at
-PR time rather than at consumer-migration time (the exact rot that left
-``a2kit.ldd.*`` strewn through these docs after the stdlib-logging refounding).
+PR time rather than at consumer-migration time (the exact rot that left stale
+logging-surface symbols strewn through these docs after the stdlib-logging
+refounding to ``a2kit.log``).
 
 The extraction + resolution engine lives in ``tests/support/symbol_drift.py``
 (shared with the spec gate); this module supplies the doc set and the

@@ -62,11 +62,11 @@ The release pass SHALL, for `README.md`, ensure that:
 - Tool introspection is documented as `app.tools()`, the single live accessor.
 - The connection-wiring example uses the single-call `install_connections(app, ConnT)` form.
 - DI registration examples use the live `app.provide(T, factory)` method-call form only.
-- The `LDD` acronym is spelled out at first mention.
+- The `log` acronym is spelled out at first mention.
 - The `list_` trailing-underscore convention is documented.
 - The default connection-store path is documented.
 
-Beyond the README pass, the parity standard SHALL hold for the other living narrative docs. Specifically, no living-narrative doc (README, ANTIPATTERNS, OPERATIONAL_CONTRACTS, docs/patterns) SHALL reference, in prose, a markdown table, or a fenced example, any API removed from the live surface. The class of removed APIs covered includes the symbols dropped across v0.33–v0.41: the old bare verb decorator, the capability-tag types now superseded by plain strings, the `App(name, health_tool=True)` constructor form, the old decorator-form lifecycle hooks and the old DI-registration verb together with the private singleton-cache attribute, the dropped TOON encoder and its format hint, the method-form LDD primitives now provided as `a2kit.log` free functions, and the singular verb-kwarg form whose live spelling is `reports=` (plural). ADR bodies are exempt from the removed-API references standard (history), but ADR frontmatter `status` SHALL reflect reality: an ADR whose decision has shipped SHALL carry `status: accepted`, not `status: proposed`.
+Beyond the README pass, the parity standard SHALL hold for the other living narrative docs. Specifically, no living-narrative doc (README, ANTIPATTERNS, OPERATIONAL_CONTRACTS, docs/patterns) SHALL reference, in prose, a markdown table, or a fenced example, any API removed from the live surface. The class of removed APIs covered includes the symbols dropped across v0.33–v0.41: the old bare verb decorator, the capability-tag types now superseded by plain strings, the `App(name, health_tool=True)` constructor form, the old decorator-form lifecycle hooks and the old DI-registration verb together with the private singleton-cache attribute, the dropped TOON encoder and its format hint, the method-form log primitives now provided as `a2kit.log` free functions, and the singular verb-kwarg form whose live spelling is `reports=` (plural). ADR bodies are exempt from the removed-API references standard (history), but ADR frontmatter `status` SHALL reflect reality: an ADR whose decision has shipped SHALL carry `status: accepted`, not `status: proposed`.
 
 #### Scenario: No phantom symbols in README
 
@@ -80,7 +80,7 @@ Beyond the README pass, the parity standard SHALL hold for the other living narr
 - **GIVEN** `ANTIPATTERNS.md`, `OPERATIONAL_CONTRACTS.md`, and `docs/patterns/*.md`
 - **WHEN** the docs symbol-drift gate checks each example call shape and symbol reference against the live surface
 - **THEN** every cited symbol resolves on the live surface
-- **AND** no example names an API removed across v0.33–v0.41 — the old capability-tag types, the bare verb decorator, the removed constructor form, the old lifecycle hooks, the old DI-registration verb, the private singleton cache, a TOON encoder, the method-form LDD primitives, or the singular verb-kwarg form
+- **AND** no example names an API removed across v0.33–v0.41 — the old capability-tag types, the bare verb decorator, the removed constructor form, the old lifecycle hooks, the old DI-registration verb, the private singleton cache, a TOON encoder, the method-form log primitives, or the singular verb-kwarg form
 
 #### Scenario: ADR status reflects shipped reality
 

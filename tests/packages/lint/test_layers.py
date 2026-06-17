@@ -3,7 +3,7 @@
 Post `split-app-runtime`: the top-level `a2kit.*` modules are no longer
 one `core` pseudo-unit; they split into three ordered sub-units —
 `kernel` < `authoring` < `runtime` — with the re-export facades
-(`__init__.py`, `ldd.py`, `testing.py`) layer-exempt. See ADR 0019.
+(`__init__.py`, `log.py`, `testing.py`) layer-exempt. See ADR 0019.
 """
 
 from __future__ import annotations
@@ -82,10 +82,10 @@ def test_unit_for_path_resolves_packages_and_core_subunits() -> None:
 def test_facade_modules_are_layer_exempt() -> None:
     """The re-export facades resolve to no unit — they sit outside the DAG."""
     assert unit_for_module("a2kit") is None
-    assert unit_for_module("a2kit.ldd") is None
+    assert unit_for_module("a2kit.log") is None
     assert unit_for_module("a2kit.testing") is None
     assert unit_for_path("src/a2kit/__init__.py") is None
-    assert unit_for_path("src/a2kit/ldd.py") is None
+    assert unit_for_path("src/a2kit/log.py") is None
     assert unit_for_path("src/a2kit/testing.py") is None
 
 

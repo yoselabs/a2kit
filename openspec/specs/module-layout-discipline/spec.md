@@ -52,7 +52,7 @@ boundary and do not violate this requirement.
 
 ### Requirement: Core modules are organized by sub-unit
 
-Every top-level Python module in `src/a2kit/` SHALL be assigned to exactly one core sub-unit — `kernel`, `authoring`, or `runtime` — in the layer manifest, or be one of the layer-exempt re-export facades (`__init__.py`, `ldd.py`, `testing.py`).
+Every top-level Python module in `src/a2kit/` SHALL be assigned to exactly one core sub-unit — `kernel`, `authoring`, or `runtime` — in the layer manifest, or be one of the layer-exempt re-export facades (`__init__.py`, `log.py`, `testing.py`).
 
 The structural control on core growth is this sub-unit layering, not a flat file-count cap. A new top-level module is acceptable when it has a clear sub-unit home and introduces no upward or cyclic import edge. The earlier "at most 12 core files" cap is retired: it predates the layer manifest, the tree already exceeded it, and a flat count says nothing about whether a module sits in the right layer. The `A2K-LAYER`-enforced sub-unit manifest is the organizing principle.
 
@@ -238,7 +238,7 @@ Every importable unit MUST be assigned an integer layer in a single declarative 
 - each directory under `src/a2kit/packages/`, and
 - the top-level `a2kit.*` modules, split into three ordered sub-units rather than one `core` pseudo-unit: **`kernel`** (leaf type and helper modules that import no `a2kit` sibling — `exceptions`, `_context_protocol`, `metadata`, `_list_helpers`, `_lifecycle_helpers`, `_field_introspect`), **`authoring`** (the decoration-time surface — `_verbs`, `tool`, `signature`, `schema`, `routers`, `_verb_validators`), and **`runtime`** (`app`, `runtime`, `__main__`).
 
-The re-export facade modules (`src/a2kit/__init__.py`, `src/a2kit/ldd.py`, `src/a2kit/testing.py`) are a layer-exempt group: they exist to surface deeper layers as a flat public API and are not layered units. The manifest MUST cover every unit — none may be unassigned. `unit_for_module` and `unit_for_path` SHALL map each top-level module to its specific sub-unit.
+The re-export facade modules (`src/a2kit/__init__.py`, `src/a2kit/log.py`, `src/a2kit/testing.py`) are a layer-exempt group: they exist to surface deeper layers as a flat public API and are not layered units. The manifest MUST cover every unit — none may be unassigned. `unit_for_module` and `unit_for_path` SHALL map each top-level module to its specific sub-unit.
 
 #### Scenario: every unit has a layer
 
@@ -253,7 +253,7 @@ The re-export facade modules (`src/a2kit/__init__.py`, `src/a2kit/ldd.py`, `src/
 #### Scenario: authoring sits above the kernel packages and below the transports
 
 - **WHEN** the manifest is read
-- **THEN** `authoring` has a layer strictly above the kernel packages (`di`, `formatter`, `ldd`, `health`, `lint`) and strictly below the transport packages (`cli`, `mcp`, `codemode`, `otel`)
+- **THEN** `authoring` has a layer strictly above the kernel packages (`di`, `formatter`, `log`, `health`, `lint`) and strictly below the transport packages (`cli`, `mcp`, `codemode`, `otel`)
 
 ### Requirement: Imports respect layer order
 
@@ -341,7 +341,7 @@ This requirement supersedes the earlier blanket prohibition on underscore-prefix
 
 A plugin-package `__init__.py` under `src/a2kit/packages/<name>/` SHALL contain only front-door plumbing: imports, re-exports, module-level constants, an `__all__`, and an optional lazy re-export `__getattr__` / `__dir__` pair for cold-start deferral. It SHALL NOT define implementation — a top-level `class` or a top-level `def` / `async def` other than the lazy `__getattr__` / `__dir__` pair. Implementation SHALL live in named submodules of the package. A static lint rule (`A2K-PKG-INIT-IMPL`) SHALL enforce this and surface findings under `a2kit lint static`.
 
-The `ldd`, `context`, `health`, `codemode`, `connections`, `formatter`, and `testing` packages SHALL be brought into compliance: their `__init__.py` implementation moves into named submodules and their `__init__.py` is reduced to re-exports. With every package compliant, the rule SHALL report zero findings against `src/a2kit/`.
+The `log`, `context`, `health`, `codemode`, `connections`, `formatter`, and `testing` packages SHALL be brought into compliance: their `__init__.py` implementation moves into named submodules and their `__init__.py` is reduced to re-exports. With every package compliant, the rule SHALL report zero findings against `src/a2kit/`.
 
 #### Scenario: Implementation in `__init__.py` is flagged
 
@@ -355,7 +355,7 @@ The `ldd`, `context`, `health`, `codemode`, `connections`, `formatter`, and `tes
 
 #### Scenario: Every init-heavy package has a re-export-only front door
 
-- **WHEN** the `__init__.py` of `ldd`, `context`, `health`, `codemode`, `connections`, `formatter`, and `testing` are inspected after the change
+- **WHEN** the `__init__.py` of `log`, `context`, `health`, `codemode`, `connections`, `formatter`, and `testing` are inspected after the change
 - **THEN** each contains only re-export front-door plumbing
 - **AND** the package's implementation lives in named submodules alongside it
 

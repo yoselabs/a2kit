@@ -8,6 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 import a2kit
+from a2kit.packages.auth import AuthSpec
+from a2kit.packages.auth._asgi import send_401
+from a2kit.packages.context import Principal, request_scope
 from a2kit.packages.http import ApiSurface, build_http_app
 from a2kit.runtime import build
 from a2kit.testing import app_of
@@ -254,3 +257,69 @@ async def test_api_surface_method_specific_decorators() -> None:
 
     methods = {r.path: r.method for r in surface.routes}
     assert methods == {"/a": "PUT", "/b": "DELETE", "/c": "PATCH"}
+
+
+def _custom_auth_app() -> tuple[a2kit.App, type]:
+    """An App whose auth strategy is a custom `AuthSpec` unknown to build.py.
+
+    Proves the generic mount path: `_install_auth_middlewares` mounts any
+    `target`-matched spec via `spec.build_middleware()` with no per-class
+    isinstance branch.
+    """
+    from typing import Any as _Any
+
+    class _HeaderAuth(AuthSpec):
+        target = "internal"
+
+        def build_middleware(self) -> _Any:
+            def factory(app: _Any) -> _Any:
+                async def mw(scope: dict[str, _Any], receive: _Any, send: _Any) -> None:
+                    if scope.get("type") != "http":
+                        await app(scope, receive, send)
+                        return
+                    headers = dict(scope.get("headers", ()))
+                    if headers.get(b"x-spoke-token") != b"let-me-in":
+                        await send_401(send, "missing token")
+                        return
+                    token = request_scope.publish(Principal(subject="job-7", scopes=frozenset({"jobs"}), claims={}, issued_by="custom"))
+                    try:
+                        await app(scope, receive, send)
+                    finally:
+                        request_scope.reset(token)
+
+                return mw
+
+            return factory
+
+    app = app_of("custom-auth")
+    app.auth(_HeaderAuth())
+
+    @app.api.get("/me", response_model=dict)
+    async def me(*, principal: Principal) -> dict[str, str]:
+        return {"subject": principal.subject}
+
+    return app, _HeaderAuth
+
+
+def test_custom_authspec_mounts_via_build_middleware() -> None:
+    """A non-bundled AuthSpec authenticates through the generic mount loop."""
+    app, _ = _custom_auth_app()
+    runtime = build(app)
+    client = TestClient(build_http_app(runtime, auth_target="internal"))
+
+    ok = client.get("/me", headers={"X-Spoke-Token": "let-me-in"})
+    assert ok.status_code == 200, ok.text
+    assert ok.json() == {"subject": "job-7"}
+
+    denied = client.get("/me")
+    assert denied.status_code == 401
+    assert denied.json()["error"] == "authentication_failed"
+
+
+def test_custom_authspec_not_mounted_for_other_target() -> None:
+    """Building for `auth_target='api'` does not mount the internal-targeted spec."""
+    app, _ = _custom_auth_app()
+    runtime = build(app)
+    sub_app = build_http_app(runtime, auth_target="api")
+    classes = [getattr(m.cls, "__name__", "") for m in sub_app.user_middleware]
+    assert "_BareAsgiMiddleware" not in classes

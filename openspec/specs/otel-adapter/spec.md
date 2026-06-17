@@ -72,11 +72,11 @@ declared under `[project.optional-dependencies] otel = [...]`.
 - **THEN** the result is empty
 
 
-### Requirement: Built-in OTel LDD sink with drain-on-missing-SDK invariant
+### Requirement: Built-in OTel log sink with drain-on-missing-SDK invariant
 
-The framework SHALL ship a built-in `otel_sink` operator sink in `a2kit.packages.log.handlers.OtelHandler` that emits one OTel span per `*Ended` LDD emission. `*Started` events and emissions whose name does not end in `Ended` SHALL be silently consumed. When the `opentelemetry` SDK is not importable (or no tracer provider is configured), the sink SHALL drain every emission without raising — preserving the operator-fan-out failure-isolation contract.
+The framework SHALL ship a built-in `otel_sink` operator sink in `a2kit.packages.log.handlers.OtelHandler` that emits one OTel span per `*Ended` log emission. `*Started` events and emissions whose name does not end in `Ended` SHALL be silently consumed. When the `opentelemetry` SDK is not importable (or no tracer provider is configured), the sink SHALL drain every emission without raising — preserving the operator-fan-out failure-isolation contract.
 
-The sink is registered at App boot when `A2kitConfig.ldd.otel_sink` is `"on"`, or `"auto"` (default) AND the SDK is importable AND at least one `OTEL_EXPORTER_*` env var is set.
+The sink is registered at App boot when `A2kitConfig.log.otel_sink` is `"on"`, or `"auto"` (default) AND the SDK is importable AND at least one `OTEL_EXPORTER_*` env var is set.
 
 #### Scenario: otel_sink drains when SDK is missing
 
@@ -92,6 +92,6 @@ The sink is registered at App boot when `A2kitConfig.ldd.otel_sink` is `"on"`, o
 
 #### Scenario: auto heuristic predicates both conditions
 
-- **GIVEN** `A2kitConfig.ldd.otel_sink == "auto"`
+- **GIVEN** `A2kitConfig.log.otel_sink == "auto"`
 - **WHEN** `should_register_otel_sink("auto")` runs
 - **THEN** it returns True iff `opentelemetry` is importable AND at least one `OTEL_EXPORTER_*` env var is set

@@ -49,7 +49,7 @@ def test_wrappers_does_not_import_cli() -> None:
 def test_context_package_is_low_level() -> None:
     """`packages/context` imports no transport package.
 
-    Its one lawful `a2kit.packages.*` dependency is the lazy `ldd` import
+    Its one lawful dependency is the lazy `a2kit._log_wire` import
     inside `_emit`; it must never reach `cli`, `mcp`, or `codemode`.
     """
     mods = _modules_after_import("import a2kit.packages.context")

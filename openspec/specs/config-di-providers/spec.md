@@ -23,16 +23,16 @@ attribute.
 ### Requirement: Each A2kitConfig sub-model is registered as a DI provider
 
 `App.__init__` SHALL register each sub-model of `A2kitConfig` (`McpConfig`,
-`LddConfig`, `HttpConfig`, `CliConfig`, and any future sub-model) as a
+`LogConfig`, `HttpConfig`, `CliConfig`, and any future sub-model) as a
 singleton provider that resolves to the corresponding attribute on the
 App's `A2kitConfig` instance. A subsystem MAY declare its narrowest
 config type as a dependency and receive only that sub-model.
 
-#### Scenario: LddStateStage receives LddConfig
+#### Scenario: CallScopeStage receives LogConfig
 
-- **GIVEN** an `App` constructed with `A2kitConfig(ldd=LddConfig(level="debug"))`
-- **WHEN** the dispatch pipeline resolves `LddConfig` from the container
-- **THEN** the resolved instance is `app.config.ldd`
+- **GIVEN** an `App` constructed with `A2kitConfig(log=LogConfig(level="debug"))`
+- **WHEN** the dispatch pipeline resolves `LogConfig` from the container
+- **THEN** the resolved instance is `app.config.log`
 - **AND** the instance's `.level` field is `"debug"`
 
 #### Scenario: McpConfig resolution returns the same instance as A2kitConfig.mcp
@@ -46,15 +46,15 @@ config type as a dependency and receive only that sub-model.
 
 Per ADR 0006 (no override seam), config overrides for tests SHALL be
 performed by constructing a fresh `App` with the desired `A2kitConfig`
-or by calling `app.provide(LddConfig, fake_ldd_config)` before the App
+or by calling `app.provide(LogConfig, fake_log_config)` before the App
 is built into a runtime. Direct mutation of `app.config.*` after build
 is unsupported and SHALL NOT be relied upon by tests.
 
-#### Scenario: Test rebinds LddConfig before build
+#### Scenario: Test rebinds LogConfig before build
 
-- **GIVEN** a fresh `App` instance and a fake `LddConfig`
-- **WHEN** the test calls `app.provide(LddConfig, lambda: fake)` then
+- **GIVEN** a fresh `App` instance and a fake `LogConfig`
+- **WHEN** the test calls `app.provide(LogConfig, lambda: fake)` then
   builds the runtime
-- **THEN** the dispatch pipeline resolves the fake `LddConfig` instead
+- **THEN** the dispatch pipeline resolves the fake `LogConfig` instead
   of the default
 

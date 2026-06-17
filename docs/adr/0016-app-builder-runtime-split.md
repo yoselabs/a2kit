@@ -46,7 +46,7 @@ site (examples, tests, downstream consumers) and the deletion of the
 Before the seal it was a **mutable builder**: `add_router`, `add_cli`,
 `add_mcp_middleware`, `provide`, `health_check`. After the seal it was a
 **sealed runtime**: `tools()`, `container()`, `_resolver`, the
-async-context-manager lifecycle, the LDD kill-switch. One class carried
+async-context-manager lifecycle, the log kill-switch. One class carried
 both roles — seven-plus responsibilities — and the reader could not tell,
 from a type, which methods were legal when.
 
@@ -116,7 +116,7 @@ further `provide()`. A builder produces exactly one `App`; a second
 `build()`, or any verb after `build()`, raises.
 
 `a2kit.App` is the sealed runtime: `tools()`, `routers()`,
-`container()`, the async-context-manager lifecycle, the LDD kill-switch.
+`container()`, the async-context-manager lifecycle, the log kill-switch.
 No composition verb. `App.__aenter__` keeps today's lazy-first-use
 resource entry unchanged — `build()` validates, entry still resolves
 lazily.

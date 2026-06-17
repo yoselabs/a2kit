@@ -1,7 +1,7 @@
 """Single typed substrate-to-dispatch bridge for request-scoped values.
 
-Replaces the per-type ``ContextVar`` bridges (``_request_principal``,
-``_a2kit_request_scope``, ``_LDD_STATE``) with one shared shape:
+Replaces the former per-type ``ContextVar`` bridges (``_request_principal``,
+``_a2kit_request_scope``, the log state) with one shared shape:
 substrate writers call :func:`publish` at the request boundary;
 dispatch stages and other readers call :func:`get` / :func:`try_get`.
 A precise :class:`RequestScopeMissing` exception surfaces precondition

@@ -30,7 +30,7 @@ App lifecycle around the test session SHALL follow the `app-lifecycle` capabilit
 
 ### Requirement: Event and progress capture
 
-The test client SHALL capture every event, progress update, log call, and report emitted via `ctx` during a tool invocation, exposing them as ordered lists. Log capture SHALL surface as structured `LogLine` entries (level, message, fields, elapsed_ms); a derived `logs_text` property renders each via `format_ldd_line` for tests that need the wire-format string.
+The test client SHALL capture every event, progress update, log call, and report emitted via `ctx` during a tool invocation, exposing them as ordered lists. Log capture SHALL surface as structured `LogLine` entries (level, message, fields, elapsed_ms); a derived `logs_text` property renders each via `format_condensed_line` for tests that need the wire-format string.
 
 #### Scenario: events captured with payload and elapsed_ms
 
@@ -99,7 +99,7 @@ The shim is for **unit tests of internal phase functions that bypass `a2kit.test
 
 #### Scenario: Null context can be passed to a function expecting ToolContext
 
-- **GIVEN** an async function `async def fetch_tier(ctx: a2kit.ToolContext, url: str) -> str` that calls `await ldd.event(ctx, "tier.started", url=url)` internally
+- **GIVEN** an async function `async def fetch_tier(ctx: a2kit.ToolContext, url: str) -> str` that calls `await log.event(ctx, "tier.started", url=url)` internally
 - **WHEN** a unit test calls `await fetch_tier(a2kit.testing.null_context(), "https://...")`
 - **THEN** the call succeeds, the event call is a silent no-op, and no `AttributeError` is raised
 
@@ -195,7 +195,7 @@ raw Python value the tool body produced, without a formatter pass.
 #### Scenario: capture surfaces populate on call_wire
 
 - **GIVEN** a tool that calls `await event(ctx, "started")`, `await
-  ctx.report_progress(1, total=2)`, and `await ldd.info(ctx,
+  ctx.report_progress(1, total=2)`, and `await log.info(ctx,
   "halfway")` before returning
 - **WHEN** a test calls `await client.call_wire(tool_name)`
 - **THEN** `client.events`, `client.progress`, and `client.logs`
@@ -333,10 +333,10 @@ runtime `Lazy.of` class-method is added.
   and no `TypeError` is raised by the dispatcher's Lazy unwrapping
   path
 
-### Requirement: Ambient-LDD pytest fixture
+### Requirement: Ambient-log pytest fixture
 
 The system SHALL provide `a2kit.testing.ambient_for_tests` — a
-`pytest.fixture` that wraps test execution in an active LDD ambient
+`pytest.fixture` that wraps test execution in an active log ambient
 state, allowing tests to call orchestrator or phase functions
 directly (bypassing `TestClient.invoke`) without raising
 `RequestScopeMissing`.
@@ -353,11 +353,11 @@ The fixture SHALL default to:
 - `reports_enabled = False`
 
 Consumers requiring different flag combinations SHALL construct
-their own fixture using `ldd_state_for_call` directly. The
+their own fixture using `bind_call_scope` directly. The
 framework SHALL NOT expose parametric variants of
 `ambient_for_tests`.
 
-#### Scenario: tests using the fixture can emit LDD events without error
+#### Scenario: tests using the fixture can emit log events without error
 
 - **GIVEN** a pytest test function declaring `ambient_for_tests`
   in its signature
@@ -388,7 +388,7 @@ framework SHALL NOT expose parametric variants of
   pytest fixture (carries the `_pytestfixturefunction` marker
   attribute)
 
-### Requirement: Pre-decorated autouse ambient-LDD fixture
+### Requirement: Pre-decorated autouse ambient-log fixture
 
 The system SHALL provide `a2kit.testing.ambient_for_tests_autouse` —
 a peer of `ambient_for_tests` that is pre-decorated with

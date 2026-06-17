@@ -64,7 +64,7 @@ to the `ctx` parameter. The stub SHALL expose every public method of
 
 - `debug`, `info`, `warning`, `error` — signature
   `(message: str, logger_name: str | None = None, extra: Mapping[str, Any] | None = None)`.
-  Emit a stderr line in the LDD wire format `[ +s.mmm LEVEL] message k=v ...`
+  Emit a stderr line in the log wire format `[ +s.mmm LEVEL] message k=v ...`
   where `k=v` pairs come from `extra` (plus a synthesised `logger=...`
   pair when `logger_name` is provided). The stub SHALL NOT accept
   arbitrary `**fields` kwargs; the kwargs form is reserved for
@@ -77,7 +77,7 @@ to the `ctx` parameter. The stub SHALL expose every public method of
   otherwise `AcceptedElicitation(data=...)`.
 - `read_resource(uri)` — `file://` URIs return contents; other schemes raise `MCPOnlyError`.
 - `set_state`, `get_state`, `delete_state` — per-instance dict scoped to one CLI invocation.
-- `send_log_message(level, logger, data)` — emit a stderr line in LDD wire format.
+- `send_log_message(level, logger, data)` — emit a stderr line in log wire format.
 - `sample`, `list_resources`, `list_prompts`, `get_prompt`, `list_roots`,
   `send_notification` — raise `MCPOnlyError`.
 
@@ -140,7 +140,7 @@ The exclusion SHALL apply only to the user-facing input surface. The **internal*
 - **THEN** the response is a successful tool result (NOT `{isError: true}`)
 - **AND** the body received both `state` (from the container) and `ctx` (from FastMCP)
 
-### Requirement: LDD event and report primitives are protocol-neutral functions
+### Requirement: log event and report primitives are protocol-neutral functions
 
 The library SHALL expose `a2kit.log.info(ctx, ...)`,
 `a2kit.log.info(ctx, ...)`, and `a2kit.log.info(ctx, level, msg_or_instance, **fields)`
@@ -167,7 +167,7 @@ same two forms.
 
 The library SHALL NOT add `event`, `report`, or `log` methods to the
 `a2kit.ToolContext` re-export. Existing `--no-events` / `--no-reports`
-CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
+CLI flags and the `A2KIT_LOG` env var SHALL gate these primitives;
 `log` SHALL share the events flag's kill-switch.
 
 #### Scenario: a2kit.log.info delivers a structured message on MCP
@@ -213,9 +213,9 @@ CLI flags and the `A2KIT_LDD` env var SHALL gate these primitives;
 - **THEN** the delivered `message` (MCP) or rendered text (CLI) is
   exactly 60 characters with the final character `…`
 
-### Requirement: LDD wire-format invariants are owned by `a2kit.log`
+### Requirement: log wire-format invariants are owned by `a2kit.log`
 
-Every event delivered via `a2kit.log.info(ctx, name, **kw)` SHALL carry an `elapsed_ms` integer in its structured payload, computed as `int((monotonic() - app_start_monotonic) * 1000)` where `app_start_monotonic` is captured at first emit (or at App `__aenter__` when the lifecycle ran). The CLI rendering SHALL prefix every line with `+s.mmm` relative time using zero-padded three-decimal milliseconds. The human-readable text portion of any LDD line SHALL be capped at 60 characters with `…` elision when truncated. The CLI stub `send_log_message` rendering and the MCP `notifications/message` payload (carrying the same `level`, `logger`, `data`) SHALL agree on the structured `data` field's contents key-for-key — transports may differ on framing only, never on the structured payload.
+Every event delivered via `a2kit.log.info(ctx, name, **kw)` SHALL carry an `elapsed_ms` integer in its structured payload, computed as `int((monotonic() - app_start_monotonic) * 1000)` where `app_start_monotonic` is captured at first emit (or at App `__aenter__` when the lifecycle ran). The CLI rendering SHALL prefix every line with `+s.mmm` relative time using zero-padded three-decimal milliseconds. The human-readable text portion of any log line SHALL be capped at 60 characters with `…` elision when truncated. The CLI stub `send_log_message` rendering and the MCP `notifications/message` payload (carrying the same `level`, `logger`, `data`) SHALL agree on the structured `data` field's contents key-for-key — transports may differ on framing only, never on the structured payload.
 
 #### Scenario: elapsed_ms increases monotonically
 
@@ -252,17 +252,17 @@ tool calls `ctx.report_progress(...)` directly alongside the log call.
 
 ### Requirement: Ambient context binding via dispatch contextvar
 
-The library SHALL bind the live transport context (`fastmcp.Context` under MCP, the CLI stub under CLI, the test-client stub under in-process tests) into the per-call `_LddState` carried by `_LDD_STATE: ContextVar[_LddState | None]`. The `ldd_state_for_call(...)` contextmanager SHALL take a required `ctx` keyword argument and store it on the `_LddState` instance set on entry. All LDD primitives SHALL resolve their transport context from `_LDD_STATE.get().ctx` rather than accepting `ctx` as a parameter.
+The library SHALL bind the live transport context (`fastmcp.Context` under MCP, the CLI stub under CLI, the test-client stub under in-process tests) into the per-call `_CallScope` carried by `_CallScope: ContextVar[_CallScope | None]`. The `bind_call_scope(...)` contextmanager SHALL take a required `ctx` keyword argument and store it on the `_CallScope` instance set on entry. All log primitives SHALL resolve their transport context from `_CallScope.get().ctx` rather than accepting `ctx` as a parameter.
 
-The three dispatch sites SHALL pass `ctx` into `ldd_state_for_call` **only when the tool declared a ctx parameter** (i.e. `meta.context_param_name` is truthy):
+The three dispatch sites SHALL pass `ctx` into `bind_call_scope` **only when the tool declared a ctx parameter** (i.e. `meta.context_param_name` is truthy):
 
-- MCP runtime (`_wrap_with_ldd_state` in `a2kit.packages.mcp.server`) installs the wrapper only when `meta.context_param_name` is truthy and passes the `fastmcp.Context` injected by FastMCP.
-- CLI runtime (`_invoke_tool_in_process` in `a2kit.packages.cli.runtime`) opens `ldd_state_for_call` only when `ctx_param_name` is truthy and passes the `StderrToolContext` instance bound on the call kwargs. The CLI runtime SHALL NOT synthesize a `StderrToolContext` for tools that did not declare `ctx`.
-- In-process test client (`TestClient.invoke` in `a2kit.packages.testing.client`) opens `ldd_state_for_call` only when `meta.context_param_name` is truthy and passes the `_CapturingContext` bound on the call kwargs. The test client SHALL NOT synthesize a capturing context for tools that did not declare `ctx`.
+- MCP runtime (`_wrap_with_call_scope` in `a2kit.packages.mcp.server`) installs the wrapper only when `meta.context_param_name` is truthy and passes the `fastmcp.Context` injected by FastMCP.
+- CLI runtime (`_invoke_tool_in_process` in `a2kit.packages.cli.runtime`) opens `bind_call_scope` only when `ctx_param_name` is truthy and passes the `StderrToolContext` instance bound on the call kwargs. The CLI runtime SHALL NOT synthesize a `StderrToolContext` for tools that did not declare `ctx`.
+- In-process test client (`TestClient.invoke` in `a2kit.packages.testing.client`) opens `bind_call_scope` only when `meta.context_param_name` is truthy and passes the `_CapturingContext` bound on the call kwargs. The test client SHALL NOT synthesize a capturing context for tools that did not declare `ctx`.
 
-A tool that calls any LDD primitive (`a2kit.log.info`, `a2kit.log.info`, `a2kit.log.info`, etc.) but did NOT declare `ctx: a2kit.ToolContext` SHALL therefore raise `AmbientContextMissing` uniformly across MCP, CLI, and TestClient — there is no transport on which the missing-ctx case silently succeeds.
+A tool that calls any log primitive (`a2kit.log.info`, `a2kit.log.info`, `a2kit.log.info`, etc.) but did NOT declare `ctx: a2kit.ToolContext` SHALL therefore raise `AmbientContextMissing` uniformly across MCP, CLI, and TestClient — there is no transport on which the missing-ctx case silently succeeds.
 
-`contextvars.ContextVar.set` / `.reset` token semantics SHALL be honored — every entry into `ldd_state_for_call` is paired with an exit that resets to the prior state. Nested dispatch (e.g. tool A invokes tool B via the test client) SHALL be supported by the token stack with no additional locking.
+`contextvars.ContextVar.set` / `.reset` token semantics SHALL be honored — every entry into `bind_call_scope` is paired with an exit that resets to the prior state. Nested dispatch (e.g. tool A invokes tool B via the test client) SHALL be supported by the token stack with no additional locking.
 
 #### Scenario: MCP dispatch binds the live fastmcp.Context
 
@@ -300,36 +300,36 @@ A tool that calls any LDD primitive (`a2kit.log.info`, `a2kit.log.info`, `a2kit.
 
 - **GIVEN** a tool `async def t() -> None: await a2kit.log.info("x", k=1)` that did NOT declare `ctx`
 - **WHEN** the tool runs via `<app> tasks t`
-- **THEN** the LDD call raises `AmbientContextMissing` with a message naming `a2kit.log.info`
+- **THEN** the log call raises `AmbientContextMissing` with a message naming `a2kit.log.info`
 - **AND** the CLI runtime did not synthesize a `StderrToolContext` for the call
 
 #### Scenario: TestClient dispatch on a no-ctx tool does not synthesize a capturing context
 
 - **GIVEN** a tool `async def t() -> None: await a2kit.log.info("x", k=1)` that did NOT declare `ctx`
 - **WHEN** a test runs `await client.invoke("t")`
-- **THEN** the LDD call raises `AmbientContextMissing` with a message naming `a2kit.log.info`
+- **THEN** the log call raises `AmbientContextMissing` with a message naming `a2kit.log.info`
 - **AND** `client.events` remains empty (no synthesized capturing-context binding)
 
-### Requirement: LDD primitives raise when called outside a dispatch
+### Requirement: log primitives raise when called outside a dispatch
 
-If any of `a2kit.log.info`, `a2kit.log.info`, `a2kit.log.info`, `a2kit.log.debug`, `a2kit.log.info`, `a2kit.log.warning`, `a2kit.log.error`, or `EventRegistry.emit_typed` is invoked while `_LDD_STATE.get()` is `None` (i.e. no active `ldd_state_for_call` scope on the current `contextvars.Context`), the call SHALL raise `AmbientContextMissing` (a subclass of `RuntimeError`). The exception message SHALL name the **invoked function** and SHALL indicate that the primitive must be called from inside a tool body. Shorthand primitives (`debug`, `info`, `warning`, `error`) that delegate internally to `log` SHALL still surface their own name in the message. The library SHALL NOT silently no-op and SHALL NOT synthesize a fallback context.
+If any of `a2kit.log.info`, `a2kit.log.info`, `a2kit.log.info`, `a2kit.log.debug`, `a2kit.log.info`, `a2kit.log.warning`, `a2kit.log.error`, or `EventRegistry.emit_typed` is invoked while `_CallScope.get()` is `None` (i.e. no active `bind_call_scope` scope on the current `contextvars.Context`), the call SHALL raise `AmbientContextMissing` (a subclass of `RuntimeError`). The exception message SHALL name the **invoked function** and SHALL indicate that the primitive must be called from inside a tool body. Shorthand primitives (`debug`, `info`, `warning`, `error`) that delegate internally to `log` SHALL still surface their own name in the message. The library SHALL NOT silently no-op and SHALL NOT synthesize a fallback context.
 
 #### Scenario: Calling event outside a dispatch raises
 
-- **GIVEN** a module-level coroutine that calls `await a2kit.log.info("x", k=1)` without first entering `ldd_state_for_call`
+- **GIVEN** a module-level coroutine that calls `await a2kit.log.info("x", k=1)` without first entering `bind_call_scope`
 - **WHEN** the coroutine is awaited
 - **THEN** `AmbientContextMissing` is raised
 - **AND** the message contains `"a2kit.log.info"` and references the tool-body dispatch contract
 
 #### Scenario: Calling log outside any dispatch scope raises
 
-- **GIVEN** a coroutine that calls `await a2kit.log.info("starting")` outside any `ldd_state_for_call` scope (for example from imperative startup code run before `async with app:`)
+- **GIVEN** a coroutine that calls `await a2kit.log.info("starting")` outside any `bind_call_scope` scope (for example from imperative startup code run before `async with app:`)
 - **WHEN** the coroutine is awaited
 - **THEN** `AmbientContextMissing` is raised
 
 #### Scenario: Shorthand info names itself in the error message
 
-- **GIVEN** a module-level coroutine that calls `await a2kit.log.info("x", k=1)` without first entering `ldd_state_for_call`
+- **GIVEN** a module-level coroutine that calls `await a2kit.log.info("x", k=1)` without first entering `bind_call_scope`
 - **WHEN** the coroutine is awaited
 - **THEN** `AmbientContextMissing` is raised whose message names `"a2kit.log.info"` (its own name, not `"a2kit.log.info"`)
 
@@ -379,7 +379,7 @@ The rejection enforces the runtime invariant that ctx is always bound by the dis
 
 ### Requirement: Transport-parity matrix
 
-A test suite SHALL pin the contract that a tool's behavior is identical across the CLI and MCP transports for the four canonical declaration combinations of `(state-DI present, ctx-DI present)`. The suite SHALL drive the MCP transport through `fastmcp.Client(transport=build_mcp_server(app))` (not the in-process test client) so the full production wrapper chain — including `_wrap_with_dispatch_hook`'s signature rewrite and `_wrap_with_ldd_state`'s ambient binding — is exercised. The suite SHALL assert both successful-payload structural equality and exact exception-class parity on misuse cases.
+A test suite SHALL pin the contract that a tool's behavior is identical across the CLI and MCP transports for the four canonical declaration combinations of `(state-DI present, ctx-DI present)`. The suite SHALL drive the MCP transport through `fastmcp.Client(transport=build_mcp_server(app))` (not the in-process test client) so the full production wrapper chain — including `_wrap_with_dispatch_hook`'s signature rewrite and `_wrap_with_call_scope`'s ambient binding — is exercised. The suite SHALL assert both successful-payload structural equality and exact exception-class parity on misuse cases.
 
 #### Scenario: All four declaration combos pass parity
 
@@ -468,7 +468,7 @@ change the rejection semantics — only the error envelope shape.
 
 ### Requirement: Ambient ctx is non-None inside any framework dispatch
 
-The MCP wrapper and CLI runtime SHALL bind a non-None `ctx` into the ambient `_LDD_STATE` for every framework-dispatched tool, regardless of whether the tool's body declares `ctx: a2kit.ToolContext`.
+The MCP wrapper and CLI runtime SHALL bind a non-None `ctx` into the ambient `_CallScope` for every framework-dispatched tool, regardless of whether the tool's body declares `ctx: a2kit.ToolContext`.
 
 Implementation:
 
@@ -486,9 +486,9 @@ synthesized `_a2kit_ctx` Parameter (MCP) is a framework-internal
 mechanism for ambient binding and SHALL NOT leak into tool body
 kwargs.
 
-This requirement establishes the invariant: **inside any framework dispatch, the ambient context resolved from the `_LDD_STATE` ContextVar is non-None**, so every LDD primitive has a live transport context to dispatch against.
+This requirement establishes the invariant: **inside any framework dispatch, the ambient context resolved from the `_CallScope` ContextVar is non-None**, so every log primitive has a live transport context to dispatch against.
 
-#### Scenario: MCP transport — tool without ctx param emits LDD
+#### Scenario: MCP transport — tool without ctx param emits log
 
 - **GIVEN** a tool `async def fetch(*, url: str) -> dict: await a2kit.log.info("fetch", url=url); return {}` registered on a Router
 - **WHEN** a real `fastmcp.Client(transport=...)` invokes `fetch(url="https://example/")`
@@ -496,12 +496,12 @@ This requirement establishes the invariant: **inside any framework dispatch, the
 - **AND** the captured event surfaces on the test client's `events` list with name `"fetch"` and payload `{"url": "https://example/"}`
 - **AND** the tool body received no `ctx` kwarg (its signature did not declare one)
 
-#### Scenario: CLI runtime — tool without ctx param emits LDD
+#### Scenario: CLI runtime — tool without ctx param emits log
 
 - **GIVEN** the same tool shape
 - **WHEN** invoked via the CLI runtime
 - **THEN** the invocation completes without raising
-- **AND** the stderr capture contains an LDD-formatted line matching the event
+- **AND** the stderr capture contains an log-formatted line matching the event
 
 #### Scenario: Tool with ctx param — today's behaviour preserved
 
@@ -542,7 +542,7 @@ the runtime type of the bound `ctx`.
 This is additive to the existing context binding: a tool that does not
 read the surface is unaffected, and the ctx passthrough contract is
 unchanged. The surface fields ride the per-call scope defined by
-`surface-identity-context` (which extends the `refound-ldd-on-stdlib-logging`
+`surface-identity-context` (which extends the `the stdlib-logging refound (ADR 0027)`
 `_CallScope`); this requirement only pins that the MCP/CLI bind sites are
 where the identity is stamped.
 

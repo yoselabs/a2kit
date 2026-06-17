@@ -438,4 +438,4 @@ Wave 0–3 change set above.
   [0010](adr/0010-auth-mcp-mode-only.md), 0020 — the surface decisions this model sits above
   (ADR 0002 additionally **amended**: `tools=` tuple → `__init_subclass__` auto-collect).
 - [Consumer feedback doctrine](CONSUMER_FEEDBACK_DOCTRINE.md) (ADR 0005) — the a2kay frictions.
-- [ADR 0027](adr/0027-refound-ldd-on-stdlib-logging.md) — the `_CallScope` that `ctx-surface-identity` extends.
+- [ADR 0027](adr/0027-the stdlib-logging refound (ADR 0027).md) — the `_CallScope` that `ctx-surface-identity` extends.

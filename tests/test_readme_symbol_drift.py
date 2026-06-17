@@ -207,7 +207,7 @@ def _skip_chunk(chunk: str) -> bool:
 
 _SUBMODULE_NAMES: frozenset[str] = frozenset(
     {
-        "ldd",
+        "log",
         "testing",
         "packages",
         "lifespan",

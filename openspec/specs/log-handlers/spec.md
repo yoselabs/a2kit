@@ -1,7 +1,7 @@
 # log-handlers Specification
 
 ## Purpose
-The refounding of `ldd-operator-sinks` on stdlib logging (ADR 0027):
+The refounding of `log-handlers` on stdlib logging (ADR 0027):
 the operator/wire fan-out is re-expressed as stdlib `logging.Handler`s
 attached to two distinct loggers — `a2kit` (author commentary: stderr,
 OTel, live progress, MCP wire) and `a2kit.calls` (the non-streaming call

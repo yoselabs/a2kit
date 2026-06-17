@@ -57,7 +57,7 @@ _CANONICAL = re.compile(r"(?:^|[^A-Za-z0-9_])@?(AppRuntime|App|app|Router|Contai
 _LINT_CODE = re.compile(r"AKR?[0-9]+|RG[0-9]+")
 
 # Live instance probes — resolving attribute accesses against an instance
-# catches attributes set in ``__init__`` (e.g. ``app.ldd``) that a
+# catches attributes set in ``__init__`` (e.g. ``app.log``) that a
 # class-level ``hasattr`` would miss.
 _APP_PROBE = app_of("_symbol_drift_probe")
 _APPRUNTIME_PROBE = build(app_of("_symbol_drift_probe_rt"))
