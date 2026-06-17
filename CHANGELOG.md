@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.44.0 — 2026-06-17
 
 ### Added — Internal spoke: first-party jobs call verbs over a private UDS (`add-internal-spoke`, ADR 0029)
 
