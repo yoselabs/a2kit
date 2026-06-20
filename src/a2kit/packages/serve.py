@@ -30,18 +30,41 @@ Imported only on the ``serve --transport=http`` path — never at
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Mapping
+    from collections.abc import AsyncIterator, Coroutine, Mapping
     from typing import Any
 
     from a2kit.app import App
     from a2kit.runtime import AppRuntime
+
+
+@dataclass(frozen=True)
+class ServeContext:
+    """The serve-only context handed to each on-serve service.
+
+    ``internal_uds`` is the bound ``--internal-uds`` path (``None`` when no
+    spoke); ``transport`` is ``"stdio"`` or ``"http"``. Minimal on purpose:
+    a service reaches the live core over the loopback spoke
+    (``internal_uds``), never the DI container, so it needs only the
+    loopback address and the transport. See ADR 0030.
+    """
+
+    internal_uds: str | None
+    transport: str
+
+
+#: An on-serve service: a coroutine function the App registers via the
+#: ``serve_services`` ClassVar. ``serve`` invokes it as ``service(ctx)``
+#: inside the one ``async with runtime:`` and supervises the resulting task.
+ServeService = Callable[[ServeContext], Awaitable[None]]
 
 
 def _surface_has_registrations(runtime: AppRuntime, surface_name: str) -> bool:
@@ -169,88 +192,154 @@ def serve_process(
 ) -> None:
     """Run the a2kit server process for ``runtime`` (blocking).
 
-    The single serve entry point for the CLI. Composes the public
-    listener from ``transport`` (``stdio`` → MCP over the pipe; ``http``
-    → the ``build_parent_app`` multiplex of every populated surface) and,
-    when ``internal_uds`` is set, a **co-resident** spoke listener over a
-    ``0600`` Unix domain socket — both sharing the **one** ``runtime`` (one
-    DI root container, one ``SINGLETON`` store handle).
+    The single serve entry point for the CLI, and the **one** serve engine:
+    every path — stdio, http, with or without a spoke, with or without
+    registered ``serve_services`` — runs through :func:`_serve` under one
+    ``async with runtime:``. There are no separate bare single-listener
+    paths (ADR 0030 collapsed them; the spoke path was already the general
+    form).
+
+    Composes the public listener from ``transport`` (``stdio`` → MCP over
+    the pipe; ``http`` → the ``build_parent_app`` multiplex), optionally a
+    **co-resident** spoke listener over a ``0600`` Unix domain socket when
+    ``internal_uds`` is set, and every App-registered on-serve service —
+    all sharing the **one** ``runtime`` (one DI root container, one
+    ``SINGLETON`` store handle).
 
     ``mcp_options`` threads the serve knobs (``compact`` / ``tool_selection``
-    / ``code_mode`` / ``code_mode_allow_destructive``) into the MCP build on
-    both the multiplex and stdio paths.
+    / ``code_mode`` / ``code_mode_allow_destructive``) into the MCP build.
     """
-    import uvicorn
-
-    if internal_uds is None:
-        # Single-listener paths (no spoke) — unchanged topology.
-        if transport == "stdio":
-            from a2kit.packages.mcp import build_mcp_server
-
-            build_mcp_server(runtime, **(mcp_options or {})).run(transport="stdio")
-        else:
-            parent = build_parent_app(runtime, mcp_options=mcp_options)
-            uvicorn.run(parent, host=host, port=port)
-        return
-
-    # Spoke present → run the public listener and the UDS spoke in parallel
-    # under one shared runtime lifecycle.
     import asyncio
 
     asyncio.run(
-        _serve_with_spoke(
+        _serve(
             runtime,
             transport=transport,
             host=host,
             port=port,
             uds_path=internal_uds,
+            services=tuple(runtime.serve_services),
             mcp_options=mcp_options,
         )
     )
 
 
-async def _serve_with_spoke(
+async def _serve(
     runtime: AppRuntime,
     *,
     transport: str,
     host: str,
     port: int,
-    uds_path: str,
+    uds_path: str | None,
+    services: tuple[ServeService, ...],
     mcp_options: Mapping[str, Any] | None,
 ) -> None:
-    """Serve the public listener + the UDS spoke under one ``async with runtime:``.
+    """Serve the public listener (+ optional spoke) + services under one runtime.
 
-    The runtime is entered **once** here (so both listeners share its DI
-    root container / ``SINGLETON`` store); the public parent is built with
-    ``enter_runtime=False`` so it does not re-enter it. Both run under one
-    ``asyncio.gather`` — the spoke over a ``0600`` AF_UNIX socket, the
-    public side over TCP (http) or the stdio pipe.
+    The runtime is entered **once** here (so every listener and service
+    shares its DI root container / ``SINGLETON`` store); the public listener
+    is built with ``enter_runtime=False`` / ``own_app_lifecycle=False`` so it
+    does not re-enter it. Listeners and services are then supervised by
+    :func:`_supervise` — a listener exiting ends serve, any task raising
+    tears it down, a service finishing cleanly is a non-event. The spoke
+    socket (when present) is cleaned up on teardown.
+    """
+    import uvicorn
+
+    ctx = ServeContext(internal_uds=uds_path, transport=transport)
+
+    async with runtime:
+        listeners: list[Coroutine[Any, Any, Any]] = [
+            _public_listener(runtime, transport=transport, host=host, port=port, mcp_options=mcp_options)
+        ]
+        on_teardown: Callable[[], None] | None = None
+        if uds_path is not None:
+            from a2kit.packages.http import build_http_app
+
+            spoke_app = build_http_app(runtime, auth_target="internal")
+            sock = _make_uds_socket(uds_path)
+            spoke_server = uvicorn.Server(uvicorn.Config(spoke_app, log_level="info"))
+            listeners.append(spoke_server.serve(sockets=[sock]))
+            on_teardown = lambda: _cleanup_uds(uds_path)  # noqa: E731
+
+        service_coros: list[Awaitable[Any]] = [svc(ctx) for svc in services]
+        await _supervise(listeners, service_coros, on_teardown=on_teardown)
+
+
+def _public_listener(
+    runtime: AppRuntime,
+    *,
+    transport: str,
+    host: str,
+    port: int,
+    mcp_options: Mapping[str, Any] | None,
+) -> Coroutine[Any, Any, Any]:
+    """Build the public-listener coroutine for ``transport``.
+
+    Both forms run with the caller owning the one ``async with runtime:``
+    (``own_app_lifecycle=False`` / ``enter_runtime=False``): stdio → FastMCP
+    ``run_stdio_async()`` over the pipe; http → the ``build_parent_app``
+    multiplex under a uvicorn ``Server.serve()``.
+    """
+    import uvicorn
+
+    if transport == "stdio":
+        from a2kit.packages.mcp import build_mcp_server
+
+        mcp_server = build_mcp_server(runtime, own_app_lifecycle=False, **(mcp_options or {}))
+        return mcp_server.run_stdio_async()
+
+    parent = build_parent_app(runtime, enter_runtime=False, mcp_options=mcp_options)
+    public_server = uvicorn.Server(uvicorn.Config(parent, host=host, port=port, log_level="info"))
+    return public_server.serve()
+
+
+async def _supervise(
+    listeners: list[Coroutine[Any, Any, Any]],
+    services: list[Awaitable[Any]],
+    *,
+    on_teardown: Callable[[], None] | None,
+) -> None:
+    """Supervise serve's listeners and services with asymmetric shutdown.
+
+    Serve's lifetime is the **listener's** lifetime. The two kinds are
+    treated asymmetrically (ADR 0030 D3):
+
+    - a **listener** completing (cleanly on signal/EOF, or by raising) ends
+      serve;
+    - **any** task raising tears serve down and re-raises (nonzero exit);
+    - a **service** finishing cleanly is a non-event — the listeners keep
+      serving (e.g. a2kay's scheduler returns immediately when there is no
+      spoke to drive).
+
+    The primitive is ``asyncio.wait(FIRST_COMPLETED)`` in a loop that drops
+    cleanly-finished services and keeps waiting — **not** ``asyncio.gather``
+    (which would hang on a never-returning service after the listener exits)
+    and **not** ``asyncio.TaskGroup`` (wait-for-all, same hang). On teardown
+    every outstanding task is cancelled and drained, then ``on_teardown``
+    runs (the spoke socket cleanup).
     """
     import asyncio
 
-    import uvicorn
-
-    from a2kit.packages.http import build_http_app
-
-    spoke_app = build_http_app(runtime, auth_target="internal")
-    sock = _make_uds_socket(uds_path)
-    spoke_server = uvicorn.Server(uvicorn.Config(spoke_app, log_level="info"))
-
-    async with runtime:
-        coros = [spoke_server.serve(sockets=[sock])]
-        if transport == "stdio":
-            from a2kit.packages.mcp import build_mcp_server
-
-            mcp_server = build_mcp_server(runtime, own_app_lifecycle=False, **(mcp_options or {}))
-            coros.append(mcp_server.run_stdio_async())
-        else:
-            parent = build_parent_app(runtime, enter_runtime=False, mcp_options=mcp_options)
-            public_server = uvicorn.Server(uvicorn.Config(parent, host=host, port=port, log_level="info"))
-            coros.append(public_server.serve())
-        try:
-            await asyncio.gather(*coros)
-        finally:
-            _cleanup_uds(uds_path)
+    listener_tasks = {asyncio.ensure_future(c) for c in listeners}
+    pending = set(listener_tasks) | {asyncio.ensure_future(c) for c in services}
+    try:
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                exc = task.exception()
+                if exc is not None:
+                    raise exc
+                if task in listener_tasks:
+                    return
+                # A service finished cleanly → non-event; keep serving.
+    finally:
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        if on_teardown is not None:
+            on_teardown()
 
 
 def _make_uds_socket(path: str) -> Any:
@@ -288,4 +377,4 @@ def _cleanup_uds(path: str) -> None:
         node.unlink()
 
 
-__all__ = ["build_parent_app", "serve_process"]
+__all__ = ["ServeContext", "ServeService", "build_parent_app", "serve_process"]

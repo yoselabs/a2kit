@@ -23,7 +23,7 @@ from a2kit.packages.health import HealthRegistry
 from a2kit.tool import _build_descriptors
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from a2kit.packages.di import Container, Resolver
     from a2kit.routers import Router
@@ -63,6 +63,7 @@ class AppRuntime:
         mcp_surface: Any = None,
         auth_registry: Any = None,
         surfaces: Any = None,
+        serve_services: tuple[Callable[[Any], Awaitable[None]], ...] = (),
     ) -> None:
         self.name = name
         self.config = config
@@ -87,6 +88,10 @@ class AppRuntime:
         # (`runtime.surfaces.get("api")` / `.get("mcp")`) through this
         # attribute instead of the module-level proxy.
         self.surfaces = surfaces
+        # On-serve background services carried from the App's
+        # ``serve_services`` ClassVar (ADR 0030). Read by ``serve_process``;
+        # untouched by CLI verb dispatch.
+        self._serve_services = tuple(serve_services)
         # Routers that entered via ``__aenter__`` during this runtime's
         # lifecycle. LIFO unwound on ``__aexit__``.
         self._entered_routers: dict[str, Router] = {}
@@ -119,6 +124,11 @@ class AppRuntime:
 
     def cli_extras(self) -> list[Any]:
         return list(self._cli_extras)
+
+    @property
+    def serve_services(self) -> tuple[Callable[[Any], Awaitable[None]], ...]:
+        """On-serve background services carried from the App (ADR 0030)."""
+        return self._serve_services
 
     def mcp_middlewares(self) -> list[Any]:
         return list(self._mcp_middlewares)
@@ -317,6 +327,9 @@ def build(
         # entirely (cold-start invariant: no auth imports for no-auth apps).
         auth_registry=app.auth_registry,
         surfaces=surface_registry,
+        # On-serve services (ADR 0030) — carried verbatim from the App's
+        # ``serve_services`` ClassVar; serve launches them, CLI verbs never do.
+        serve_services=tuple(app.serve_services),
     )
 
     # Re-bind the synthetic `_meta` health router to the runtime so its

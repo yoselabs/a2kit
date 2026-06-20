@@ -252,54 +252,103 @@ def test_make_uds_socket_is_0600(tmp_path: Any, monkeypatch: Any) -> None:
         Path(path).unlink()
 
 
-# ----------------------------------------------- serve_process + _serve_with_spoke
+# ----------------------------------------------- serve_process + _serve (one engine)
 
 
-def test_serve_process_http_no_uds_runs_parent(monkeypatch: Any) -> None:
-    """http + no spoke → uvicorn.run(parent, host, port)."""
+def test_serve_process_delegates_to_one_serve(monkeypatch: Any) -> None:
+    """Every path runs through ``asyncio.run(_serve(...))`` — no bare branches.
+
+    ``serve_process`` composes the args (threading ``runtime.serve_services``)
+    and delegates; there is no longer a transport-specific branch in it.
+    """
+    from a2kit.packages import serve as serve_mod
     from a2kit.runtime import build
 
-    calls: dict[str, Any] = {}
-    monkeypatch.setattr("uvicorn.run", lambda app, **kw: calls.update(app=app, kw=kw))
-    from a2kit.packages.serve import serve_process
+    captured: dict[str, Any] = {}
 
-    serve_process(build(_build_di_app()), transport="http", host="h", port=7, internal_uds=None, mcp_options={})
-    assert calls["kw"] == {"host": "h", "port": 7}
+    async def _fake_serve(rt: Any, **kw: Any) -> None:
+        captured["rt"] = rt
+        captured.update(kw)
+
+    monkeypatch.setattr(serve_mod, "_serve", _fake_serve)
+    serve_mod.serve_process(build(_build_di_app()), transport="http", host="h", port=7, internal_uds="sentinel.sock", mcp_options={})
+    assert captured["transport"] == "http"
+    assert captured["host"] == "h"
+    assert captured["port"] == 7
+    assert captured["uds_path"] == "sentinel.sock"
+    assert captured["services"] == ()  # no services registered on this app
 
 
-def test_serve_process_stdio_no_uds_runs_mcp(monkeypatch: Any) -> None:
-    """stdio + no spoke → build_mcp_server(...).run(transport='stdio')."""
-    import a2kit.packages.mcp as mcp_mod
+def test_public_listener_stdio_uses_run_stdio_async(monkeypatch: Any) -> None:
+    """stdio public listener → ``build_mcp_server(own_app_lifecycle=False).run_stdio_async()``."""
+    import a2kit.packages.mcp as mcp_pkg
+    from a2kit.packages.serve import _public_listener
     from a2kit.runtime import build
 
-    ran: dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
-    class _Server:
-        def run(self, **kw: Any) -> None:
-            ran.update(kw)
+    class _Srv:
+        def run_stdio_async(self) -> Any:
+            async def _co() -> None: ...
 
-    monkeypatch.setattr(mcp_mod, "build_mcp_server", lambda _rt, **_kw: _Server())
-    from a2kit.packages.serve import serve_process
+            return _co()
 
-    serve_process(build(_build_di_app()), transport="stdio", host="h", port=7, internal_uds=None, mcp_options={})
-    assert ran == {"transport": "stdio"}
+    def _spy(rt: Any, **kw: Any) -> Any:
+        captured.update(kw)
+        return _Srv()
+
+    monkeypatch.setattr(mcp_pkg, "build_mcp_server", _spy)
+    co = _public_listener(build(_build_di_app()), transport="stdio", host="h", port=0, mcp_options={"compact": True})
+    try:
+        assert captured["own_app_lifecycle"] is False
+        assert captured["compact"] is True
+    finally:
+        co.close()
+
+
+def test_public_listener_http_uses_parent_enter_runtime_false(monkeypatch: Any) -> None:
+    """http public listener → ``build_parent_app(enter_runtime=False)`` under uvicorn."""
+    from a2kit.packages import serve as serve_mod
+    from a2kit.runtime import build
+
+    captured: dict[str, Any] = {}
+    real = serve_mod.build_parent_app
+
+    def _spy(rt: Any, **kw: Any) -> Any:
+        captured.update(kw)
+        return real(rt, **kw)
+
+    monkeypatch.setattr(serve_mod, "build_parent_app", _spy)
+    co = serve_mod._public_listener(build(_build_di_app()), transport="http", host="127.0.0.1", port=0, mcp_options={})
+    try:
+        assert captured.get("enter_runtime") is False
+    finally:
+        co.close()
 
 
 @pytest.mark.asyncio
-async def test_serve_with_spoke_runs_public_and_uds(tmp_path: Any, monkeypatch: Any) -> None:
-    """`_serve_with_spoke` (http) serves both the parent and the UDS spoke under one runtime."""
+async def test_serve_runs_public_and_uds(tmp_path: Any, monkeypatch: Any) -> None:
+    """`_serve` (http) serves both the parent and the UDS spoke under one runtime."""
     import asyncio
     from pathlib import Path
 
     import httpx
 
-    from a2kit.packages.serve import _serve_with_spoke
+    from a2kit.packages.serve import _serve
     from a2kit.runtime import build
 
     monkeypatch.chdir(tmp_path)
     runtime = build(_build_di_app())
     task = asyncio.create_task(
-        _serve_with_spoke(runtime, transport="http", host="127.0.0.1", port=0, uds_path="spoke.sock", mcp_options={})
+        _serve(
+            runtime,
+            transport="http",
+            host="127.0.0.1",
+            port=0,
+            uds_path="spoke.sock",
+            services=(),
+            mcp_options={},
+        )
     )
     try:
         for _ in range(500):

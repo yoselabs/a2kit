@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from a2kit.app import App
     from a2kit.exceptions import A2KitError
     from a2kit.packages.di import Lazy
+    from a2kit.packages.serve import ServeContext
     from a2kit.routers import Router
     from a2kit.tool import list_, read, write
 
@@ -33,6 +34,7 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "HealthResult": ("a2kit.packages.health", "HealthResult"),
     "Principal": ("a2kit.packages.context", "Principal"),
     "Lazy": ("a2kit.packages.di", "Lazy"),
+    "ServeContext": ("a2kit.packages.serve", "ServeContext"),
 }
 
 _LAZY_MODULES: dict[str, str] = {
@@ -117,6 +119,7 @@ __all__ = [
     "HealthResult",
     "Lazy",
     "Router",
+    "ServeContext",
     "ToolContext",
     "compose_default_surfaces",
     "enricher",

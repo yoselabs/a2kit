@@ -10,7 +10,7 @@ from a2kit.routers import Router, RouterRegistry, _collect_marked_tool_names
 from a2kit.tool import ToolDescriptor, _build_descriptors
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     import click
 
@@ -86,6 +86,14 @@ class App:
     #: ClassVar, so the per-instance ``self.name`` assignment is clean.
     routers: ClassVar[tuple[type[Router], ...]] = ()
     providers: ClassVar[tuple[Any, ...]] = ()
+
+    #: On-serve background services (ADR 0030). Each is a coroutine
+    #: function ``async def (ctx: a2kit.ServeContext) -> None`` that
+    #: ``serve`` runs as a concurrent task inside its one
+    #: ``async with runtime:`` — never on a CLI verb. Typed structurally
+    #: (``ctx`` is ``a2kit.ServeContext``) to avoid an upward import of the
+    #: L5 ``serve`` unit from this L3 module.
+    serve_services: ClassVar[tuple[Callable[[Any], Awaitable[None]], ...]] = ()
 
     #: Auto-collected app-level verb-method names (bare, no slug),
     #: populated by ``__init_subclass__`` via the ``_a2kit`` marker.
