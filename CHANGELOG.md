@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.45.0 — 2026-06-20
+
+### Added — On-serve background services + `ServeContext` (`add-serve-services`, ADR 0030)
+
+An `App` can register **on-serve services** via the `serve_services` ClassVar —
+coroutine functions `async def (ctx: a2kit.ServeContext) -> None` that `serve`
+runs as concurrent tasks for the whole serve lifetime, sharing the one runtime
+(DI root + `SINGLETON` store). They start eagerly at serve start and **only**
+under `serve` — never on a CLI verb. Each receives a `ServeContext` carrying the
+bound `--internal-uds` path and the transport. Unblocks a2kay's in-serve job
+scheduler (`a2kay-job-scheduler`).
+
+- New Tier-1 export `a2kit.ServeContext` (`internal_uds: str | None`, `transport`).
+- `AppRuntime.serve_services` carries the registered tuple; an App with none is a
+  no-op (unchanged behavior).
+
+### Changed — `serve` collapsed to one supervised engine (internal)
+
+The three divergent `serve_process` paths (bare stdio, bare http, spoke) are
+unified into one engine: it runs the public listener (+ optional spoke) + any
+registered services under a single `async with runtime:`, supervised by an
+`asyncio.wait(FIRST_COMPLETED)` loop with asymmetric shutdown — a listener
+exiting ends serve, any task raising tears it down, a service finishing cleanly
+is a non-event (not `asyncio.TaskGroup`, not a flat `gather`: both hang on a
+never-returning service). Public `serve` behavior is unchanged; the private
+`_serve_with_spoke` was removed (no shim, §1).
+
 ## 0.44.0 — 2026-06-17
 
 ### Added — Internal spoke: first-party jobs call verbs over a private UDS (`add-internal-spoke`, ADR 0029)

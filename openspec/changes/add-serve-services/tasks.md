@@ -74,5 +74,5 @@
       Run `make adr-index`.
 - [x] 6.2 Constitution Phase A: human confirms (substrate surface change).
 - [x] 6.3 a2kit lint / `ty check src/` / `a2kit lint static` / full suite green.
-- [ ] 6.4 Release (manual: bump pyproject + CHANGELOG header + tag + push);
+- [x] 6.4 Release (manual: bump pyproject + CHANGELOG header + tag + push);
       a2kay bumps its a2kit pin and lands `a2kay-job-scheduler`.
