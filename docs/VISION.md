@@ -247,8 +247,9 @@ a thing each tool author re-implements.
 
 ### Toggle and per-surface exposure
 
-Code execution is **on by default** and turned off with a single
-toggle (shape TBD — e.g. `serve --code-mode-off`), consistent with
+Code execution is **on by default** (declarable per App via
+`config.mcp.code_mode`) and overridable per run with the absolute
+`serve --code-mode / --no-code-mode` pair, consistent with
 principle 1. Where it is exposed is deliberately not uniform:
 
 - **MCP and remote MCP** — exposed, as **one global `execute`-style
@@ -384,8 +385,9 @@ Sequencing only — OpenSpec changes carry the real task breakdowns.
 - **Toggle shape.** *Resolved by `multiplex-serve-topology`.* Surface
   selection is `serve --mcp-only` / `--rest-only` — paired intent
   flags, mutually exclusive, both default off (= all surfaces on, per
-  principle 1). Code execution keeps its own `--code-mode-off` switch,
-  separate from surface selection.
+  principle 1). Code execution keeps its own `--code-mode / --no-code-mode`
+  override (and a `config.mcp.code_mode` default), separate from surface
+  selection.
 - **REST construction.** Hand-rolled vs a framework (FastAPI) vs
   derived from the FastMCP server. How content negotiation maps the
   TSV / JSON / `page-tsv` formatter onto HTTP `Accept`.

@@ -31,9 +31,9 @@ _SERVER = textwrap.dedent(
 
     # Full authored run path: App.serve(argv) -> a2kit.run -> CLI `serve`
     # (stdio default) -> serve_process -> _serve -> run_stdio_async.
-    # --code-mode-off so the raw verb catalog is exposed directly (default
+    # --no-code-mode so the raw verb catalog is exposed directly (default
     # serve collapses to the code-execution surface per ADR 0013/0014).
-    app_of("smoke", R()).serve(["serve", "--transport", "stdio", "--code-mode-off"])
+    app_of("smoke", R()).serve(["serve", "--transport", "stdio", "--no-code-mode"])
     """
 )
 

@@ -46,7 +46,7 @@ def _require_monty() -> None:
             "Code execution requires the Monty sandbox runtime, which is "
             f"not installed. Install it with `pip install {_CODE_MODE_EXTRA}`, "
             "or disable the code-execution surface with "
-            "`build_mcp_server(app, code_mode=False)` / `serve --code-mode-off`."
+            "`build_mcp_server(app, code_mode=False)` / `serve --no-code-mode`."
         )
 
 

@@ -17,10 +17,19 @@ def register_serve(typer_app: Any, app: AppRuntime) -> None:
         transport: Annotated[str, typer.Option(help="Transport: 'stdio' or 'http'.")] = "stdio",
         host: Annotated[str, typer.Option(help="HTTP bind host.")] = "127.0.0.1",
         port: Annotated[int, typer.Option(help="HTTP bind port.")] = 8000,
-        code_mode_off: Annotated[
-            bool,
-            typer.Option("--code-mode-off", help="Disable the bundled code-execution surface."),
-        ] = False,
+        code_mode: Annotated[
+            bool | None,
+            typer.Option(
+                "--code-mode/--no-code-mode",
+                help=(
+                    "Override the bundled code-execution surface for this run. "
+                    "--code-mode forces it on, --no-code-mode forces it off; "
+                    "absolute, not relative to config. Omit to defer to "
+                    "config.mcp.code_mode (env A2KIT_MCP__CODE_MODE), then the "
+                    "built-in default (on)."
+                ),
+            ),
+        ] = None,
         code_mode_allow_destructive: Annotated[
             bool,
             typer.Option(
@@ -95,7 +104,7 @@ def register_serve(typer_app: Any, app: AppRuntime) -> None:
 
         runtime = build(app, select=select_list or None)
         mcp_options = {
-            "code_mode": not code_mode_off,
+            "code_mode": code_mode,
             "code_mode_allow_destructive": code_mode_allow_destructive,
             "compact": compact,
             "tool_selection": tools,

@@ -42,6 +42,23 @@ def test_defaults(no_dotenv: Path) -> None:
     assert cfg.mcp.structured_output is False
 
 
+def test_code_mode_default_true(no_dotenv: Path) -> None:
+    cfg = A2kitConfig()
+    assert cfg.mcp.code_mode is True
+
+
+def test_code_mode_env_sets_false(monkeypatch: pytest.MonkeyPatch, no_dotenv: Path) -> None:
+    monkeypatch.setenv("A2KIT_MCP__CODE_MODE", "false")
+    cfg = A2kitConfig()
+    assert cfg.mcp.code_mode is False
+
+
+def test_code_mode_env_beats_kwarg(monkeypatch: pytest.MonkeyPatch, no_dotenv: Path) -> None:
+    monkeypatch.setenv("A2KIT_MCP__CODE_MODE", "false")
+    cfg = A2kitConfig(mcp=McpConfig(code_mode=True))
+    assert cfg.mcp.code_mode is False
+
+
 # ----- Env beats kwargs (the load-bearing inversion) --------------------- #
 
 

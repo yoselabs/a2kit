@@ -48,6 +48,22 @@ class McpConfig(BaseModel):
         ),
     )
 
+    code_mode: bool = Field(
+        default=True,
+        description=(
+            "Author's default for whether the MCP server installs the "
+            "code-execution surface (the `search` / `get_schema` / `execute` "
+            "meta-tools). A per-server-shape knob, like `instructions` and "
+            "`structured_output`. Default True suits many-tool / big-payload "
+            "servers where the sandbox earns its keep; set False for "
+            "few-tool / lean-payload servers where it is pure tax. "
+            "Set via env: A2KIT_MCP__CODE_MODE=false (env beats code, ADR 0022). "
+            "Consulted by `build_mcp_server` only when its `code_mode` argument "
+            "is unspecified; an explicit argument or a `serve "
+            "--code-mode/--no-code-mode` flag wins."
+        ),
+    )
+
     structured_output: bool = Field(
         default=False,
         description=(

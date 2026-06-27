@@ -227,7 +227,7 @@ def _build_mcp_lifespan(app: Any, user_lifespan: Any | None, *, own_app_lifecycl
 def build_mcp_server(
     app: Any,
     *,
-    code_mode: bool = True,
+    code_mode: bool | None = None,
     code_mode_allow_destructive: bool = False,
     compact: bool = False,
     own_app_lifecycle: bool = True,
@@ -240,11 +240,13 @@ def build_mcp_server(
     providers, transforms, lifespan, tasks, sampling_handler, etc. a2kit owns
     no auth abstraction; FastMCP plugins work directly.
 
-    ``code_mode`` (default ``True``) installs the bundled code-execution
-    surface: an ``A2kitCodeMode`` transform that collapses ``list_tools``
-    into ``search`` / ``get_schema`` / ``execute`` meta-tools. Real tools
-    stay callable by name. ``code_mode=False`` leaves the full catalog
-    listed and no ``execute`` tool present. ``code_mode_allow_destructive``
+    ``code_mode`` is tri-state. ``None`` (the default) means "consult
+    ``config.mcp.code_mode``" (itself defaulting to ``True``); an explicit
+    ``True``/``False`` wins over config. When enabled it installs the bundled
+    code-execution surface: an ``A2kitCodeMode`` transform that collapses
+    ``list_tools`` into ``search`` / ``get_schema`` / ``execute`` meta-tools,
+    real tools staying callable by name. When disabled the full catalog stays
+    listed and no ``execute`` tool is present. ``code_mode_allow_destructive``
     is the operator-side grant that lets the sandbox reach ``destructive``
     tools; it is off by default. See ``docs/VISION.md`` and
     ``a2kit.packages.codemode``.
@@ -271,6 +273,10 @@ def build_mcp_server(
     from a2kit.runtime import build
 
     runtime = build(app)
+    # Tri-state `code_mode`: an explicit True/False wins; None (the default)
+    # consults the author's declared `config.mcp.code_mode` (env
+    # A2KIT_MCP__CODE_MODE > code, ADR 0022). The framework default stays True.
+    effective_code_mode = code_mode if code_mode is not None else bool(runtime.config.mcp.code_mode)
     user_lifespan = fastmcp_kwargs.get("lifespan")
     # `own_app_lifecycle` (default True) installs the standalone lifespan
     # that enters `async with runtime:` itself — the stdio `serve` path. The
@@ -368,7 +374,7 @@ def build_mcp_server(
     server.add_middleware(
         FormatRoutingMiddleware(
             plans=encoding_plans,
-            consumer="code" if code_mode else "llm",
+            consumer="code" if effective_code_mode else "llm",
             compact=compact and not _structured_output,
             structured_output=_structured_output,
         )
@@ -385,7 +391,7 @@ def build_mcp_server(
     # final tool catalog. Imported here (not at module scope) so
     # `import a2kit.packages.mcp` does not pull FastMCP's `experimental`
     # namespace until a server actually opts into code mode.
-    if code_mode:
+    if effective_code_mode:
         from a2kit.packages.codemode import build_code_mode_transform
 
         server.add_transform(

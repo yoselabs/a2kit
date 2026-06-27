@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.46.0 — 2026-06-28
+
+### Added — `McpConfig.code_mode` declares the code-execution default (`add-code-mode-config-default`)
+
+`code_mode` becomes a per-server-**shape** knob an App can declare once, the
+same category as `McpConfig.instructions` / `structured_output`. New field
+`McpConfig.code_mode: bool = True`, settable via `A2KIT_MCP__CODE_MODE` (env
+beats code, ADR 0022). The framework default stays `True`, so a2db / a2atlassian
+are untouched; a few-tool / lean-payload server (a2web) declares
+`code_mode=False` once instead of repeating a CLI flag in every client mount.
+
+- `build_mcp_server`'s `code_mode` is now tri-state `bool | None` (default
+  `None`): `None` consults `config.mcp.code_mode`; an explicit `True`/`False`
+  wins. Resolution order end-to-end: explicit CLI flag → `config.mcp.code_mode`
+  (env → code) → built-in `True`.
+- The `a2kit code` subcommand stays hard `code_mode=True` (invoking the sandbox
+  is the explicit point of that command).
+
+### Changed — `serve` code-mode override is now a bidirectional pair (BREAKING)
+
+The one-directional `serve --code-mode-off` flag is **replaced** by an absolute
+`--code-mode / --no-code-mode` pair (`Optional[bool]`, default unspecified):
+`--code-mode` forces on, `--no-code-mode` forces off, neither defers to config.
+A flag means the same thing on every server (absolute, not relative to the
+configured default) and can force-on a config-off server. The old
+`--code-mode-off` spelling is removed outright (no shim, §1); migrate to
+`--no-code-mode` or set `config.mcp.code_mode=False`.
+
 ## 0.45.0 — 2026-06-20
 
 ### Added — On-serve background services + `ServeContext` (`add-serve-services`, ADR 0030)
