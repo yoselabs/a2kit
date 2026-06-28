@@ -12,7 +12,7 @@ Per `add-surface-protocol-additive`. Verifies:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -65,7 +65,7 @@ class TestSurfaceRegistry:
                 return None
 
         s = _TestSurface()
-        reg.register_surface(s)
+        reg.register_surface(cast("Surface", s))
         assert reg.get("_test_proto_lookup") is s
         assert "_test_proto_lookup" in reg.names()
 
@@ -87,9 +87,9 @@ class TestSurfaceRegistry:
             def install_di_bridge(self, runtime: Any, substrate_app: Any) -> None:
                 return None
 
-        reg.register_surface(_DupSurface())
+        reg.register_surface(cast("Surface", _DupSurface()))
         with pytest.raises(ValueError, match="_dup"):
-            reg.register_surface(_DupSurface())
+            reg.register_surface(cast("Surface", _DupSurface()))
 
     def test_get_missing_raises_keyerror(self) -> None:
         reg = SurfaceRegistry()

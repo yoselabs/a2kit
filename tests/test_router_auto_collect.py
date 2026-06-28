@@ -8,7 +8,11 @@ helper methods are never collected.
 
 from __future__ import annotations
 
+from typing import cast
+
 import a2kit
+
+from tests._typed_records import Named
 
 
 def test_router_without_tools_tuple_auto_collects() -> None:
@@ -23,7 +27,7 @@ def test_router_without_tools_tuple_auto_collects() -> None:
         def make_thing(self, *, name: str) -> dict:
             return {"name": name}
 
-    names = {fn.__name__ for fn in R().bound_tools()}
+    names = {cast("Named", fn).__name__ for fn in R().bound_tools()}
     assert names == {"get_thing", "make_thing"}
 
 
@@ -38,7 +42,7 @@ def test_helper_methods_are_not_collected() -> None:
         def _format(self, id: int) -> dict:  # plain helper — no marker
             return {"id": id}
 
-    names = {fn.__name__ for fn in R().bound_tools()}
+    names = {cast("Named", fn).__name__ for fn in R().bound_tools()}
     assert names == {"get_thing"}
 
 
@@ -58,7 +62,7 @@ def test_collection_preserves_definition_order() -> None:
         def gamma(self) -> dict:
             return {}
 
-    assert [fn.__name__ for fn in R().bound_tools()] == ["alpha", "beta", "gamma"]
+    assert [cast("Named", fn).__name__ for fn in R().bound_tools()] == ["alpha", "beta", "gamma"]
 
 
 def test_router_slug_and_surfaces_still_stamped() -> None:

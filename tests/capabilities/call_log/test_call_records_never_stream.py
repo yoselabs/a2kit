@@ -12,11 +12,15 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import a2kit
 import a2kit.log
 from a2kit.config import A2kitConfig, LogConfig
 from a2kit.testing import app_of, client
+
+if TYPE_CHECKING:
+    from a2kit.packages.testing.client import TestClient
 
 
 def _app(tmp: Path) -> a2kit.App:
@@ -36,7 +40,7 @@ def _app(tmp: Path) -> a2kit.App:
 def test_call_record_and_debug_never_reach_the_wire(tmp_path: Path) -> None:
     app = _app(tmp_path)
 
-    async def go() -> object:
+    async def go() -> TestClient:
         async with client(app) as c:
             await c.invoke("r_work", url="https://x.com")
             return c

@@ -32,6 +32,14 @@
         {
           "names": ["_is_basemodel"],
           "reason": "back-compat aliases for the canonical `is_basemodel` in packages/formatter/inference.py (R7 resolved). cli/builder.py and codemode/marshal.py import as `_is_basemodel` to preserve call-site readability — the underscore signals 'internal to this module', the implementation is shared"
+        },
+        {
+          "names": ["_register_router"],
+          "reason": "coincidental: app.py._register_router composes a router's DI/state into the App at build time (L5); cli/builder.py._register_router builds the Click/Typer command subtree for a router (CLI surface). Unrelated concerns in different layers — a shared module would couple app composition to the CLI."
+        },
+        {
+          "names": ["_resolve"],
+          "reason": "coincidental generic verb: connections/cli.py._resolve resolves a saved connection by name; log/emission.py._resolve resolves structured log-field values for a record. Wholly unrelated concepts in unrelated packages."
         }
       ],
       "github_actions_vendor": [

@@ -12,10 +12,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from typing import cast
 
 import pytest
 
 from a2kit.log import info
+
+from tests._typed_records import A2kitLogRecord
 
 
 class _Verdict(Enum):
@@ -57,7 +60,7 @@ def cap() -> object:
 async def test_instance_becomes_dumped_payload_enum_unwrapped(cap: _Capture) -> None:
     await info(_TierEnded(step="extract", dur_ms=300, verdict=_Verdict.OK))
     assert len(cap.records) == 1
-    rec = cap.records[0]
+    rec = cast("A2kitLogRecord", cap.records[0])
     assert rec.levelno == logging.INFO
     assert rec.getMessage() == "_TierEnded"
     assert rec.a2kit_fields == {"step": "extract", "dur_ms": 300, "verdict": "ok"}
@@ -65,5 +68,5 @@ async def test_instance_becomes_dumped_payload_enum_unwrapped(cap: _Capture) -> 
 
 async def test_extra_kwargs_merge_after_instance_fields(cap: _Capture) -> None:
     await info(_TierEnded(step="x", dur_ms=1, verdict=_Verdict.FAIL), note="late")
-    rec = cap.records[0]
+    rec = cast("A2kitLogRecord", cap.records[0])
     assert rec.a2kit_fields == {"step": "x", "dur_ms": 1, "verdict": "fail", "note": "late"}

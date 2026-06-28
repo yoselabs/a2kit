@@ -20,7 +20,7 @@ Per ``surfaces-projection`` / ``verb-decorators`` and
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -153,13 +153,13 @@ def test_newly_registered_surface_name_is_accepted_via_explicit_surfaces() -> No
 
     app = app_of("demo", R())
     # Build with the custom surface explicitly included alongside defaults.
-    from a2kit.packages.dispatch.surface import SurfaceRegistry
+    from a2kit.packages.dispatch.surface import Surface, SurfaceRegistry
     from a2kit.packages.http.api import ApiSurface
     from a2kit.packages.mcp.surface import McpSurface
 
     registry = SurfaceRegistry()
     for s in (McpSurface(), ApiSurface(), _StubSurface()):
-        registry.register_surface(s)
+        registry.register_surface(cast("Surface", s))
 
     runtime = build(app, surfaces=registry)
     [desc] = runtime.tools()

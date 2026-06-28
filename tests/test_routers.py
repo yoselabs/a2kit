@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 import a2kit
 from a2kit.runtime import build
 from a2kit.routers import Router
 from a2kit.testing import app_of
+
+from tests._typed_records import Named
 
 
 def test_mirror_stub_present() -> None:
@@ -193,7 +197,7 @@ def test_leftover_tools_tuple_is_ignored() -> None:
         def fetch(self) -> dict[str, int]:
             return {"k": 1}
 
-    names = {fn.__name__ for fn in _R().bound_tools()}
+    names = {cast("Named", fn).__name__ for fn in _R().bound_tools()}
     assert names == {"fetch"}
 
 

@@ -6,12 +6,15 @@ request-scope ``_CallScope`` — not threaded through the call signature.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 import pytest
 
 from a2kit.log import info
 from a2kit.packages.log.scope import _CallScopeFilter, bind_call_scope
 from a2kit.packages.testing.null_context import null_context
+
+from tests._typed_records import A2kitLogRecord
 
 
 class _Capture(logging.Handler):
@@ -45,7 +48,7 @@ async def test_record_carries_call_id_tool_elapsed_from_scope(cap: _Capture) -> 
     with bind_call_scope(ctx=null_context(), call_id="abc123", tool_name="ask"):
         await info("fetching", host="x.com")
     assert len(cap.records) == 1
-    rec = cap.records[0]
+    rec = cast("A2kitLogRecord", cap.records[0])
     assert rec.call_id == "abc123"
     assert rec.tool_name == "ask"
     assert isinstance(rec.elapsed_ms, int)
@@ -54,6 +57,6 @@ async def test_record_carries_call_id_tool_elapsed_from_scope(cap: _Capture) -> 
 
 async def test_record_outside_scope_has_null_call_id(cap: _Capture) -> None:
     await info("orphan")
-    rec = cap.records[0]
+    rec = cast("A2kitLogRecord", cap.records[0])
     assert rec.call_id is None
     assert rec.tool_name is None

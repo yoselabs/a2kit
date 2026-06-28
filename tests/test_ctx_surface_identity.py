@@ -14,7 +14,7 @@ per-surface ``ToolBuildSpec``), NOT from sniffing the ctx type.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import a2kit
 import a2kit.log
@@ -22,6 +22,11 @@ from a2kit.packages.context import StderrToolContext
 from a2kit.packages.log import bind_call_scope
 from a2kit.packages.log.scope import _CallScope, _active_scope
 from a2kit.testing import app_of
+
+from tests._typed_records import A2kitLogRecord
+
+if TYPE_CHECKING:
+    from a2kit.runtime import AppRuntime
 
 # --------------------------------------------------------------------------- #
 # Probe helpers — a verb whose body records the active surface identity.
@@ -194,7 +199,7 @@ def test_surface_client_id_from_ctx() -> None:
         captured["surface"] = a2kit.log.current_surface()
         captured["client_id"] = a2kit.log.current_surface_client_id()
 
-    spec = ToolBuildSpec(app=None, router=None, meta=None, surface="mcp")  # type: ignore[arg-type]
+    spec = ToolBuildSpec(app=cast("AppRuntime", None), router=None, meta=None, surface="mcp")
     wrapped = CallScopeStage().wrap(fn, spec)
     asyncio.run(wrapped(**{SYNTHESIZED_CTX_PARAM_NAME: _Ctx()}))
     assert captured["surface"] == "mcp"
@@ -215,13 +220,13 @@ def test_log_record_carries_surface() -> None:
     filt = _CallScopeFilter()
     # Outside a dispatch: surface is None.
     filt.filter(record)
-    assert record.surface is None
+    assert cast("A2kitLogRecord", record).surface is None
     # Inside a dispatch: surface is the active scope's surface.
     ctx = StderrToolContext()
     with bind_call_scope(ctx=ctx, surface="mcp"):
         record2 = logging.LogRecord("a2kit", logging.INFO, __file__, 1, "m", None, None)
         filt.filter(record2)
-        assert record2.surface == "mcp"
+        assert cast("A2kitLogRecord", record2).surface == "mcp"
 
 
 def test_call_record_carries_surface() -> None:

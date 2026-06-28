@@ -9,13 +9,16 @@ forcing the fastmcp-context branch.)
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from a2kit.log import info
 from a2kit.packages.log import emission
 from a2kit.packages.log.scope import bind_call_scope
+
+if TYPE_CHECKING:
+    from a2kit._context_protocol import ToolContext
 
 
 class _FakeCtx:
@@ -29,7 +32,7 @@ class _FakeCtx:
 async def test_info_streams_inline_on_fastmcp_ctx(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(emission, "_is_fastmcp_context", lambda _ctx: True)
     ctx = _FakeCtx()
-    with bind_call_scope(ctx=ctx, call_id="c1", tool_name="ask"):
+    with bind_call_scope(ctx=cast("ToolContext", ctx), call_id="c1", tool_name="ask"):
         await info("fetching", host="x.com")
     assert len(ctx.calls) == 1
     level, message, extra = ctx.calls[0]
@@ -41,6 +44,6 @@ async def test_info_streams_inline_on_fastmcp_ctx(monkeypatch: pytest.MonkeyPatc
 
 async def test_no_wire_emit_when_ctx_is_not_fastmcp() -> None:
     ctx = _FakeCtx()
-    with bind_call_scope(ctx=ctx, call_id="c1"):
+    with bind_call_scope(ctx=cast("ToolContext", ctx), call_id="c1"):
         await info("orphan")
     assert ctx.calls == []

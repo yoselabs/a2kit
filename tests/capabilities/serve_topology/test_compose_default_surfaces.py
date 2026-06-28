@@ -48,8 +48,9 @@ def test_third_party_surface_via_explicit_registry() -> None:
     mounts it without any import side effect AND without disturbing the
     process-wide active registry.
     """
-    from typing import Any
+    from typing import Any, cast
 
+    from a2kit.packages.dispatch.surface import Surface
     from a2kit.runtime import build
 
     class MySurface:
@@ -66,7 +67,7 @@ def test_third_party_surface_via_explicit_registry() -> None:
     # Build a fresh per-test registry; DO NOT rebind the active registry
     # (that's process-wide state owned by the conftest-bound one).
     registry = SurfaceRegistry()
-    registry.register_surface(MySurface())
+    registry.register_surface(cast("Surface", MySurface()))
 
     app = app_of("demo")
     runtime = build(app, surfaces=registry)

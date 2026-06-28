@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 from click.testing import CliRunner
 
@@ -79,8 +80,9 @@ def test_schema_output_respects_truncation_cap(monkeypatch):
         generated.append(_tool)
     # Populate the tools tuple — required post
     # ``app-time-tools-tuple-validation``; programmatically generated
-    # tools must still be listed.
-    Big.tools = tuple(generated)
+    # tools must still be listed. ``tools`` is a legacy opt-in attribute
+    # not on the Router type surface, so set it via a cast-to-Any view.
+    cast("Any", Big).tools = tuple(generated)
 
     app = app_of("big", Big())
     result = CliRunner().invoke(build_full_cli(app), ["schema", "--format=json"])

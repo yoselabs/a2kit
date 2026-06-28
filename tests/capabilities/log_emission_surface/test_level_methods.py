@@ -9,10 +9,13 @@ attribute (avoids reserved ``LogRecord`` attribute collisions).
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 import pytest
 
 from a2kit.log import debug, error, info, warning
+
+from tests._typed_records import A2kitLogRecord
 
 
 class _Capture(logging.Handler):
@@ -44,7 +47,7 @@ def cap() -> object:
 async def test_info_routes_at_info_with_fields(cap: _Capture) -> None:
     await info("cache warm", host="x.com")
     assert len(cap.records) == 1
-    rec = cap.records[0]
+    rec = cast("A2kitLogRecord", cap.records[0])
     assert rec.levelno == logging.INFO
     assert rec.getMessage() == "cache warm"
     assert rec.a2kit_fields == {"host": "x.com"}
@@ -54,7 +57,7 @@ async def test_warning_routes_at_warning(cap: _Capture) -> None:
     await warning("cookies stale", host="x.com")
     assert len(cap.records) == 1
     assert cap.records[0].levelno == logging.WARNING
-    assert cap.records[0].a2kit_fields == {"host": "x.com"}
+    assert cast("A2kitLogRecord", cap.records[0]).a2kit_fields == {"host": "x.com"}
 
 
 async def test_error_routes_at_error(cap: _Capture) -> None:
@@ -67,4 +70,4 @@ async def test_debug_routes_at_debug(cap: _Capture) -> None:
     await debug("html", size=1024)
     assert len(cap.records) == 1
     assert cap.records[0].levelno == logging.DEBUG
-    assert cap.records[0].a2kit_fields == {"size": 1024}
+    assert cast("A2kitLogRecord", cap.records[0]).a2kit_fields == {"size": 1024}
