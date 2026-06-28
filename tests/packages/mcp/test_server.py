@@ -157,6 +157,134 @@ def test_sync_and_async_tools_both_register() -> None:
     asyncio.run(_check())
 
 
+# --- MCP Apps: `authorize=` enforcement on `@app.mcp.*` (Track 2) ----------- #
+#
+# The `@app.mcp.*` escape hatch bypasses the dispatch pipeline (so it never
+# rides `AuthorizeGateStage`). The captured `authorize=` MUST still be enforced
+# at registration time, honoring the `tool-authorization` "uniform across
+# surfaces" requirement — the hatch is not an authorization gap.
+
+from fastmcp import Client  # noqa: E402
+
+from a2kit.packages.context import Principal, request_scope  # noqa: E402
+
+
+def _admin_only(*, principal: Principal) -> bool:
+    return "admin" in principal.scopes
+
+
+def _app_with_gated_mcp_tool() -> tuple[a2kit.App, list[int]]:
+    body_calls: list[int] = []
+    app = app_of("mcp-authz")
+
+    @app.mcp.tool(name="admin_dash", authorize=_admin_only)
+    async def admin_dash(*, region: str = "eu") -> dict[str, str]:
+        body_calls.append(1)
+        return {"region": region}
+
+    return app, body_calls
+
+
+async def _call_mcp_with_principal(app: a2kit.App, name: str, principal: Principal) -> Any:
+    server = build_mcp_server(app, code_mode=False)
+    token = request_scope.publish(principal)
+    try:
+        async with Client(transport=server) as c:
+            return await c.call_tool(name, {}, raise_on_error=False)
+    finally:
+        request_scope.reset(token)
+
+
+def test_mcp_tool_authorize_denies_non_admin() -> None:
+    app, body_calls = _app_with_gated_mcp_tool()
+    result = asyncio.run(_call_mcp_with_principal(app, "admin_dash", Principal(subject="u1", scopes=frozenset())))
+    assert result.is_error is True
+    assert result.structured_content is not None
+    assert result.structured_content["error"]["type"] == "AuthorizationDenied"
+    assert body_calls == []
+
+
+def test_mcp_tool_authorize_allows_admin() -> None:
+    app, body_calls = _app_with_gated_mcp_tool()
+    result = asyncio.run(_call_mcp_with_principal(app, "admin_dash", Principal(subject="u1", scopes=frozenset({"admin"}))))
+    assert result.is_error is False
+    assert body_calls == [1]
+
+
+# --- MCP Apps: ui:// resource wire shape (Track 1) -------------------------- #
+
+_UI_HTML = "<!doctype html><h1>dash</h1>"
+
+
+def _build_ui_app_server() -> Any:
+    # a2kit forwards the `app=` payload verbatim, so the camelCase dict form
+    # (no `fastmcp.apps` import) and an `AppConfig` produce identical wire
+    # output. The dict form is what we assert — it is a2kit's actual contract.
+    app = app_of("mcp-apps-wire")
+
+    @app.mcp.tool(name="show_dash", app={"resourceUri": "ui://mcp-apps-wire/view.html"})
+    async def show_dash(*, region: str = "eu") -> dict[str, str]:
+        return {"region": region}
+
+    @app.mcp.resource(
+        uri="ui://mcp-apps-wire/view.html",
+        app={"csp": {"connectDomains": ["https://api.example.com"]}},
+    )
+    async def view() -> str:
+        return _UI_HTML
+
+    return build_mcp_server(app, code_mode=False)
+
+
+async def _list_ui(server: Any) -> tuple[dict[str, Any], dict[str, Any], Any]:
+    async with Client(transport=server) as c:
+        tools = {t.name: t for t in await c.list_tools()}
+        resources = {str(r.uri): r for r in await c.list_resources()}
+        read = await c.read_resource("ui://mcp-apps-wire/view.html")
+    return tools, resources, read
+
+
+def test_mcp_app_tool_declares_ui_resource_uri() -> None:
+    tools, _, _ = asyncio.run(_list_ui(_build_ui_app_server()))
+    assert tools["show_dash"].meta["ui"]["resourceUri"] == "ui://mcp-apps-wire/view.html"
+
+
+def test_mcp_app_resource_served_with_mcp_app_mime_and_csp() -> None:
+    _, resources, read = asyncio.run(_list_ui(_build_ui_app_server()))
+    r = resources["ui://mcp-apps-wire/view.html"]
+    assert r.mimeType == "text/html;profile=mcp-app"
+    assert r.meta["ui"]["csp"]["connectDomains"] == ["https://api.example.com"]
+    # a2kit constructs no UI bytes — the author's HTML passes through unchanged.
+    assert read[0].text == _UI_HTML
+
+
+def test_building_mcp_app_imports_no_ui_framework() -> None:
+    import sys
+
+    _build_ui_app_server()
+    assert "prefab" not in sys.modules
+
+
+def test_prefab_trigger_forwards_without_coupling() -> None:
+    import sys
+
+    app = app_of("mcp-apps-prefab-fwd")
+
+    @app.mcp.tool(name="p", app=True)
+    async def p(*, x: int = 1) -> dict[str, int]:
+        return {"x": x}
+
+    server = build_mcp_server(app, code_mode=False)
+
+    async def _meta() -> dict[str, Any]:
+        async with Client(transport=server) as c:
+            return {t.name: t for t in await c.list_tools()}
+
+    tools = asyncio.run(_meta())
+    assert tools["p"].meta["ui"] is True
+    assert "prefab" not in sys.modules
+
+
 def test_init_does_not_export_more_than_build_mcp_server() -> None:
     import a2kit.packages.mcp as pkg
 

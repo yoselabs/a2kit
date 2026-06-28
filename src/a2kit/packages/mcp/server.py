@@ -159,6 +159,39 @@ def _maybe_build_union_output_schema(desc: Any, wrapped: Any) -> dict[str, Any] 
     }
 
 
+def _gate_substrate_callable(wrapped: Any, authorize: Any, container: Any) -> Any:
+    """Apply a captured ``authorize=`` to a substrate-wrapped ``@app.mcp.*`` callable.
+
+    The escape hatch bypasses the dispatch pipeline, so the gate cannot ride
+    ``AuthorizeGateStage``. We reuse the one ``_run_authorize_gate`` evaluation
+    here at registration time (so there is a single auth semantics across
+    surfaces), and on denial convert ``AuthorizationDenied`` to a ``ToolError``
+    so ``TypedErrorEnvelopeMiddleware`` renders the same ``{"error": envelope}``
+    wire shape every other surface emits. FastMCP introspects ``__signature__``,
+    so it is carried over from the wrapped callable.
+    """
+    import functools
+    import inspect
+
+    from fastmcp.exceptions import ToolError
+
+    from a2kit.exceptions import AuthorizationDenied
+    from a2kit.packages.dispatch import _run_authorize_gate
+
+    @functools.wraps(wrapped)
+    async def _gated(**kwargs: Any) -> Any:
+        try:
+            await _run_authorize_gate(authorize, container)
+        except AuthorizationDenied as denied:
+            raise ToolError(str(denied)) from denied
+        return await wrapped(**kwargs)
+
+    # __signature__ is the PEP 362 introspection target FastMCP consults;
+    # setattr keeps the type checker happy without a suppression.
+    setattr(_gated, "__signature__", inspect.signature(wrapped))  # noqa: B010
+    return _gated
+
+
 def _register_mcp_surface(server: FastMCP, runtime: Any) -> None:
     """Install ``@app.mcp.tool/.prompt/.resource`` registrations on ``server``.
 
@@ -179,6 +212,11 @@ def _register_mcp_surface(server: FastMCP, runtime: Any) -> None:
     mcp_surface_obj = runtime.surfaces.get("mcp")
     for reg in surface.registrations:
         wrapped = install_substrate_signature(reg.fn, mcp_surface_obj, container)
+        # `authorize=` on the escape hatch is enforced at registration time
+        # (the hatch bypasses the dispatch pipeline / AuthorizeGateStage), so
+        # the surface is not an authorization gap. See `tool-authorization`.
+        if reg.authorize is not None:
+            wrapped = _gate_substrate_callable(wrapped, reg.authorize, container)
         if reg.kind == "tool":
             server.tool(**reg.fastmcp_kwargs)(wrapped)
         elif reg.kind == "prompt":

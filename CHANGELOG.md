@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.47.0 — 2026-06-28
+
+### Added — MCP Apps support, standard-first (`add-mcp-apps-support`, ADR 0031)
+
+a2kit serves MCP Apps (the `ext-apps` / `ui://` interactive-UI standard) through
+the existing `@app.mcp.*` family — no new authoring surface, and a2kit imports
+no UI framework. A tool's `app=` payload (a FastMCP `AppConfig`, an equivalent
+camelCase dict, or `True` for Prefab) forwards verbatim; a `ui://` resource is
+served with MIME `text/html;profile=mcp-app`. Custom HTML and Prefab mix
+per-tool — a2kit ships the projection mechanism and never builds, bundles, or
+renders UI (ADR 0031). New pattern doc `docs/patterns/mcp-apps.md` and example
+`examples/mcp_app/`. The UI shell is `@app.mcp.tool(app=...)` (MCP-pinned
+presentation); the data the iframe calls back is ordinary projection verbs
+(`@a2kit.read`/`@a2kit.write(surfaces=("mcp",))`) that ride the full pipeline.
+
+### Fixed — `authorize=` is now enforced on `@app.mcp.*` (security)
+
+`authorize=` on `@app.mcp.tool` / `.resource` / `.prompt` was captured but never
+applied — the escape hatch bypasses the dispatch pipeline (`AuthorizeGateStage`),
+silently contradicting the `tool-authorization` "uniform across surfaces"
+guarantee. It is now enforced at registration time (reusing the one
+`_run_authorize_gate`), denying with the standard `AuthorizationDenied` wire
+envelope. Behavior-tightening on a previously-ungated path: any caller relying on
+the silent drop was already insecure (no compat shim, §1).
+
 ## 0.46.0 — 2026-06-28
 
 ### Added — `McpConfig.code_mode` declares the code-execution default (`add-code-mode-config-default`)

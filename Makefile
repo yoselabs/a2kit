@@ -102,6 +102,7 @@ check: lint test
 examples:
 	uv run python -m examples.tracker.server --help
 	uv run python -m examples.streaming_logger.server --help
+	uv run python -m examples.mcp_app.server --help
 
 # Mutation testing — see docs/MUTATION_BASELINE.md for the latest score.
 mutate:
