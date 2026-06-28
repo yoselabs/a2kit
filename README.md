@@ -2,6 +2,16 @@
 
 **Fat tool decorator on top of FastMCP — protocol-agnostic core, plain-Python composition.**
 
+> **⚠️ Direction (2026-06-28, [ADR 0032](docs/adr/0032-refound-a2kit-as-fastmcp-helpers.md)).**
+> a2kit is being **re-founded as à-la-carte FastMCP helpers**, not a framework.
+> FastMCP 3.x now ships native code mode, tool-failure responses, multi-transport,
+> and CLI generation — so the per-feature moats below have collapsed. The plan:
+> retire `a2kit.App`, depend on FastMCP directly, and keep only independently-
+> extractable helpers (typed-TSV result/serializer, unified error envelope, optional
+> REST/CLI projections, the static lint) — each liftable upstream as one PR. **The
+> framework API documented below is the final framework-era surface, kept for current
+> consumers until the helper re-founding lands.** See ADR 0032 for the full rationale.
+
 a2kit ships an `App`, verb decorators (`@a2kit.read` / `@a2kit.write` /
 `@a2kit.list_`), and a `ToolContext` alias for `fastmcp.Context` — that's it
 for the core.
