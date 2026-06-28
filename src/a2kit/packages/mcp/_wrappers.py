@@ -31,19 +31,6 @@ _log = logging.getLogger(__name__)
 _WARN_ONCE: set[str] = set()
 
 
-class _TypedErrorToolResult(ToolResult):
-    """ToolResult that converts to ``CallToolResult(isError=True)``."""
-
-    def to_mcp_result(self) -> Any:
-        from mcp.types import CallToolResult
-
-        return CallToolResult(
-            content=self.content,
-            structuredContent=self.structured_content,
-            isError=True,
-        )
-
-
 class TypedErrorEnvelopeMiddleware(Middleware):
     """Patch ``structured_content`` onto error results from typed AppErrors.
 
@@ -51,9 +38,9 @@ class TypedErrorEnvelopeMiddleware(Middleware):
     rendered envelope on the per-call render-state side channel before
     raising ``ToolError(prose) from exc``. We open the side-channel slot
     around ``call_next``, catch the ToolError, recover the envelope by
-    looking up the chained AppError, and return a
-    ``_TypedErrorToolResult`` carrying prose in content +
-    ``{"error": envelope}`` in structured_content + isError=true.
+    looking up the chained AppError, and return a native
+    ``ToolResult(is_error=True)`` (fastmcp >=3.4) carrying prose in
+    content + ``{"error": envelope}`` in structured_content.
     """
 
     async def on_call_tool(self, context: Any, call_next: Any) -> Any:
@@ -71,9 +58,10 @@ class TypedErrorEnvelopeMiddleware(Middleware):
                     raise
                 rendered = get_rendered_error(cause)
                 envelope = rendered.envelope if rendered is not None else cause.to_envelope_dict()
-                return _TypedErrorToolResult(
+                return ToolResult(
                     content=[TextContent(type="text", text=str(te))],
                     structured_content={"error": envelope},
+                    is_error=True,
                 )
         finally:
             close_render_state(token)
