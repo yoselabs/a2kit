@@ -50,3 +50,19 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+      - id: ty-tests
+        name: ty (typecheck tests)
+        entry: uv run ty check tests/
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: rego
+        name: a2kit lint rego (architectural policies)
+        # Shells out to the pinned `opa` binary (clear error if absent);
+        # a global name-collision scan, so it runs on the whole tree.
+        entry: uv run a2kit lint rego src/
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
