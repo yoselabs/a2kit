@@ -144,7 +144,7 @@ def test_user_app_help_a2kit_overhead_under_200ms(module: str) -> None:
     """
     code = (
         "import time, sys;"
-        "import fastmcp;"  # pre-warm: fastmcp's own import cost is out of scope
+        "import fastmcp; from fastmcp import Context;"  # pre-warm: fastmcp's own import cost is out of scope (incl. Context, which the 3.3 slim split defers out of bare `import fastmcp`)
         "t0 = time.perf_counter();"
         f"import {module} as m;"
         "from click.testing import CliRunner;"
