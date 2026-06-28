@@ -86,3 +86,28 @@ a2kit ships the projection *mechanism*; it never builds, bundles, or renders UI.
 There is no typed `UIResource` return type today — the shell-vs-data split makes
 one unnecessary (the data is always a separate verb). See ADR 0031 for the
 deferred trigger.
+
+## Going further (upstream)
+
+This page covers the **a2kit-side wiring** — attaching a `ui://` resource to a
+tool and routing the iframe's callbacks through your projection verbs. Everything
+below the seam is the `ext-apps` standard and FastMCP's implementation of it, and
+a2kit deliberately does **not** re-document it (it would only drift). Go to the
+source for:
+
+- **The `app=` schema** (`AppConfig` / `ResourceCSP` fields — `resourceUri`,
+  `csp`, `permissions`, `domain`): [FastMCP — Custom HTML Apps](https://gofastmcp.com/apps/low-level).
+- **Prefab** (the optional Python UI DSL — `app=True` + a consumer-installed
+  `prefab-ui`): [FastMCP — Interactive Tools](https://gofastmcp.com/apps/prefab).
+- **The client-side bridge API** — the ext-apps client object's
+  `callServerTool({name, arguments})` call and `ontoolresult` callback, over a
+  `postMessage` dialect — and **writing the bundle**
+  (React/Vue/Svelte/vanilla starter templates):
+  [`modelcontextprotocol/ext-apps`](https://github.com/modelcontextprotocol/ext-apps)
+  and its [`examples/`](https://github.com/modelcontextprotocol/ext-apps/tree/main/examples).
+- **The standard itself**:
+  [MCP Apps overview](https://modelcontextprotocol.io/extensions/apps/overview).
+
+So an author building on a2kit reads *this page* for the wiring, then follows
+those links for the schema, the bridge, and the bundle. a2kit ships no SDK or
+reference of its own beyond the example — by design (Role 3 is out, ADR 0031).

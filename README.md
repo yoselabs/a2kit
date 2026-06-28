@@ -145,6 +145,12 @@ async def summarize(*, topic: str, db: Database) -> str:
     return ...
 ```
 
+`@app.mcp.tool` can also serve an **MCP App** — an interactive `ui://` HTML
+UI (the `ext-apps` standard) the host renders in a sandboxed iframe, with the
+UI calling your projection verbs back for data. See
+[Serving MCP Apps](docs/patterns/mcp-apps.md) and
+[ADR 0031](docs/adr/0031-mcp-apps-support.md).
+
 `serve --transport=http` auto-mounts each substrate sub-app based on
 registrations: `/api` mounts if any projection tool exposes `api` or any
 `@app.api.*` route exists; `/mcp` is the dual. Both substrates can serve

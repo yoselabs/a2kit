@@ -81,11 +81,15 @@ _DASHBOARD_HTML = """<!doctype html>
     <table id="regions"><thead><tr><th>Code</th><th>Name</th><th>Orders</th></tr></thead>
       <tbody></tbody></table>
     <script>
-      // In an MCP Apps host, the iframe fetches fresh data by calling the
-      // a2kit projection verb back over the bridge, e.g.:
-      //   const res = await window.mcpApp.callServerTool({ name: "regions_list_regions" });
-      //   render(res.structuredContent.result);
+      // In an MCP Apps host, the iframe loads the ext-apps client SDK
+      // (@modelcontextprotocol/ext-apps; `mcpApp` here is the ext-apps client,
+      // NOT a2kit's app) and calls a2kit projection verbs back over the bridge
+      // to fetch fresh data, e.g.:
+      //   const res = await mcpApp.callServerTool({ name: "regions_list_regions" });
+      //   mcpApp.ontoolresult = (r) => render(r.structuredContent.result);
       // The data verb runs the full a2kit pipeline (auth / format-routing).
+      // See docs/patterns/mcp-apps.md → "Going further" for the bridge API
+      // and starter bundles (React/Vue/vanilla) — that side is not a2kit's.
     </script>
   </body>
 </html>
