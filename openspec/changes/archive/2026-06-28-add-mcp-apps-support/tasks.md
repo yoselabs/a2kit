@@ -24,4 +24,4 @@
 
 - [x] 5.1 Real project gates green: ruff clean, `ty check src/` clean, full pytest **1618 passed** / 90.54% cov (incl. cold-start + no-fastmcp guards). NOTE: `make check`'s `ty check tests/` reports 27 **pre-existing** diagnostics (identical count on committed HEAD with this change stashed — a2kit dynamic-attribute false-positives in untouched files); this change adds zero new ty diagnostics.
 - [x] 5.2 Added CHANGELOG `0.47.0` section (MCP Apps support + the `authorize=`-on-`@app.mcp.*` enforcement fix, flagged behavior-tightening); bumped `pyproject` 0.46.0 → 0.47.0; refreshed `uv.lock` self-entry.
-- [ ] 5.3 `openspec validate add-mcp-apps-support --strict`; commit + tag v0.47.0 + push main; archive the change (`openspec archive`).
+- [x] 5.3 Strict-validated; committed (ae171eb) + tagged v0.47.0; archived as 2026-06-28-add-mcp-apps-support (mcp-apps spec created, tool-authorization updated).
