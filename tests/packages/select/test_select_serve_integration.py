@@ -86,6 +86,7 @@ def test_surface_mcp_select_narrows_source_matrix_not_just_expose() -> None:
     runtime = build(_make_app(), select=["surface=mcp"])
     ping = next(d for d in runtime.tools() if d.name == "demo_ping")
     assert tuple(ping.expose) == ("mcp",)
+    assert ping._meta is not None
     assert advertised_on(matrix_for(ping._meta.extras), "mcp") is True
     assert advertised_on(matrix_for(ping._meta.extras), "api") is False
 
@@ -97,6 +98,7 @@ def test_surface_mcp_select_narrows_meta_health_tool() -> None:
     runtime = build(_make_app_with_health(), select=["surface=mcp"])
     health = next(d for d in runtime.tools() if d.name == "_meta.health")
     assert tuple(health.expose) == ("mcp",)
+    assert health._meta is not None
     assert advertised_on(matrix_for(health._meta.extras), "api") is False
 
 
