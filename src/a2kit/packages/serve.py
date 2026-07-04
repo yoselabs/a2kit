@@ -36,7 +36,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from starlette.applications import Starlette
-from starlette.routing import Mount
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Coroutine, Mapping
@@ -176,9 +177,29 @@ def build_parent_app(
             yield
 
     return Starlette(
-        routes=[Mount(path, app=sub_app) for path, sub_app in mounts],
+        routes=[_liveness_route(), *(Mount(path, app=sub_app) for path, sub_app in mounts)],
         lifespan=_parent_lifespan,
     )
+
+
+async def _liveness(_request: Any) -> JSONResponse:
+    """Transport-native liveness: a static 200 the process answers whenever it
+    is up and routing. Deliberately dumb — resolves no DI, enters no resource,
+    aggregates no surface health — so a wedged DI graph still answers. Readiness
+    (degraded aggregation) is the ``_meta.health`` tool's job."""
+    return JSONResponse({"status": "ok"})
+
+
+def _liveness_route() -> Route:
+    """The root ``GET /health`` liveness route mounted on the multiplex parent.
+
+    Sits above every surface ``Mount`` (a sibling, not inside a sub-app), so it
+    is present regardless of which surfaces the serve selects (MCP-only
+    included) and is not wrapped by any surface's auth middleware — auth-free by
+    construction. This is the liveness counterpart to the ``_meta.health``
+    readiness tool; the FastAPI sub-app's ``/api/health`` stays for REST
+    deployments. See the ``health-probe`` capability + ADR feedback round 15."""
+    return Route("/health", _liveness, methods=["GET"])
 
 
 def serve_process(

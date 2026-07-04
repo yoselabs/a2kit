@@ -342,6 +342,20 @@ to `_BUILTIN_RESERVED_TOOL_NAMES` in `src/a2kit/tool.py` and
 register it through an internal builder (see
 `packages/health/` for the pattern).
 
+**Liveness vs readiness.** `_meta.health` (above) is **readiness** —
+opt-in, aggregates `@app.health_check` results, can report
+`degraded`, and is reached over an MCP session / `POST
+/api/_meta.health` / the CLI. Distinct from it, every HTTP serve
+(`serve --transport=http`, MCP-only included) also exposes a
+**liveness** route: a static `GET /health → 200 {"status": "ok"}` on
+the multiplex parent (`packages/serve.py`). It is deliberately dumb —
+resolves no DI, aggregates no surface health, needs no credentials
+(it sits above the surface mounts, outside any auth middleware) — so a
+Docker `HEALTHCHECK` / k8s liveness probe can `curl -f` it and a
+wedged DI graph still answers. The FastAPI sub-app's `/api/health`
+stays for REST deployments. Readiness answers "is the work healthy";
+liveness answers "is the process alive and routing".
+
 ## Q8. Log primitives require an active tool dispatch
 
 The `a2kit.log.info` / `warning` / `error` / `debug` level methods read

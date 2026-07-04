@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.48.0 — 2026-07-04
+
+### Added — transport-native liveness route on HTTP serve (`serve-liveness-health-route`)
+
+Every `serve --transport=http` now exposes a static `GET /health → 200
+{"status": "ok"}` on the multiplex parent, independent of which surfaces are
+mounted — **MCP-only included**. Previously the only liveness route lived on the
+FastAPI sub-app (`/api/health`), so `serve --transport=http --select
+surface=mcp` had no route a Docker `HEALTHCHECK` / k8s liveness probe could hit
+(a bare `GET /mcp` needs the streamable-HTTP handshake and returns 4xx/406). The
+new route is deliberately dumb — it resolves no DI, aggregates no surface health,
+and needs no credentials (it sits above the surface mounts, outside any auth
+middleware), so a wedged DI graph still answers 200. This is the **liveness**
+counterpart to the existing **readiness** `_meta.health` tool; the two stay
+separate. Additive and back-compatible: `/api/health` is unchanged for REST
+deployments. Resolves a2web feedback round 15 (`A2KIT_FEEDBACK_v0.47.md`).
+
 ## 0.47.0 — 2026-06-28
 
 ### Added — MCP Apps support, standard-first (`add-mcp-apps-support`, ADR 0031)

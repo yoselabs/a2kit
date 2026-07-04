@@ -31,15 +31,16 @@ class _Store:
     tag = "store-ok"
 
 
+class _DemoRouter(a2kit.Router):
+    slug = "demo"
+
+    @a2kit.read()
+    async def echo(self, *, msg: str, store: _Store) -> dict[str, Any]:
+        return {"msg": msg, "tag": store.tag}
+
+
 def _build_di_app() -> a2kit.App:
-    class R(a2kit.Router):
-        slug = "demo"
-
-        @a2kit.read()
-        async def echo(self, *, msg: str, store: _Store) -> dict[str, Any]:
-            return {"msg": msg, "tag": store.tag}
-
-    return app_of("multiplex-demo", R()).provide(_Store, lambda: _Store())
+    return app_of("multiplex-demo", _DemoRouter()).provide(_Store, lambda: _Store())
 
 
 # ------------------------------------------------------------- server harness
@@ -74,7 +75,11 @@ def _running(parent: Any) -> Iterator[int]:
 
 
 def _mount_paths(parent: Any) -> set[Any]:
-    return {getattr(r, "path", None) for r in parent.routes}
+    # Surface mounts only — the liveness `Route("/health")` is a sibling of the
+    # `Mount`s, not a surface, so it is deliberately excluded here.
+    from starlette.routing import Mount
+
+    return {getattr(r, "path", None) for r in parent.routes if isinstance(r, Mount)}
 
 
 # ------------------------------------------------------------ route-shape tests
@@ -136,6 +141,111 @@ def test_api_only_parent_starts_and_serves_health() -> None:
     resp = client.get("/api/version")
     assert resp.status_code == 200
     assert resp.json() == {"v": "1"}
+
+
+# ----------------------------------------- transport-native liveness (/health)
+
+
+def test_mcp_only_parent_serves_root_health() -> None:
+    """MCP-only serve exposes a root ``GET /health`` — the reported gap.
+
+    ``--select surface=mcp`` mounts only ``/mcp`` (no ``/api/health``); the
+    parent-level liveness route is what a Docker HEALTHCHECK / k8s probe hits.
+    """
+    from starlette.testclient import TestClient
+
+    app = app_of("mcp-only-live")
+
+    @app.mcp.tool(name="hello")
+    async def _h() -> dict[str, str]:
+        return {"v": "hi"}
+
+    parent = build_parent_app(app)
+    assert _mount_paths(parent) == {"/mcp"}  # api sub-app (and its /api/health) absent
+    with TestClient(parent) as client:
+        resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_api_only_parent_serves_root_health() -> None:
+    """api-only serve exposes the same root ``GET /health`` (surface-agnostic)."""
+    from starlette.testclient import TestClient
+
+    app = app_of("api-only-live")
+
+    @app.api.get("/version")
+    async def _v() -> dict[str, str]:
+        return {"v": "1"}
+
+    parent = build_parent_app(app)
+    with TestClient(parent) as client:
+        resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_both_surfaces_serve_root_health_and_keep_api_health() -> None:
+    """A both-surfaces serve exposes root ``/health`` AND keeps ``/api/health``."""
+    from starlette.testclient import TestClient
+
+    parent = build_parent_app(_build_di_app())
+    with TestClient(parent) as client:
+        root = client.get("/health")
+        api = client.get("/api/health")
+    assert root.status_code == 200
+    assert root.json() == {"status": "ok"}
+    assert api.status_code == 200  # back-compat: existing REST liveness unchanged
+
+
+def test_root_health_answers_with_wedged_di_graph() -> None:
+    """Liveness is dumb: ``/health`` answers 200 even when a provider would raise.
+
+    a2kit DI is lazy first-use, and the liveness route resolves nothing, so a
+    provider that explodes on resolution never runs on the ``/health`` path.
+    """
+    from starlette.testclient import TestClient
+
+    def _explode() -> _Store:
+        raise RuntimeError("DI wedged")
+
+    # Same tool graph as `_build_di_app`, but the `_Store` provider raises on
+    # resolution. Lazy first-use means it never runs unless a tool is called.
+    app = app_of("wedged-di-live", _DemoRouter()).provide(_Store, _explode)
+    parent = build_parent_app(app)
+    with TestClient(parent) as client:
+        resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_root_health_is_auth_free_by_construction() -> None:
+    """With an auth strategy on a surface, root ``/health`` needs no credentials.
+
+    The liveness route is a sibling of the surface ``Mount``s on the parent,
+    which carries no auth middleware — so it is reachable without a key even
+    though the ``api`` sub-app is guarded.
+    """
+    from starlette.testclient import TestClient
+
+    from a2kit.packages.auth import APIKeyAuth
+    from a2kit.packages.auth.api_key import ApiKey
+
+    app = app_of("auth-guarded-live")
+
+    @app.api.get("/version")
+    async def _v() -> dict[str, str]:
+        return {"v": "1"}
+
+    app.auth(APIKeyAuth(keys=(ApiKey(value="secret", subject="alice"),)))
+    parent = build_parent_app(app)
+    with TestClient(parent) as client:
+        # No X-API-Key header — the guarded sub-app 401s, the root liveness does not.
+        live = client.get("/health")
+        guarded = client.get("/api/version")
+    assert live.status_code == 200
+    assert live.json() == {"status": "ok"}
+    assert guarded.status_code == 401  # documents the guard is actually active
 
 
 @pytest.mark.asyncio
