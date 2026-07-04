@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.49.0 — 2026-07-05
+
+### Fixed — `--select surface=X` now actually removes the other surfaces (`select-surface-removes-surface`)
+
+`serve --transport=http --select surface=mcp` failed to drop the REST surface
+whenever the App registered a health check: the full `/api` surface stayed live
+(`/api/ask`, `/api/_meta.health`, …), so `--select surface=<x>` was not the
+surface boundary it advertises — security-relevant for MCP-only container
+deployments. Two compounding defects in `runtime.build()`'s selector pass, both
+fixed: (1) the synthetic `_meta.*` tool (installed by `@app.health_check`) was
+re-bound to the runtime **after** the selector ran and kept its
+LISTED-on-every-surface default, dragging `/api` back into the mount set — the
+selector now applies to the `_meta.*` descriptors too; (2) surface narrowing
+edited the *derived* `expose` tuple but not the *source* surface matrix
+(`extras.surfaces`), and the FastAPI mount decision reads the matrix — narrowing
+now happens on the matrix (the single source of truth per ADR 0028) so both
+surface builders agree. `--select surface=mcp` now yields a genuinely MCP-only
+server (no `/api` mount) even with a health check registered; `surface=api` is
+symmetric. `cli` (not a `--select` target) is untouched. Surfaced by a live a2web
+MCP-only serve (feedback round 16).
+
 ## 0.48.0 — 2026-07-04
 
 ### Added — transport-native liveness route on HTTP serve (`serve-liveness-health-route`)

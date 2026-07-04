@@ -341,6 +341,10 @@ def build(
         meta_router = _make_meta_router(runtime)
         routers.append(meta_router)
         meta_descs = _build_descriptors(meta_router, container=runtime_container)
+        # The `_meta` router is re-bound AFTER the initial selector pass, so a
+        # `--select surface=mcp` would otherwise leave `_meta.health` advertising
+        # `api` and keeping `/api` mounted. Narrow it like every other tool.
+        meta_descs = _apply_descriptor_selectors(meta_descs, compiled_selectors)
         descriptors.extend(meta_descs)
         # The lookup dict was sized off the initial descriptors list; refresh
         # it so the post-init meta descriptors are reachable via descriptor_for.
@@ -368,39 +372,84 @@ def _compile_selectors(exprs: list[str]) -> tuple[Any, ...]:
     return tuple(compile_selector(e) for e in exprs)
 
 
+def _narrow_surface_matrix(matrix: dict[str, Any], selectors: tuple[Any, ...]) -> dict[str, Any]:
+    """Set every ``surface=``-excluded NETWORK surface (``mcp``/``api``) to ABSENT.
+
+    The matrix is the single source of truth (ADR 0028); ``expose`` is a derived
+    view. Narrowing here — not just ``expose`` — is what makes the FastAPI
+    builder (reads the matrix via ``matrix_for``) and the MCP builder (reads
+    ``expose``) agree, so a selected surface actually removes the others. ``cli``
+    is not a ``--select`` target, so its state is preserved.
+    """
+    from a2kit._surfaces import ABSENT
+
+    out = dict(matrix)
+    for s in selectors:
+        if s.category != "surface":
+            continue
+        for surf in ("mcp", "api"):
+            if surf in out and ((s.include and surf not in s.include) or surf in s.exclude):
+                out[surf] = ABSENT
+    return out
+
+
 def _apply_descriptor_selectors(
     descriptors: list[ToolDescriptor],
     selectors: tuple[Any, ...],
 ) -> list[ToolDescriptor]:
     """Filter projection-tool descriptors by ANDed selectors.
 
-    For ``surface=`` selectors, also narrows each descriptor's
-    ``expose`` tuple to the include intersection; a descriptor whose
-    ``expose`` becomes empty is dropped entirely (the tool would have
-    nowhere to surface).
+    For ``surface=`` selectors, narrows the descriptor's SOURCE surface
+    matrix (``extras.surfaces``) and recomputes the derived ``expose`` from
+    it, so every surface builder agrees on placement (see
+    :func:`_narrow_surface_matrix`). A descriptor whose network surfaces all
+    become ABSENT (empty ``expose``) is dropped entirely — nowhere to surface.
+
+    Applies uniformly to synthetic ``_meta.*`` descriptors: the caller runs
+    this over the re-bound meta descriptors too, so ``--select surface=mcp``
+    does not leave ``_meta.health`` advertising ``api`` and dragging ``/api``
+    back into the mount set.
     """
     if not selectors:
         return descriptors
     from dataclasses import replace
 
+    from a2kit._surfaces import matrix_for, mounted_surfaces
+
+    has_surface_selector = any(s.category == "surface" for s in selectors)
+
     out: list[ToolDescriptor] = []
     for desc in descriptors:
         if not all(s.matches(desc) for s in selectors):
             continue
-        # Narrow expose to the intersection across all surface=
-        # selectors. Each surface selector already passed `.matches`,
-        # so the intersection is non-empty.
-        narrowed = desc.expose
-        for s in selectors:
-            if s.category != "surface":
-                continue
-            if s.include:
-                narrowed = tuple(sub for sub in narrowed if sub in s.include)
-            if s.exclude:
-                narrowed = tuple(sub for sub in narrowed if sub not in s.exclude)
-        if not narrowed:
+        if not has_surface_selector:
+            out.append(desc)
             continue
-        out.append(replace(desc, expose=narrowed) if narrowed != desc.expose else desc)
+        meta = desc._meta  # noqa: SLF001 -- runtime reads its own descriptor projection
+        if meta is None:
+            # Defensive: a descriptor predating the matrix — narrow expose only.
+            narrowed = tuple(
+                sub
+                for sub in desc.expose
+                if all(
+                    (not (s.category == "surface" and s.include) or sub in s.include) and not (s.category == "surface" and sub in s.exclude)
+                    for s in selectors
+                )
+            )
+            if not narrowed:
+                continue
+            out.append(replace(desc, expose=narrowed) if narrowed != desc.expose else desc)
+            continue
+        new_matrix = _narrow_surface_matrix(matrix_for(meta.extras), selectors)
+        new_expose = tuple(s for s in mounted_surfaces(new_matrix) if s != "cli")
+        if not new_expose:
+            continue
+        if new_matrix == matrix_for(meta.extras) and new_expose == tuple(desc.expose):
+            out.append(desc)
+            continue
+        new_extras = meta.extras.model_copy(update={"surfaces": new_matrix})
+        new_meta = replace(meta, extras=new_extras)
+        out.append(replace(desc, _meta=new_meta, expose=new_expose))
     return out
 
 
