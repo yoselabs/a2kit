@@ -109,6 +109,38 @@ def test_surface_api_select_drops_mcp_even_with_health_check() -> None:
     assert _mount_paths(parent) == {"/api"}
 
 
+def test_apply_selection_narrows_a_built_runtime() -> None:
+    """`run()` builds the runtime before `--select` is parsed, so the serve path
+    narrows the already-built runtime via `apply_selection` — same result as
+    `build(app, select=...)`."""
+    from a2kit.runtime import apply_selection, build
+
+    runtime = build(_make_app_with_health())  # built WITHOUT select (as run() does)
+    narrowed = apply_selection(runtime, ["surface=mcp"])
+    parent = build_parent_app(narrowed)
+    assert _mount_paths(parent) == {"/mcp"}
+
+
+def test_apply_selection_none_returns_runtime_unchanged() -> None:
+    from a2kit.runtime import apply_selection, build
+
+    runtime = build(_make_app())
+    assert apply_selection(runtime, None) is runtime
+    assert apply_selection(runtime, []) is runtime
+
+
+def test_build_on_runtime_with_select_fails_loud() -> None:
+    """A selector cannot be silently dropped: `build(runtime, select=...)` raises
+    rather than ignoring the narrowing (the bug that left `/api` mounted)."""
+    import pytest
+
+    from a2kit.runtime import build
+
+    runtime = build(_make_app())
+    with pytest.raises(ValueError, match="cannot be applied to an already-built"):
+        build(runtime, select=["surface=mcp"])
+
+
 def test_filter_to_empty_raises_value_error() -> None:
     """``--select 'verb=write'`` on a read-only App leaves no registrations."""
     import pytest

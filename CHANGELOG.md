@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.49.1 — 2026-07-05
+
+### Fixed — `--select` now actually applies on the CLI `serve` path (completes 0.49.0)
+
+0.49.0 fixed descriptor narrowing, but `a2kit serve --select surface=mcp` still
+served `/api` because the selector never reached that code: `run()` builds the
+`AppRuntime` **before** the CLI parses `--select`, and the `serve` callback then
+called `build(runtime, select=...)` — which is idempotent on an `AppRuntime` and
+**silently dropped** the selector. Two changes: (1) `build(runtime, select=...)`
+now **raises** instead of silently ignoring the selector (a build-time narrowing
+cannot be re-applied to a sealed runtime); (2) new `apply_selection(runtime,
+select)` re-derives a narrowed runtime from an already-built one — reusing the
+exact build-time helpers so CLI-serve selection and `build(app, select=...)`
+narrow identically — and the `serve` command uses it. Verified live: `a2web
+serve --transport=http --select surface=mcp` now serves `/mcp` + `/health` only,
+with `/api/*` gone.
+
 ## 0.49.0 — 2026-07-05
 
 ### Fixed — `--select surface=X` now actually removes the other surfaces (`select-surface-removes-surface`)

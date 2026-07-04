@@ -251,6 +251,18 @@ def build(
        resolves checks through the runtime's container.
     """
     if isinstance(app, AppRuntime):
+        # Fail loud: a selector is a build-time narrowing and cannot be applied
+        # by re-``build()``-ing an already-sealed runtime (the App-path work does
+        # not re-run). Silently dropping it is how ``--select surface=mcp`` failed
+        # to remove ``/api`` on the CLI serve path. Callers narrowing a built
+        # runtime (the serve command) use :func:`apply_selection` instead.
+        if select:
+            msg = (
+                "build(): select= cannot be applied to an already-built AppRuntime "
+                "(select is a build-time narrowing). Pass the source App to build(app, "
+                "select=...), or narrow the runtime with apply_selection(runtime, select)."
+            )
+            raise ValueError(msg)
         return app
 
     # The per-runtime surface registry is the facade's
@@ -357,6 +369,43 @@ def build(
 
     configure_logging(runtime.config.log)
     return runtime
+
+
+def apply_selection(runtime: AppRuntime, select: list[str] | None) -> AppRuntime:
+    """Return a runtime narrowed by ``--select`` expressions, re-derived from ``runtime``.
+
+    ``run()`` builds the runtime **before** the CLI parses ``--select`` (the
+    flag is not known until the ``serve`` callback fires), so the selector must
+    be applied to the already-built runtime rather than at ``build()`` time.
+    This re-narrows the sealed runtime's descriptors (including the materialised
+    ``_meta.*`` tools) and filters the substrate surfaces, returning a fresh
+    ``AppRuntime`` that shares the same sealed container. ``None``/empty
+    ``select`` returns the runtime unchanged.
+
+    Reuses the exact build-time helpers (:func:`_apply_descriptor_selectors`,
+    :func:`_filter_api_surface`, :func:`_filter_mcp_surface`), so CLI-serve
+    selection and ``build(app, select=...)`` narrow identically.
+    """
+    if not select:
+        return runtime
+    compiled = _compile_selectors(select)
+    descriptors = _apply_descriptor_selectors(list(runtime.tools()), compiled)
+    return AppRuntime(
+        name=runtime.name,
+        config=runtime.config,
+        routers=runtime.routers(),
+        descriptors=descriptors,
+        cli_extras=runtime.cli_extras(),
+        mcp_middlewares=runtime.mcp_middlewares(),
+        container=runtime.container(),
+        dispatch_hook=runtime.dispatch_hook(),
+        health=runtime._health,  # noqa: SLF001 -- runtime re-derivation carries the snapshot forward
+        api_surface=_filter_api_surface(runtime.api_surface, compiled),
+        mcp_surface=_filter_mcp_surface(runtime.mcp_surface, compiled),
+        auth_registry=runtime.auth_registry,
+        surfaces=runtime.surfaces,
+        serve_services=runtime.serve_services,
+    )
 
 
 def _compile_selectors(exprs: list[str]) -> tuple[Any, ...]:

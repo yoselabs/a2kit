@@ -93,7 +93,7 @@ def register_serve(typer_app: Any, app: AppRuntime) -> None:
         """
         from a2kit.packages.select import SelectorError, compile_selector
         from a2kit.packages.serve import serve_process
-        from a2kit.runtime import build
+        from a2kit.runtime import apply_selection, build
 
         select_list = list(select or ())
         for expr in select_list:
@@ -102,7 +102,12 @@ def register_serve(typer_app: Any, app: AppRuntime) -> None:
             except SelectorError as exc:
                 raise typer.BadParameter(f"--select expression invalid: {exc}") from exc
 
-        runtime = build(app, select=select_list or None)
+        # ``app`` is already an AppRuntime (built by ``run()`` before the CLI
+        # parsed ``--select``). ``build(runtime, select=...)`` would raise, so
+        # narrow the runtime directly — this re-derives descriptors + surfaces
+        # exactly as build(app, select=...) would. ``build(app)`` is a no-op
+        # idempotent pass that also accepts a source App for programmatic callers.
+        runtime = apply_selection(build(app), select_list or None)
         mcp_options = {
             "code_mode": code_mode,
             "code_mode_allow_destructive": code_mode_allow_destructive,
