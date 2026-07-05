@@ -119,7 +119,13 @@ def build_parent_app(
     ``build_mcp_server`` (``compact`` / ``tool_selection`` / ``code_mode``
     / ``code_mode_allow_destructive``). The CLI `serve` knobs reach the
     multiplex this way instead of silently defaulting. ``None`` keeps the
-    surface's default build (identical to ``McpSurface.bind``).
+    surface's default build (identical to ``McpSurface.bind``). Because
+    it splats into ``build_mcp_server(**mcp_options)``, a **programmatic**
+    caller may also pass any FastMCP kwarg here — notably
+    ``mcp_options={"auth": GoogleProvider(...)}`` to protect the HTTP MCP
+    endpoint (ADR 0010; ``docs/patterns/mcp-auth.md``). The ``a2kit serve``
+    CLI populates only the four knobs above, so OAuth wiring requires a
+    small programmatic entrypoint, not a CLI flag.
 
     Raises `ValueError` if no registered surface has registrations.
     """

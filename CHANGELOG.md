@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.49.2 — 2026-07-05
+
+### Fixed — auth package stops advertising phantom `GoogleAuth` / `JwtAuth`
+
+`a2kit.packages.auth`'s docstrings promised "bundled concrete wrappers
+(`APIKeyAuth`, `JwtAuth`, `GoogleAuth`)", and `spec.py` / `registry.py` /
+`App.auth` described an MCP path that "honours the first OAuth-targeting spec".
+None of that shipped: only `APIKeyAuth` and `TokenAuth` exist, the seam is
+ASGI-only (HTTP surfaces), and `build_mcp_server` never consults the auth
+registry. Authors were building against symbols that raise `AttributeError`
+(a2web feedback round 16). Fixed by making the docstrings honest — the auth
+package covers the HTTP/REST surface only; **MCP OAuth is auth-agnostic by
+design** (ADR 0010) and wired by handing a FastMCP provider to
+`FastMCP(auth=...)`, not by a `GoogleAuth` AuthSpec.
+
+### Added — blessed MCP-auth recipe (`docs/patterns/mcp-auth.md`)
+
+The ADR-0011 Google recipe, finally written now that a2web is the first
+consumer. Shows the programmatic `serve_process(app, ...,
+mcp_options={"auth": GoogleProvider(...)})` wiring (the `auth=` kwarg flows
+through `build_mcp_server`; the existing `PrincipalMiddleware` lands the
+principal in per-call DI), the pitfalls it encodes (`jwt_signing_key`,
+Fernet-wrapped `DiskStore`, bearer-escape hatch), and the
+`base_url`-is-the-public-URL sharp edge. `serve.py`'s `mcp_options`
+docstring now documents the `auth=` passthrough.
+
 ## 0.49.1 — 2026-07-05
 
 ### Fixed — `--select` now actually applies on the CLI `serve` path (completes 0.49.0)

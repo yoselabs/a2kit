@@ -1,13 +1,22 @@
-"""Auth — author-facing wrappers for MCP OAuth and HTTP API keys / JWT.
+"""Auth — author-facing wrappers for HTTP-surface authentication.
 
 Per ``auth-spec`` capability: this package provides the
-:class:`AuthSpec` base, the bundled concrete wrappers (``APIKeyAuth``,
-``JwtAuth``, ``GoogleAuth``), and the testing helper
-:func:`make_principal`. The :class:`Principal` type lives in
+:class:`AuthSpec` base, the bundled concrete wrappers (``APIKeyAuth``
+for long-lived API keys on the HTTP sub-app, ``TokenAuth`` for
+per-request lease validation on the internal spoke), and the testing
+helper :func:`make_principal`. The :class:`Principal` type lives in
 ``packages.context``; the per-request bridge that carries Principal
 from substrate auth into the per-call DI scope lives in
 ``packages.dispatch._principal_bridge``; the ``AuthorizeGateStage``
 that enforces ``authorize=`` lives in ``packages.dispatch``.
+
+**MCP OAuth (Google et al.) is deliberately not wrapped here.** Per
+ADR 0010 a2kit is auth-agnostic on the MCP surface: an author hands a
+FastMCP provider straight to ``FastMCP(auth=...)`` — the ``auth=``
+kwarg flows through ``build_mcp_server`` and the ``serve`` multiplex's
+``mcp_options``. The blessed Google recipe is
+``docs/patterns/mcp-auth.md`` (ADR 0011), not shipped code. There is
+no ``GoogleAuth`` / ``JwtAuth`` symbol in this package.
 
 Cold-start invariant: ``import a2kit.packages.auth`` SHALL NOT pull
 ``fastmcp.server.auth.providers.*``, ``jose`` / ``python-jose``,

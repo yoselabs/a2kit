@@ -20,9 +20,12 @@ class AppAuthRegistry:
     """Ordered list of :class:`AuthSpec` registrations for one App.
 
     Order matters on the HTTP path: multiple authentication strategies
-    run in registration order, first to authenticate wins. On the MCP
-    path, only the first OAuth-targeting spec is honoured (FastMCP
-    accepts a single ``auth=`` provider).
+    run in registration order, first to authenticate wins. This
+    registry feeds the HTTP build path only
+    (``_install_auth_middlewares``); the MCP surface is auth-agnostic
+    (ADR 0010) and does not consult it — MCP OAuth is wired by handing
+    a provider to ``FastMCP(auth=...)`` (see
+    ``docs/patterns/mcp-auth.md``).
     """
 
     def __init__(self) -> None:

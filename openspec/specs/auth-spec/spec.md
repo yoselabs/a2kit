@@ -2,20 +2,23 @@
 
 ## Purpose
 
-Author-facing surface for configuring authentication on a2kit Apps.
-`App.auth(spec)` accumulates :class:`AuthSpec` instances; substrate
-builders (`build_http_app`, future `build_mcp_server` integration)
-consume them through `runtime.auth_registry`.
+Author-facing surface for configuring authentication on a2kit **HTTP**
+surfaces. `App.auth(spec)` accumulates :class:`AuthSpec` instances; the
+HTTP substrate builder (`build_http_app`) consumes them through
+`runtime.auth_registry`.
 
-Bundled surface today: `APIKeyAuth` for HTTP API keys. `JwtAuth` and
-`GoogleAuth` are queued as follow-up changes; the spec only documents
-what has actually landed so spec-drift gates stay green.
+Bundled surface today: `APIKeyAuth` (HTTP API keys) and `TokenAuth`
+(per-request lease validation on the internal spoke). A `JwtAuth` HTTP
+wrapper may follow. There is **no** `GoogleAuth` AuthSpec: MCP OAuth is
+auth-agnostic by design (ADR 0010) — an author hands a FastMCP provider
+to `FastMCP(auth=...)`, wired per the recipe at
+`docs/patterns/mcp-auth.md` (ADR 0011), not registered here.
 
 Materialized from `add-auth` (archived 2026-05-25).
 ## Requirements
 ### Requirement: `App.auth(spec)` accumulates AuthSpec instances
 
-`App.auth(spec: AuthSpec) -> App` SHALL append `spec` to an internal `AppAuthRegistry`. Multiple calls SHALL accumulate in registration order. `AppRuntime.auth_registry` SHALL expose the materialised registry to substrate builders (`build_http_app` today; `build_mcp_server` once an MCP-targeting wrapper lands).
+`App.auth(spec: AuthSpec) -> App` SHALL append `spec` to an internal `AppAuthRegistry`. Multiple calls SHALL accumulate in registration order. `AppRuntime.auth_registry` SHALL expose the materialised registry to the HTTP substrate builder (`build_http_app`); the MCP surface is auth-agnostic (ADR 0010) and SHALL NOT consult the registry.
 
 #### Scenario: Multiple auth specs accumulate in registration order
 

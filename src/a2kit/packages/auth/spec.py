@@ -35,10 +35,16 @@ AsgiFactory: TypeAlias = Callable[[Any], Any]
 class AuthSpec:
     """Base class for author-facing auth configurations.
 
-    Concrete subclasses (``APIKeyAuth``, ``TokenAuth``, ``JwtAuth``,
-    ``GoogleAuth``) declare the surface they target via the ``target``
-    ClassVar and return their middleware via ``build_middleware`` so
-    substrate builders filter the registry and mount uniformly.
+    Concrete subclasses (``APIKeyAuth``, ``TokenAuth``) declare the
+    surface they target via the ``target`` ClassVar and return their
+    middleware via ``build_middleware`` so substrate builders filter
+    the registry and mount uniformly.
+
+    This seam is ASGI-shaped — ``build_middleware`` returns an ASGI
+    factory — and covers HTTP surfaces only. MCP OAuth is **not** an
+    ``AuthSpec``: a FastMCP OAuth provider is handed to
+    ``FastMCP(auth=...)`` directly (ADR 0010; see
+    ``docs/patterns/mcp-auth.md``), not registered here.
     """
 
     target: ClassVar[AuthTarget]

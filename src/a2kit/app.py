@@ -500,9 +500,12 @@ class App:
         """Register an :class:`AuthSpec` for this App.
 
         Multiple calls accumulate in registration order. Order matters
-        on HTTP (multiple auth middlewares run in registration order;
-        first to authenticate wins); on MCP only the first OAuth-
-        targeting spec is honoured (FastMCP takes a single ``auth=``).
+        on HTTP: multiple auth middlewares run in registration order,
+        first to authenticate wins. This registry feeds the **HTTP
+        surface only** — the MCP surface is auth-agnostic (ADR 0010)
+        and does not consult it. Protect a networked MCP endpoint by
+        handing a FastMCP provider to ``FastMCP(auth=...)`` instead
+        (see ``docs/patterns/mcp-auth.md``).
 
         Lazy: the first call constructs the :class:`AppAuthRegistry`
         on demand so apps that never configure auth never load
@@ -520,8 +523,9 @@ class App:
     def auth_registry(self) -> Any:
         """The :class:`AppAuthRegistry` for this App, or ``None`` if no auth was registered.
 
-        Substrate builders (``build_http_app`` / ``build_mcp_server``)
-        consult this through ``AppRuntime.auth_registry``; the ``None``
+        The HTTP substrate builder (``build_http_app``) consults this
+        through ``AppRuntime.auth_registry``; ``build_mcp_server`` does
+        not (the MCP surface is auth-agnostic, ADR 0010). The ``None``
         case preserves the no-auth cold-start path.
         """
         return self._auth_registry
