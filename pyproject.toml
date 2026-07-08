@@ -23,7 +23,10 @@ dependencies = [
     # --transport=http` path (lazy in `packages/serve.py` + `packages/http`);
     # never at `import a2kit` (cold-start budget).
     "fastapi>=0.115,<1",
-    "fastmcp>=3.2,<4",
+    # >=3.4: the MCP error-envelope middleware returns `ToolResult(is_error=True)`
+    # (`packages/mcp/_wrappers.py`), an API that lands in fastmcp 3.4. On 3.2/3.3 the
+    # kwarg raises `TypeError`, crashing the error path (and wedging the next write).
+    "fastmcp>=3.4,<4",
     "pydantic>=2,<3",
     "pydantic-settings>=2.14,<3",
     "tomli-w>=1,<2",

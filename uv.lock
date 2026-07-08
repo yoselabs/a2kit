@@ -88,7 +88,7 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "cryptography", marker = "extra == 'examples-mcp-google-auth'", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "fastmcp", specifier = ">=3.2,<4" },
+    { name = "fastmcp", specifier = ">=3.4,<4" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "py-key-value-aio", extras = ["disk"], marker = "extra == 'examples-mcp-google-auth'", specifier = ">=0.4" },
