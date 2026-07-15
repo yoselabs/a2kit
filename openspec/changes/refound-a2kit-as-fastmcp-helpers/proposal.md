@@ -1,3 +1,18 @@
+## Direction update (2026-07-15)
+
+The **destination of the surviving substrate is the shelf** (`yoselabs/shelf`,
+promotion-not-publication), **not** FastMCP upstream. a2kit **dissolves**; it does
+not re-found as a FastMCP-extras helper library — a fresh 3.x major still absorbing
+framework territory would eat a helper package the way it ate the framework. Its
+worthy, substrate-indifferent parts promote to the shelf when a second consumer
+pulls them; its MCP-shaped glue stays **inline in each consumer** until real
+variation reveals its shape. **a2kay is the driving pilot**: see a2kay's
+`sunset-a2kit-dependency` change, which decomposes a2kay's a2kit footprint
+(shelf / reuse / inline / drop / delete) and sequences the strangler migration.
+The extractability invariant below is superseded by the shelf's promotion
+doctrine (DEEP·STABLE·WINS, promote-on-2nd-consumer, no consumer import). The rest
+of this proposal is the original framework-retirement rationale, still valid.
+
 ## Why
 
 a2kit is built **on** FastMCP, and its headline deltas — multi-transport
